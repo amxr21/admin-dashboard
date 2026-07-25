@@ -77,7 +77,7 @@ jobs:
         with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter ./frontend test:coverage
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: frontend-coverage
@@ -197,7 +197,7 @@ jobs:
           CORS_ORIGINS: http://localhost:3000
         run: pnpm test:coverage
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: backend-coverage
