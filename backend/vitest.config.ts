@@ -6,6 +6,18 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
+
+    // Integration tests hit a real MySQL. Locally that is Aiven over the
+    // network — a single round-trip is ~500ms, and a test doing create →
+    // delete → re-read blows through Vitest's 5s default for reasons that have
+    // nothing to do with the code under test. CI's MySQL service container is
+    // far faster, so this ceiling only ever matters locally.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
+
+    // DB tests mutate shared tables. Running files in parallel against one
+    // database makes cleanup order non-deterministic and failures flaky.
+    fileParallelism: false,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],

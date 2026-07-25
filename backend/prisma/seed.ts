@@ -15,15 +15,11 @@
 import { PrismaClient, StaffRole, ProductStatus, OrderStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
+// Shared with the app rather than redefined here — the slug is an upsert key,
+// so seed and runtime must agree on it exactly. See src/lib/__tests__/slug.test.ts.
+import { slugify } from '../src/lib/slug.js';
 
-/** Deterministic slug so re-runs upsert rather than duplicate. */
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+const prisma = new PrismaClient();
 
 async function seedAdminUser(): Promise<void> {
   const email = process.env.SEED_ADMIN_EMAIL ?? 'admin@example.com';
