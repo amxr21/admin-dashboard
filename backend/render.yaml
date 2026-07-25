@@ -15,6 +15,11 @@
 #      database (NOT the same one production or your Aiven dev db uses) —
 #      migrate deploy runs automatically on every preview build
 
+# How long a PR's preview environment lives after its last deploy before Render
+# tears it down automatically. This is a BLUEPRINT-level setting, not a
+# per-service one — it does not go inside a service's own `previews:` block.
+previewsExpireAfterDays: 3
+
 services:
   - type: web
     name: admin-dashboard-backend
@@ -29,7 +34,6 @@ services:
     # Preview envs per pull request. Each PR gets its own temporary backend URL.
     previews:
       generation: automatic
-      expireAfterDays: 3
 
     envVars:
       - key: NODE_ENV
