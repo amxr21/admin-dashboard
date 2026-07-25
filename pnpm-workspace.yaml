@@ -1,0 +1,24 @@
+packages:
+  - 'frontend'
+  - 'backend'
+
+# pnpm blocks dependency postinstall scripts by default (supply-chain hardening).
+# Each package below is explicitly allowed because it cannot work without its
+# build step — all of them fetch or compile a platform-specific binary:
+#
+#   prisma / @prisma/*  → query engine binaries; `prisma generate` fails without them
+#   esbuild             → the bundler binary itself
+#   sharp               → native image lib behind next/image optimization
+#   @sentry/cli         → source-map upload binary used at build time
+#   unrs-resolver       → native module resolver used by eslint-plugin-import
+#
+# Adding a new entry here is a security decision. Don't set one to true just to
+# silence the warning — check what the script actually does first.
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@sentry/cli': true
+  esbuild: true
+  prisma: true
+  sharp: true
+  unrs-resolver: true

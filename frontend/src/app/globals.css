@@ -1,0 +1,37 @@
+@import 'tailwindcss';
+
+/*
+ * Tailwind v4 is configured here, not in a JS config file.
+ *
+ * This is the FOUNDATION only: the font variable is wired up and dark mode is
+ * switched to a class-based strategy. The actual design system — the two-tier
+ * semantic token palette (surface / text / border / accent, each with a light
+ * and dark value) — is a separate piece of work and should be built with the
+ * project-ui-system skill BEFORE component work starts.
+ *
+ * Do not add ad-hoc hex values to components. Everything resolves to a token
+ * declared in @theme below.
+ */
+
+/* Dark mode by class (`<html class="dark">`), not by OS preference alone —
+   admin users need to be able to choose, and a toggle needs a class to flip. */
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  /* Registered at setup so no component ever hardcodes a font stack. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    /* Respect users who've asked their OS to reduce motion. Global default;
+       individual animations can still opt in deliberately. */
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+}
