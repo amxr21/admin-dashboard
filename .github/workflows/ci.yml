@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
       # BOTH this and package.json's "packageManager" field specify a version
       # ("Multiple versions of pnpm specified"). packageManager is the single
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
       # BOTH this and package.json's "packageManager" field specify a version
       # ("Multiple versions of pnpm specified"). packageManager is the single
@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
       # BOTH this and package.json's "packageManager" field specify a version
       # ("Multiple versions of pnpm specified"). packageManager is the single
@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
       # BOTH this and package.json's "packageManager" field specify a version
       # ("Multiple versions of pnpm specified"). packageManager is the single
@@ -112,7 +112,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
       # BOTH this and package.json's "packageManager" field specify a version
       # ("Multiple versions of pnpm specified"). packageManager is the single
@@ -131,7 +131,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
       # BOTH this and package.json's "packageManager" field specify a version
       # ("Multiple versions of pnpm specified"). packageManager is the single
@@ -164,7 +164,7 @@ jobs:
           --health-retries=5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
       # BOTH this and package.json's "packageManager" field specify a version
       # ("Multiple versions of pnpm specified"). packageManager is the single
@@ -209,7 +209,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
       # BOTH this and package.json's "packageManager" field specify a version
       # ("Multiple versions of pnpm specified"). packageManager is the single
