@@ -127,14 +127,37 @@ Foundations is the config layer only. Two layers sit on top of it, and the seque
 load-bearing — doing it out of order creates work you have to undo.
 
 ```
-1. Commit the foundations to dev
-2. Push it
-3. project-ui-system   → design tokens, dark mode, fonts   (BEFORE any components exist)
-4. project-ship        → GitHub Actions, Husky, Dependabot, CODEOWNERS, test runners
-5. Let CI run once     → so check names register with GitHub
-6. Branch protection rules, referencing those now-existing checks
-7. project-run         → observability, alerting, incident response (needs SHIP first)
+BUILD      AUTHOR                  VERIFY                    OBSERVE
+foundations ─┬─ code-standards ─┬─ test-gen ─── ship(gate) ─── run
+             ├─ ui-system       │      ▲            ▲
+             └─ motion          │      │            │
+                                └── ship(CI setup) ─┘
+CROSS-CUTTING:  docs (public) · workbook (private) · error-log · drift-check (on demand)
 ```
+
+Concretely, in order:
+
+```
+1. Commit the foundations to dev                                    ✓ done
+2. Push it                                                          ✓ done
+3. project-ui-system    → design tokens, dark mode, fonts           ✓ done
+4. project-ship         → CI workflows, Husky, Dependabot, RUNNERS  ← here
+5. Let CI run once      → so check names register with GitHub
+6. Branch protection rules, referencing those now-existing checks
+7. project-test-gen     → writes the tests the runners from step 4 execute
+8. project-ship (gate)  → "is this ready to merge?" — used per-merge from here on
+9. project-run          → observability, alerting, incident response
+```
+
+**`project-code-standards` and `project-motion` are not steps in this list** — they're
+shape-as-you-go skills that apply *while* feature code is written. They have nothing to act on
+until the first real route or component exists. Don't "run" them; let them shape the work.
+
+**`project-docs`, `project-workbook`, and `project-error-log` are continuous**, not sequenced.
+
+**Note the two modes of `project-ship`.** Step 4 is CI *setup*. Step 8 is the *merge gate*.
+`project-test-gen` sits between them — it assumes the runners from step 4 exist, and the gate is
+only meaningful once tests do.
 
 ### Why branch protection comes AFTER CI, not before
 

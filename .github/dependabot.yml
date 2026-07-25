@@ -1,0 +1,25 @@
+# admin-dashboard — Dependabot
+#
+# Weekly PRs to update dependencies, grouped by type so this doesn't produce
+# 30 tiny PRs. One workspace root directory covers both packages — this is a
+# pnpm workspace with a single lockfile, not two independent ones.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      production:
+        dependency-type: production
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

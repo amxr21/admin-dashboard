@@ -1,0 +1,5 @@
+{
+  "frontend/**/*.{ts,tsx}": ["eslint --fix --config frontend/eslint.config.mjs"],
+  "backend/**/*.ts": ["eslint --fix --config backend/eslint.config.mjs"],
+  "**/*.{json,md,yml,yaml}": []
+}

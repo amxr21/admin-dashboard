@@ -1,0 +1,78 @@
+# admin-dashboard — End-to-end tests
+#
+# Runs Playwright against the live preview URLs from Vercel (FE) and Render
+# (BE). Separate workflow because it's slow (~5-10 min) and depends on preview
+# deploys being ready first. Only runs on PRs targeting main — dev PRs get the
+# fast ci.yml battery, main PRs get the full one.
+#
+# Failing E2E almost always means a real user-facing bug. Do not skip these.
+#
+# SETUP NEEDED: the Render preview URL step below is a placeholder — Render has
+# no first-party "wait for preview" action. Replace it once the backend is
+# connected to Render (see backend/render.yaml), by polling the Render API or
+# the PR comment its GitHub App posts.
+
+name: E2E
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wait-for-previews:
+    name: Wait for Vercel + Render previews
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      frontend_url: ${{ steps.vercel.outputs.url }}
+      backend_url: ${{ steps.render.outputs.url }}
+    steps:
+      - name: Wait for Vercel preview
+        id: vercel
+        uses: patrickedqvist/wait-for-vercel-preview@v1.3.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          max_timeout: 600
+
+      - name: Wait for Render preview
+        id: render
+        run: |
+          echo "TODO: implement Render preview readiness check once Render is connected"
+          echo "url=https://admin-dashboard-backend-preview-${{ github.event.number }}.onrender.com" >> "$GITHUB_OUTPUT"
+
+  playwright:
+    name: Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: wait-for-previews
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run Playwright
+        working-directory: frontend
+        env:
+          BASE_URL: ${{ needs.wait-for-previews.outputs.frontend_url }}
+          API_URL: ${{ needs.wait-for-previews.outputs.backend_url }}/api/v1
+        run: pnpm e2e
+
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7

@@ -9,7 +9,12 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        // `project` (not `projectService`) so this points at tsconfig.eslint.json
+        // rather than auto-discovering tsconfig.json — the build config excludes
+        // **/*.test.ts (so `tsc` doesn't emit tests into dist/), which otherwise
+        // makes every test file a parser error under type-aware rules
+        // ("was not found by the project service").
+        project: './tsconfig.eslint.json',
         tsconfigRootDir: import.meta.dirname,
       },
     },

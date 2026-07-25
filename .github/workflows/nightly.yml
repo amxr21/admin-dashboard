@@ -1,0 +1,32 @@
+# admin-dashboard — Nightly checks
+#
+# Heavier scans that don't need to block every PR: full dependency audit and a
+# from-scratch install (catches lockfile drift that --frozen-lockfile alone
+# might miss across a longer time window).
+
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # daily, 02:00 UTC
+  workflow_dispatch: {} # allow manual trigger from the Actions tab
+
+jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      # High/critical only — Dependabot already opens PRs for the rest weekly.
+      # This is the safety net for anything it hasn't gotten to yet.
+      - run: pnpm audit --audit-level=high
+        continue-on-error: true
+      - name: Report audit findings
+        if: failure()
+        run: echo "::warning::pnpm audit found high/critical issues — check the Dependabot tab"

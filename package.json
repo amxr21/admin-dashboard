@@ -13,6 +13,13 @@
     "lint": "pnpm --recursive lint",
     "typecheck": "pnpm --recursive typecheck",
     "db:migrate": "pnpm --filter \"./backend\" db:migrate",
-    "db:studio": "pnpm --filter \"./backend\" db:studio"
+    "db:studio": "pnpm --filter \"./backend\" db:studio",
+    "test": "pnpm --recursive test",
+    "test:coverage": "pnpm --recursive test:coverage",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.2.0"
   }
 }
