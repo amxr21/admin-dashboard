@@ -25,7 +25,8 @@ concurrency:
 
 env:
   NODE_VERSION: 22
-  PNPM_VERSION: 11
+  # pnpm version is NOT set here — see the comment above each pnpm/action-setup
+  # step. package.json's "packageManager" field is the single source of truth.
 
 jobs:
   # ─── Frontend ────────────────────────────────────────────────────
@@ -35,8 +36,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
       - uses: pnpm/action-setup@v4
-        with: { version: '${{ env.PNPM_VERSION }}' }
       - uses: actions/setup-node@v4
         with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -48,8 +52,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
       - uses: pnpm/action-setup@v4
-        with: { version: '${{ env.PNPM_VERSION }}' }
       - uses: actions/setup-node@v4
         with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -61,8 +68,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
       - uses: pnpm/action-setup@v4
-        with: { version: '${{ env.PNPM_VERSION }}' }
       - uses: actions/setup-node@v4
         with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -80,8 +90,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
       - uses: pnpm/action-setup@v4
-        with: { version: '${{ env.PNPM_VERSION }}' }
       - uses: actions/setup-node@v4
         with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -100,8 +113,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
       - uses: pnpm/action-setup@v4
-        with: { version: '${{ env.PNPM_VERSION }}' }
       - uses: actions/setup-node@v4
         with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -116,8 +132,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
       - uses: pnpm/action-setup@v4
-        with: { version: '${{ env.PNPM_VERSION }}' }
       - uses: actions/setup-node@v4
         with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -146,8 +165,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
       - uses: pnpm/action-setup@v4
-        with: { version: '${{ env.PNPM_VERSION }}' }
       - uses: actions/setup-node@v4
         with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -182,8 +204,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      # No `version:` here on purpose — pnpm/action-setup@v4 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
       - uses: pnpm/action-setup@v4
-        with: { version: '${{ env.PNPM_VERSION }}' }
       - uses: actions/setup-node@v4
         with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
       - run: pnpm install --frozen-lockfile
