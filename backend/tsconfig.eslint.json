@@ -4,6 +4,15 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "vitest.config.ts", "vitest.setup.ts"],
+  // Everything ESLint should type-check. Wider than tsconfig.json's `include`
+  // on purpose: the build config only compiles src/ into dist/, but lint must
+  // also cover tests, tooling configs, and prisma/seed.ts — otherwise those
+  // files fail with "was not found in any of the provided project(s)".
+  "include": [
+    "src/**/*.ts",
+    "prisma/**/*.ts",
+    "vitest.config.ts",
+    "vitest.setup.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }
