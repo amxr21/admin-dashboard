@@ -3,6 +3,29 @@
 # Weekly PRs to update dependencies, grouped by type so this doesn't produce
 # 30 tiny PRs. One workspace root directory covers both packages — this is a
 # pnpm workspace with a single lockfile, not two independent ones.
+#
+# ─── WHY `cooldown` IS HERE (do not remove) ─────────────────────────────────
+# pnpm 11 defaults `minimumReleaseAge` to 1440 minutes (1 day) — it refuses to
+# install any package published less than 24h ago, as supply-chain defence
+# against hijacked-maintainer attacks. pnpm 10 defaulted this to 0, so this
+# only started applying when the project pinned pnpm@11.
+#
+# Dependabot, left alone, opens a PR the instant a version publishes. Its
+# lockfile then contains packages younger than pnpm's floor, and every CI job
+# dies at `pnpm install --frozen-lockfile` with:
+#   ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION
+#
+# Every job fails, so it looks like a broken pipeline rather than a policy
+# doing its job. The fix is to make both sides agree: Dependabot waits at
+# least as long as pnpm's floor before proposing anything.
+#
+# 3 days (not 1) deliberately buys margin — a package published Friday night
+# won't be proposed until it has genuinely aged, regardless of timezone or
+# when the weekly run fires.
+#
+# If you ever raise pnpm's `minimumReleaseAge`, raise these to match or CI
+# starts failing again.
+# ─────────────────────────────────────────────────────────────────────────────
 
 version: 2
 updates:
@@ -11,6 +34,8 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 3
     groups:
       dev-dependencies:
         dependency-type: development
@@ -23,3 +48,8 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    # Actions are pinned by major tag, not resolved through pnpm, so pnpm's
+    # policy never applies to them. Cooldown here is just prudence against a
+    # compromised Action release.
+    cooldown:
+      default-days: 3
