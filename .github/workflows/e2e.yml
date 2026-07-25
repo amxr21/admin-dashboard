@@ -1,22 +1,41 @@
 # admin-dashboard — End-to-end tests
 #
-# Runs Playwright against the live preview URLs from Vercel (FE) and Render
-# (BE). Separate workflow because it's slow (~5-10 min) and depends on preview
-# deploys being ready first. Only runs on PRs targeting main — dev PRs get the
-# fast ci.yml battery, main PRs get the full one.
+# Runs Playwright against live preview URLs from Vercel (FE) and Render (BE).
+# Kept separate from ci.yml because it's slow (~5-10 min) and depends on preview
+# deploys being ready first.
 #
-# Failing E2E almost always means a real user-facing bug. Do not skip these.
+# CURRENTLY MANUAL-ONLY — see the note on the `on:` trigger below for why, and
+# what to do to turn it back on. Once re-enabled it should run on PRs into
+# `main` only: dev PRs get the fast ci.yml battery, main PRs get the full one.
 #
-# SETUP NEEDED: the Render preview URL step below is a placeholder — Render has
-# no first-party "wait for preview" action. Replace it once the backend is
-# connected to Render (see backend/render.yaml), by polling the Render API or
-# the PR comment its GitHub App posts.
+# When it IS running: a failing E2E almost always means a real user-facing bug.
+# Don't skip those.
 
 name: E2E
 
+# DISABLED until a real backend preview URL exists.
+#
+# The Render service for this project was created MANUALLY, not via Blueprint
+# (Blueprint requires a paid plan) — and manual services get no per-PR preview
+# environments. So the "Wait for Render preview" step below has nothing real to
+# wait for, fails after its timeout, and marks every PR into `main` as UNSTABLE
+# even when all required checks pass.
+#
+# A permanently-red check trains everyone to ignore red checks, which is worse
+# than having no check. So this runs on-demand only for now.
+#
+# TO RE-ENABLE, pick one:
+#   A. Point it at a persistent dev backend — replace the Render step with
+#      `echo "url=${{ secrets.RENDER_DEV_BACKEND_URL }}" >> "$GITHUB_OUTPUT"`
+#      and add that repo secret. Simplest, works today.
+#   B. Move Render to a Blueprint (paid) and poll their API for the real
+#      per-PR preview URL.
+# Then restore the `pull_request:` trigger below and add `Playwright` as a
+# required check on main-protection.
 on:
-  pull_request:
-    branches: [main]
+  workflow_dispatch: {}
+  # pull_request:
+  #   branches: [main]
 
 concurrency:
   group: e2e-${{ github.workflow }}-${{ github.ref }}
