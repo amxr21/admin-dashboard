@@ -37,8 +37,19 @@ updates:
     cooldown:
       default-days: 3
     groups:
+      # BOTH groups are minor+patch ONLY. Without `update-types` on the dev
+      # group, Dependabot bundled TypeScript 5→7, ESLint 9→10, Prisma 6→7,
+      # @types/node 22→26 and eslint-config-next 15→16 into ONE pull request
+      # (#12, closed). That is a migration wearing a dependency-bump costume:
+      # it broke the build for real (TS2882 on side-effect CSS imports, ESLint
+      # 10 failing to load the flat config), and because it was a group, there
+      # was no way to take the safe parts without the breaking ones.
+      #
+      # Majors now arrive as individual PRs, each reviewable and revertible on
+      # its own. That is the point.
       dev-dependencies:
         dependency-type: development
+        update-types: [minor, patch]
       production:
         dependency-type: production
         update-types: [minor, patch]
