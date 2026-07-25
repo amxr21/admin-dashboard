@@ -1,0 +1,249 @@
+# admin-dashboard — Continuous Integration
+#
+# Runs on every pull request to dev and main. Blocks merge if any required
+# check fails. Kept fast (~3-5 min) by running the jobs in parallel.
+#
+# If a check fails, click into it — the failing step shows the error inline.
+#
+# NOTE ON LAYOUT: this is a pnpm WORKSPACE with a single root lockfile. So every
+# job installs once at the root with --frozen-lockfile, then targets a package
+# with --filter. Do not add per-package `pnpm install` steps — there are no
+# per-package lockfiles, and --frozen-lockfile would fail.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+# Cancel older runs on the same branch when a new push arrives.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 22
+  # pnpm version is NOT set here — see the comment above each pnpm/action-setup
+  # step. package.json's "packageManager" field is the single source of truth.
+
+jobs:
+  # ─── Frontend ────────────────────────────────────────────────────
+  frontend-lint:
+    name: Frontend · Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # No `version:` here on purpose — pnpm/action-setup@v6 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter ./frontend lint
+
+  frontend-typecheck:
+    name: Frontend · Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # No `version:` here on purpose — pnpm/action-setup@v6 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter ./frontend typecheck
+
+  frontend-test:
+    name: Frontend · Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      # No `version:` here on purpose — pnpm/action-setup@v6 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter ./frontend test:coverage
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          retention-days: 7
+
+  frontend-build:
+    name: Frontend · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      # No `version:` here on purpose — pnpm/action-setup@v6 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Build Next.js
+        env:
+          # Dummy build-time values — real ones live in Vercel. Sentry source-map
+          # upload is skipped automatically because SENTRY_AUTH_TOKEN is unset.
+          NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
+          NEXT_PUBLIC_ENV: ci
+        run: pnpm --filter ./frontend build
+
+  # ─── Backend ─────────────────────────────────────────────────────
+  backend-lint:
+    name: Backend · Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # No `version:` here on purpose — pnpm/action-setup@v6 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      # ESLint's type-aware rules need the generated Prisma client to exist,
+      # otherwise every import of it resolves to `any` and the rules misfire.
+      - run: pnpm --filter ./backend db:generate
+      - run: pnpm --filter ./backend lint
+
+  backend-typecheck:
+    name: Backend · Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # No `version:` here on purpose — pnpm/action-setup@v6 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter ./backend db:generate
+      - run: pnpm --filter ./backend typecheck
+
+  backend-test:
+    name: Backend · Tests (unit + integration)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # A real MySQL for integration tests. Throwaway — created and destroyed with
+    # the job, so tests can migrate and truncate freely.
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: admin_dashboard_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v7
+      # No `version:` here on purpose — pnpm/action-setup@v6 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+
+      # `prisma migrate deploy` applies the SCHEMA to the database — it does
+      # NOT generate the @prisma/client TypeScript artifacts. Without this
+      # step, `new PrismaClient()` throws "did not initialize yet" the moment
+      # any test imports it, before a single test runs.
+      - run: pnpm --filter ./backend db:generate
+
+      - name: Apply migrations to the test database
+        working-directory: backend
+        env:
+          DATABASE_URL: mysql://root:test@127.0.0.1:3306/admin_dashboard_test
+        # `migrate deploy`, not `migrate dev` — deploy applies committed
+        # migrations only and never prompts to reset. Never use `dev` in CI.
+        run: pnpm db:deploy
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          DATABASE_URL: mysql://root:test@127.0.0.1:3306/admin_dashboard_test
+          LOG_LEVEL: error
+          CORS_ORIGINS: http://localhost:3000
+        run: pnpm test:coverage
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          retention-days: 7
+
+  backend-build:
+    name: Backend · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # No `version:` here on purpose — pnpm/action-setup@v6 refuses to run if
+      # BOTH this and package.json's "packageManager" field specify a version
+      # ("Multiple versions of pnpm specified"). packageManager is the single
+      # source of truth; this action reads it automatically.
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter ./backend build
+
+  # ─── Aggregator ──────────────────────────────────────────────────
+  # Branch protection requires THIS check only. That way jobs can be added or
+  # removed above without editing the GitHub ruleset every time.
+  ci-passed:
+    name: CI passed
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs:
+      - frontend-lint
+      - frontend-typecheck
+      - frontend-test
+      - frontend-build
+      - backend-lint
+      - backend-typecheck
+      - backend-test
+      - backend-build
+    # `always()` so this job still runs when a dependency failed — otherwise it
+    # would be skipped, and a skipped required check blocks the PR forever.
+    if: always()
+    steps:
+      - name: Verify all required jobs passed
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "One or more required jobs failed"
+            exit 1
+          fi
+          echo "All required jobs passed"

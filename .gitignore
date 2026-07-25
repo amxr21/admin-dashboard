@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment — never commit real values, only .env.example
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Test / coverage
+coverage/
+playwright-report/
+test-results/
+playwright/.auth/
+
+# Prisma — generated artifacts
+backend/prisma/*.db
+
+# Sentry
+.sentryclirc
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Private working knowledge — never commit
+.claude-workbook/

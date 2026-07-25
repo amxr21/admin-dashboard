@@ -1,0 +1,35 @@
+// admin-dashboard — Prisma schema
+//
+// Migrations workflow:
+//   Local:     pnpm db:migrate --name descriptive_change
+//   CI/deploy: pnpm db:deploy
+//   Reset DB:  pnpm prisma migrate reset   (dev only — wipes data)
+//
+// Rules:
+//   - Every schema change is a migration file, committed to git and reviewed
+//     like any other code.
+//   - Never edit a production database by hand. Never run `db push` against prod.
+//   - Migration names are descriptive: `add_user_email_index`, not `fix1`.
+//   - Destructive migrations (drop/rename a column) get a code review AND a
+//     backup snapshot before deploy.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Example model — delete when the real domain lands ─────────────
+// Kept only so `prisma migrate dev` has something to generate on day one and
+// the client type-checks before any real modelling happens.
+model Example {
+  id        String   @id @default(cuid())
+  name      String   @db.VarChar(255)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+}

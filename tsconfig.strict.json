@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    // ─── Strictness ────────────────────────────────────────────
+    "strict": true,                          // enables all strict checks below
+    "noImplicitAny": true,                   // no silent `any` in function params
+    "strictNullChecks": true,                // null/undefined must be handled
+    "strictFunctionTypes": true,             // catches callback signature mismatches
+    "noImplicitThis": true,                  // `this` must have a known type
+    "alwaysStrict": true,                    // parse in strict mode
+
+    // ─── Extra strictness beyond `strict` ──────────────────────
+    "noUncheckedIndexedAccess": true,        // arr[0] is T | undefined — forces handling
+    "noImplicitOverride": true,              // must write `override` when overriding
+    "noPropertyAccessFromIndexSignature": false, // relaxed: allows obj.foo on Record<string,T>
+    "noFallthroughCasesInSwitch": true,      // switch cases must break/return
+    "noUnusedLocals": true,                  // dead variables fail the build
+    "noUnusedParameters": false,             // relaxed: prefix with _ to ignore
+    "exactOptionalPropertyTypes": false,     // relaxed: too noisy for most apps
+
+    // ─── Module / interop ──────────────────────────────────────
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+
+    // ─── Output ────────────────────────────────────────────────
+    "skipLibCheck": true                     // don't type-check node_modules
+  }
+}

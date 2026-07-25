@@ -1,0 +1,9 @@
+# admin-dashboard — code ownership
+#
+# Solo project today — this exists so the file is in place (and the PR
+# template / branch-protection docs can reference it) the moment a second
+# person joins. GitHub ignores CODEOWNERS review requirements if no rule
+# requires approval, which is the current branch-protection setup — see
+# docs/branch-protection.md.
+
+* @amxr21

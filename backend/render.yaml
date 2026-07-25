@@ -1,0 +1,48 @@
+# admin-dashboard backend — Render config
+#
+# Push to main -> Render auto-deploys. Open a PR -> Render spins up a preview
+# environment with its own URL, torn down after 3 days.
+#
+# NOT USING RENDER'S MANAGED DATABASE. This project's MySQL lives on Aiven —
+# see FOUNDATIONS.md and DATABASE_URL below is `sync: false` deliberately, set
+# per-environment in the Render dashboard instead of provisioned here.
+#
+# After committing this file, connect the repo:
+#   1. Render dashboard -> New -> Blueprint -> connect this repo
+#   2. Render reads render.yaml and creates the service
+#   3. Set every `sync: false` var in the dashboard for each environment
+#   4. For previews specifically: point DATABASE_URL at a preview-safe
+#      database (NOT the same one production or your Aiven dev db uses) —
+#      migrate deploy runs automatically on every preview build
+
+# How long a PR's preview environment lives after its last deploy before Render
+# tears it down automatically. This is a BLUEPRINT-level setting, not a
+# per-service one — it does not go inside a service's own `previews:` block.
+previewsExpireAfterDays: 3
+
+services:
+  - type: web
+    name: admin-dashboard-backend
+    runtime: node
+    plan: starter # $7/mo. Upgrade to standard/pro when you outgrow it.
+    rootDir: backend
+    buildCommand: pnpm install --frozen-lockfile && pnpm build && pnpm db:deploy
+    startCommand: pnpm start
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+
+    # Preview envs per pull request. Each PR gets its own temporary backend URL.
+    previews:
+      generation: automatic
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        sync: false # Aiven connection string — set per environment in dashboard
+      - key: SENTRY_DSN
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false # your Vercel prod URL (and preview URL pattern, if used)

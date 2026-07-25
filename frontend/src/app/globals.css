@@ -1,0 +1,196 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/*
+ * ─── admin-dashboard design tokens ──────────────────────────────────────────
+ *
+ * Tailwind v4 is configured HERE, in CSS. There is no tailwind.config.js.
+ *
+ * Two rules govern every colour in this app:
+ *
+ * 1. NEVER write a raw colour at a call site. No `bg-[#2563eb]`, no
+ *    `style={{ color: '#fff' }}`. Every colour resolves to a token below.
+ *    If you need a colour that doesn't exist here, add a token — don't inline it.
+ *
+ * 2. Dark mode is a DESIGNED second tier, not an inversion. Each token has a
+ *    light value in `:root` and its own hand-picked dark value in `.dark`.
+ *    Because both tiers point at the same custom property, a component written
+ *    as `bg-card text-foreground` switches automatically — no `dark:` prefix.
+ *
+ * Palette inherited from admin-template so the rebuild stays visually
+ * continuous, remapped onto shadcn/ui's canonical token names so shadcn
+ * components work unmodified.
+ *
+ * Note the brand blue gets BRIGHTER in dark mode (#2563eb -> #3b82f6). A hue
+ * tuned for white backgrounds desaturates badly on a dark canvas; the same hex
+ * almost never works in both tiers.
+ */
+
+/* Dark mode is class-driven (`<html class="dark">`), not OS-preference-only —
+   admin users need an explicit toggle, and a toggle needs a class to flip.
+   next-themes still defaults to the OS setting on first visit. */
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* ─── Radius ─────────────────────────────────────────────────── */
+  --radius: 0.625rem; /* 10px — matches the template's --ui-radius */
+
+  /* ─── Surfaces ───────────────────────────────────────────────── */
+  --background: #f6f7f9; /* app canvas — deliberately not pure white */
+  --foreground: #1a1a1a;
+  --card: #ffffff; /* raised surfaces sit lighter than the canvas */
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+
+  /* ─── Brand ──────────────────────────────────────────────────── */
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+
+  /* ─── Secondary / muted / accent ─────────────────────────────── */
+  --secondary: #f3f4f6;
+  --secondary-foreground: #1a1a1a;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280; /* the only token for de-emphasised text */
+  --accent: #d97706; /* amber — used sparingly, for emphasis not decoration */
+  --accent-foreground: #ffffff;
+
+  /* ─── Status ─────────────────────────────────────────────────── */
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --success: #16a34a;
+  --success-foreground: #ffffff;
+  --warning: #d97706;
+  --warning-foreground: #ffffff;
+  --info: #2563eb;
+  --info-foreground: #ffffff;
+
+  /* ─── Lines & focus ──────────────────────────────────────────── */
+  --border: #e6e8ec;
+  --input: #e6e8ec;
+  --ring: #2563eb; /* focus ring is the brand colour — keep it visible */
+
+  /* ─── Charts ─────────────────────────────────────────────────── */
+  /* Categorical series. Distinguishable by hue AND lightness, so they survive
+     greyscale printing and the most common colour-vision deficiencies. */
+  --chart-1: #2563eb;
+  --chart-2: #16a34a;
+  --chart-3: #d97706;
+  --chart-4: #9333ea;
+  --chart-5: #dc2626;
+}
+
+.dark {
+  /* ─── Surfaces ───────────────────────────────────────────────── */
+  --background: #0f1115;
+  --foreground: #e7e9ee; /* never pure white — it vibrates against dark */
+  --card: #181b21; /* raised surfaces sit LIGHTER than the canvas in dark,
+                      the inverse of the light tier */
+  --card-foreground: #e7e9ee;
+  --popover: #181b21;
+  --popover-foreground: #e7e9ee;
+
+  /* ─── Brand ──────────────────────────────────────────────────── */
+  --primary: #3b82f6; /* brighter than light tier — see header note */
+  --primary-foreground: #ffffff;
+
+  /* ─── Secondary / muted / accent ─────────────────────────────── */
+  --secondary: #21252d;
+  --secondary-foreground: #e7e9ee;
+  --muted: #21252d;
+  --muted-foreground: #9aa3b2;
+  --accent: #e0b84a; /* amber lifts to gold so it doesn't read as brown */
+  --accent-foreground: #0f1115;
+
+  /* ─── Status ─────────────────────────────────────────────────── */
+  --destructive: #f87171;
+  --destructive-foreground: #0f1115;
+  --success: #4ade80;
+  --success-foreground: #0f1115;
+  --warning: #e0b84a;
+  --warning-foreground: #0f1115;
+  --info: #3b82f6;
+  --info-foreground: #0f1115;
+
+  /* ─── Lines & focus ──────────────────────────────────────────── */
+  --border: #2a2f3a;
+  --input: #2a2f3a;
+  --ring: #3b82f6;
+
+  /* ─── Charts ─────────────────────────────────────────────────── */
+  --chart-1: #60a5fa;
+  --chart-2: #4ade80;
+  --chart-3: #e0b84a;
+  --chart-4: #c084fc;
+  --chart-5: #f87171;
+}
+
+/*
+ * Register the tokens as Tailwind utilities. This is what turns `--card` into
+ * `bg-card` / `text-card-foreground`. Values are `var(...)` references, NOT
+ * literals — that indirection is precisely what makes `.dark` work without a
+ * single `dark:` prefix at any call site.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* Registered at setup so no component ever hardcodes a font stack. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Respect users who asked their OS to reduce motion. Individual animations
+     can still opt in deliberately — this is the default, not a ban. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

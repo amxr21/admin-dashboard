@@ -1,0 +1,39 @@
+# admin-dashboard — Security scans
+#
+# CodeQL runs GitHub's semantic analysis for code-level issues: SQL injection
+# patterns, XSS risks, hardcoded secrets, unsafe eval, etc.
+#
+# Different from Dependabot — that's CVEs in packages you import. This is
+# about your own code.
+
+name: Security
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * 1' # Mondays 03:00 UTC — catches newly-published patterns
+
+jobs:
+  codeql:
+    name: CodeQL analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}

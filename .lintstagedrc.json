@@ -1,0 +1,4 @@
+{
+  "frontend/**/*.{ts,tsx}": ["pnpm --filter ./frontend exec eslint --fix"],
+  "backend/**/*.ts": ["pnpm --filter ./backend exec eslint --fix"]
+}
