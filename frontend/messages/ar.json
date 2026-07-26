@@ -152,5 +152,34 @@
     "totalCustomers": "العملاء",
     "pendingOrders": "الطلبات المعلقة",
     "recentOrders": "أحدث الطلبات"
+  },
+  "products": {
+    "title": "المنتجات",
+    "subtitle": "الكتالوج الخاص بك — ابحث وصفِّ وراجع المخزون.",
+    "empty": "لا توجد منتجات بعد. أضف منتجاً للبدء.",
+    "columns": {
+      "name": "المنتج",
+      "category": "الفئة",
+      "price": "السعر",
+      "stock": "المخزون",
+      "status": "الحالة"
+    },
+    "search": {
+      "label": "بحث",
+      "placeholder": "ابحث بالاسم أو رمز SKU"
+    },
+    "filters": {
+      "status": "الحالة",
+      "allStatuses": "كل الحالات"
+    },
+    "status": {
+      "DRAFT": "مسودة",
+      "ACTIVE": "نشط",
+      "ARCHIVED": "مؤرشف"
+    },
+    "pagination": {
+      "previous": "السابق",
+      "next": "التالي"
+    }
   }
 }

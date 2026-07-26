@@ -18,8 +18,8 @@ Living status of the rebuild. Updated at the end of each migration group.
 | 6 | `feat/ui-primitives` — shadcn components + applied motion | **merged** |
 | 7 | `feat/app-shell` — layout, sidebar, topbar, mobile drawer | **merged** |
 | 8 | `feat/login-page` — login UI, session, auth guard | **merged** |
-| 9 | `feat/dashboard` — KPI tiles, revenue chart | **in review** |
-| 10 | `feat/products` — CRUD, images | not started |
+| 9 | `feat/dashboard` — KPI tiles, revenue chart | **merged** |
+| 10 | `feat/products` — catalogue API + list page | **in review** |
 | 11 | `feat/orders` — list, detail, status, invoice | not started |
 | 12 | `feat/customers` — list, detail, history | not started |
 | 13 | `feat/inventory-discounts` | not started |

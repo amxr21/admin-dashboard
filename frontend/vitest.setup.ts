@@ -23,3 +23,22 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
     dispatchEvent: () => false,
   })) as unknown as typeof window.matchMedia;
 }
+
+/**
+ * jsdom implements neither the Pointer Capture API nor `scrollIntoView`.
+ *
+ * Radix's Select (and any other primitive built on its popper) calls
+ * `hasPointerCapture` while opening, and `scrollIntoView` when it focuses the
+ * active item. Without these, every test that opens a Select dies with
+ * `target.hasPointerCapture is not a function` — an error that points at the
+ * test, not at the missing browser API.
+ *
+ * Global setup rather than per-test: the failure happens inside the library
+ * during a user interaction, so there is no seam to mock at the call site.
+ */
+if (typeof Element !== 'undefined') {
+  Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.setPointerCapture ??= () => undefined;
+  Element.prototype.releasePointerCapture ??= () => undefined;
+  Element.prototype.scrollIntoView ??= () => undefined;
+}

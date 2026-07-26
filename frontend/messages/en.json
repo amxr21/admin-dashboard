@@ -152,5 +152,34 @@
     "totalCustomers": "Customers",
     "pendingOrders": "Pending orders",
     "recentOrders": "Recent orders"
+  },
+  "products": {
+    "title": "Products",
+    "subtitle": "Your catalogue — search, filter and review stock.",
+    "empty": "No products yet. Add one to get started.",
+    "columns": {
+      "name": "Product",
+      "category": "Category",
+      "price": "Price",
+      "stock": "Stock",
+      "status": "Status"
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Search by name or SKU"
+    },
+    "filters": {
+      "status": "Status",
+      "allStatuses": "All statuses"
+    },
+    "status": {
+      "DRAFT": "Draft",
+      "ACTIVE": "Active",
+      "ARCHIVED": "Archived"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next"
+    }
   }
 }
