@@ -23,9 +23,21 @@ export function ThemeProvider({
       attribute="class"
       defaultTheme="system"
       enableSystem
-      // Skip CSS transitions during the switch — otherwise every colour token
-      // animates at once and the change reads as a smear rather than a flip.
-      disableTransitionOnChange
+      /**
+       * FALSE on purpose — this was `true` originally.
+       *
+       * With it enabled, next-themes suppresses all CSS transitions during the
+       * switch, so the theme change is an instant flash across the page. The
+       * reasoning then was that transitioning every token at once reads as a
+       * smear.
+       *
+       * That holds for a long transition or a blanket `transition: all`.
+       * globals.css instead transitions ONLY colour properties, over 200ms —
+       * short enough to read as a single deliberate change rather than a
+       * crossfade, and far better than a jolt. Reduced-motion users still get
+       * an instant switch, handled in CSS.
+       */
+      disableTransitionOnChange={false}
       {...props}
     >
       {children}

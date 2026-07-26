@@ -2,7 +2,7 @@
 
 Living status of the rebuild. Updated at the end of each migration group.
 
-**Last updated:** 2026-07-26 · **Current group:** 5 of 15 (`feat/i18n`)
+**Last updated:** 2026-07-26 · **Current group:** 6 of 15 (`feat/ui-primitives`)
 
 ---
 
@@ -15,7 +15,7 @@ Living status of the rebuild. Updated at the end of each migration group.
 | 3 | `feat/rbac` — 6-role permission map + demo role | **in review** |
 | 4 | `feat/motion-system` — GSAP foundation | **in review** |
 | 5 | `feat/i18n` — next-intl, RTL, AR/EN catalogues | **in review** |
-| 6 | `feat/ui-primitives` — shadcn components (RTL-ready, bulk-select) | not started |
+| 6 | `feat/ui-primitives` — shadcn components + applied motion | **in review** |
 | 7 | `feat/app-shell` — layout, sidebar, topbar | not started |
 | 8 | `feat/login-page` — login UI | not started |
 | 9 | `feat/dashboard` — KPIs, charts | not started |
@@ -52,7 +52,7 @@ must not stay absent once real users have accounts.
 | Feature | Notes | Priority |
 |---|---|---|
 | ~~**Bilingual AR/EN + RTL**~~ | **CLOSED in group 5.** next-intl, `[locale]` routing, AR/EN catalogues with full ICU plurals, RTL CSS, Arabic typography, direction-aware motion. Translations are unreviewed MSA — worth a native pass before client-facing use. See `I18N.md`. | done |
-| **Bulk actions + export on DataTable** | CSV/Excel export, multi-select delete/edit. Expected in any admin dashboard. | Medium |
+| **Bulk actions + export on DataTable** | Selection state and the bulk-action bar are DONE (group 6). Still missing: the actual actions (delete/edit) and CSV/Excel export. | Medium |
 | **E2E / visual QA** | Playwright is configured but the workflow is disabled (no Render preview URL — see `.github/workflows/e2e.yml`). One placeholder spec exists. | Medium |
 
 ### Technical debt carried deliberately

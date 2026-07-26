@@ -2,8 +2,42 @@
 
 What is tested, what isn't, and why. Updated per migration group.
 
-**Last updated:** 2026-07-26 (group 4 — `feat/motion-system`)
-**Totals:** 8 files · 88 tests · all passing (62 backend, 26 frontend)
+**Last updated:** 2026-07-26 (group 6 — `feat/ui-primitives`)
+**Totals:** 14 files · 166 tests · all passing (62 backend, 104 frontend)
+
+---
+
+## Group 6 — UI primitives
+
+| Unit | Cases | Notes |
+|---|---|---|
+| `DataTable` | 23 | state matrix, selection, sorting, Arabic collation |
+| `StatusBadge` | 12 | enum translation, tone mapping, unknown-value fallback |
+| `TransitionOverlay` | 9 | anti-flash delay, a11y announcement, cancellation |
+
+### What these guard
+
+- **The full state matrix.** Loading shows skeletons, not an empty table — an
+  empty table during load reads as "no data", a much more alarming message.
+  Error and empty are kept distinct: "no results match your filters" invites a
+  filter change, "we couldn't load this" invites a retry.
+- **Arabic collation.** `a < b` on Arabic strings gives Unicode codepoint
+  order, which is *not* alphabetical. A test sorts أحمد/بدر/تامر and asserts
+  proper order — `Intl.Collator` is the only correct way.
+- **Nulls sort last in BOTH directions.** Flipping them with the sort makes
+  "sort by delivery date" surface undelivered orders at the top.
+- **Indeterminate select-all.** A plain unchecked box on a partial selection
+  implies "nothing selected", which leads to accidental select-all-then-delete.
+- **Unknown enum values degrade.** An enum added to the API before the frontend
+  knows about it renders the raw value rather than crashing the page.
+
+### Two real bugs the tests caught
+
+1. `DataTable` read `selected` from the `table` namespace; it lives in `counts`
+   because it's a pluralised count. Rendered a raw key path.
+2. `StatusBadge` used try/catch for a missing translation — but next-intl does
+   **not** throw, it returns the key path. The catch never fired, so an unknown
+   status would have shown `orderStatus.FOO` to users. Fixed with `t.has()`.
 
 ---
 

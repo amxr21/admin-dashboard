@@ -30,7 +30,10 @@ export default tseslint.config(
       'no-console': 'error',                                // ALWAYS use req.log / logger — never console
 
       // ─── Required patterns ────────────────────────────────────
-      'eqeqeq': ['error', 'always'],
+      // `null: 'ignore'` permits `x == null`, the one idiomatic use of loose
+      // equality — it tests null AND undefined in a single check. Everything
+      // else still requires `===`.
+      'eqeqeq': ['error', 'always', { null: 'ignore' }],
       'prefer-const': 'error',
       'no-var': 'error',
       'no-throw-literal': 'error',                          // throw Error, not strings

@@ -183,6 +183,49 @@
   }
 
   /*
+   * ─── THEME TRANSITION ───────────────────────────────────────────────
+   * Without this, switching theme is an instant flash across the whole page.
+   * Transitioning the colour properties makes it read as one deliberate
+   * change rather than a jolt.
+   *
+   * Scoped to colour properties ONLY — never `transition: all`, which would
+   * also animate layout properties on every hover and repaint constantly.
+   *
+   * next-themes adds [data-theme-transition-disabled] (via
+   * disableTransitionOnChange) during the switch it controls; we deliberately
+   * DON'T use that here, because the transition is the point. It does still
+   * suppress transitions on first paint, which is what prevents a fade-in
+   * from the wrong theme on load.
+   */
+  body,
+  [data-slot],
+  .bg-background,
+  .bg-card,
+  .bg-muted,
+  .bg-secondary,
+  .bg-popover {
+    transition:
+      background-color 200ms ease,
+      border-color 200ms ease,
+      color 200ms ease;
+  }
+
+  /* Someone who asked for reduced motion did not ask for a colour crossfade
+     either — a 200ms full-page tint shift is exactly the kind of change that
+     can trigger discomfort. */
+  @media (prefers-reduced-motion: reduce) {
+    body,
+    [data-slot],
+    .bg-background,
+    .bg-card,
+    .bg-muted,
+    .bg-secondary,
+    .bg-popover {
+      transition: none;
+    }
+  }
+
+  /*
    * ─── ARABIC TYPOGRAPHY ──────────────────────────────────────────────
    * Arabic glyphs render visually smaller than Latin at the same font-size,
    * and the script connects, so it needs more vertical room. Using identical
