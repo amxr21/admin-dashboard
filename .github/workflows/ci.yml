@@ -195,6 +195,19 @@ jobs:
           DATABASE_URL: mysql://root:test@127.0.0.1:3306/admin_dashboard_test
           LOG_LEVEL: error
           CORS_ORIGINS: http://localhost:3000
+          # Every var that src/config/env.ts marks REQUIRED must appear here.
+          # env.ts validates at import time and calls process.exit(1) on a
+          # miss, so a missing var fails the whole suite before a single test
+          # runs — with "process.exit unexpectedly called with 1", which does
+          # not name the variable.
+          #
+          # Fixed test value on purpose: CI signs and verifies tokens within
+          # one run, so it needs to be valid (32+ chars), not secret. A real
+          # secret must never be committed to a workflow file.
+          JWT_SECRET: ci-test-secret-not-used-outside-ci-0123456789
+          JWT_EXPIRES_IN: 7d
+          LOGIN_MAX_ATTEMPTS: 5
+          LOGIN_LOCKOUT_MINUTES: 15
         run: pnpm test:coverage
 
       - uses: actions/upload-artifact@v7
