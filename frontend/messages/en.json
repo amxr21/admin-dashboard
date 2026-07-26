@@ -328,5 +328,95 @@
   "datePicker": {
     "choose": "Pick a date",
     "clear": "Clear date"
+  },
+  "orders": {
+    "title": "Orders",
+    "subtitle": "Every order, its line items, and where it is in the workflow.",
+    "empty": "No orders yet.",
+    "guest": "Guest",
+    "placedOn": "Placed on {date}",
+    "total": "{count, plural, one {# order} other {# orders}}",
+    "columns": {
+      "number": "Order",
+      "customer": "Customer",
+      "placed": "Placed",
+      "items": "Items",
+      "total": "Total",
+      "status": "Status"
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Order number, customer name or email"
+    },
+    "filters": {
+      "allStatuses": "All statuses",
+      "from": "Placed from",
+      "to": "Placed until"
+    },
+    "status": {
+      "PENDING": "Pending",
+      "CONFIRMED": "Confirmed",
+      "SHIPPED": "Shipped",
+      "DELIVERED": "Delivered",
+      "CANCELED": "Canceled",
+      "RETURNED": "Returned"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "items": {
+      "title": "Items",
+      "product": "Product",
+      "quantity": "Qty",
+      "price": "Unit price",
+      "lineTotal": "Line total",
+      "total": "Order total",
+      "productRemoved": "Product no longer available"
+    },
+    "customer": {
+      "title": "Customer",
+      "name": "Name",
+      "email": "Email",
+      "phone": "Phone",
+      "location": "Location",
+      "removed": "This customer record has been deleted."
+    },
+    "delivery": {
+      "title": "Delivery",
+      "courier": "Courier",
+      "phone": "Phone",
+      "address": "Address",
+      "status": "Status",
+      "unassigned": "No courier assigned yet."
+    },
+    "payment": {
+      "title": "Payment",
+      "unknown": "Not recorded"
+    },
+    "timeline": {
+      "title": "History",
+      "placed": "Order placed",
+      "movedTo": "moved to",
+      "noChanges": "No status changes yet."
+    },
+    "statusControl": {
+      "label": "Move to",
+      "placeholder": "Choose a status",
+      "apply": "Apply",
+      "saving": "Saving…",
+      "note": "Note (optional)",
+      "notePlaceholder": "Why is this changing?",
+      "terminal": "This order is {status} and cannot move further."
+    },
+    "invoice": {
+      "action": "Invoice",
+      "title": "Invoice",
+      "back": "Back to order",
+      "print": "Print",
+      "issued": "Issued",
+      "billedTo": "Billed to",
+      "paidBy": "Paid by {method}"
+    }
   }
 }

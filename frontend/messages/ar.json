@@ -328,5 +328,95 @@
   "datePicker": {
     "choose": "اختر تاريخاً",
     "clear": "مسح التاريخ"
+  },
+  "orders": {
+    "title": "الطلبات",
+    "subtitle": "كل طلب وبنوده وموضعه في مسار العمل.",
+    "empty": "لا توجد طلبات بعد.",
+    "guest": "زائر",
+    "placedOn": "تم الطلب في {date}",
+    "total": "{count, plural, zero {لا توجد طلبات} one {طلب واحد} two {طلبان} few {# طلبات} many {# طلباً} other {# طلب}}",
+    "columns": {
+      "number": "الطلب",
+      "customer": "العميل",
+      "placed": "تاريخ الطلب",
+      "items": "البنود",
+      "total": "الإجمالي",
+      "status": "الحالة"
+    },
+    "search": {
+      "label": "بحث",
+      "placeholder": "رقم الطلب أو اسم العميل أو بريده"
+    },
+    "filters": {
+      "allStatuses": "كل الحالات",
+      "from": "من تاريخ",
+      "to": "إلى تاريخ"
+    },
+    "status": {
+      "PENDING": "قيد الانتظار",
+      "CONFIRMED": "مؤكد",
+      "SHIPPED": "تم الشحن",
+      "DELIVERED": "تم التسليم",
+      "CANCELED": "ملغى",
+      "RETURNED": "مُرجَع"
+    },
+    "pagination": {
+      "previous": "السابق",
+      "next": "التالي"
+    },
+    "items": {
+      "title": "البنود",
+      "product": "المنتج",
+      "quantity": "الكمية",
+      "price": "سعر الوحدة",
+      "lineTotal": "إجمالي البند",
+      "total": "إجمالي الطلب",
+      "productRemoved": "المنتج لم يعد متوفراً"
+    },
+    "customer": {
+      "title": "العميل",
+      "name": "الاسم",
+      "email": "البريد الإلكتروني",
+      "phone": "الهاتف",
+      "location": "الموقع",
+      "removed": "تم حذف سجل هذا العميل."
+    },
+    "delivery": {
+      "title": "التوصيل",
+      "courier": "المندوب",
+      "phone": "الهاتف",
+      "address": "العنوان",
+      "status": "الحالة",
+      "unassigned": "لم يُسنَد مندوب بعد."
+    },
+    "payment": {
+      "title": "الدفع",
+      "unknown": "غير مسجَّل"
+    },
+    "timeline": {
+      "title": "السجل",
+      "placed": "تم إنشاء الطلب",
+      "movedTo": "أصبح",
+      "noChanges": "لا توجد تغييرات في الحالة بعد."
+    },
+    "statusControl": {
+      "label": "الانتقال إلى",
+      "placeholder": "اختر حالة",
+      "apply": "تطبيق",
+      "saving": "جارٍ الحفظ…",
+      "note": "ملاحظة (اختياري)",
+      "notePlaceholder": "ما سبب هذا التغيير؟",
+      "terminal": "هذا الطلب {status} ولا يمكن نقله أبعد من ذلك."
+    },
+    "invoice": {
+      "action": "الفاتورة",
+      "title": "فاتورة",
+      "back": "العودة إلى الطلب",
+      "print": "طباعة",
+      "issued": "تاريخ الإصدار",
+      "billedTo": "إلى",
+      "paidBy": "الدفع عبر {method}"
+    }
   }
 }
