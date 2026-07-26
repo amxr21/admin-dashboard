@@ -6,7 +6,7 @@ import { StaffRole } from '@prisma/client';
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { signToken } from '../services/auth.service.js';
-import { getResourceConfig, writableFields } from '../config/admin.config.js';
+import { ADMIN_RESOURCES, getResourceConfig, writableFields } from '../config/admin.config.js';
 
 /**
  * The generic resource engine.
@@ -303,5 +303,60 @@ describe('relation labels', () => {
     for (const row of (res.body as ListBody).data.rows) {
       expect(Object.keys(row)).toContain('productId__label');
     }
+  });
+});
+
+describe('config and code stay in sync', () => {
+  it('every configured resource is reachable', async () => {
+    // A config entry whose model has no delegate throws at request time, not at
+    // compile time — so adding a resource and forgetting the delegate is an
+    // easy mistake that only shows up when someone opens the page. This walks
+    // every declared resource so the gap is caught here instead.
+    for (const config of ADMIN_RESOURCES) {
+      const res = await request(app)
+        .get(`/api/v1/r/${config.resource}?pageSize=1`)
+        .set(auth(ownerToken));
+
+      expect(
+        res.status,
+        `GET /r/${config.resource} returned ${res.status}`,
+      ).toBe(200);
+    }
+  });
+
+  it('archives a product with orders rather than deleting it', async () => {
+    // The rule survived the move from a hand-written route into a hook. This
+    // is behaviour, so it lives in resource-hooks.ts rather than config.
+    const category = await prisma.category.create({
+      data: { name: `${RUN} hookcat`, slug: `${RUN}-hookcat` },
+    });
+    const product = await prisma.product.create({
+      data: { name: `${RUN} hooked`, price: '5.00', categoryId: category.id },
+    });
+    const customer = await prisma.customer.create({
+      data: { name: `${RUN} hb`, email: `${RUN}-hb@example.test` },
+    });
+    const order = await prisma.order.create({
+      data: { customerId: customer.id, orderNumber: `${RUN}-HOOK`, total: '5.00' },
+    });
+    await prisma.orderItem.create({
+      data: { orderId: order.id, productId: product.id, quantity: 1, price: '5.00' },
+    });
+
+    const res = await request(app)
+      .delete(`/api/v1/r/products/${product.id}`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    expect((res.body as { data: { action: string } }).data.action).toBe('archived');
+    expect((await prisma.product.findUnique({ where: { id: product.id } }))?.status).toBe(
+      'ARCHIVED',
+    );
+
+    await prisma.orderItem.deleteMany({ where: { orderId: order.id } });
+    await prisma.order.delete({ where: { id: order.id } });
+    await prisma.customer.delete({ where: { id: customer.id } });
+    await prisma.product.delete({ where: { id: product.id } });
+    await prisma.category.delete({ where: { id: category.id } });
   });
 });

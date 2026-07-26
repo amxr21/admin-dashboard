@@ -87,6 +87,63 @@ export interface ResourceConfig {
 
 export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
   {
+    resource: 'products',
+    model: 'product',
+    label: 'Products',
+    group: 'catalogue',
+    labelField: 'name',
+    permissionArea: 'products',
+    defaultSort: { field: 'createdAt', dir: 'desc' },
+    permissions: { create: true, update: true, delete: true },
+    fields: [
+      { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
+      { name: 'imageUrl', label: 'Image', type: 'image' },
+      { name: 'name', label: 'Name', type: 'text', required: true, searchable: true, sortable: true },
+      { name: 'sku', label: 'SKU', type: 'text', searchable: true },
+      // Excluded from the list view: a TEXT column makes rows unreadable and
+      // is not what anyone scans a catalogue for.
+      { name: 'description', label: 'Description', type: 'longtext', inList: false },
+      { name: 'price', label: 'Price', type: 'money', currency: 'AED', required: true, sortable: true },
+      { name: 'stock', label: 'Stock', type: 'number', sortable: true },
+      {
+        name: 'categoryId',
+        label: 'Category',
+        type: 'relation',
+        relation: { resource: 'categories', labelField: 'name' },
+      },
+      {
+        name: 'status',
+        label: 'Status',
+        type: 'enum',
+        options: ['DRAFT', 'ACTIVE', 'ARCHIVED'],
+        sortable: true,
+      },
+      { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
+    ],
+  },
+  {
+    resource: 'notifications',
+    model: 'notification',
+    label: 'Notifications',
+    group: 'system',
+    labelField: 'title',
+    permissionArea: 'settings',
+    defaultSort: { field: 'createdAt', dir: 'desc' },
+    // Notifications are EMITTED by the system, never authored by staff. Only
+    // `isRead` is meaningfully editable, so create is off and delete stays on
+    // for clearing noise.
+    permissions: { create: false, update: true, delete: true },
+    fields: [
+      { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
+      { name: 'type', label: 'Type', type: 'text', readOnly: true, sortable: true },
+      { name: 'title', label: 'Title', type: 'text', readOnly: true, searchable: true },
+      { name: 'body', label: 'Body', type: 'longtext', readOnly: true, inList: false },
+      { name: 'link', label: 'Link', type: 'url', readOnly: true, inList: false },
+      { name: 'isRead', label: 'Read', type: 'boolean', sortable: true },
+      { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
+    ],
+  },
+  {
     resource: 'categories',
     model: 'category',
     label: 'Categories',

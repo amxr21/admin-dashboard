@@ -11,6 +11,7 @@ import {
   type FieldConfig,
   type ResourceConfig,
 } from '../config/admin.config.js';
+import { hooksFor } from './resource-hooks.js';
 
 /**
  * Generic CRUD, parameterised by config.
@@ -42,6 +43,7 @@ const DELEGATES = {
   category: prisma.category,
   customer: prisma.customer,
   discount: prisma.discount,
+  notification: prisma.notification,
   review: prisma.review,
   product: prisma.product,
 } as const;
@@ -489,17 +491,32 @@ export async function updateResourceRow(
   return serializeRow(row, config);
 }
 
+export interface DeleteResult {
+  row: Record<string, unknown>;
+  /** 'archived' when a hook kept the row instead of removing it. */
+  action: 'deleted' | 'archived';
+}
+
 export async function deleteResourceRow(
   config: ResourceConfig,
   id: string,
-): Promise<Record<string, unknown>> {
+): Promise<DeleteResult> {
   assertPermitted(config, 'delete');
 
   await getResourceRow(config, id);
 
+  // A resource may refuse the plain delete and do something else — see
+  // resource-hooks.ts for why that lives in code rather than config.
+  const outcome = await hooksFor(config.resource)?.beforeDelete?.(id);
+
+  if (outcome?.handled) {
+    // Re-read so the caller gets the row as it now stands, not as it was.
+    return { row: await getResourceRow(config, id), action: outcome.action ?? 'archived' };
+  }
+
   const row = await delegateFor(config).delete({ where: { id }, select: selectFor(config) });
 
-  return serializeRow(row, config);
+  return { row: serializeRow(row, config), action: 'deleted' };
 }
 
 /** Options for a relation picker. Capped — a picker is not a data export. */

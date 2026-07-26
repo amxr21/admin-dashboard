@@ -150,9 +150,11 @@ resourceRouter.delete('/r/:resource/:id', authenticate, async (req, res) => {
   guardArea(req);
   const config = requireResource(String(req.params.resource));
 
-  const row = await deleteResourceRow(config, String(req.params.id));
+  const { row, action } = await deleteResourceRow(config, String(req.params.id));
 
-  req.log.info({ event: 'resource.deleted', resource: config.resource });
+  req.log.info({ event: `resource.${action}`, resource: config.resource });
 
-  res.status(200).json({ data: { row } });
+  // The response says WHICH happened, so the UI can tell the user the truth
+  // rather than claiming a delete that did not occur.
+  res.status(200).json({ data: { row, action } });
 });

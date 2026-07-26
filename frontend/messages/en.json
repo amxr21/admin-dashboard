@@ -181,5 +181,28 @@
       "previous": "Previous",
       "next": "Next"
     }
+  },
+  "errorPages": {
+    "reference": "Reference:",
+    "actions": {
+      "retry": "Try again",
+      "backToDashboard": "Back to dashboard"
+    },
+    "notFound": {
+      "title": "This page doesn't exist",
+      "description": "The link may be out of date, or the page may have been moved. Nothing is broken — you just took a wrong turn."
+    },
+    "unexpected": {
+      "title": "Something went wrong on our side",
+      "description": "This isn't your fault. The problem has been reported automatically, and trying again usually works."
+    },
+    "offline": {
+      "title": "Can't reach the server",
+      "description": "Your device looks offline, or the server is briefly unavailable. Check your connection and try again."
+    },
+    "forbidden": {
+      "title": "You don't have access to this",
+      "description": "Your account role doesn’t include this area. If you think it should, ask an owner to update your permissions."
+    }
   }
 }
