@@ -1,12 +1,13 @@
-import { setRequestLocale } from 'next-intl/server';
+import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { SectionPlaceholder } from '@/components/shell/section-placeholder';
+import { OrdersTable } from '@/components/orders/orders-table';
 
 /**
- * Orders — planned, not yet implemented.
+ * Orders.
  *
- * A real page rather than a missing route: the nav advertises this section, so
- * a 404 here would read as a broken app instead of an unfinished one.
+ * Stays a Server Component so `setRequestLocale` keeps the shell statically
+ * rendered; all fetching and interaction lives in OrdersTable, which is the
+ * only part that needs to be a client component.
  */
 export default async function OrdersPage({
   params,
@@ -16,7 +17,16 @@ export default async function OrdersPage({
   const { locale } = await params;
   setRequestLocale(locale);
 
+  const t = await getTranslations('orders');
+
   return (
-    <SectionPlaceholder section="orders" />
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
+      </div>
+
+      <OrdersTable />
+    </div>
   );
 }

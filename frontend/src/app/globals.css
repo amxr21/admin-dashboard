@@ -364,3 +364,35 @@
     }
   }
 }
+
+/* ─── PRINT ───────────────────────────────────────────────────────────
+ * Only the document reaches paper.
+ *
+ * Targets the shell's semantic landmarks rather than a class, so any future
+ * printable page gets the same treatment without opting in — and so nobody
+ * has to remember to add a `print:hidden` to the sidebar.
+ *
+ * Backgrounds are dropped rather than forced: a card surface that reads as a
+ * subtle tint on screen prints as a grey box that costs ink and makes text
+ * harder to read.
+ */
+@media print {
+  aside,
+  header {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  :root {
+    --background: #fff;
+    --card: #fff;
+    --foreground: #000;
+  }
+
+  a[href]::after {
+    content: '';
+  }
+}
