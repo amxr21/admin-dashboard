@@ -71,13 +71,26 @@
   --ring: #2563eb; /* focus ring is the brand colour — keep it visible */
 
   /* ─── Charts ─────────────────────────────────────────────────── */
-  /* Categorical series. Distinguishable by hue AND lightness, so they survive
-     greyscale printing and the most common colour-vision deficiencies. */
-  --chart-1: #2563eb;
-  --chart-2: #16a34a;
-  --chart-3: #d97706;
-  --chart-4: #9333ea;
-  --chart-5: #dc2626;
+  /*
+   * Categorical series. VALIDATED, not eyeballed — the original set was chosen
+   * by intuition and failed two checks (see the dark tier below).
+   *
+   * Verified with the dataviz validator against surface #f6f7f9:
+   *   lightness band · chroma floor · CVD separation · normal-vision floor ·
+   *   contrast ≥ 3:1  → all pass.
+   *
+   * Hue ORDER is load-bearing. Only ADJACENT pairs are separation-checked, and
+   * green↔amber and red↔amber are both indistinguishable under deuteranopia.
+   * Teal replaces green so the warm hues can be separated by cool ones.
+   *
+   * Assign these IN ORDER, never cycled. Colour follows the entity, not its
+   * rank — a filter that changes the series count must not repaint survivors.
+   */
+  --chart-1: #2563eb; /* blue   — brand; single-series charts use this */
+  --chart-2: #0d9488; /* teal */
+  --chart-3: #c2740a; /* amber */
+  --chart-4: #9333ea; /* purple */
+  --chart-5: #dc2626; /* red */
 }
 
 .dark {
@@ -118,11 +131,25 @@
   --ring: #3b82f6;
 
   /* ─── Charts ─────────────────────────────────────────────────── */
-  --chart-1: #60a5fa;
-  --chart-2: #4ade80;
-  --chart-3: #e0b84a;
-  --chart-4: #c084fc;
-  --chart-5: #f87171;
+  /*
+   * SAME HUE ORDER as the light tier — chart-2 is teal in both, so a series
+   * never changes hue when the theme flips.
+   *
+   * The original dark set FAILED validation: every value sat above the dark
+   * lightness band (0.48–0.67, narrower and darker than light's 0.43–0.77),
+   * and green↔amber were only ΔE 5.9 apart under deuteranopia — effectively
+   * the same colour for those readers.
+   *
+   * Re-stepped and verified against dark surface #181b21 → all five pass.
+   * Note these are NOT simply lighter versions of the light tier; the dark
+   * band demands mid-tones, so several are darker than their light
+   * counterparts. That is why a palette cannot be flipped automatically.
+   */
+  --chart-1: #3b82f6; /* blue */
+  --chart-2: #0d9488; /* teal */
+  --chart-3: #b45309; /* amber */
+  --chart-4: #a855f7; /* purple */
+  --chart-5: #f43f5e; /* red */
 }
 
 /*

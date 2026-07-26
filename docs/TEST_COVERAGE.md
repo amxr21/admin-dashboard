@@ -2,8 +2,52 @@
 
 What is tested, what isn't, and why. Updated per migration group.
 
-**Last updated:** 2026-07-26 (group 6 — `feat/ui-primitives`)
-**Totals:** 14 files · 166 tests · all passing (62 backend, 104 frontend)
+**Last updated:** 2026-07-26 (group 9 — `feat/dashboard`)
+**Totals:** 17 files · 204 tests · all passing (62 backend, 142 frontend)
+
+---
+
+## Group 9 — dashboard
+
+| Unit | Cases | Notes |
+|---|---|---|
+| `StatTile` value rendering | 4 | Locale grouping, named `currency` format, skeletons while loading, and no delta rendered when none is supplied. |
+| `StatTile` delta judgement | 4 | Rise/fall × normal/inverted metric — the full matrix, because three of the four combinations are the ones that get written wrong. |
+| `StatTile` non-colour encoding | 3 | An arrow always accompanies the delta; the arrow follows DIRECTION while the colour follows JUDGEMENT, so on an inverted metric they deliberately disagree. |
+| `StatTile` icon lookup | 2 | Icon resolved from a string key; nothing rendered when unnamed. |
+| `StatTile` localisation | 2 | Arabic labels, Western numerals in both locales. |
+
+### What these guard
+
+**A rise is not the same as an improvement.** `invertDelta` exists because
+pending orders going up is bad news. Without it the tile paints a growing
+backlog green, which is worse than showing no delta at all — it actively
+misinforms. Four tests cover the full rise/fall × normal/inverted matrix.
+
+**Colour is never the only encoding.** Red/green is invisible to roughly 1 in 12
+men. The arrow carries the same information as a shape, and one test asserts the
+arrow points by direction even when that contradicts the colour — an arrow that
+followed the colour would misreport the actual movement.
+
+**The icon API is load-bearing, not stylistic.** `icon="revenue"` rather than
+`icon={TrendingUp}` is what keeps the page a Server Component; passing the
+component itself breaks `next build`. The test pins the string→component
+mapping so a "cleanup" refactor can't quietly reintroduce the crash.
+
+### Not tested, deliberately
+
+| Gap | Why |
+|---|---|
+| `RevenueChart` rendering | Recharts measures its container via `ResponsiveContainer`, which reports 0×0 in jsdom, so nothing paints. Testing it would mean asserting on mocked internals — implementation testing, exactly what the philosophy forbids. The chart's real risks (palette, single axis, RTL axis placement) were verified by the palette validator and by looking at the rendered page. |
+| Sample data | `sampleRevenue()` is scaffolding that a real endpoint replaces. Testing it would pin fixture values in place. |
+
+### Fixed while writing these
+
+A currency assertion failed while the browser rendered the value correctly. The
+cause was the shared test wrapper omitting next-intl's `formats`, so the named
+`'currency'` format didn't resolve. The tempting fix — loosening the matcher —
+would have permanently stopped testing the formatting. The wrapper now mirrors
+`src/i18n/request.ts`.
 
 ---
 
