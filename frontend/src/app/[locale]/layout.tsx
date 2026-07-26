@@ -33,9 +33,18 @@ const inter = Inter({
   display: 'swap',
 });
 
+/**
+ * IBM Plex Sans Arabic is NOT a variable font — Google serves it as seven
+ * static faces, so every weight used has to be named here or it silently
+ * synthesises (a faux-bold smear, which looks worse in Arabic than in Latin
+ * because the script's strokes already carry the weight contrast).
+ *
+ * All seven are registered. Inter needs no `weight` because next/font resolves
+ * it to a variable font, which covers the whole range in one file.
+ */
 const arabic = IBM_Plex_Sans_Arabic({
   subsets: ['arabic'],
-  weight: ['400', '500', '600', '700'],
+  weight: ['100', '200', '300', '400', '500', '600', '700'],
   variable: '--font-arabic',
   display: 'swap',
 });
