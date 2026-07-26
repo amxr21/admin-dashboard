@@ -360,3 +360,32 @@ describe('config and code stay in sync', () => {
     await prisma.category.delete({ where: { id: category.id } });
   });
 });
+
+describe('duplicate values', () => {
+  it('returns 409 naming the field, not a 500 leaking the schema', async () => {
+    // A duplicate code is a normal user mistake. Letting Prisma's P2002 reach
+    // the error handler leaks the table and column names while telling the
+    // user nothing about what they typed.
+    const code = `${RUN}-DUPE`;
+
+    const first = await request(app)
+      .post('/api/v1/r/discounts')
+      .set(auth(ownerToken))
+      .send({ code, type: 'PERCENT', value: '10.00' });
+
+    expect(first.status).toBe(201);
+    const createdId = (first.body as RowBody).data.row.id as string;
+
+    const second = await request(app)
+      .post('/api/v1/r/discounts')
+      .set(auth(ownerToken))
+      .send({ code, type: 'PERCENT', value: '15.00' });
+
+    expect(second.status).toBe(409);
+    expect((second.body as ErrorBody).error.code).toBe('CONFLICT');
+    // The human label, never the raw Prisma message.
+    expect((second.body as ErrorBody).error.message).not.toMatch(/prisma|constraint/i);
+
+    await prisma.discount.delete({ where: { id: createdId } });
+  });
+});

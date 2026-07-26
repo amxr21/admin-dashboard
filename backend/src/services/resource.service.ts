@@ -456,6 +456,42 @@ function assertPermitted(
   }
 }
 
+/**
+ * Turns Prisma's unique-constraint error into a 409 naming the field.
+ *
+ * A duplicate SKU or discount code is a normal thing for a user to do. Letting
+ * P2002 reach the error handler produces a 500 that leaks the Prisma message —
+ * and with it the table and column names — while telling the user nothing about
+ * what they typed.
+ *
+ * Generic on purpose: every resource with a unique column gets this without
+ * per-resource code, which is what the hand-written products route did by hand.
+ */
+function translateWriteError(error: unknown, config: ResourceConfig): unknown {
+  if (
+    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+    error.code !== 'P2002'
+  ) {
+    return error;
+  }
+
+  const target = error.meta?.target;
+  const columns = Array.isArray(target) ? target.map(String) : [];
+
+  // Report the field's human LABEL where we can resolve it — the column name
+  // is an implementation detail the user never chose.
+  const labels = columns
+    .map((column) => config.fields.find((f) => f.name === column)?.label ?? column)
+    .filter(Boolean);
+
+  return AppError.conflict(
+    labels.length > 0
+      ? `Another ${config.label.toLowerCase().replace(/s$/, '')} already uses this ${labels.join(', ')}`
+      : 'That value is already taken',
+    { fields: columns },
+  );
+}
+
 export async function createResourceRow(
   config: ResourceConfig,
   body: Record<string, unknown>,
@@ -464,9 +500,12 @@ export async function createResourceRow(
 
   const data = buildWriteData(config, body, { partial: false });
 
-  const row = await delegateFor(config).create({ data, select: selectFor(config) });
-
-  return serializeRow(row, config);
+  try {
+    const row = await delegateFor(config).create({ data, select: selectFor(config) });
+    return serializeRow(row, config);
+  } catch (error) {
+    throw translateWriteError(error, config);
+  }
 }
 
 export async function updateResourceRow(
@@ -482,13 +521,16 @@ export async function updateResourceRow(
 
   const data = buildWriteData(config, body, { partial: true });
 
-  const row = await delegateFor(config).update({
-    where: { id },
-    data,
-    select: selectFor(config),
-  });
-
-  return serializeRow(row, config);
+  try {
+    const row = await delegateFor(config).update({
+      where: { id },
+      data,
+      select: selectFor(config),
+    });
+    return serializeRow(row, config);
+  } catch (error) {
+    throw translateWriteError(error, config);
+  }
 }
 
 export interface DeleteResult {

@@ -204,5 +204,22 @@
       "title": "You don't have access to this",
       "description": "Your account role doesn’t include this area. If you think it should, ask an owner to update your permissions."
     }
+  },
+  "resource": {
+    "yes": "Yes",
+    "no": "No",
+    "empty": "No {label} yet.",
+    "total": "{count, plural, =0 {No records} one {# record} other {# records}}",
+    "search": {
+      "label": "Search",
+      "placeholder": "Search by {fields}"
+    },
+    "filters": {
+      "all": "All"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next"
+    }
   }
 }

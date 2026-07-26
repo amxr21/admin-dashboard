@@ -41,6 +41,15 @@ export interface NavGroup {
   items: readonly NavItem[];
 }
 
+/**
+ * `/admin/r/<resource>` entries are served by the GENERIC resource page, which
+ * renders itself from admin.config.ts on the backend. The remaining paths are
+ * hand-written pages for areas the engine cannot express — see
+ * .claude-workbook/config-engine-explained.md.
+ *
+ * This list is still hardcoded. It should eventually be derived from
+ * /r/_schema, which is already permission-filtered — see ROADMAP item A5.
+ */
 export const NAVIGATION: readonly NavGroup[] = [
   {
     items: [{ href: '/admin', labelKey: 'dashboard', icon: LayoutDashboard }],
@@ -49,16 +58,16 @@ export const NAVIGATION: readonly NavGroup[] = [
     labelKey: 'commerce',
     items: [
       { href: '/admin/orders', labelKey: 'orders', icon: ShoppingCart, area: 'orders' },
-      { href: '/admin/products', labelKey: 'products', icon: Package, area: 'products' },
+      { href: '/admin/r/products', labelKey: 'products', icon: Package, area: 'products' },
       {
-        href: '/admin/categories',
+        href: '/admin/r/categories',
         labelKey: 'categories',
         icon: FolderTree,
         area: 'categories',
       },
       { href: '/admin/inventory', labelKey: 'inventory', icon: Boxes, area: 'inventory' },
       {
-        href: '/admin/discounts',
+        href: '/admin/r/discounts',
         labelKey: 'discounts',
         icon: BadgePercent,
         area: 'discounts',
@@ -68,8 +77,8 @@ export const NAVIGATION: readonly NavGroup[] = [
   {
     labelKey: 'people',
     items: [
-      { href: '/admin/customers', labelKey: 'customers', icon: Users, area: 'customers' },
-      { href: '/admin/reviews', labelKey: 'reviews', icon: Star, area: 'reviews' },
+      { href: '/admin/r/customers', labelKey: 'customers', icon: Users, area: 'customers' },
+      { href: '/admin/r/reviews', labelKey: 'reviews', icon: Star, area: 'reviews' },
       { href: '/admin/delivery', labelKey: 'delivery', icon: Truck, area: 'delivery' },
     ],
   },
