@@ -2,8 +2,48 @@
 
 What is tested, what isn't, and why. Updated per migration group.
 
-**Last updated:** 2026-07-26 (group 2 — `feat/auth`)
-**Totals:** 4 files · 38 tests · all passing
+**Last updated:** 2026-07-26 (group 4 — `feat/motion-system`)
+**Totals:** 8 files · 88 tests · all passing (62 backend, 26 frontend)
+
+---
+
+## Group 4 — motion system
+
+First **frontend** tests in the project.
+
+| Unit | Cases | Notes |
+|---|---|---|
+| Motion tokens | 12 | scale monotonicity, ease validity, `REDUCED` contract |
+| `useReducedMotion` | 4 | true, false, mid-session change, missing API |
+| `MotionProvider` | 10 | OS preference, override, persistence, timeScale |
+
+### The assertion that matters most
+
+**`timeScale` must never be 0.** `timeScale(0)` freezes tweens where they are,
+so an element fading in from `opacity: 0` stays invisible permanently — the
+users who most need reduced motion get missing content. That's an accessibility
+bug, not a style choice.
+
+Mutation-tested: set it to 0, and *"NEVER freezes the global timeline at zero"*
+failed. Restored and re-verified.
+
+### Tokens tested by property, not value
+
+The token tests assert *monotonicity* and *range*, not literal numbers — so
+retuning `base` from 0.3 to 0.28 doesn't break the suite, but making `fast`
+slower than `slow` does. Testing exact values would make the suite an obstacle
+to design tuning rather than a safety net.
+
+### Note for future frontend tests
+
+`window.matchMedia` is stubbed in `vitest.setup.ts`, **not** per-test. GSAP reads
+it at import time, so any test importing `lib/gsap.ts` crashes before a
+`beforeEach` mock could run. Override per-test with `mockMatchMedia()` from
+`src/test/match-media.ts`.
+
+---
+
+## Group 2 — auth
 
 ---
 

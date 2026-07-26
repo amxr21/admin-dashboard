@@ -1,0 +1,157 @@
+{
+  "common": {
+    "appName": "admin-dashboard",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "clear": "Clear",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "loading": "Loading…",
+    "retry": "Try again",
+    "signOut": "Sign out"
+  },
+
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "ar": "العربية",
+    "switchTo": "Switch to {language}"
+  },
+
+  "theme": {
+    "toLight": "Switch to light theme",
+    "toDark": "Switch to dark theme"
+  },
+
+  "motion": {
+    "label": "Animations",
+    "enable": "Enable animations",
+    "disable": "Disable animations"
+  },
+
+  "states": {
+    "empty": {
+      "title": "Nothing here yet",
+      "description": "Once there's data, it'll appear here."
+    },
+    "error": {
+      "title": "Something went wrong",
+      "description": "The error has been reported. Try again, and quote this reference if it keeps happening: {reference}",
+      "network": "Can't reach the server. Check your connection.",
+      "unauthorized": "Your session has expired. Please sign in again.",
+      "forbidden": "You don't have permission to do that.",
+      "notFound": "We couldn't find what you were looking for.",
+      "server": "The server had a problem. Try again in a moment.",
+      "tooLarge": "That file is too large."
+    },
+    "readOnlyDemo": {
+      "title": "Read-only demo",
+      "description": "You're viewing a demo account. Changes are disabled."
+    }
+  },
+
+  "auth": {
+    "signIn": "Sign in",
+    "email": "Email",
+    "emailPlaceholder": "you@company.com",
+    "password": "Password",
+    "signingIn": "Signing in…",
+    "invalidCredentials": "That email or password isn't right.",
+    "accountLocked": "Too many failed attempts. Try again in {minutes} minutes.",
+    "accountDeactivated": "This account has been deactivated.",
+    "accessEnded": "This account's access period has ended.",
+    "rateLimited": "Too many attempts from this address. Try again shortly."
+  },
+
+  "nav": {
+    "dashboard": "Dashboard",
+    "orders": "Orders",
+    "products": "Products",
+    "inventory": "Inventory",
+    "customers": "Customers",
+    "categories": "Categories",
+    "discounts": "Discounts",
+    "reviews": "Reviews",
+    "delivery": "Delivery",
+    "reports": "Reports",
+    "settings": "Settings",
+    "staff": "Staff"
+  },
+
+  "roles": {
+    "DEVELOPER": "Developer",
+    "OWNER": "Owner",
+    "MANAGER": "Manager",
+    "FULFILLMENT": "Fulfillment",
+    "SUPPORT": "Support",
+    "DEMO": "Demo (read-only)"
+  },
+
+  "orderStatus": {
+    "PENDING": "Pending",
+    "CONFIRMED": "Confirmed",
+    "SHIPPED": "Shipped",
+    "DELIVERED": "Delivered",
+    "CANCELED": "Canceled",
+    "RETURNED": "Returned"
+  },
+
+  "productStatus": {
+    "DRAFT": "Draft",
+    "ACTIVE": "Active",
+    "ARCHIVED": "Archived"
+  },
+
+  "reviewStatus": {
+    "PENDING": "Pending",
+    "APPROVED": "Approved",
+    "REJECTED": "Rejected"
+  },
+
+  "discountType": {
+    "PERCENT": "Percentage",
+    "FIXED": "Fixed amount"
+  },
+
+  "deliveryStaffStatus": {
+    "ACTIVE": "Active",
+    "ON_SHIFT": "On shift",
+    "INACTIVE": "Inactive"
+  },
+
+  "deliveryStatus": {
+    "ASSIGNED": "Assigned",
+    "PICKED_UP": "Picked up",
+    "OUT_FOR_DELIVERY": "Out for delivery",
+    "DELIVERED": "Delivered",
+    "HANDED_OVER": "Handed over"
+  },
+
+  "counts": {
+    "orders": "{count, plural, =0 {No orders} one {# order} other {# orders}}",
+    "products": "{count, plural, =0 {No products} one {# product} other {# products}}",
+    "customers": "{count, plural, =0 {No customers} one {# customer} other {# customers}}",
+    "selected": "{count, plural, =0 {None selected} one {# selected} other {# selected}}",
+    "itemsInStock": "{count, plural, =0 {Out of stock} one {# in stock} other {# in stock}}"
+  },
+
+  "table": {
+    "selectAll": "Select all rows",
+    "selectRow": "Select row",
+    "sortAscending": "Sort ascending",
+    "sortDescending": "Sort descending",
+    "rowsPerPage": "Rows per page",
+    "pageOf": "Page {page} of {total}",
+    "noResults": "No results match your filters.",
+    "export": "Export",
+    "exportCsv": "Export as CSV",
+    "bulkActions": "Bulk actions"
+  }
+}

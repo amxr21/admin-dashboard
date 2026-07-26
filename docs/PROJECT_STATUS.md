@@ -2,7 +2,7 @@
 
 Living status of the rebuild. Updated at the end of each migration group.
 
-**Last updated:** 2026-07-26 · **Current group:** 1 of 14 (`feat/data-model`)
+**Last updated:** 2026-07-26 · **Current group:** 5 of 15 (`feat/i18n`)
 
 ---
 
@@ -12,18 +12,19 @@ Living status of the rebuild. Updated at the end of each migration group.
 |---|---|---|
 | 1 | `feat/data-model` — Prisma schema, migration, seed | **in review** (PR #27) |
 | 2 | `feat/auth` — JWT login, bcrypt, brute-force protection | **in review** |
-| 3 | `feat/rbac` — 5-role permission map | not started |
-| 4 | `feat/motion-system` — GSAP foundation | not started |
-| 5 | `feat/ui-primitives` — shadcn components | not started |
-| 6 | `feat/app-shell` — layout, sidebar, topbar | not started |
-| 7 | `feat/login-page` — login UI | not started |
-| 8 | `feat/dashboard` — KPIs, charts | not started |
-| 9 | `feat/products` — CRUD, images | not started |
-| 10 | `feat/orders` — list, detail, status, invoice | not started |
-| 11 | `feat/customers` — list, detail, history | not started |
-| 12 | `feat/inventory-discounts` | not started |
-| 13 | `feat/delivery` — staff, assignments, portal | not started |
-| 14 | `feat/settings-staff` | not started |
+| 3 | `feat/rbac` — 6-role permission map + demo role | **in review** |
+| 4 | `feat/motion-system` — GSAP foundation | **in review** |
+| 5 | `feat/i18n` — next-intl, RTL, AR/EN catalogues | **in review** |
+| 6 | `feat/ui-primitives` — shadcn components (RTL-ready, bulk-select) | not started |
+| 7 | `feat/app-shell` — layout, sidebar, topbar | not started |
+| 8 | `feat/login-page` — login UI | not started |
+| 9 | `feat/dashboard` — KPIs, charts | not started |
+| 10 | `feat/products` — CRUD, images | not started |
+| 11 | `feat/orders` — list, detail, status, invoice | not started |
+| 12 | `feat/customers` — list, detail, history | not started |
+| 13 | `feat/inventory-discounts` | not started |
+| 14 | `feat/delivery` — staff, assignments, portal | not started |
+| 15 | `feat/settings-staff` | not started |
 
 ---
 
@@ -50,7 +51,7 @@ must not stay absent once real users have accounts.
 
 | Feature | Notes | Priority |
 |---|---|---|
-| **Bilingual AR/EN + RTL** | Relevant to the UAE/PDPL context. Cheaper to build in from the start than to retrofit — every component and layout is affected. Decide before Phase 3 pages get built. | Medium |
+| ~~**Bilingual AR/EN + RTL**~~ | **CLOSED in group 5.** next-intl, `[locale]` routing, AR/EN catalogues with full ICU plurals, RTL CSS, Arabic typography, direction-aware motion. Translations are unreviewed MSA — worth a native pass before client-facing use. See `I18N.md`. | done |
 | **Bulk actions + export on DataTable** | CSV/Excel export, multi-select delete/edit. Expected in any admin dashboard. | Medium |
 | **E2E / visual QA** | Playwright is configured but the workflow is disabled (no Render preview URL — see `.github/workflows/e2e.yml`). One placeholder spec exists. | Medium |
 
@@ -74,18 +75,41 @@ must not stay absent once real users have accounts.
 ### Dropped from admin-template — not coming back unless asked
 
 Config engine (`admin.config.js` + generic `/r/:resource`), AI config drafter,
-live DB introspection, `demo` and `custom` roles, per-user `custom_permissions`
-JSON, `USE_FILE_DATA` mock mode, runtime theme/density customization.
+live DB introspection, the `custom` role, per-user `custom_permissions` JSON,
+`USE_FILE_DATA` mock mode, runtime theme/density customization.
+
+**Exception:** the `demo` role was reinstated in group 3 on request — with a
+much simpler implementation than the original. See `ADMIN_DASHBOARD_FEATURES.md`
+→ Demo mode.
 
 ---
 
 ## Current work
 
-**Group 1 — `feat/data-model`.** 12 Prisma models, one migration, idempotent
-seed. Awaiting review.
+Groups 1–4 are complete and stacked as PRs #27 → #28 → #29 → (#30), to be
+merged in that order.
 
 ## Next
 
-Group 2 — `feat/auth`. The brute-force gap above should be closed **in that
-group**, not deferred: adding rate limiting to a login route that already exists
-is harder than building it in.
+**Group 5 — `feat/ui-primitives`.** The shadcn components the pages need.
+
+Two decisions that should be made *before* group 5, because both are far more
+expensive to retrofit than to build in:
+
+- **Bilingual AR/EN + RTL.** Every component and layout is affected. If it's
+  wanted, group 5 should use CSS logical properties from the start.
+- **Bulk select on DataTable.** Even if bulk *actions* land later, the table
+  should be designed with selection state in mind.
+
+## Deferred ideas (recorded so they aren't lost)
+
+- **Surface backend state in the frontend** — a page showing what the API layer
+  can currently do (auth status, role/permission introspection, health, feature
+  flags). Useful as a live demo of progress, and genuinely handy for debugging
+  the RBAC model. Deliberately deferred: it's a nice-to-have that would compete
+  with real feature work, and it becomes much easier once the app shell exists
+  (group 6). Revisit after group 7.
+- **Demo mode polish** — a visible "read-only demo" banner, a demo seeder with
+  realistic data volumes, optional scheduled data reset. The API-side enforcement
+  is done (group 3); this is the client-facing half. See
+  `ADMIN_DASHBOARD_FEATURES.md` → Demo mode.
