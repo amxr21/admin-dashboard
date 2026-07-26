@@ -174,3 +174,49 @@ describe('schema-driven entries', () => {
     expect(screen.queryByRole('link', { name: /discounts/i })).not.toBeInTheDocument();
   });
 });
+
+describe('groups from both sources are merged, not duplicated', () => {
+  /**
+   * NAVIGATION owns Delivery under `people`; the schema owns Customers and
+   * Reviews under the same key. Concatenating the two lists rendered the
+   * heading TWICE with the items split across them.
+   *
+   * React reported it as "two children with the same key" — but the warning
+   * was the symptom. The bug was a sidebar showing "People" twice, which no
+   * type or lint check can see and which reads as a layout glitch rather than
+   * a data-merging mistake.
+   */
+  it('renders each group heading exactly once', () => {
+    render(<SidebarNav role="OWNER" />);
+
+    const headings = screen
+      .getAllByRole('heading', { level: 2 })
+      .map((heading) => heading.textContent);
+
+    expect(headings).toEqual([...new Set(headings)]);
+  });
+
+  it('puts hand-written and schema entries under the same heading', () => {
+    const { container } = render(<SidebarNav role="OWNER" />);
+
+    // Find the block whose heading is People, then check BOTH kinds of entry
+    // live inside it rather than in two separate blocks.
+    const block = [...container.querySelectorAll('div')].find((el) =>
+      /people/i.test(el.querySelector('h2')?.textContent ?? ''),
+    );
+
+    expect(block).toBeTruthy();
+    expect(block?.textContent).toMatch(/delivery/i); // hand-written
+    expect(block?.textContent).toMatch(/customers/i); // schema-driven
+  });
+
+  it('keeps the unlabelled dashboard group separate', () => {
+    // It has no heading to share, so it must never be folded into another.
+    render(<SidebarNav role="OWNER" />);
+
+    expect(screen.getByRole('link', { name: /dashboard/i })).toHaveAttribute(
+      'href',
+      '/admin',
+    );
+  });
+});
