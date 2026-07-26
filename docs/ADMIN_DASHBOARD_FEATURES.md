@@ -101,7 +101,48 @@ reads as a decision rather than an oversight.
 | Config-driven CRUD engine (`admin.config.js`, `/r/:resource`) | Replaced by purpose-built typed pages. The indirection is what made the old codebase hard to reason about, and it fights strict TypeScript. |
 | AI config drafter | Only meaningful with the config engine. |
 | Live DB introspection | Same. |
-| `demo` and `custom` roles | Every permission check had to special-case them. Re-add if a real need appears. |
+| ~~`demo` role~~ | **Reinstated in group 3** with a clearer purpose and a much simpler implementation than the old one — see "Demo mode" below. The original drop was reasonable given how the old system tangled it into every permission check; this version doesn't. |
+| `custom` role | Kept out. Per-user permission JSON meant every check had to special-case it. Re-add only if a real need appears. |
 | Per-user `custom_permissions` JSON | Same reasoning. |
+
+---
+
+## Demo mode
+
+A `DEMO` staff role for showing prospective clients the real dashboard, with
+real data, and no possibility of them changing anything.
+
+**Reads everything, writes nothing.** Full visibility across every area is the
+point — a demo that hides half the product isn't a demo.
+
+**How write-blocking is enforced**, because the mechanism is the interesting
+part:
+
+- Deny-by-default on the **HTTP method**. Anything that isn't `GET`/`HEAD`/
+  `OPTIONS` is a write, and writes are refused for read-only roles.
+- The check lives inside `authenticate`, so it runs the instant identity is
+  established. **Every authenticated route inherits it automatically** — a new
+  `POST` route added six months from now is demo-safe without anyone
+  remembering to guard it.
+- The alternative — a `canWrite` check in each write handler — fails silently
+  the first time someone forgets, because the demo user simply succeeds.
+
+**Two implementation notes worth knowing:**
+
+1. It is *not* app-level middleware. Mounting it in `app.ts` would run it before
+   any route's `authenticate`, so `req.user` would always be undefined and every
+   write would pass through unchecked. This was caught during group 3 and is
+   documented in `authorize.ts` so nobody "simplifies" it back.
+2. The guarantee is scoped to **authenticated routes**. A route that omits
+   `authenticate` is public anyway, so demo-blocking is moot there.
+
+**Still to do for a complete demo experience:**
+
+- A visible in-app banner ("read-only demo") so a client understands why an
+  action didn't take effect — the API returns a clear 403, but the UI should
+  never let them hit it in the first place.
+- A demo account seeder with realistic volumes of data, not the 6 products the
+  dev seed creates.
+- Optionally, auto-resetting demo data on a schedule.
 | `USE_FILE_DATA` mock mode | A real dev database exists; a divergent mock path is a source of "works in mock, breaks live" bugs. |
 | Runtime theme/density customization | The design token system covers theming. Runtime density is a product feature, not infrastructure. |

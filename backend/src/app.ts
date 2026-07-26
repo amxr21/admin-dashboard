@@ -53,6 +53,10 @@ export function createApp(): Express {
     return apiRateLimit(req, res, next);
   });
 
+  // NOTE: read-only (DEMO) write-blocking is NOT mounted here. It depends on
+  // req.user, which `authenticate` sets inside each route — an app-level mount
+  // would run first, see no user, and silently pass every write through.
+  // It lives inside `authenticate` instead. See middleware/authorize.ts.
   app.use('/api/v1', v1Router);
 
   app.use(notFoundHandler);
