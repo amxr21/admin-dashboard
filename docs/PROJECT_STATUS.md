@@ -10,8 +10,8 @@ Living status of the rebuild. Updated at the end of each migration group.
 
 | # | Group | Status |
 |---|---|---|
-| 1 | `feat/data-model` — Prisma schema, migration, seed | **in review** |
-| 2 | `feat/auth` — JWT login, bcrypt, middleware | not started |
+| 1 | `feat/data-model` — Prisma schema, migration, seed | **in review** (PR #27) |
+| 2 | `feat/auth` — JWT login, bcrypt, brute-force protection | **in review** |
 | 3 | `feat/rbac` — 5-role permission map | not started |
 | 4 | `feat/motion-system` — GSAP foundation | not started |
 | 5 | `feat/ui-primitives` — shadcn components | not started |
@@ -40,7 +40,7 @@ must not stay absent once real users have accounts.
 
 | Gap | Risk if shipped without it | Priority |
 |---|---|---|
-| **Brute-force protection on `/auth/login`** | Unlimited password guessing against admin accounts. No rate limit, no lockout, no attempt counter. | **HIGH** |
+| ~~**Brute-force protection on `/auth/login`**~~ | **CLOSED in group 2.** Two layers: per-IP rate limit (10 / 15 min, failed attempts only) and per-account lockout (5 attempts → 15 min). Both needed — IP limiting misses a distributed attack on one email; account lockout misses one IP spraying many accounts. ⚠️ The rate-limit store is **in-memory**, so counts are per-process. Correct on Render's single free instance; needs Redis before scaling to multiple instances or an attacker multiplies their budget by the instance count. | done |
 | **Audit log** | No record of who changed or deleted a record. In a dashboard where staff edit orders and refunds, "who did this" is unanswerable — and unanswerable retroactively. | **HIGH** |
 | **Password reset / forgot-password** | A locked-out admin needs a developer with DB access. Also blocks staff invites and any transactional email. | **HIGH** |
 | **Token revocation / session control** | A stolen JWT is valid until it expires, with no way to kill it. No refresh tokens, no revocation list, no "sign out other sessions". | **HIGH** |

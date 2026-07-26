@@ -44,6 +44,27 @@ const envSchema = z.object({
         .map((origin) => origin.trim())
         .filter(Boolean),
     ),
+
+  // ─── Auth ────────────────────────────────────────────────────────
+  // No default and no fallback: a JWT secret that ships with the code signs
+  // tokens anyone who has read the repo can forge. 32 chars is the floor for
+  // HS256 to be meaningfully resistant to offline brute-forcing.
+  // Generate with: openssl rand -base64 32
+  JWT_SECRET: z
+    .string()
+    .min(32, 'JWT_SECRET must be at least 32 characters — generate with `openssl rand -base64 32`'),
+
+  // Short-lived by design. Without a revocation list (see PROJECT_STATUS.md),
+  // expiry is the ONLY thing that invalidates a stolen token, so this is the
+  // real blast radius of a leak. Shorten it, don't lengthen it.
+  JWT_EXPIRES_IN: z.string().default('7d'),
+
+  // ─── Brute-force protection ──────────────────────────────────────
+  // Failed attempts before an account locks. Counted per-account, so a
+  // distributed attack on one email still trips it.
+  LOGIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  // How long the lock lasts, in minutes.
+  LOGIN_LOCKOUT_MINUTES: z.coerce.number().int().positive().default(15),
 });
 
 const parsed = envSchema.safeParse(process.env);

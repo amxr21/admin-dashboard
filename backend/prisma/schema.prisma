@@ -123,6 +123,17 @@ model User {
   accessExpiresAt DateTime? @map("access_expires_at")
   lastLoginAt     DateTime? @map("last_login_at")
 
+  /// ─── Brute-force protection ──────────────────────────────────────
+  /// Per-ACCOUNT, deliberately separate from the per-IP rate limiter.
+  /// IP limiting alone does not stop a slow distributed attack against one
+  /// known admin email; account lockout alone lets one IP spray many accounts.
+  /// Both are needed, and they fail in different directions.
+  /// Reset to 0 on every successful login.
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  /// Set when the attempt threshold is crossed. Logins are refused until this
+  /// passes, regardless of whether the password is correct.
+  lockedUntil         DateTime? @map("locked_until")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
