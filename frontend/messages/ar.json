@@ -17,25 +17,21 @@
     "retry": "إعادة المحاولة",
     "signOut": "تسجيل الخروج"
   },
-
   "language": {
     "label": "اللغة",
     "en": "English",
     "ar": "العربية",
     "switchTo": "التبديل إلى {language}"
   },
-
   "theme": {
     "toLight": "التبديل إلى الوضع الفاتح",
     "toDark": "التبديل إلى الوضع الداكن"
   },
-
   "motion": {
     "label": "الحركة",
     "enable": "تشغيل الحركة",
     "disable": "إيقاف الحركة"
   },
-
   "states": {
     "empty": {
       "title": "لا توجد بيانات بعد",
@@ -56,7 +52,6 @@
       "description": "أنت تستخدم حساباً تجريبياً. التعديلات معطّلة."
     }
   },
-
   "auth": {
     "signIn": "تسجيل الدخول",
     "email": "البريد الإلكتروني",
@@ -69,7 +64,6 @@
     "accessEnded": "انتهت فترة صلاحية الوصول لهذا الحساب.",
     "rateLimited": "عدد كبير من المحاولات من هذا العنوان. أعد المحاولة بعد قليل."
   },
-
   "nav": {
     "dashboard": "لوحة التحكم",
     "orders": "الطلبات",
@@ -82,9 +76,11 @@
     "delivery": "التوصيل",
     "reports": "التقارير",
     "settings": "الإعدادات",
-    "staff": "الموظفون"
+    "staff": "الموظفون",
+    "commerce": "التجارة",
+    "people": "الأشخاص",
+    "admin": "الإدارة"
   },
-
   "roles": {
     "DEVELOPER": "مطوّر",
     "OWNER": "مالك",
@@ -93,7 +89,6 @@
     "SUPPORT": "الدعم",
     "DEMO": "تجريبي (قراءة فقط)"
   },
-
   "orderStatus": {
     "PENDING": "قيد الانتظار",
     "CONFIRMED": "مؤكد",
@@ -102,30 +97,25 @@
     "CANCELED": "ملغى",
     "RETURNED": "مُرجَع"
   },
-
   "productStatus": {
     "DRAFT": "مسودة",
     "ACTIVE": "نشط",
     "ARCHIVED": "مؤرشف"
   },
-
   "reviewStatus": {
     "PENDING": "قيد المراجعة",
     "APPROVED": "مقبول",
     "REJECTED": "مرفوض"
   },
-
   "discountType": {
     "PERCENT": "نسبة مئوية",
     "FIXED": "مبلغ ثابت"
   },
-
   "deliveryStaffStatus": {
     "ACTIVE": "نشط",
     "ON_SHIFT": "في الدوام",
     "INACTIVE": "غير نشط"
   },
-
   "deliveryStatus": {
     "ASSIGNED": "تم التعيين",
     "PICKED_UP": "تم الاستلام",
@@ -133,7 +123,6 @@
     "DELIVERED": "تم التسليم",
     "HANDED_OVER": "تم التسليم للمستلم"
   },
-
   "counts": {
     "orders": "{count, plural, =0 {لا توجد طلبات} one {طلب واحد} two {طلبان} few {# طلبات} many {# طلباً} other {# طلب}}",
     "products": "{count, plural, =0 {لا توجد منتجات} one {منتج واحد} two {منتجان} few {# منتجات} many {# منتجاً} other {# منتج}}",
@@ -141,7 +130,6 @@
     "selected": "{count, plural, =0 {لم يتم التحديد} one {تم تحديد عنصر واحد} two {تم تحديد عنصرين} few {تم تحديد # عناصر} many {تم تحديد # عنصراً} other {تم تحديد # عنصر}}",
     "itemsInStock": "{count, plural, =0 {غير متوفر} one {قطعة واحدة متوفرة} two {قطعتان متوفرتان} few {# قطع متوفرة} many {# قطعة متوفرة} other {# قطعة متوفرة}}"
   },
-
   "table": {
     "selectAll": "تحديد جميع الصفوف",
     "selectRow": "تحديد الصف",

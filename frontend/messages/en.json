@@ -17,25 +17,21 @@
     "retry": "Try again",
     "signOut": "Sign out"
   },
-
   "language": {
     "label": "Language",
     "en": "English",
     "ar": "العربية",
     "switchTo": "Switch to {language}"
   },
-
   "theme": {
     "toLight": "Switch to light theme",
     "toDark": "Switch to dark theme"
   },
-
   "motion": {
     "label": "Animations",
     "enable": "Enable animations",
     "disable": "Disable animations"
   },
-
   "states": {
     "empty": {
       "title": "Nothing here yet",
@@ -56,7 +52,6 @@
       "description": "You're viewing a demo account. Changes are disabled."
     }
   },
-
   "auth": {
     "signIn": "Sign in",
     "email": "Email",
@@ -69,7 +64,6 @@
     "accessEnded": "This account's access period has ended.",
     "rateLimited": "Too many attempts from this address. Try again shortly."
   },
-
   "nav": {
     "dashboard": "Dashboard",
     "orders": "Orders",
@@ -82,9 +76,11 @@
     "delivery": "Delivery",
     "reports": "Reports",
     "settings": "Settings",
-    "staff": "Staff"
+    "staff": "Staff",
+    "commerce": "Commerce",
+    "people": "People",
+    "admin": "Administration"
   },
-
   "roles": {
     "DEVELOPER": "Developer",
     "OWNER": "Owner",
@@ -93,7 +89,6 @@
     "SUPPORT": "Support",
     "DEMO": "Demo (read-only)"
   },
-
   "orderStatus": {
     "PENDING": "Pending",
     "CONFIRMED": "Confirmed",
@@ -102,30 +97,25 @@
     "CANCELED": "Canceled",
     "RETURNED": "Returned"
   },
-
   "productStatus": {
     "DRAFT": "Draft",
     "ACTIVE": "Active",
     "ARCHIVED": "Archived"
   },
-
   "reviewStatus": {
     "PENDING": "Pending",
     "APPROVED": "Approved",
     "REJECTED": "Rejected"
   },
-
   "discountType": {
     "PERCENT": "Percentage",
     "FIXED": "Fixed amount"
   },
-
   "deliveryStaffStatus": {
     "ACTIVE": "Active",
     "ON_SHIFT": "On shift",
     "INACTIVE": "Inactive"
   },
-
   "deliveryStatus": {
     "ASSIGNED": "Assigned",
     "PICKED_UP": "Picked up",
@@ -133,7 +123,6 @@
     "DELIVERED": "Delivered",
     "HANDED_OVER": "Handed over"
   },
-
   "counts": {
     "orders": "{count, plural, =0 {No orders} one {# order} other {# orders}}",
     "products": "{count, plural, =0 {No products} one {# product} other {# products}}",
@@ -141,7 +130,6 @@
     "selected": "{count, plural, =0 {None selected} one {# selected} other {# selected}}",
     "itemsInStock": "{count, plural, =0 {Out of stock} one {# in stock} other {# in stock}}"
   },
-
   "table": {
     "selectAll": "Select all rows",
     "selectRow": "Select row",
