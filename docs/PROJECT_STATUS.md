@@ -2,7 +2,7 @@
 
 Living status of the rebuild. Updated at the end of each migration group.
 
-**Last updated:** 2026-07-26 · **Current group:** 6 of 15 (`feat/ui-primitives`)
+**Last updated:** 2026-07-26 · **Current group:** 7 of 15 (`feat/app-shell`)
 
 ---
 
@@ -16,7 +16,7 @@ Living status of the rebuild. Updated at the end of each migration group.
 | 4 | `feat/motion-system` — GSAP foundation | **in review** |
 | 5 | `feat/i18n` — next-intl, RTL, AR/EN catalogues | **in review** |
 | 6 | `feat/ui-primitives` — shadcn components + applied motion | **in review** |
-| 7 | `feat/app-shell` — layout, sidebar, topbar | not started |
+| 7 | `feat/app-shell` — layout, sidebar, topbar, mobile drawer | **in review** |
 | 8 | `feat/login-page` — login UI | not started |
 | 9 | `feat/dashboard` — KPIs, charts | not started |
 | 10 | `feat/products` — CRUD, images | not started |
