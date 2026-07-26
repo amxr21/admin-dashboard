@@ -168,3 +168,16 @@ export function listFields(schema: ResourceSchema): FieldConfig[] {
 export function searchableFields(schema: ResourceSchema): FieldConfig[] {
   return schema.fields.filter((field) => field.searchable);
 }
+
+/**
+ * Fields the form may write.
+ *
+ * Mirrors `writableFields()` in resource.service.ts. The server filters writes
+ * to exactly this set regardless of what the client sends, so this is a
+ * convenience for rendering — never the thing that makes the write safe.
+ */
+export function formFields(schema: ResourceSchema): FieldConfig[] {
+  return schema.fields.filter(
+    (field) => field.inForm !== false && !field.readOnly && field.type !== 'id',
+  );
+}

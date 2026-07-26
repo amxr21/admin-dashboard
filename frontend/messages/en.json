@@ -223,6 +223,106 @@
     "pagination": {
       "previous": "Previous",
       "next": "Next"
+    },
+    "selected": "{count, plural, one {# selected} other {# selected}}",
+    "actions": {
+      "label": "Actions",
+      "create": "New {label}",
+      "editRow": "Edit {label}",
+      "deleteRow": "Delete {label}",
+      "deleteSelected": "Delete selected"
+    },
+    "notice": {
+      "created": "Created.",
+      "updated": "Saved.",
+      "deleted": "{count, plural, one {# record deleted.} other {# records deleted.}}",
+      "archived": "{count, plural, one {# record was archived instead of deleted, because other records still refer to it.} other {# records were archived instead of deleted, because other records still refer to them.}}"
+    },
+    "confirmDelete": {
+      "title": "{count, plural, one {Delete this record?} other {Delete these # records?}}",
+      "description": "Anything still referenced elsewhere is archived rather than deleted, so existing history stays intact.",
+      "confirm": "Delete",
+      "cancel": "Cancel",
+      "working": "Deleting…"
     }
+  },
+  "placeholder": {
+    "inProgress": "In progress",
+    "alreadyWorking": "Already working underneath:"
+  },
+  "sections": {
+    "orders": {
+      "title": "Orders",
+      "description": "Order list and detail with line items, a status workflow that only allows legal transitions, an audit trail of who changed what, and a printable invoice.",
+      "ready": [
+        "Order data model with line items and status history",
+        "Status transition rules defined",
+        "RBAC area 'orders' enforced"
+      ]
+    },
+    "inventory": {
+      "title": "Inventory",
+      "description": "Stock as a movement log — \"+50 received\", \"−3 damaged\" — with a required reason, rather than a number you overwrite. Includes a low-stock view.",
+      "ready": [
+        "Product stock field live and searchable",
+        "RBAC area 'inventory' enforced"
+      ]
+    },
+    "delivery": {
+      "title": "Delivery",
+      "description": "Couriers, order assignment, and a separate courier portal that signs in with an access code rather than a staff account.",
+      "ready": [
+        "Courier and assignment models in the schema",
+        "RBAC area 'delivery' enforced"
+      ]
+    },
+    "reports": {
+      "title": "Reports",
+      "description": "Revenue, orders and customer trends over time, with date-range filtering and export.",
+      "ready": [
+        "Revenue chart and KPI tiles on the dashboard",
+        "Validated colour palette for both themes"
+      ]
+    },
+    "staff": {
+      "title": "Staff",
+      "description": "Staff accounts and role assignment. Deliberately outside the generic resource engine — account tables are never exposed through it.",
+      "ready": [
+        "Six roles with per-area permissions",
+        "JWT auth, bcrypt, brute-force lockout",
+        "Read-only demo role blocked from every write"
+      ]
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Store preferences, language and theme. The language switcher moves here from the top bar once this page exists.",
+      "ready": [
+        "Bilingual EN/AR with full RTL",
+        "Light and dark themes with designed palettes"
+      ]
+    }
+  },
+  "resourceForm": {
+    "createTitle": "New {label}",
+    "editTitle": "Edit {label}",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "choose": "Choose…",
+    "errors": {
+      "required": "This field is required.",
+      "money": "Enter an amount with up to two decimal places, like 19.99.",
+      "number": "Enter a number.",
+      "date": "Enter a date as YYYY-MM-DD.",
+      "email": "Enter a valid email address.",
+      "enum": "Choose one of the available options.",
+      "duplicate": "Another record already uses this value."
+    },
+    "discard": {
+      "title": "Discard your unsaved changes?",
+      "confirm": "Discard",
+      "cancel": "Keep editing"
+    },
+    "none": "— None —"
   }
 }

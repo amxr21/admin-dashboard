@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useGSAP } from '@gsap/react';
-import { Search } from 'lucide-react';
+import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 
 import { DataTable, type Column } from '@/components/data-table';
 import { ResourceCell } from '@/components/resource/resource-cell';
+import { ResourceForm } from '@/components/resource/resource-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +22,7 @@ import { gsap } from '@/lib/gsap';
 import { DURATION, EASE, DISTANCE, STAGGER_TOTAL_MAX } from '@/lib/motion-tokens';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
+  deleteRow,
   fetchRows,
   listFields,
   searchableFields,
@@ -62,7 +64,28 @@ export function ResourceTable({ schema }: ResourceTableProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  const [formRow, setFormRow] = useState<ResourceRow | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(
+    null,
+  );
+
+  // Mirrors assertPermitted() in resource.service.ts, which is DEFAULT-DENY:
+  // only an explicit `true` grants the action. Reading it any looser would
+  // render buttons that always come back 403.
+  const canCreate = schema.permissions.create === true;
+  const canUpdate = schema.permissions.update === true;
+  const canDelete = schema.permissions.delete === true;
+
   const container = useRef<HTMLDivElement>(null);
+
+  /** The row's human name, for action labels and delete confirmations. */
+  const rowLabel = (row: ResourceRow): string => {
+    const value = row[schema.labelField];
+    return value === null || value === undefined ? String(row.id) : String(value);
+  };
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -111,7 +134,65 @@ export function ResourceTable({ schema }: ResourceTableProps) {
     setSearch('');
     setFilters({});
     setSelectedIds(new Set());
+    setNotice(null);
   }, [schema.resource]);
+
+  /**
+   * Deletion reports what the SERVER actually did.
+   *
+   * A resource hook may archive instead of deleting — a product that appears
+   * in a past order is archived, because a hard delete would blank the line
+   * item and silently rewrite someone's order history. The API says which
+   * happened in `action`, so claiming "deleted" for all of them would be the
+   * UI lying about a decision it didn't make.
+   *
+   * `allSettled`, not `all`: one row failing must not hide the fact that the
+   * other four succeeded, and the table has to reload either way.
+   */
+  async function runDelete(ids: string[]) {
+    setIsDeleting(true);
+
+    const outcomes = await Promise.allSettled(
+      ids.map(async (id) => (await deleteRow(schema.resource, id)).action),
+    );
+
+    const count = (action: 'deleted' | 'archived') =>
+      outcomes.filter(
+        (outcome) => outcome.status === 'fulfilled' && outcome.value === action,
+      ).length;
+
+    const deleted = count('deleted');
+    const archived = count('archived');
+    const failed = outcomes.filter((outcome) => outcome.status === 'rejected');
+
+    const parts: string[] = [];
+    if (deleted > 0) parts.push(t('notice.deleted', { count: deleted }));
+    if (archived > 0) parts.push(t('notice.archived', { count: archived }));
+
+    if (failed.length > 0) {
+      setNotice({
+        tone: 'error',
+        text: [...parts, translateError(failed[0]?.reason)].join(' '),
+      });
+    } else {
+      setNotice({ tone: 'ok', text: parts.join(' ') });
+    }
+
+    // Removing the last row on a page would otherwise leave the user staring
+    // at an empty table with pagination still claiming the page exists.
+    const removed = deleted + archived;
+    const wasWholePage = removed >= (result?.rows.length ?? 0);
+
+    setIsDeleting(false);
+    setPendingDelete(null);
+    setSelectedIds(new Set());
+
+    if (wasWholePage && page > 1) {
+      setPage((current) => current - 1);
+    } else {
+      await load();
+    }
+  }
 
   /**
    * Rows arrive in a batch, so they enter as one — staggered in reading order
@@ -153,7 +234,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
     { scope: container, dependencies: [result, isLoading] },
   );
 
-  const columns: readonly Column<ResourceRow>[] = listFields(schema).map((field) => ({
+  const dataColumns: Column<ResourceRow>[] = listFields(schema).map((field) => ({
     id: field.name,
     header: field.label,
     // Numeric values are end-aligned so digits line up column-wise.
@@ -175,6 +256,52 @@ export function ResourceTable({ schema }: ResourceTableProps) {
       : {}),
   }));
 
+  /**
+   * Row actions live in a trailing column rather than a hover-only affordance:
+   * hover targets are invisible to touch and to keyboard users, and this table
+   * is the primary way every resource gets edited.
+   */
+  const columns: readonly Column<ResourceRow>[] =
+    canUpdate || canDelete
+      ? [
+          ...dataColumns,
+          {
+            id: '__actions',
+            header: <span className="sr-only">{t('actions.label')}</span>,
+            align: 'end',
+            cell: (row) => (
+              <div className="flex justify-end gap-1">
+                {canUpdate ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setFormRow(row);
+                      setIsFormOpen(true);
+                    }}
+                    // The row has no visible label of its own, so the button
+                    // names what it acts on for screen readers.
+                    aria-label={t('actions.editRow', { label: rowLabel(row) })}
+                  >
+                    <Pencil aria-hidden />
+                  </Button>
+                ) : null}
+                {canDelete ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setPendingDelete([String(row.id)])}
+                    aria-label={t('actions.deleteRow', { label: rowLabel(row) })}
+                  >
+                    <Trash2 aria-hidden />
+                  </Button>
+                ) : null}
+              </div>
+            ),
+          },
+        ]
+      : dataColumns;
+
   const enumFilters = schema.fields.filter(
     (field) => field.type === 'enum' && field.options?.length,
   );
@@ -183,6 +310,74 @@ export function ResourceTable({ schema }: ResourceTableProps) {
 
   return (
     <div ref={container} className="space-y-4">
+      {canCreate ? (
+        <div className="flex justify-end">
+          <Button
+            onClick={() => {
+              setFormRow(null);
+              setIsFormOpen(true);
+            }}
+          >
+            {/* A plus is symmetric — never .icon-directional. */}
+            <Plus aria-hidden />
+            {t('actions.create', { label: schema.label })}
+          </Button>
+        </div>
+      ) : null}
+
+      {/* role="status" rather than an alert: the outcome is worth announcing
+          but must not interrupt what the user is doing next. */}
+      {notice ? (
+        <p
+          role="status"
+          className={
+            notice.tone === 'error'
+              ? 'bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm'
+              : 'bg-muted text-foreground rounded-md px-3 py-2 text-sm'
+          }
+        >
+          {notice.text}
+        </p>
+      ) : null}
+
+      {pendingDelete ? (
+        <div
+          role="alertdialog"
+          aria-label={t('confirmDelete.title', { count: pendingDelete.length })}
+          className="border-destructive/40 space-y-3 rounded-md border p-4"
+        >
+          <div>
+            <p className="font-medium">
+              {t('confirmDelete.title', { count: pendingDelete.length })}
+            </p>
+            {/* States the archive rule UP FRONT. Finding out after the fact
+                that a "delete" only archived is a worse surprise than being
+                told the rule before confirming. */}
+            <p className="text-muted-foreground mt-1 text-sm">
+              {t('confirmDelete.description')}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={isDeleting}
+              onClick={() => void runDelete(pendingDelete)}
+            >
+              {isDeleting ? t('confirmDelete.working') : t('confirmDelete.confirm')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isDeleting}
+              onClick={() => setPendingDelete(null)}
+            >
+              {t('confirmDelete.cancel')}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {canSearch || enumFilters.length > 0 ? (
         <div className="flex flex-wrap items-end gap-3">
           {canSearch ? (
@@ -251,6 +446,26 @@ export function ResourceTable({ schema }: ResourceTableProps) {
             ? tTable('noResults')
             : t('empty', { label: schema.label })
         }
+        // Selection existed before this with nothing attached to it — rows
+        // could be ticked and no action was ever offered.
+        bulkActions={
+          canDelete
+            ? (ids) => (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm">{t('selected', { count: ids.size })}</span>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={isDeleting}
+                    onClick={() => setPendingDelete([...ids])}
+                  >
+                    <Trash2 aria-hidden />
+                    {t('actions.deleteSelected')}
+                  </Button>
+                </div>
+              )
+            : undefined
+        }
       />
 
       {result && result.totalPages > 1 ? (
@@ -282,6 +497,19 @@ export function ResourceTable({ schema }: ResourceTableProps) {
             </Button>
           </div>
         </div>
+      ) : null}
+
+      {canCreate || canUpdate ? (
+        <ResourceForm
+          schema={schema}
+          row={formRow}
+          open={isFormOpen}
+          onOpenChange={setIsFormOpen}
+          onSaved={(action) => {
+            setNotice({ tone: 'ok', text: t(`notice.${action}`) });
+            void load();
+          }}
+        />
       ) : null}
     </div>
   );
