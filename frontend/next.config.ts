@@ -39,5 +39,8 @@ export default withSentryConfig(withNextIntl(nextConfig), {
   // through locale handling would rewrite it and break error reporting.
   tunnelRoute: '/monitoring',
 
-  disableLogger: true,
+  // Strips Sentry's own debug logging from the bundle. Was `disableLogger`,
+  // which @sentry/nextjs 10.x deprecates — it printed a DEPRECATION WARNING on
+  // every dev start and every build.
+  webpack: { treeshake: { removeDebugLogging: true } },
 });
