@@ -12,6 +12,33 @@
 //   - Migration names are descriptive: `add_user_email_index`, not `fix1`.
 //   - Destructive migrations (drop/rename a column) get a code review AND a
 //     backup snapshot before deploy.
+//
+// ─── CONVENTIONS (deliberate departures from the old admin-template schema) ──
+//
+// 1. MONEY IS `Decimal(10,2)`, matching the old schema. NEVER Float — floats
+//    cannot represent 0.1 exactly and money arithmetic drifts.
+//    Prisma maps Decimal to a Decimal.js instance, NOT a JS number. That has
+//    two consequences every route must respect:
+//      - `JSON.stringify` turns it into a string, so API responses carry
+//        "49.99", not 49.99. Serialise deliberately (`.toFixed(2)`) rather
+//        than letting it leak inconsistently.
+//      - Never do arithmetic with `+` or `*` on these values. Use Decimal.js
+//        methods (`.plus()`, `.times()`), or the result silently becomes a
+//        string concatenation.
+//    See docs/PROJECT_STATUS.md for the money-handling helper this needs.
+//
+// 2. camelCase in Prisma, snake_case in MySQL. `@map` / `@@map` bridge the two,
+//    so TypeScript reads naturally while the database keeps SQL conventions.
+//
+// 3. Every model has `createdAt`. Every mutable model also has `updatedAt`.
+//    The old schema was inconsistent (`placed_at` on orders, nothing at all on
+//    order_items), which makes "what changed recently" queries impossible.
+//
+// 4. Enums are Prisma enums, not free VARCHARs — invalid states become
+//    compile errors rather than runtime surprises.
+//
+// 5. Explicit `onDelete` on every relation. Deletion behaviour is a design
+//    decision; leaving it implicit means finding out during an incident.
 
 generator client {
   provider = "prisma-client-js"
@@ -22,14 +49,351 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Example model — delete when the real domain lands ─────────────
-// Kept only so `prisma migrate dev` has something to generate on day one and
-// the client type-checks before any real modelling happens.
-model Example {
-  id        String   @id @default(cuid())
-  name      String   @db.VarChar(255)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ═══════════════════════════════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════════════════════════════
+
+/// Staff roles, highest privilege first. Enforced by the API; the UI only
+/// mirrors it. `demo` and `custom` from the old system are deliberately not
+/// carried over — see FOUNDATIONS.md.
+enum StaffRole {
+  DEVELOPER
+  OWNER
+  MANAGER
+  FULFILLMENT
+  SUPPORT
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELED
+  RETURNED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum DeliveryStaffStatus {
+  ACTIVE
+  ON_SHIFT
+  INACTIVE
+}
+
+enum DeliveryStatus {
+  ASSIGNED
+  PICKED_UP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  HANDED_OVER
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STAFF & PLATFORM
+// ═══════════════════════════════════════════════════════════════════
+
+/// A dashboard user. Distinct from `Customer` — customers never log in here.
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique @db.VarChar(255)
+  name            String?   @db.VarChar(255)
+  phone           String?   @db.VarChar(48)
+  /// bcrypt hash. NEVER selected into an API response — see the `safeUser`
+  /// helper once auth lands.
+  passwordHash    String    @map("password_hash") @db.VarChar(255)
+  role            StaffRole @default(MANAGER)
+  isActive        Boolean   @default(true) @map("is_active")
+  /// Optional time-boxed access, e.g. a contractor. NULL = never expires.
+  accessExpiresAt DateTime? @map("access_expires_at")
+  lastLoginAt     DateTime? @map("last_login_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([role])
+  @@index([createdAt])
+  @@map("users")
+}
+
+/// Key/value application settings. JSON value so a setting can hold a scalar
+/// or an object without a migration per setting.
+model Setting {
+  key       String   @id @db.VarChar(64)
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+/// In-app notification for dashboard staff.
+model Notification {
+  id     String  @id @default(cuid())
+  type   String  @db.VarChar(48)
+  title  String  @db.VarChar(255)
+  body   String? @db.Text
+  /// Optional in-app deep link, e.g. "/admin/orders/ORD-1024".
+  link   String? @db.VarChar(255)
+  isRead Boolean @default(false) @map("is_read")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([isRead, createdAt])
+  @@map("notifications")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CATALOGUE
+// ═══════════════════════════════════════════════════════════════════
+
+model Category {
+  id       String  @id @default(cuid())
+  name     String  @db.VarChar(160)
+  slug     String  @unique @db.VarChar(160)
+  isActive Boolean @default(true) @map("is_active")
+
+  products Product[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("categories")
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  name        String        @db.VarChar(200)
+  sku         String?       @unique @db.VarChar(64)
+  description String?       @db.Text
+  price       Decimal       @default(0) @db.Decimal(10, 2)
+  imageUrl    String?       @map("image_url") @db.VarChar(512)
+  status      ProductStatus @default(ACTIVE)
+  stock       Int           @default(0)
+
+  categoryId String?   @map("category_id")
+  /// SetNull, not Cascade — deleting a category must never delete products.
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  orderItems OrderItem[]
+  reviews    Review[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([categoryId])
+  @@index([createdAt])
+  @@map("products")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CUSTOMERS & ORDERS
+// ═══════════════════════════════════════════════════════════════════
+
+model Customer {
+  id      String  @id @default(cuid())
+  name    String  @db.VarChar(200)
+  email   String  @unique @db.VarChar(255)
+  phone   String? @db.VarChar(48)
+  city    String? @db.VarChar(96)
+  country String? @db.VarChar(96)
+
+  orders  Order[]
+  reviews Review[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([createdAt])
+  @@map("customers")
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  /// Human-facing reference shown to customers and couriers, e.g. "ORD-1024".
+  orderNumber   String      @unique @map("order_number") @db.VarChar(40)
+  /// Denormalised on purpose: the order total must not change if a product's
+  /// price is edited after the order was placed.
+  total         Decimal     @default(0) @db.Decimal(10, 2)
+  status        OrderStatus @default(PENDING)
+  paymentMethod String?     @map("payment_method") @db.VarChar(48)
+  placedAt      DateTime    @default(now()) @map("placed_at")
+
+  customerId String?   @map("customer_id")
+  /// SetNull so deleting a customer preserves order history for accounting.
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  items         OrderItem[]
+  statusHistory OrderStatusHistory[]
+  assignment    DeliveryAssignment?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([customerId])
+  @@index([placedAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id       String  @id @default(cuid())
+  quantity Int     @default(1)
+  /// Price AT TIME OF ORDER. Never read the live product price when
+  /// displaying a historical order.
+  price    Decimal @default(0) @db.Decimal(10, 2)
+
+  orderId String @map("order_id")
+  /// Cascade — an order's items have no meaning without the order.
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String?  @map("product_id")
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+/// Audit trail of order status changes. Not in the old schema — added because
+/// "who moved this order to shipped, and when" is a question the dashboard
+/// will be asked, and it cannot be answered retroactively.
+model OrderStatusHistory {
+  id          String       @id @default(cuid())
+  fromStatus  OrderStatus? @map("from_status")
+  toStatus    OrderStatus  @map("to_status")
+  /// Free-text reason, e.g. "customer requested cancellation".
+  note        String?      @db.VarChar(255)
+  /// Who made the change. Plain id, not a relation — the history must survive
+  /// the staff member being deleted.
+  changedById String?      @map("changed_by_id")
+
+  orderId String @map("order_id")
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([orderId, createdAt])
+  @@map("order_status_history")
+}
+
+model Review {
+  id     String       @id @default(cuid())
+  /// 1-5. Enforced in the API layer with Zod; MySQL has no CHECK on TINYINT.
+  rating Int          @default(5) @db.TinyInt
+  body   String?      @db.Text
+  status ReviewStatus @default(PENDING)
+
+  productId String?  @map("product_id")
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  customerId String?   @map("customer_id")
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([productId])
+  @@map("reviews")
+}
+
+model Discount {
+  id        String       @id @default(cuid())
+  code      String       @unique @db.VarChar(48)
+  type      DiscountType @default(PERCENT)
+  /// For PERCENT: the percentage itself (10.00 = 10%). For FIXED: a money
+  /// amount. Same Decimal(10,2) as every other monetary column.
+  value     Decimal      @db.Decimal(10, 2)
+  maxUses   Int?         @map("max_uses")
+  usedCount Int          @default(0) @map("used_count")
+  expiresAt DateTime?    @map("expires_at")
+  isActive  Boolean      @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive, expiresAt])
+  @@map("discounts")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DELIVERY
+// ═══════════════════════════════════════════════════════════════════
+
+/// A courier. Separate from `User` — couriers log into the delivery portal
+/// with an access code, not into the admin dashboard.
+model DeliveryStaff {
+  id            String              @id @default(cuid())
+  name          String              @db.VarChar(255)
+  email         String?             @db.VarChar(255)
+  phone         String?             @db.VarChar(48)
+  vehicleType   String?             @map("vehicle_type") @db.VarChar(48)
+  plateNumber   String?             @map("plate_number") @db.VarChar(48)
+  licenseNumber String?             @map("license_number") @db.VarChar(64)
+  zone          String?             @db.VarChar(96)
+  region        String?             @db.VarChar(96)
+  country       String?             @db.VarChar(96)
+  status        DeliveryStaffStatus @default(ACTIVE)
+  /// Rotatable login code for the courier portal. Unique so it can be looked
+  /// up directly at sign-in.
+  accessCode    String?             @unique @map("access_code") @db.VarChar(32)
+
+  assignments DeliveryAssignment[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("delivery_staff")
+}
+
+/// Links an order to a courier. The delivery address is denormalised here so a
+/// courier's view never needs to read customer records.
+model DeliveryAssignment {
+  id            String         @id @default(cuid())
+  customerName  String?        @map("customer_name") @db.VarChar(255)
+  customerPhone String?        @map("customer_phone") @db.VarChar(48)
+  address       String?        @db.VarChar(255)
+  area          String?        @db.VarChar(96)
+  city          String?        @db.VarChar(96)
+  country       String?        @db.VarChar(96)
+  /// Amount to collect on delivery. Null = prepaid.
+  total         Decimal?       @db.Decimal(10, 2)
+  paymentMethod String?        @map("payment_method") @db.VarChar(48)
+  status        DeliveryStatus @default(ASSIGNED)
+  note          String?        @db.VarChar(255)
+
+  /// One assignment per order.
+  orderId String @unique @map("order_id")
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  driverId String        @map("driver_id")
+  /// Cascade matches the old schema: removing a courier removes their
+  /// assignments. Reassign before deleting a courier with live deliveries.
+  driver   DeliveryStaff @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([driverId, status])
+  @@index([status])
+  @@map("delivery_assignments")
 }
