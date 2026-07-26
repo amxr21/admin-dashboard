@@ -10,15 +10,15 @@ Living status of the rebuild. Updated at the end of each migration group.
 
 | # | Group | Status |
 |---|---|---|
-| 1 | `feat/data-model` — Prisma schema, migration, seed | **in review** (PR #27) |
-| 2 | `feat/auth` — JWT login, bcrypt, brute-force protection | **in review** |
-| 3 | `feat/rbac` — 6-role permission map + demo role | **in review** |
-| 4 | `feat/motion-system` — GSAP foundation | **in review** |
-| 5 | `feat/i18n` — next-intl, RTL, AR/EN catalogues | **in review** |
-| 6 | `feat/ui-primitives` — shadcn components + applied motion | **in review** |
-| 7 | `feat/app-shell` — layout, sidebar, topbar, mobile drawer | **in review** |
-| 8 | `feat/login-page` — login UI, session, auth guard | **in review** |
-| 9 | `feat/dashboard` — KPIs, charts | not started |
+| 1 | `feat/data-model` — Prisma schema, migration, seed | **merged** (PR #27) |
+| 2 | `feat/auth` — JWT login, bcrypt, brute-force protection | **merged** |
+| 3 | `feat/rbac` — 6-role permission map + demo role | **merged** |
+| 4 | `feat/motion-system` — GSAP foundation | **merged** |
+| 5 | `feat/i18n` — next-intl, RTL, AR/EN catalogues | **merged** |
+| 6 | `feat/ui-primitives` — shadcn components + applied motion | **merged** |
+| 7 | `feat/app-shell` — layout, sidebar, topbar, mobile drawer | **merged** |
+| 8 | `feat/login-page` — login UI, session, auth guard | **merged** |
+| 9 | `feat/dashboard` — KPI tiles, revenue chart | **in review** |
 | 10 | `feat/products` — CRUD, images | not started |
 | 11 | `feat/orders` — list, detail, status, invoice | not started |
 | 12 | `feat/customers` — list, detail, history | not started |
@@ -96,20 +96,23 @@ much simpler implementation than the original. See `ADMIN_DASHBOARD_FEATURES.md`
 
 ## Current work
 
-Groups 1–4 are complete and stacked as PRs #27 → #28 → #29 → (#30), to be
-merged in that order.
+**Group 9 — `feat/dashboard`.** KPI stat tiles and a revenue line chart, built
+against the `dataviz` procedure: form chosen before colour, palette run through
+the validator for BOTH tiers, single y-axis, direction-aware value axis with a
+time axis that stays left-to-right.
+
+The group-4 chart tokens FAILED that validation and were re-stepped — see
+`docs/errors-log`-equivalent in the workbook and the note in `globals.css`.
+
+The page renders deterministic sample data. `GET /api/v1/reports/overview` does
+not exist yet; `StatTileProps` and `RevenuePoint` are the shapes it should
+return.
 
 ## Next
 
-**Group 5 — `feat/ui-primitives`.** The shadcn components the pages need.
-
-Two decisions that should be made *before* group 5, because both are far more
-expensive to retrofit than to build in:
-
-- **Bilingual AR/EN + RTL.** Every component and layout is affected. If it's
-  wanted, group 5 should use CSS logical properties from the start.
-- **Bulk select on DataTable.** Even if bulk *actions* land later, the table
-  should be designed with selection state in mind.
+**Group 10 — `feat/products`.** CRUD plus image handling. Six groups remain
+(10–15): products, orders, customers, inventory-discounts, delivery,
+settings-staff.
 
 ## Deferred ideas (recorded so they aren't lost)
 

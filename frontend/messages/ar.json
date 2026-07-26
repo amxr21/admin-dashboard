@@ -141,5 +141,16 @@
     "export": "تصدير",
     "exportCsv": "تصدير بصيغة CSV",
     "bulkActions": "إجراءات جماعية"
+  },
+  "dashboard": {
+    "title": "لوحة التحكم",
+    "revenue": "الإيرادات",
+    "revenueOverTime": "الإيرادات عبر الزمن",
+    "vsPreviousPeriod": "مقارنة بالفترة السابقة",
+    "totalRevenue": "إجمالي الإيرادات",
+    "totalOrders": "الطلبات",
+    "totalCustomers": "العملاء",
+    "pendingOrders": "الطلبات المعلقة",
+    "recentOrders": "أحدث الطلبات"
   }
 }

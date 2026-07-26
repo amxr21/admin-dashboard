@@ -141,5 +141,16 @@
     "export": "Export",
     "exportCsv": "Export as CSV",
     "bulkActions": "Bulk actions"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "revenue": "Revenue",
+    "revenueOverTime": "Revenue over time",
+    "vsPreviousPeriod": "vs previous period",
+    "totalRevenue": "Total revenue",
+    "totalOrders": "Orders",
+    "totalCustomers": "Customers",
+    "pendingOrders": "Pending orders",
+    "recentOrders": "Recent orders"
   }
 }

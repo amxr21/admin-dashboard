@@ -18,6 +18,18 @@ import ar from '../../messages/ar.json';
 
 const MESSAGES = { en, ar } as const;
 
+/** Kept in sync with src/i18n/request.ts — see the note on the provider. */
+const FORMATS = {
+  dateTime: {
+    short: { day: '2-digit', month: '2-digit', year: 'numeric' },
+    long: { day: 'numeric', month: 'long', year: 'numeric' },
+  },
+  number: {
+    currency: { style: 'currency', currency: 'AED', numberingSystem: 'latn' },
+    decimal: { numberingSystem: 'latn' },
+  },
+} as const;
+
 type TestLocale = keyof typeof MESSAGES;
 
 interface Options extends Omit<RenderOptions, 'wrapper'> {
@@ -32,7 +44,15 @@ export function render(ui: ReactElement, { locale = 'en', ...options }: Options 
 
   function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <NextIntlClientProvider locale={locale} messages={MESSAGES[locale]} timeZone="UTC">
+      <NextIntlClientProvider
+        locale={locale}
+        messages={MESSAGES[locale]}
+        timeZone="UTC"
+        // MUST mirror src/i18n/request.ts. Without it, any component calling a
+        // NAMED format — formatter.number(x, 'currency') — silently fails to
+        // resolve it in tests while working fine in the app.
+        formats={FORMATS}
+      >
         {children}
       </NextIntlClientProvider>
     );
