@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 
 import { ThemeProvider } from '@/components/theme-provider';
+import { MotionProvider } from '@/components/motion-provider';
 
 import './globals.css';
 
@@ -33,7 +34,9 @@ export default function RootLayout({
     // server and client markup legitimately differ on this one element.
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body className="bg-background text-foreground font-sans antialiased">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <MotionProvider>{children}</MotionProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
