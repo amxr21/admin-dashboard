@@ -32,6 +32,11 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* ─── Typeface ───────────────────────────────────────────────── */
+  /* The live font stack. `--font-sans` in @theme inline points HERE, so this
+     is the variable to re-point per script — see the note there. */
+  --font-app: var(--font-latin), ui-sans-serif, system-ui, sans-serif;
+
   /* ─── Radius ─────────────────────────────────────────────────── */
   --radius: 0.625rem; /* 10px — matches the template's --ui-radius */
 
@@ -190,9 +195,28 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
-  /* Registered at setup so no component ever hardcodes a font stack.
-     The actual family is swapped per script by [lang] in @layer base. */
-  --font-sans: var(--font-latin), ui-sans-serif, system-ui, sans-serif;
+  /*
+   * Registered at setup so no component ever hardcodes a font stack.
+   *
+   * ─── WHY THE EXTRA INDIRECTION THROUGH --font-app ────────────────────
+   * `@theme inline` INLINES the token's value into the generated utility, so
+   *
+   *     --font-sans: var(--font-latin), ui-sans-serif, …
+   *
+   * compiled to `.font-sans { font-family: var(--font-latin), … }` — pinned to
+   * the LATIN variable. Re-pointing `--font-sans` under `html[lang='ar']` then
+   * did nothing at all: the utility no longer read that token. Arabic rendered
+   * in Inter with an OS fallback while IBM Plex Sans Arabic downloaded and sat
+   * unused, which looks like a font that "didn't apply" rather than a broken
+   * rule.
+   *
+   * Pointing the token at `--font-app` makes the utility resolve
+   * `var(--font-app)` at runtime, so swapping THAT per script works — exactly
+   * how every colour here works (`.bg-card` → `var(--card)`, re-pointed by
+   * `.dark`). The rule: with `@theme inline`, re-point the inner variable,
+   * never the theme token.
+   */
+  --font-sans: var(--font-app);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -260,7 +284,12 @@
    * to read even though nothing is technically "wrong".
    */
   html[lang='ar'] {
-    --font-sans: var(--font-arabic), var(--font-latin), ui-sans-serif, system-ui,
+    /* `--font-app`, NOT `--font-sans`: the utility resolves the former at
+       runtime, and re-pointing the theme token itself has no effect under
+       `@theme inline`. Latin is kept in the stack after it so Latin glyphs
+       inside Arabic text (SKUs, emails, order numbers) still render in Inter
+       rather than IBM Plex's Latin cut. */
+    --font-app: var(--font-arabic), var(--font-latin), ui-sans-serif, system-ui,
       sans-serif;
 
     /*
