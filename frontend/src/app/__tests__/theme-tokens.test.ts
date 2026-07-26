@@ -117,11 +117,82 @@ describe('the font swap actually reaches the utility', () => {
   });
 
   it('swaps the Arabic stack on that same variable', () => {
-    const arabicBlock = css.slice(css.search(/html\[lang='ar'\]\s*\{/));
+    // Captures the whole declaration, through the semicolon — matching only up
+    // to `var(--font-arabic)` would end the match before the fallbacks.
+    const swap = /html\[lang='ar'\]\s*\{[^}]*?(--font-app:[^;]+;)/.exec(css);
 
-    expect(arabicBlock).toMatch(/--font-app:\s*var\(--font-arabic\)/);
+    expect(swap).not.toBeNull();
     // Latin stays in the stack after it, so SKUs, emails and order numbers
     // inside Arabic text keep Inter rather than IBM Plex's Latin cut.
-    expect(arabicBlock).toMatch(/--font-app:[^;]*var\(--font-latin\)/);
+    expect(swap?.[1]).toMatch(/var\(--font-arabic\),\s*var\(--font-latin\)/);
+  });
+});
+
+describe('the swap can actually WIN the cascade', () => {
+  /**
+   * Presence is not precedence — the gap that let the first fix ship broken.
+   *
+   * An UNLAYERED declaration beats a layered one outright: the cascade checks
+   * the layer before it ever looks at specificity. `--font-app` is declared on
+   * the unlayered `:root`, so an override inside `@layer base` loses no matter
+   * how specific it is. The rule was present, correct, and silently outranked
+   * — which looks exactly like "the font isn't applied".
+   *
+   * `.dark` is the reference shape: it re-points `--card` from the unlayered
+   * region, which is why dark mode has always worked.
+   */
+  function layerDepthAt(index: number): number {
+    // Count unclosed `@layer … {` before this point.
+    let depth = 0;
+    let i = 0;
+
+    while (i < index) {
+      const open = css.indexOf('{', i);
+      if (open === -1 || open >= index) break;
+
+      const header = css.slice(css.lastIndexOf('}', open) + 1, open);
+      const isLayer = /@layer\s+[\w\s,]*$/.test(header);
+
+      // Walk to this block's matching close.
+      let d = 0;
+      let j = open;
+      for (; j < css.length; j += 1) {
+        if (css[j] === '{') d += 1;
+        else if (css[j] === '}') {
+          d -= 1;
+          if (d === 0) break;
+        }
+      }
+
+      if (j > index) {
+        // `index` sits inside this block.
+        if (isLayer) depth += 1;
+        i = open + 1;
+      } else {
+        i = j + 1;
+      }
+    }
+
+    return depth;
+  }
+
+  it('declares the default and the Arabic override in the same layer context', () => {
+    const base = css.search(/--font-app:\s*var\(--font-latin\)/);
+    const arabic = css.search(/--font-app:\s*var\(--font-arabic\)/);
+
+    expect(base).toBeGreaterThan(-1);
+    expect(arabic).toBeGreaterThan(-1);
+
+    // Equal depth means specificity decides, and html[lang='ar'] (0,1,1) beats
+    // :root (0,1,0). Unequal means the layered one silently loses.
+    expect(layerDepthAt(arabic)).toBe(layerDepthAt(base));
+  });
+
+  it('keeps the swap unlayered, alongside the .dark colour variant', () => {
+    const arabic = css.search(/--font-app:\s*var\(--font-arabic\)/);
+    const dark = css.search(/\.dark\s*\{/);
+
+    expect(layerDepthAt(arabic)).toBe(0);
+    expect(layerDepthAt(dark)).toBe(0);
   });
 });

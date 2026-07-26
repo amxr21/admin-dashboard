@@ -158,6 +158,33 @@
 }
 
 /*
+ * ─── THE ARABIC TYPEFACE SWAP ────────────────────────────────────────
+ * This lives HERE, unlayered beside `.dark`, and not in the `@layer base`
+ * block further down where the rest of the Arabic typography sits.
+ *
+ * WHY: an unlayered declaration beats a layered one outright — the cascade
+ * checks the layer BEFORE it checks specificity. `--font-app` is set on the
+ * unlayered `:root` above, so an override inside `@layer base` can never win,
+ * no matter how specific it is. The result looked exactly like a font that
+ * "didn't apply": the rule was present, correct, and silently outranked.
+ *
+ * `.dark` is the proof of the working shape — it re-points `--card` from right
+ * here, unlayered, which is why dark mode works. Same layer as `:root`, higher
+ * specificity, so it wins. This rule copies that arrangement.
+ *
+ * The type-scale overrides (--text-*, line-height) stay in `@layer base`,
+ * because those tokens come from `@layer theme` and base already outranks
+ * theme. Only variables declared on the unlayered `:root` need to be
+ * overridden from out here.
+ */
+html[lang='ar'] {
+  /* Latin stays in the stack after Arabic, so SKUs, emails and order numbers
+     inside Arabic text keep Inter rather than IBM Plex's Latin cut. */
+  --font-app: var(--font-arabic), var(--font-latin), ui-sans-serif, system-ui,
+    sans-serif;
+}
+
+/*
  * Register the tokens as Tailwind utilities. This is what turns `--card` into
  * `bg-card` / `text-card-foreground`. Values are `var(...)` references, NOT
  * literals — that indirection is precisely what makes `.dark` work without a
@@ -284,13 +311,10 @@
    * to read even though nothing is technically "wrong".
    */
   html[lang='ar'] {
-    /* `--font-app`, NOT `--font-sans`: the utility resolves the former at
-       runtime, and re-pointing the theme token itself has no effect under
-       `@theme inline`. Latin is kept in the stack after it so Latin glyphs
-       inside Arabic text (SKUs, emails, order numbers) still render in Inter
-       rather than IBM Plex's Latin cut. */
-    --font-app: var(--font-arabic), var(--font-latin), ui-sans-serif, system-ui,
-      sans-serif;
+    /* The typeface swap is NOT here — it sits unlayered next to `.dark`, above.
+       An override inside this layer cannot beat the unlayered `:root` that
+       declares `--font-app`. These type-scale tokens are different: they come
+       from `@layer theme`, which `@layer base` already outranks. */
 
     /*
      * ~+6% on TEXT ONLY.
