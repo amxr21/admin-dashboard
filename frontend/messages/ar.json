@@ -79,7 +79,10 @@
     "staff": "الموظفون",
     "commerce": "التجارة",
     "people": "الأشخاص",
-    "admin": "الإدارة"
+    "admin": "الإدارة",
+    "notifications": "الإشعارات",
+    "catalogue": "الكتالوج",
+    "system": "النظام"
   },
   "roles": {
     "DEVELOPER": "مطوّر",

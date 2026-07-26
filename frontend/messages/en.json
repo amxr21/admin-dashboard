@@ -79,7 +79,10 @@
     "staff": "Staff",
     "commerce": "Commerce",
     "people": "People",
-    "admin": "Administration"
+    "admin": "Administration",
+    "notifications": "Notifications",
+    "catalogue": "Catalogue",
+    "system": "System"
   },
   "roles": {
     "DEVELOPER": "Developer",

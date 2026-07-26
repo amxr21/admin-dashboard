@@ -27,6 +27,31 @@ vi.mock('@/i18n/navigation', () => ({
     createElement('a', { href, ...props }, children as ReactNode),
 }));
 
+/**
+ * Generic resources come from the API schema now, not from a hardcoded list.
+ * This stands in for that fetch so the nav has both kinds of entry to merge:
+ * hand-written pages (orders, staff) and schema-driven ones (customers,
+ * products).
+ *
+ * The schema the API returns is ALREADY permission-filtered, but the nav
+ * re-checks the role anyway — so this mock returns everything and lets the
+ * component do the filtering the tests are actually about.
+ */
+vi.mock('@/components/providers/schema-provider', () => ({
+  useResourceSchema: () => ({
+    isLoading: false,
+    failed: false,
+    resources: [
+      { resource: 'products', label: 'Products', group: 'catalogue', permissionArea: 'products' },
+      { resource: 'categories', label: 'Categories', group: 'catalogue', permissionArea: 'categories' },
+      { resource: 'discounts', label: 'Discounts', group: 'catalogue', permissionArea: 'discounts' },
+      { resource: 'customers', label: 'Customers', group: 'people', permissionArea: 'customers' },
+      { resource: 'reviews', label: 'Reviews', group: 'people', permissionArea: 'reviews' },
+      { resource: 'notifications', label: 'Notifications', group: 'system', permissionArea: 'settings' },
+    ],
+  }),
+}));
+
 describe('permission-driven navigation', () => {
   it('shows every area to an owner', () => {
     render(<SidebarNav role="OWNER" />);
@@ -116,5 +141,36 @@ describe('localisation', () => {
 
     expect(screen.getByRole('link', { name: 'الطلبات' })).toBeInTheDocument();
     expect(screen.getByText('التجارة')).toBeInTheDocument();
+  });
+});
+
+describe('schema-driven entries', () => {
+  it('renders resources from the schema alongside hand-written pages', () => {
+    // The whole point of A5: adding a resource to admin.config.ts puts it in
+    // the nav with no frontend change.
+    render(<SidebarNav role="OWNER" />);
+
+    // Hand-written (no schema entry exists for these).
+    expect(screen.getByRole('link', { name: /orders/i })).toBeInTheDocument();
+    // Schema-driven.
+    expect(screen.getByRole('link', { name: /products/i })).toBeInTheDocument();
+  });
+
+  it('points schema entries at the generic page', () => {
+    render(<SidebarNav role="OWNER" />);
+
+    expect(screen.getByRole('link', { name: /products/i })).toHaveAttribute(
+      'href',
+      '/admin/r/products',
+    );
+  });
+
+  it('still applies the role filter to schema entries', () => {
+    // The API filters the schema too, but the nav must not RELY on that —
+    // otherwise a change to either side silently widens what is advertised.
+    render(<SidebarNav role="SUPPORT" />);
+
+    expect(screen.getByRole('link', { name: /customers/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /discounts/i })).not.toBeInTheDocument();
   });
 });

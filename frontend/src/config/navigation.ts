@@ -1,7 +1,9 @@
 import {
   BadgePercent,
+  Bell,
   Boxes,
   ChartColumn,
+  Database,
   FolderTree,
   LayoutDashboard,
   Package,
@@ -58,27 +60,12 @@ export const NAVIGATION: readonly NavGroup[] = [
     labelKey: 'commerce',
     items: [
       { href: '/admin/orders', labelKey: 'orders', icon: ShoppingCart, area: 'orders' },
-      { href: '/admin/r/products', labelKey: 'products', icon: Package, area: 'products' },
-      {
-        href: '/admin/r/categories',
-        labelKey: 'categories',
-        icon: FolderTree,
-        area: 'categories',
-      },
       { href: '/admin/inventory', labelKey: 'inventory', icon: Boxes, area: 'inventory' },
-      {
-        href: '/admin/r/discounts',
-        labelKey: 'discounts',
-        icon: BadgePercent,
-        area: 'discounts',
-      },
     ],
   },
   {
     labelKey: 'people',
     items: [
-      { href: '/admin/r/customers', labelKey: 'customers', icon: Users, area: 'customers' },
-      { href: '/admin/r/reviews', labelKey: 'reviews', icon: Star, area: 'reviews' },
       { href: '/admin/delivery', labelKey: 'delivery', icon: Truck, area: 'delivery' },
     ],
   },
@@ -91,3 +78,28 @@ export const NAVIGATION: readonly NavGroup[] = [
     ],
   },
 ];
+
+/**
+ * Icons for schema-driven resources, keyed by resource name.
+ *
+ * The API's schema carries labels and permissions but no icon — an icon is a
+ * frontend concern and shipping a component name over the wire would just be a
+ * string the client has to trust. A resource with no entry here falls back to
+ * a generic one and still works, so adding a resource never breaks the nav.
+ */
+export const RESOURCE_ICONS: Record<string, LucideIcon> = {
+  products: Package,
+  categories: FolderTree,
+  discounts: BadgePercent,
+  customers: Users,
+  reviews: Star,
+  notifications: Bell,
+};
+
+export const RESOURCE_ICON_FALLBACK: LucideIcon = Database;
+
+/**
+ * Which nav group a schema `group` belongs under, and its ordering.
+ * Groups the schema reports but that aren't listed here are appended last.
+ */
+export const RESOURCE_GROUP_ORDER = ['catalogue', 'people', 'system'] as const;

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 
 import { AppShell } from '@/components/shell/app-shell';
 import { AuthGuard } from '@/components/auth/auth-guard';
+import { SchemaProvider } from '@/components/providers/schema-provider';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from '@/i18n/navigation';
 import type { StaffRole } from '@/config/areas';
@@ -21,7 +22,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   return (
     <AuthGuard>
+      {/* INSIDE AuthGuard: the schema request needs a token, and firing it for
+          a signed-out user would just be a guaranteed 401 on every page load. */}
       {user ? (
+        <SchemaProvider>
         <AppShell
           user={{
             // The API allows a null name; the UI needs something to render.
@@ -36,6 +40,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         >
           {children}
         </AppShell>
+        </SchemaProvider>
       ) : null}
     </AuthGuard>
   );
