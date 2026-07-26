@@ -3,6 +3,7 @@
 import { useRef, type ReactNode } from 'react';
 
 import { gsap, useGSAP } from '@/lib/gsap';
+import { inlineOffset } from '@/lib/direction';
 import { DISTANCE, DURATION, EASE, REDUCED } from '@/lib/motion-tokens';
 
 /**
@@ -11,7 +12,7 @@ import { DISTANCE, DURATION, EASE, REDUCED } from '@/lib/motion-tokens';
  *
  * ```tsx
  * <Reveal><Card /></Reveal>
- * <Reveal direction="left" delay={0.1}><Heading /></Reveal>
+ * <Reveal from="start" delay={0.1}><Heading /></Reveal>
  * ```
  *
  * Reduced motion is handled by `gsap.matchMedia`, which swaps the animation
@@ -25,28 +26,39 @@ import { DISTANCE, DURATION, EASE, REDUCED } from '@/lib/motion-tokens';
  * forever. Fail visible, never fail blank.
  */
 
-type Direction = 'up' | 'down' | 'left' | 'right' | 'none';
+/**
+ * Where the element travels FROM.
+ *
+ * Horizontal values are LOGICAL, not physical: 'start' means the reading-start
+ * edge — left in English, right in Arabic. Physical 'left'/'right' are
+ * deliberately not offered, because a hardcoded x-offset animates from the
+ * wrong side in RTL and does so silently.
+ */
+type RevealFrom = 'up' | 'down' | 'start' | 'end' | 'none';
 
 interface RevealProps {
   children: ReactNode;
-  /** Where the element travels FROM. Default 'up' (enters rising). */
-  direction?: Direction;
+  /** Default 'up' (enters rising). */
+  from?: RevealFrom;
   delay?: number;
   distance?: number;
   duration?: number;
   className?: string;
 }
 
-function offsetFor(direction: Direction, distance: number): gsap.TweenVars {
-  switch (direction) {
+function offsetFor(from: RevealFrom, distance: number): gsap.TweenVars {
+  switch (from) {
     case 'up':
       return { y: distance };
     case 'down':
       return { y: -distance };
-    case 'left':
-      return { x: distance };
-    case 'right':
-      return { x: -distance };
+    // Signed by reading direction. CSS transforms ignore dir="rtl", so this is
+    // the only thing standing between an Arabic user and content sliding in
+    // from the wrong edge.
+    case 'start':
+      return { x: inlineOffset('start', distance) };
+    case 'end':
+      return { x: inlineOffset('end', distance) };
     case 'none':
       return {};
   }
@@ -54,7 +66,7 @@ function offsetFor(direction: Direction, distance: number): gsap.TweenVars {
 
 export function Reveal({
   children,
-  direction = 'up',
+  from = 'up',
   delay = 0,
   distance = DISTANCE.md,
   duration = DURATION.base,
@@ -69,7 +81,7 @@ export function Reveal({
       mm.add('(prefers-reduced-motion: no-preference)', () => {
         gsap.from(ref.current, {
           opacity: 0,
-          ...offsetFor(direction, distance),
+          ...offsetFor(from, distance),
           duration,
           delay,
           ease: EASE.out,

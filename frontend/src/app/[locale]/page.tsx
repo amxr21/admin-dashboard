@@ -1,3 +1,6 @@
+import { getTranslations, setRequestLocale } from 'next-intl/server';
+
+import { LocaleSwitcher } from '@/components/locale-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 
@@ -37,18 +40,32 @@ const CHART_TOKENS = [
   'bg-chart-5',
 ] as const;
 
-export default function Home() {
+export default async function Home({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  // Keeps this page statically rendered despite reading translations.
+  setRequestLocale(locale);
+
+  const t = await getTranslations('counts');
+
   return (
     <main className="mx-auto max-w-3xl p-8">
       <header className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">admin-dashboard</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Foundations and design tokens are in place. See FOUNDATIONS.md for
-            the conventions this project expects.
+            {/* Exercises ICU pluralisation in both locales — Arabic resolves
+                `few` here, which English has no equivalent for. */}
+            {t('products', { count: 3 })}
           </p>
         </div>
-        <ThemeToggle />
+        <div className="flex items-center gap-1">
+          <LocaleSwitcher />
+          <ThemeToggle />
+        </div>
       </header>
 
       <section className="mb-8">

@@ -2,7 +2,7 @@
 
 Living status of the rebuild. Updated at the end of each migration group.
 
-**Last updated:** 2026-07-26 · **Current group:** 4 of 14 (`feat/motion-system`)
+**Last updated:** 2026-07-26 · **Current group:** 5 of 15 (`feat/i18n`)
 
 ---
 
@@ -14,16 +14,17 @@ Living status of the rebuild. Updated at the end of each migration group.
 | 2 | `feat/auth` — JWT login, bcrypt, brute-force protection | **in review** |
 | 3 | `feat/rbac` — 6-role permission map + demo role | **in review** |
 | 4 | `feat/motion-system` — GSAP foundation | **in review** |
-| 5 | `feat/ui-primitives` — shadcn components | not started |
-| 6 | `feat/app-shell` — layout, sidebar, topbar | not started |
-| 7 | `feat/login-page` — login UI | not started |
-| 8 | `feat/dashboard` — KPIs, charts | not started |
-| 9 | `feat/products` — CRUD, images | not started |
-| 10 | `feat/orders` — list, detail, status, invoice | not started |
-| 11 | `feat/customers` — list, detail, history | not started |
-| 12 | `feat/inventory-discounts` | not started |
-| 13 | `feat/delivery` — staff, assignments, portal | not started |
-| 14 | `feat/settings-staff` | not started |
+| 5 | `feat/i18n` — next-intl, RTL, AR/EN catalogues | **in review** |
+| 6 | `feat/ui-primitives` — shadcn components (RTL-ready, bulk-select) | not started |
+| 7 | `feat/app-shell` — layout, sidebar, topbar | not started |
+| 8 | `feat/login-page` — login UI | not started |
+| 9 | `feat/dashboard` — KPIs, charts | not started |
+| 10 | `feat/products` — CRUD, images | not started |
+| 11 | `feat/orders` — list, detail, status, invoice | not started |
+| 12 | `feat/customers` — list, detail, history | not started |
+| 13 | `feat/inventory-discounts` | not started |
+| 14 | `feat/delivery` — staff, assignments, portal | not started |
+| 15 | `feat/settings-staff` | not started |
 
 ---
 
@@ -50,7 +51,7 @@ must not stay absent once real users have accounts.
 
 | Feature | Notes | Priority |
 |---|---|---|
-| **Bilingual AR/EN + RTL** | Relevant to the UAE/PDPL context. Cheaper to build in from the start than to retrofit — every component and layout is affected. Decide before Phase 3 pages get built. | Medium |
+| ~~**Bilingual AR/EN + RTL**~~ | **CLOSED in group 5.** next-intl, `[locale]` routing, AR/EN catalogues with full ICU plurals, RTL CSS, Arabic typography, direction-aware motion. Translations are unreviewed MSA — worth a native pass before client-facing use. See `I18N.md`. | done |
 | **Bulk actions + export on DataTable** | CSV/Excel export, multi-select delete/edit. Expected in any admin dashboard. | Medium |
 | **E2E / visual QA** | Playwright is configured but the workflow is disabled (no Render preview URL — see `.github/workflows/e2e.yml`). One placeholder spec exists. | Medium |
 
