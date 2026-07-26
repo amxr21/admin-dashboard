@@ -114,6 +114,12 @@ return.
 (10–15): products, orders, customers, inventory-discounts, delivery,
 settings-staff.
 
+## Required in group 15 (settings)
+
+- **Move the language switcher into Settings.** It currently sits in the topbar
+  next to the theme toggle. Once a settings page exists, language belongs there
+  as a preference, and the topbar control is removed rather than duplicated.
+
 ## Deferred ideas (recorded so they aren't lost)
 
 - **Surface backend state in the frontend** — a page showing what the API layer
