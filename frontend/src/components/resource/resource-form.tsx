@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -516,6 +517,18 @@ function FormField({ field, value, error, options, onChange }: FormFieldProps) {
       );
     }
 
+    if (field.type === 'date' || field.type === 'datetime') {
+      return (
+        <DatePicker
+          id={id}
+          value={text}
+          onChange={onChange}
+          required={field.required}
+          {...aria}
+        />
+      );
+    }
+
     if (field.type === 'longtext') {
       return (
         <Textarea
@@ -581,15 +594,13 @@ function inputType(field: FieldConfig): string {
     case 'number':
       return 'number';
     default:
-      // money and date included — both are text on purpose.
+      // money is text on purpose; dates never reach here (DatePicker handles
+      // them) so there is no `type="date"` anywhere in the app.
       return 'text';
   }
 }
 
 function placeholderFor(field: FieldConfig): string | undefined {
-  // Dates are typed rather than picked for now, so the expected shape has to
-  // be visible. This is the one control still waiting on a real picker.
-  if (field.type === 'date' || field.type === 'datetime') return 'YYYY-MM-DD';
   if (field.type === 'money') return '0.00';
   return undefined;
 }

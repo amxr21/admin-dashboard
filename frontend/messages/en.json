@@ -324,5 +324,9 @@
       "cancel": "Keep editing"
     },
     "none": "— None —"
+  },
+  "datePicker": {
+    "choose": "Pick a date",
+    "clear": "Clear date"
   }
 }

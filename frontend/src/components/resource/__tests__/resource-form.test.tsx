@@ -178,6 +178,57 @@ describe('types on the wire', () => {
   });
 });
 
+describe('dates are picked, never typed', () => {
+  const dated = {
+    ...schema,
+    fields: [
+      ...schema.fields,
+      { name: 'expiresAt', label: 'Expires', type: 'datetime' as const },
+    ],
+  };
+
+  function renderDated() {
+    return render(
+      <ResourceForm
+        schema={dated}
+        row={null}
+        open
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+  }
+
+  it('uses a calendar rather than a native date input', async () => {
+    // A native date input renders browser chrome that cannot be styled and
+    // shows a picker in the OS language rather than the page language.
+    const { container } = renderDated();
+
+    await screen.findByLabelText(/name/i);
+    expect(container.querySelector('input[type="date"]')).toBeNull();
+    // Named by its field Label, which correctly wins over the button's own
+    // text — so the control is reachable the same way every other field is.
+    expect(screen.getByLabelText(/expires/i).tagName).toBe('BUTTON');
+  });
+
+  it('sends the picked day as an ISO datetime, unshifted', async () => {
+    createRow.mockResolvedValue({ id: 'new' });
+    renderDated();
+
+    await userEvent.type(await screen.findByLabelText(/name/i), 'Vase');
+    await userEvent.type(screen.getByLabelText(/price/i), '5.00');
+
+    await userEvent.click(screen.getByLabelText(/expires/i));
+    await userEvent.click(await screen.findByText('20', { selector: 'button' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(createRow).toHaveBeenCalled());
+
+    const payload = createRow.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(String(payload.expiresAt)).toMatch(/^\d{4}-\d{2}-20T00:00:00\.000Z$/);
+  });
+});
+
 describe('optional selections can be cleared', () => {
   it('unsets a relation that already had a value', async () => {
     /**
