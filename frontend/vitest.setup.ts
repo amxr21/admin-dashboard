@@ -42,3 +42,23 @@ if (typeof Element !== 'undefined') {
   Element.prototype.releasePointerCapture ??= () => undefined;
   Element.prototype.scrollIntoView ??= () => undefined;
 }
+
+/**
+ * jsdom does not implement `ResizeObserver`.
+ *
+ * Radix's popper (Select's dropdown, and anything else positioned against a
+ * trigger) constructs one to track its anchor. Without it, merely RENDERING a
+ * component containing a Select throws `ResizeObserver is not defined` — the
+ * whole test file fails before a single assertion runs, and the message names
+ * a browser API rather than the component under test.
+ *
+ * Same reasoning as the pointer stubs above: the construction happens inside
+ * the library, so there is no seam to mock at the call site.
+ */
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}

@@ -14,10 +14,12 @@ import type { ResourceSchema } from '@/lib/resource-api';
  */
 
 const fetchRows = vi.hoisted(() => vi.fn());
+const deleteRow = vi.hoisted(() => vi.fn());
+const fetchRelationOptions = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
 
 vi.mock('@/lib/resource-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/resource-api')>();
-  return { ...actual, fetchRows };
+  return { ...actual, fetchRows, deleteRow, fetchRelationOptions };
 });
 
 const schema: ResourceSchema = {
@@ -56,6 +58,7 @@ const row = { id: 'c1', name: 'Ali', email: 'ali@example.com', city: 'Dubai', st
 
 beforeEach(() => {
   fetchRows.mockReset();
+  deleteRow.mockReset();
 });
 
 describe('rendering from the schema', () => {
@@ -180,5 +183,139 @@ describe('localisation', () => {
     render(<ResourceTable schema={schema} />, { locale: 'ar' });
 
     expect(await screen.findByLabelText('بحث')).toBeInTheDocument();
+  });
+});
+
+describe('write actions follow the permissions', () => {
+  it('offers create, edit and delete when the config allows them', async () => {
+    resolveWith([row]);
+
+    render(<ResourceTable schema={schema} />);
+    await screen.findByText('Ali');
+
+    expect(screen.getByRole('button', { name: /new customers/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /edit ali/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /delete ali/i })).toBeInTheDocument();
+  });
+
+  it('hides them all when the config denies them', async () => {
+    // assertPermitted() in resource.service.ts is DEFAULT-DENY, so anything
+    // short of an explicit `true` would render a button that always 403s.
+    resolveWith([row]);
+
+    render(<ResourceTable schema={{ ...schema, permissions: {} }} />);
+    await screen.findByText('Ali');
+
+    expect(screen.queryByRole('button', { name: /new customers/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /edit ali/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /delete ali/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('deleting tells the truth about what happened', () => {
+  it('confirms before deleting anything', async () => {
+    resolveWith([row]);
+
+    render(<ResourceTable schema={schema} />);
+    await screen.findByText('Ali');
+
+    await userEvent.click(screen.getByRole('button', { name: /delete ali/i }));
+
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
+    expect(deleteRow).not.toHaveBeenCalled();
+  });
+
+  it('says "deleted" when the row was really deleted', async () => {
+    resolveWith([row]);
+    deleteRow.mockResolvedValue({ row, action: 'deleted' });
+
+    render(<ResourceTable schema={schema} />);
+    await screen.findByText('Ali');
+
+    await userEvent.click(screen.getByRole('button', { name: /delete ali/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/1 record deleted/i);
+  });
+
+  it('says "archived" — not deleted — when the server archived instead', async () => {
+    /**
+     * The whole point of A3. A resource hook archives rather than deletes when
+     * other records still reference the row, and reporting that as a delete
+     * would be the UI claiming an outcome the server explicitly refused.
+     */
+    resolveWith([row]);
+    deleteRow.mockResolvedValue({ row, action: 'archived' });
+
+    render(<ResourceTable schema={schema} />);
+    await screen.findByText('Ali');
+
+    await userEvent.click(screen.getByRole('button', { name: /delete ali/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    const notice = await screen.findByRole('status');
+    expect(notice).toHaveTextContent(/archived instead of deleted/i);
+    expect(notice).not.toHaveTextContent(/1 record deleted/i);
+  });
+
+  it('reports both outcomes when a bulk delete produced a mix', async () => {
+    const second = { ...row, id: 'c2', name: 'Sara' };
+    resolveWith([row, second]);
+    deleteRow
+      .mockResolvedValueOnce({ row, action: 'deleted' })
+      .mockResolvedValueOnce({ row: second, action: 'archived' });
+
+    render(<ResourceTable schema={schema} />);
+    await screen.findByText('Ali');
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /select all/i }));
+    await userEvent.click(screen.getByRole('button', { name: /delete selected/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    const notice = await screen.findByRole('status');
+    expect(notice).toHaveTextContent(/1 record deleted/i);
+    expect(notice).toHaveTextContent(/archived instead of deleted/i);
+  });
+
+  it('still reports the successes when one row fails', async () => {
+    // allSettled, not all: one failure must not hide four successes, and the
+    // table has to reload either way.
+    const second = { ...row, id: 'c2', name: 'Sara' };
+    resolveWith([row, second]);
+    deleteRow
+      .mockResolvedValueOnce({ row, action: 'deleted' })
+      .mockRejectedValueOnce(new ApiError(403, 'FORBIDDEN', 'nope'));
+
+    render(<ResourceTable schema={schema} />);
+    await screen.findByText('Ali');
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /select all/i }));
+    await userEvent.click(screen.getByRole('button', { name: /delete selected/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    const notice = await screen.findByRole('status');
+    expect(notice).toHaveTextContent(/1 record deleted/i);
+    expect(notice).toHaveTextContent(/permission/i);
+  });
+});
+
+describe('selection has something attached to it', () => {
+  it('offers a bulk action once rows are selected', async () => {
+    // Selection previously tracked ids with no action anywhere — rows could be
+    // ticked and nothing was ever offered.
+    resolveWith([row]);
+
+    render(<ResourceTable schema={schema} />);
+    await screen.findByText('Ali');
+
+    expect(
+      screen.queryByRole('button', { name: /delete selected/i }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /select row/i }));
+
+    expect(
+      await screen.findByRole('button', { name: /delete selected/i }),
+    ).toBeInTheDocument();
   });
 });
