@@ -2,8 +2,60 @@
 
 What is tested, what isn't, and why. Updated per migration group.
 
-**Last updated:** 2026-07-26 (group 9 — `feat/dashboard`)
-**Totals:** 17 files · 207 tests · all passing (65 backend, 142 frontend)
+**Last updated:** 2026-07-26 (group 10 — `feat/products`)
+**Totals:** 19 files · 239 tests · all passing (87 backend, 152 frontend)
+
+---
+
+## Group 10 — products
+
+| Unit | Cases | Notes |
+|---|---|---|
+| `products.route` authorisation | 5 | Unauthenticated 401; a role without the area 403; demo reads but cannot create or delete. |
+| Money precision | 5 | String not number, exact round-trip, always two decimals, rejects >2dp, rejects a JSON number. |
+| Validation | 6 | Unknown field, negative stock, empty PATCH, unknown category, duplicate SKU 409, unknown id 404. |
+| Listing | 4 | Page-size ceiling, status filter, SKU search, pagination metadata consistency. |
+| Deletion vs order history | 2 | Archives when ordered, hard-deletes when not. |
+| `ProductsTable` | 10 | Render, price formatting, zero-stock emphasis, four failure states, server-side filtering, Arabic headers. |
+
+### What these actually guard
+
+**Money never becomes a float.** `price` is `Decimal(10,2)`, and the API emits
+`"19.99"` rather than `19.99`. A JSON number would already have lost precision
+inside `JSON.parse` on the client — upstream of every check we control — so one
+test posts a numeric price and asserts a 400. The client formats the string for
+display and never does arithmetic on it; the server owns every total.
+
+**Deleting a product must not rewrite order history.** `OrderItem.productId` is
+`SetNull`, so a hard delete would blank the line item in a past order. Line
+items carry a price snapshot but no name snapshot, so the order would render a
+nameless row — the kind of damage nobody notices until an invoice is disputed.
+Products that appear in an order are archived instead; products never ordered
+are genuinely deleted, so catalogue mistakes don't linger forever.
+
+**A failed request is not an empty catalogue.** Four separate failure tests,
+because "no products" and "loading failed" are different statements and the
+second one has an action attached. A 401 says sign in again; a network error
+says check your connection; collapsing them into "something went wrong" hides
+the one thing that would fix it.
+
+**Filtering happens on the server.** Client-side filtering works at 40 products
+and ships 4,000 rows to a phone at scale. One test asserts the status filter
+reaches the request; another asserts "all" omits the parameter entirely, since
+the API validates the enum strictly and would reject `status=all`.
+
+### Mutation-tested
+
+- `deleteProduct`'s archive branch disabled → exactly 1 test failed (the order-history
+  guard), then restored and re-verified green.
+
+### Fixed while writing these
+
+Radix Select calls `hasPointerCapture` and `scrollIntoView`, neither of which
+jsdom implements — every test that opened a Select died with an error naming
+the test rather than the missing browser API. Stubbed in `vitest.setup.ts`
+alongside `matchMedia`, since the failure happens inside the library during a
+user interaction and there is no seam to mock at the call site.
 
 ---
 
