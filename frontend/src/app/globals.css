@@ -32,6 +32,11 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* ─── Typeface ───────────────────────────────────────────────── */
+  /* The live font stack. `--font-sans` in @theme inline points HERE, so this
+     is the variable to re-point per script — see the note there. */
+  --font-app: var(--font-latin), ui-sans-serif, system-ui, sans-serif;
+
   /* ─── Radius ─────────────────────────────────────────────────── */
   --radius: 0.625rem; /* 10px — matches the template's --ui-radius */
 
@@ -153,6 +158,33 @@
 }
 
 /*
+ * ─── THE ARABIC TYPEFACE SWAP ────────────────────────────────────────
+ * This lives HERE, unlayered beside `.dark`, and not in the `@layer base`
+ * block further down where the rest of the Arabic typography sits.
+ *
+ * WHY: an unlayered declaration beats a layered one outright — the cascade
+ * checks the layer BEFORE it checks specificity. `--font-app` is set on the
+ * unlayered `:root` above, so an override inside `@layer base` can never win,
+ * no matter how specific it is. The result looked exactly like a font that
+ * "didn't apply": the rule was present, correct, and silently outranked.
+ *
+ * `.dark` is the proof of the working shape — it re-points `--card` from right
+ * here, unlayered, which is why dark mode works. Same layer as `:root`, higher
+ * specificity, so it wins. This rule copies that arrangement.
+ *
+ * The type-scale overrides (--text-*, line-height) stay in `@layer base`,
+ * because those tokens come from `@layer theme` and base already outranks
+ * theme. Only variables declared on the unlayered `:root` need to be
+ * overridden from out here.
+ */
+html[lang='ar'] {
+  /* Latin stays in the stack after Arabic, so SKUs, emails and order numbers
+     inside Arabic text keep Inter rather than IBM Plex's Latin cut. */
+  --font-app: var(--font-arabic), var(--font-latin), ui-sans-serif, system-ui,
+    sans-serif;
+}
+
+/*
  * Register the tokens as Tailwind utilities. This is what turns `--card` into
  * `bg-card` / `text-card-foreground`. Values are `var(...)` references, NOT
  * literals — that indirection is precisely what makes `.dark` work without a
@@ -190,9 +222,28 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
-  /* Registered at setup so no component ever hardcodes a font stack.
-     The actual family is swapped per script by [lang] in @layer base. */
-  --font-sans: var(--font-latin), ui-sans-serif, system-ui, sans-serif;
+  /*
+   * Registered at setup so no component ever hardcodes a font stack.
+   *
+   * ─── WHY THE EXTRA INDIRECTION THROUGH --font-app ────────────────────
+   * `@theme inline` INLINES the token's value into the generated utility, so
+   *
+   *     --font-sans: var(--font-latin), ui-sans-serif, …
+   *
+   * compiled to `.font-sans { font-family: var(--font-latin), … }` — pinned to
+   * the LATIN variable. Re-pointing `--font-sans` under `html[lang='ar']` then
+   * did nothing at all: the utility no longer read that token. Arabic rendered
+   * in Inter with an OS fallback while IBM Plex Sans Arabic downloaded and sat
+   * unused, which looks like a font that "didn't apply" rather than a broken
+   * rule.
+   *
+   * Pointing the token at `--font-app` makes the utility resolve
+   * `var(--font-app)` at runtime, so swapping THAT per script works — exactly
+   * how every colour here works (`.bg-card` → `var(--card)`, re-pointed by
+   * `.dark`). The rule: with `@theme inline`, re-point the inner variable,
+   * never the theme token.
+   */
+  --font-sans: var(--font-app);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -260,8 +311,10 @@
    * to read even though nothing is technically "wrong".
    */
   html[lang='ar'] {
-    --font-sans: var(--font-arabic), var(--font-latin), ui-sans-serif, system-ui,
-      sans-serif;
+    /* The typeface swap is NOT here — it sits unlayered next to `.dark`, above.
+       An override inside this layer cannot beat the unlayered `:root` that
+       declares `--font-app`. These type-scale tokens are different: they come
+       from `@layer theme`, which `@layer base` already outranks. */
 
     /*
      * ~+6% on TEXT ONLY.
