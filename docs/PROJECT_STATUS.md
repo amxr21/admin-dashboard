@@ -2,7 +2,7 @@
 
 Living status of the rebuild. Updated at the end of each migration group.
 
-**Last updated:** 2026-07-26 · **Current group:** 7 of 15 (`feat/app-shell`)
+**Last updated:** 2026-07-26 · **Current group:** 8 of 15 (`feat/login-page`)
 
 ---
 
@@ -17,7 +17,7 @@ Living status of the rebuild. Updated at the end of each migration group.
 | 5 | `feat/i18n` — next-intl, RTL, AR/EN catalogues | **in review** |
 | 6 | `feat/ui-primitives` — shadcn components + applied motion | **in review** |
 | 7 | `feat/app-shell` — layout, sidebar, topbar, mobile drawer | **in review** |
-| 8 | `feat/login-page` — login UI | not started |
+| 8 | `feat/login-page` — login UI, session, auth guard | **in review** |
 | 9 | `feat/dashboard` — KPIs, charts | not started |
 | 10 | `feat/products` — CRUD, images | not started |
 | 11 | `feat/orders` — list, detail, status, invoice | not started |
@@ -71,6 +71,16 @@ must not stay absent once real users have accounts.
   6.x rejects it. Migrate as part of the Prisma 7 upgrade (Dependabot PR open).
 - **E2E workflow disabled.** Manual trigger only until a real backend preview
   URL exists. `Playwright` is deliberately **not** a required status check.
+- **The JWT lives in `localStorage`.** The backend returns it in the response
+  body, so the client must be able to read it. The cost is real: any XSS bug
+  becomes full account takeover, which an httpOnly cookie would prevent.
+  Moving to cookies is a BACKEND change (it must set the cookie), not a
+  frontend one — pair it with the token-revocation work above. Mitigations in
+  place: React escapes by default, helmet sets CSP on the API, and there is no
+  `dangerouslySetInnerHTML` anywhere in the codebase.
+- **`config/areas.ts` duplicates the backend role map.** Needed for first
+  render without a round-trip. Advisory only — it decides what to SHOW, the API
+  decides what is ALLOWED, so drift can mislabel a menu but never grant access.
 
 ### Dropped from admin-template — not coming back unless asked
 

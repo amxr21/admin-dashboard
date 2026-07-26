@@ -1,26 +1,13 @@
 import { setRequestLocale } from 'next-intl/server';
 
-import { AppShell } from '@/components/shell/app-shell';
-import type { StaffRole } from '@/config/areas';
+import { AdminShell } from '@/components/shell/admin-shell';
 
 /**
- * Wraps every /admin page in the dashboard chrome.
+ * Wraps every /admin page in the dashboard chrome, behind an auth guard.
  *
- * ─── PLACEHOLDER USER ────────────────────────────────────────────────
- * The shell needs a user to render the menu and decide which nav items to
- * show. Real session handling lands with the login page (group 8), which
- * replaces this constant with the authenticated user.
- *
- * Deliberately NOT a demo/owner account: MANAGER is the middle case, so
- * building against it surfaces permission-driven nav differences immediately
- * rather than after auth is wired.
+ * Stays a server component so `setRequestLocale` can keep the tree statically
+ * rendered; the client work lives in AdminShell.
  */
-const PLACEHOLDER_USER = {
-  name: 'Admin',
-  email: 'admin@example.com',
-  role: 'MANAGER' as StaffRole,
-};
-
 export default async function AdminLayout({
   children,
   params,
@@ -31,5 +18,5 @@ export default async function AdminLayout({
   const { locale } = await params;
   setRequestLocale(locale);
 
-  return <AppShell user={PLACEHOLDER_USER}>{children}</AppShell>;
+  return <AdminShell>{children}</AdminShell>;
 }

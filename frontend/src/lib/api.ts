@@ -12,6 +12,8 @@
  * This centralises it: callers get `T` or an `ApiError` they can catch.
  */
 
+import { readToken } from '@/lib/auth-storage';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
 /** The error envelope the backend returns for every failure. */
@@ -46,13 +48,21 @@ export async function apiFetch<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
+  // Attached here rather than at each call site, so no request can forget it.
+  // Reading storage per-request (not once at module load) matters: a module
+  // constant would capture the token at import time and keep sending a stale
+  // one after sign-out.
+  const token = readToken();
+
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init.headers,
     },
-    // Send cookies so session auth works once it lands.
+    // Send cookies too, so a future move to httpOnly cookie auth needs no
+    // change here.
     credentials: 'include',
   });
 

@@ -7,6 +7,7 @@ import { notFound } from 'next/navigation';
 import { ThemeProvider } from '@/components/theme-provider';
 import { MotionProvider } from '@/components/motion-provider';
 import { PageTransition } from '@/components/motion/page-transition';
+import { AuthProvider } from '@/hooks/useAuth';
 import { getDirection, routing } from '@/i18n/routing';
 
 import '../globals.css';
@@ -81,9 +82,15 @@ export default async function LocaleLayout({
         <NextIntlClientProvider>
           <ThemeProvider>
             <MotionProvider>
-              {/* Covers ordinary navigation AND language switching — a locale
-                  change is a route change, so without this it snaps. */}
-              <PageTransition>{children}</PageTransition>
+              {/* AuthProvider sits inside the intl provider so its error
+                  states can be translated, and outside the page so the
+                  session survives navigation. */}
+              <AuthProvider>
+                {/* Covers ordinary navigation AND language switching — a
+                    locale change is a route change, so without this it
+                    snaps. */}
+                <PageTransition>{children}</PageTransition>
+              </AuthProvider>
             </MotionProvider>
           </ThemeProvider>
         </NextIntlClientProvider>
