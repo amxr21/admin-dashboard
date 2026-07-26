@@ -19,10 +19,28 @@ config({ path: fileURLToPath(new URL('./.env', import.meta.url)) });
 process.env.NODE_ENV ??= 'test';
 process.env.LOG_LEVEL ??= 'error'; // keep test output readable
 
-// Fallback only applies when no .env is present at all (e.g. fresh CI
+// Fallbacks only apply when no .env is present at all (e.g. a fresh CI
 // container with its own MySQL service) — see .github/workflows/ci.yml.
 process.env.DATABASE_URL ??= 'mysql://root:test@127.0.0.1:3306/admin_dashboard_test';
 process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+
+// ─── KEEP IN SYNC WITH src/config/env.ts ─────────────────────────────
+// Every var env.ts marks REQUIRED needs a fallback here, or the suite dies at
+// import time with "process.exit unexpectedly called with 1" — a message that
+// does not name the missing variable, so it costs a CI round-trip to diagnose.
+//
+// Adding a required env var means touching FOUR places:
+//   1. src/config/env.ts        (the schema)
+//   2. backend/.env.example     (documentation)
+//   3. backend/vitest.setup.ts  (this file)
+//   4. .github/workflows/ci.yml (the test job's env block)
+// Miss #3 or #4 and it passes locally, fails in CI.
+//
+// Test-only value: valid (32+ chars) but deliberately not secret.
+process.env.JWT_SECRET ??= 'test-only-secret-never-used-in-production-0123456789';
+process.env.JWT_EXPIRES_IN ??= '7d';
+process.env.LOGIN_MAX_ATTEMPTS ??= '5';
+process.env.LOGIN_LOCKOUT_MINUTES ??= '15';
 
 // No SENTRY_DSN on purpose — Sentry is disabled outside production/preview,
 // and tests must never emit real events.
