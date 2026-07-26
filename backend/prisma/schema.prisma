@@ -54,14 +54,23 @@ datasource db {
 // ═══════════════════════════════════════════════════════════════════
 
 /// Staff roles, highest privilege first. Enforced by the API; the UI only
-/// mirrors it. `demo` and `custom` from the old system are deliberately not
-/// carried over — see FOUNDATIONS.md.
+/// mirrors it.
+///
+/// `custom` from the old system is deliberately not carried over — per-user
+/// permission JSON meant every check had to special-case it. Re-add only if a
+/// real need appears.
+///
+/// DEMO is read-only across every area, enforced at a middleware choke point
+/// rather than per-route (see middleware/authorize.ts). It exists so a
+/// prospective client can be shown the real dashboard with real data and no
+/// possibility of them changing anything.
 enum StaffRole {
   DEVELOPER
   OWNER
   MANAGER
   FULFILLMENT
   SUPPORT
+  DEMO
 }
 
 enum ProductStatus {
