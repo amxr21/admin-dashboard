@@ -1,0 +1,42 @@
+'use client';
+
+import type { ReactNode } from 'react';
+
+import { AppShell } from '@/components/shell/app-shell';
+import { AuthGuard } from '@/components/auth/auth-guard';
+import { useAuth } from '@/hooks/useAuth';
+import { useRouter } from '@/i18n/navigation';
+import type { StaffRole } from '@/config/areas';
+
+/**
+ * Connects the real session to the shell.
+ *
+ * Split from AppShell so that component stays presentational — it takes a
+ * user and renders chrome, which is what makes it testable without mocking
+ * auth, routing and storage.
+ */
+export function AdminShell({ children }: { children: ReactNode }) {
+  const { user, signOut } = useAuth();
+  const router = useRouter();
+
+  return (
+    <AuthGuard>
+      {user ? (
+        <AppShell
+          user={{
+            // The API allows a null name; the UI needs something to render.
+            name: user.name ?? user.email,
+            email: user.email,
+            role: user.role as StaffRole,
+          }}
+          onSignOut={() => {
+            signOut();
+            router.replace('/login');
+          }}
+        >
+          {children}
+        </AppShell>
+      ) : null}
+    </AuthGuard>
+  );
+}
