@@ -55,7 +55,37 @@ export function SidebarNav({ role, onNavigate }: SidebarNavProps) {
       })),
   })).filter((group) => group.items.length > 0);
 
-  const groups: NavGroup[] = [...NAVIGATION, ...resourceGroups];
+  /**
+   * Merged by group key, NOT concatenated.
+   *
+   * Both sources legitimately produce a `people` group — NAVIGATION owns
+   * Delivery (a bespoke page) and the schema owns Customers and Reviews
+   * (generic resources). Concatenating rendered the heading TWICE with the
+   * items split across the two, which React surfaced as a duplicate-key
+   * warning; the warning was the symptom, the split sidebar was the bug.
+   *
+   * Order is first-appearance, so the hand-written groups keep their intended
+   * sequence and a new schema group appends rather than reshuffling the nav.
+   * Within a group, bespoke pages come before generic resources for the same
+   * reason.
+   */
+  const groups: NavGroup[] = [];
+  const byKey = new Map<string, NavGroup>();
+
+  for (const group of [...NAVIGATION, ...resourceGroups]) {
+    // Groups with no labelKey (the dashboard link) are never merged — they
+    // have no heading to share and each is its own visual block.
+    const existing = group.labelKey ? byKey.get(group.labelKey) : undefined;
+
+    if (existing) {
+      existing.items = [...existing.items, ...group.items];
+      continue;
+    }
+
+    const copy: NavGroup = { ...group, items: [...group.items] };
+    groups.push(copy);
+    if (group.labelKey) byKey.set(group.labelKey, copy);
+  }
 
   return (
     <nav className="flex flex-1 flex-col gap-4 overflow-y-auto" aria-label={t('dashboard')}>
