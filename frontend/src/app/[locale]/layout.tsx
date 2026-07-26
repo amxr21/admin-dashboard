@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation';
 
 import { ThemeProvider } from '@/components/theme-provider';
 import { MotionProvider } from '@/components/motion-provider';
+import { PageTransition } from '@/components/motion/page-transition';
 import { getDirection, routing } from '@/i18n/routing';
 
 import '../globals.css';
@@ -79,7 +80,11 @@ export default async function LocaleLayout({
       <body className="bg-background text-foreground font-sans antialiased">
         <NextIntlClientProvider>
           <ThemeProvider>
-            <MotionProvider>{children}</MotionProvider>
+            <MotionProvider>
+              {/* Covers ordinary navigation AND language switching — a locale
+                  change is a route change, so without this it snaps. */}
+              <PageTransition>{children}</PageTransition>
+            </MotionProvider>
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>

@@ -23,7 +23,10 @@ const config = [
       'no-console': ['warn', { allow: ['warn', 'error'] }], // no stray debug logs in shipped code
 
       // ─── Required patterns ────────────────────────────────────
-      'eqeqeq': ['error', 'always'],                        // no `==`, always `===`
+      // `null: 'ignore'` permits `x == null`, the one idiomatic use of loose
+      // equality — it tests null AND undefined in a single check. Everything
+      // else still requires `===`.
+      'eqeqeq': ['error', 'always', { null: 'ignore' }],
       'prefer-const': 'error',
       'no-var': 'error',
     },
