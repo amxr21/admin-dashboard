@@ -13,8 +13,21 @@
 name: CI
 
 on:
+  # NO `branches:` filter on pull_request, deliberately.
+  #
+  # `branches` filters by the TARGET branch. Restricting it to [main, dev] means
+  # a STACKED pull request — feat/b targeting feat/a rather than dev — never
+  # runs CI at all. It shows only third-party checks and looks "mostly green"
+  # while being completely unverified.
+  #
+  # That happened here: PRs #28, #29 and #30 were stacked and silently ran no
+  # checks. Every PR should be verified against the base it will actually merge
+  # into, whatever that base is.
   pull_request:
-    branches: [main, dev]
+
+  # Pushes stay filtered. These runs exist to keep the branch-protection status
+  # current on the long-lived branches; running on every feature-branch push
+  # would just duplicate the PR run.
   push:
     branches: [main, dev]
 

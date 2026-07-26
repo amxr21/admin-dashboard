@@ -163,8 +163,9 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
-  /* Registered at setup so no component ever hardcodes a font stack. */
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  /* Registered at setup so no component ever hardcodes a font stack.
+     The actual family is swapped per script by [lang] in @layer base. */
+  --font-sans: var(--font-latin), ui-sans-serif, system-ui, sans-serif;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -179,6 +180,71 @@
 
   body {
     @apply bg-background text-foreground;
+  }
+
+  /*
+   * ─── ARABIC TYPOGRAPHY ──────────────────────────────────────────────
+   * Arabic glyphs render visually smaller than Latin at the same font-size,
+   * and the script connects, so it needs more vertical room. Using identical
+   * metrics for both languages makes the Arabic build look cramped and harder
+   * to read even though nothing is technically "wrong".
+   */
+  html[lang='ar'] {
+    --font-sans: var(--font-arabic), var(--font-latin), ui-sans-serif, system-ui,
+      sans-serif;
+
+    /* ~+6%. Compensates for the smaller apparent size of Arabic glyphs. */
+    font-size: 106.25%;
+    line-height: 1.75;
+
+    /* Arabic does not hyphenate. Leaving hyphens on inserts breaks that are
+       simply wrong in the script. */
+    hyphens: none;
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
+
+  /*
+   * Default underlines cross the dots BELOW Arabic letters (ب ت ث ج ح خ) and
+   * clip them, which changes how a word reads. Use a border with breathing
+   * room instead.
+   */
+  html[lang='ar'] a:where([href]) {
+    text-decoration: none;
+    border-block-end: 1px solid currentColor;
+    padding-block-end: 2px;
+  }
+
+  /*
+   * ─── DIRECTIONAL ICONS ──────────────────────────────────────────────
+   * Icons do NOT auto-flip with dir="rtl". Tag only the ones that encode
+   * DIRECTION — arrows, chevrons, reply, send, external-link.
+   *
+   * Never blanket-flip every icon: play/pause, clocks, undo/redo, checkmarks,
+   * search, and pencils must NOT mirror. A flipped play button points the
+   * wrong way regardless of reading direction, because it refers to physical
+   * tape motion, not language.
+   */
+  [dir='rtl'] .icon-directional {
+    transform: scaleX(-1);
+  }
+
+  /*
+   * ─── ALWAYS-LTR CONTENT ─────────────────────────────────────────────
+   * Data that is inherently left-to-right regardless of UI language. Without
+   * isolation, a phone number or IBAN inside an Arabic sentence visually
+   * reorders and becomes wrong — not just misaligned, actually unreadable.
+   */
+  .force-ltr,
+  input[type='tel'],
+  input[type='email'],
+  input[type='url'],
+  input[type='password'],
+  code,
+  kbd,
+  samp {
+    direction: ltr;
+    unicode-bidi: isolate;
   }
 
   /* Respect users who asked their OS to reduce motion. Individual animations

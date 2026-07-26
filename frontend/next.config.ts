@@ -1,5 +1,13 @@
 import { withSentryConfig } from '@sentry/nextjs';
+import createNextIntlPlugin from 'next-intl/plugin';
 import type { NextConfig } from 'next';
+
+/**
+ * Points next-intl at the request config. Without this the plugin looks for
+ * `./i18n/request.ts` at the project root and silently renders every page with
+ * the default locale's messages.
+ */
+const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -12,7 +20,8 @@ const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: false },
 };
 
-export default withSentryConfig(nextConfig, {
+// Order matters: next-intl wraps the config, Sentry wraps the result.
+export default withSentryConfig(withNextIntl(nextConfig), {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
 
@@ -26,7 +35,8 @@ export default withSentryConfig(nextConfig, {
   sourcemaps: { deleteSourcemapsAfterUpload: true },
 
   // Proxy Sentry calls through your own domain so ad blockers don't silently
-  // drop error reports.
+  // drop error reports. Excluded from the i18n middleware matcher — routing it
+  // through locale handling would rewrite it and break error reporting.
   tunnelRoute: '/monitoring',
 
   disableLogger: true,
