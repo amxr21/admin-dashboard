@@ -2,8 +2,49 @@
 
 What is tested, what isn't, and why. Updated per migration group.
 
-**Last updated:** 2026-07-26 (group 1 — `feat/data-model`)
-**Totals:** 3 files · 18 tests · all passing
+**Last updated:** 2026-07-26 (group 2 — `feat/auth`)
+**Totals:** 4 files · 38 tests · all passing
+
+---
+
+## Group 2 — auth
+
+| Unit | Cases | Notes |
+|---|---|---|
+| `POST /auth/login` | 8 | success, wrong password, unknown user, enumeration parity, malformed email, strict-mode rejection, deactivated, expired |
+| Brute-force protection | 3 | account lockout, per-account isolation, per-IP rate limit |
+| `GET /auth/me` | 5 | valid token, lowercase scheme, no header, forged signature, deactivated-after-issue |
+| Token handling | 3 | round-trip, tampered token, `toSafeUser` stripping |
+
+### Security properties pinned
+
+- **No credential leak.** A test asserts the login response contains neither
+  `passwordHash` nor the lockout counters, and never the literal hash value.
+- **No user enumeration.** Unknown-user and wrong-password responses must be
+  byte-identical in status and message; a mismatch fails the test.
+- **Lockout is a lockout, not a counter.** After the threshold, the *correct*
+  password is still refused.
+- **Lockout is per-account.** One locked account must not affect another, or an
+  attacker could deny service to everyone by failing against one email.
+- **Tokens don't outlive authority.** Deactivating a user invalidates their
+  still-unexpired token on the very next request.
+
+### Mutation-tested
+
+Both security-critical guards were verified by breaking them:
+
+1. Made `toSafeUser` return the raw user → the two leak tests failed.
+2. Gave unknown-user a distinct message → the enumeration test failed.
+
+Restored and re-verified green after each.
+
+### Known interaction, deliberately worked around
+
+The per-IP limiter (10 per 15 min) trips before the per-account lockout
+threshold can be reached over HTTP, because every Supertest request shares one
+address. That is **correct production behaviour** — the two layers stack — so
+the account-lockout tests drive the service directly, and the IP layer has its
+own separate test. Don't "fix" this by loosening the limiter.
 
 ---
 

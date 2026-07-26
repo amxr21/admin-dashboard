@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { healthRouter } from './health.route.js';
-import { exampleRouter } from './example.route.js';
+import { authRouter } from './auth.route.js';
 
 /**
  * The v1 API surface. app.ts mounts this at '/api/v1'.
@@ -13,4 +13,4 @@ import { exampleRouter } from './example.route.js';
 export const v1Router = Router();
 
 v1Router.use(healthRouter);
-v1Router.use(exampleRouter);
+v1Router.use(authRouter);
