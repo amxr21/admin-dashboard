@@ -4,18 +4,21 @@ import * as Sentry from '@sentry/nextjs';
 import { useEffect } from 'react';
 
 /**
- * Last-resort error boundary for the whole App Router tree.
+ * Last resort: an error in the ROOT layout itself.
  *
- * React swallows render errors into the nearest error boundary, so without
- * this file a crash in a Server or Client Component renders Next's default
- * error page and Sentry never hears about it. This is the only place that
- * catches errors thrown during rendering of the root layout itself.
+ * This REPLACES the root layout rather than nesting inside it, so it must
+ * render its own <html> and <body> — and none of the app's providers exist
+ * here. No next-intl, no theme, no fonts, and no guarantee the stylesheet
+ * imported by the root layout was ever applied.
  *
- * It must render <html> and <body> — it REPLACES the root layout rather than
- * nesting inside it.
+ * Hence hardcoded English and inline styles. That is a deliberate downgrade,
+ * not an oversight: a translated, Tailwind-styled error screen that itself
+ * depends on the thing that just crashed leaves the user with a blank page.
  *
- * Note: per-route `error.tsx` boundaries are still worth adding as features
- * land. This one is the safety net, not the user-facing error experience.
+ * In practice this almost never renders — `[locale]/error.tsx` catches page
+ * errors first and is the real user-facing experience. This exists so that the
+ * one time the layout breaks, there is still a sentence on screen and a report
+ * in Sentry.
  */
 export default function GlobalError({
   error,
@@ -30,22 +33,50 @@ export default function GlobalError({
 
   return (
     <html lang="en">
-      <body className="font-sans antialiased">
-        <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 p-8">
-          <h1 className="text-xl font-semibold">Something went wrong</h1>
-          <p className="text-sm opacity-70">
-            The error has been reported. Try again, and if it keeps happening
-            quote this reference:{' '}
-            <code className="font-mono">{error.digest ?? 'unknown'}</code>
+      <body
+        style={{
+          fontFamily: 'system-ui, sans-serif',
+          display: 'flex',
+          minHeight: '100vh',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.75rem',
+          margin: 0,
+          padding: '2rem',
+          textAlign: 'center',
+          color: '#0f172a',
+          background: '#ffffff',
+        }}
+      >
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 600, margin: 0 }}>
+          The dashboard couldn&apos;t start
+        </h1>
+        <p style={{ margin: 0, maxWidth: '32rem', lineHeight: 1.6, color: '#475569' }}>
+          Something failed while loading the page itself. The problem has been
+          reported automatically. Trying again usually fixes it.
+        </p>
+        <button
+          type="button"
+          onClick={reset}
+          style={{
+            marginTop: '0.5rem',
+            padding: '0.5rem 1.25rem',
+            borderRadius: '0.375rem',
+            border: 'none',
+            background: '#0f172a',
+            color: '#ffffff',
+            cursor: 'pointer',
+            font: 'inherit',
+          }}
+        >
+          Try again
+        </button>
+        {error.digest ? (
+          <p style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#64748b' }}>
+            Reference: <code style={{ fontFamily: 'monospace' }}>{error.digest}</code>
           </p>
-          <button
-            type="button"
-            onClick={reset}
-            className="self-start rounded-md border px-4 py-2 text-sm"
-          >
-            Try again
-          </button>
-        </main>
+        ) : null}
       </body>
     </html>
   );

@@ -3,8 +3,15 @@
 import { useTranslations } from 'next-intl';
 
 import { Link, usePathname } from '@/i18n/navigation';
-import { NAVIGATION } from '@/config/navigation';
-import { canAccessArea, type StaffRole } from '@/config/areas';
+import {
+  NAVIGATION,
+  RESOURCE_GROUP_ORDER,
+  RESOURCE_ICONS,
+  RESOURCE_ICON_FALLBACK,
+  type NavGroup,
+} from '@/config/navigation';
+import { canAccessArea, type Area, type StaffRole } from '@/config/areas';
+import { useResourceSchema } from '@/components/providers/schema-provider';
 import { cn } from '@/lib/utils';
 
 /**
@@ -21,10 +28,38 @@ interface SidebarNavProps {
 export function SidebarNav({ role, onNavigate }: SidebarNavProps) {
   const t = useTranslations('nav');
   const pathname = usePathname();
+  const { resources } = useResourceSchema();
+
+  /**
+   * Schema-driven entries, merged with the hand-written ones.
+   *
+   * Generic resources come from the API so that adding one to admin.config.ts
+   * puts it in the nav with no frontend change. Bespoke pages (orders,
+   * inventory, delivery, reports, staff, settings) stay in NAVIGATION because
+   * they are not resources and have no schema entry.
+   *
+   * The API already filtered the schema by the caller's permissions, and the
+   * role check below runs anyway — both are courtesies, not controls.
+   */
+  const resourceGroups: NavGroup[] = RESOURCE_GROUP_ORDER.map((groupName) => ({
+    labelKey: groupName,
+    items: resources
+      .filter((resource) => resource.group === groupName)
+      .map((resource) => ({
+        href: `/admin/r/${resource.resource}`,
+        // Prefer a translated label; fall back to the schema's English one so
+        // a resource added today still reads sensibly before it is translated.
+        labelKey: resource.resource,
+        icon: RESOURCE_ICONS[resource.resource] ?? RESOURCE_ICON_FALLBACK,
+        area: resource.permissionArea as Area,
+      })),
+  })).filter((group) => group.items.length > 0);
+
+  const groups: NavGroup[] = [...NAVIGATION, ...resourceGroups];
 
   return (
     <nav className="flex flex-1 flex-col gap-4 overflow-y-auto" aria-label={t('dashboard')}>
-      {NAVIGATION.map((group, groupIndex) => {
+      {groups.map((group, groupIndex) => {
         // Hide whole groups the role cannot reach, rather than leaving an
         // empty heading behind.
         const visible = group.items.filter(
@@ -36,7 +71,7 @@ export function SidebarNav({ role, onNavigate }: SidebarNavProps) {
           <div key={group.labelKey ?? `group-${String(groupIndex)}`}>
             {group.labelKey ? (
               <h2 className="text-muted-foreground px-3 pb-1 text-xs font-medium tracking-wide uppercase">
-                {t(group.labelKey)}
+                {t.has(group.labelKey) ? t(group.labelKey) : group.labelKey}
               </h2>
             ) : null}
 
@@ -66,7 +101,12 @@ export function SidebarNav({ role, onNavigate }: SidebarNavProps) {
                     >
                       {/* Nav glyphs are objects, not arrows — no mirroring. */}
                       <item.icon className="size-4 shrink-0" aria-hidden />
-                      <span className="truncate">{t(item.labelKey)}</span>
+                      <span className="truncate">
+                        {/* Falls back to the raw key so a resource added to
+                            admin.config.ts before its translation still shows
+                            a usable name instead of throwing. */}
+                        {t.has(item.labelKey) ? t(item.labelKey) : item.labelKey}
+                      </span>
                     </Link>
                   </li>
                 );

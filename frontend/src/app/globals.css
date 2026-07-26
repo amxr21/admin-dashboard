@@ -263,8 +263,31 @@
     --font-sans: var(--font-arabic), var(--font-latin), ui-sans-serif, system-ui,
       sans-serif;
 
-    /* ~+6%. Compensates for the smaller apparent size of Arabic glyphs. */
-    font-size: 106.25%;
+    /*
+     * ~+6% on TEXT ONLY.
+     *
+     * CRITICAL — do NOT do this with `font-size` on `html`. That changes what
+     * 1rem means, and every Tailwind spacing, sizing and radius utility is
+     * rem-based: `p-4`, `h-9`, `w-64`, `gap-2`, `rounded-lg`. Scaling the root
+     * silently inflates the ENTIRE layout by 6%, so the Arabic build renders a
+     * taller topbar, a wider sidebar and roomier padding than the English one.
+     * It reads as "the Arabic version has a different design", which is
+     * exactly the failure this block was meant to prevent.
+     *
+     * Overriding the type-scale tokens instead scales glyphs and nothing else.
+     * Tailwind v4 compiles `text-sm` to `font-size: var(--text-sm)`, so these
+     * reach every text utility in the app.
+     */
+    --text-xs: 0.8rem;
+    --text-sm: 0.9375rem;
+    --text-base: 1.0625rem;
+    --text-lg: 1.1875rem;
+    --text-xl: 1.3125rem;
+    --text-2xl: 1.5625rem;
+    --text-3xl: 1.9375rem;
+
+    /* Arabic connects and needs more vertical room than Latin. Applied to
+       body text, not to the root, for the same reason as above. */
     line-height: 1.75;
 
     /* Arabic does not hyphenate. Leaving hyphens on inserts breaks that are
@@ -278,8 +301,19 @@
    * Default underlines cross the dots BELOW Arabic letters (ب ت ث ج ح خ) and
    * clip them, which changes how a word reads. Use a border with breathing
    * room instead.
+   *
+   * CRITICAL — scoped to links inside RUNNING TEXT only.
+   *
+   * An unscoped `a[href]` rule hits every navigation link, every button
+   * rendered as a link, and every card wrapped in an anchor. In this app that
+   * meant every sidebar item grew a 1px border and 2px of padding in Arabic
+   * and not in English — the single most visible reason the Arabic navbar
+   * looked like a different design.
+   *
+   * A dashboard has almost no prose, so the narrow scope costs nothing. If a
+   * genuine article view is ever added, add `.prose` to this list.
    */
-  html[lang='ar'] a:where([href]) {
+  html[lang='ar'] :where(p, li:not(:where(nav *)), td, blockquote, .prose) a[href] {
     text-decoration: none;
     border-block-end: 1px solid currentColor;
     padding-block-end: 2px;
