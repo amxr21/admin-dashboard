@@ -3,7 +3,7 @@
 What is tested, what isn't, and why. Updated per migration group.
 
 **Last updated:** 2026-07-26 (group 9 — `feat/dashboard`)
-**Totals:** 17 files · 204 tests · all passing (62 backend, 142 frontend)
+**Totals:** 17 files · 207 tests · all passing (65 backend, 142 frontend)
 
 ---
 
@@ -208,7 +208,7 @@ repeating whenever a test is meant to protect a design decision.
 |---|---|
 | `prisma/seed.ts` end-to-end | Idempotency and the password guard are worth covering, but the script calls `process.exit` and writes to shared tables — testing it properly needs refactoring into importable functions. **TODO before group 2**, since seed correctness matters once real accounts exist. |
 | Every model's CRUD | Would be testing Prisma, not our code. Route tests in later groups cover the real logic. |
-| Frontend | No components exist yet beyond the token reference page. |
+| Frontend | No components existed yet at group 1. Covered from group 4 onward. |
 
 ## Coverage thresholds
 

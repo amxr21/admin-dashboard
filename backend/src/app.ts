@@ -19,11 +19,12 @@ import { v1Router } from './routes/v1/index.js';
  *   2. cors          → reject disallowed origins before doing any work
  *   3. json parser   → body available to handlers
  *   4. requestContext→ req.log exists from here on; everything below can log
- *   5. rate limit    → AFTER requestContext so a 429 is still logged with a
+ *   5. browser noise → favicon/robots answered before they can become 404 WARNs
+ *   6. rate limit    → AFTER requestContext so a 429 is still logged with a
  *                      requestId, but BEFORE routes so it costs no DB work
- *   6. routes
- *   7. notFound      → unmatched paths become a normal AppError
- *   8. errorHandler  → LAST, always. Turns every failure into the same shape.
+ *   7. routes
+ *   8. notFound      → unmatched paths become a normal AppError
+ *   9. errorHandler  → LAST, always. Turns every failure into the same shape.
  */
 export function createApp(): Express {
   const app = express();
@@ -45,6 +46,21 @@ export function createApp(): Express {
   app.use(express.json({ limit: '1mb' }));
 
   app.use(requestContext);
+
+  // Browser chrome requests these from EVERY origin it loads, unasked — open
+  // the API in a tab and you get a 404 WARN per request forever. They are not
+  // application traffic and answering them 404 teaches the log to cry wolf,
+  // which is how real 404s stop getting noticed.
+  //
+  // 204 rather than 404: there is genuinely no content, and it stops the
+  // browser retrying. This is an API — it has no favicon and wants no crawlers.
+  app.get('/favicon.ico', (_req, res) => {
+    res.status(204).end();
+  });
+
+  app.get('/robots.txt', (_req, res) => {
+    res.type('text/plain').send('User-agent: *\nDisallow: /\n');
+  });
 
   // Skips the health check: uptime probes poll it every few seconds and would
   // otherwise consume the budget that real traffic needs.
