@@ -103,3 +103,16 @@ export const RESOURCE_ICON_FALLBACK: LucideIcon = Database;
  * Groups the schema reports but that aren't listed here are appended last.
  */
 export const RESOURCE_GROUP_ORDER = ['catalogue', 'people', 'system'] as const;
+
+/**
+ * Resources surfaced somewhere OTHER than the sidebar.
+ *
+ * The sidebar answers "where can I go" — a stable list of places. A
+ * notification count answers "has something happened", which changes while you
+ * work and belongs in the top bar where it is visible from every page.
+ *
+ * They are excluded here rather than removed from `admin.config.ts`, because
+ * the full list is still a real resource page with search and paging; the top
+ * bar links straight to it. Dropping the config entry would delete the page.
+ */
+export const RESOURCES_OUTSIDE_SIDEBAR: readonly string[] = ['notifications'];

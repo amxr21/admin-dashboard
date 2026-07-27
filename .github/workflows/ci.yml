@@ -221,6 +221,13 @@ jobs:
           JWT_EXPIRES_IN: 7d
           LOGIN_MAX_ATTEMPTS: 5
           LOGIN_LOCKOUT_MINUTES: 15
+          # Same reasoning as JWT_SECRET: valid (32+ chars), not secret. CI
+          # issues and verifies courier access codes inside a single run.
+          #
+          # Adding a REQUIRED var to env.ts means editing three places, and
+          # this is the one that has no local symptom: .env is gitignored, so
+          # everything passes on the machine that added it and only CI fails.
+          DELIVERY_CODE_SECRET: ci-test-delivery-code-secret-not-used-outside-ci
         run: pnpm test:coverage
 
       - uses: actions/upload-artifact@v7

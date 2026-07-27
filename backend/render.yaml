@@ -46,3 +46,15 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false # your Vercel prod URL (and preview URL pattern, if used)
+
+      # Both are REQUIRED by src/config/env.ts, which parses at import time and
+      # exits(1) on a miss — so leaving them out does not degrade the service,
+      # it stops the process from booting at all. They were absent here, which
+      # would have surfaced as a deploy that never comes up.
+      #
+      # `sync: false` = Render prompts for a value per environment and never
+      # stores it in this file. A real secret must never be committed.
+      - key: JWT_SECRET
+        sync: false # openssl rand -base64 32
+      - key: DELIVERY_CODE_SECRET
+        sync: false # openssl rand -base64 32 — rotating invalidates every courier code

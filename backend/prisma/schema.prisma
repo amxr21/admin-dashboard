@@ -111,6 +111,14 @@ enum DeliveryStatus {
   OUT_FOR_DELIVERY
   DELIVERED
   HANDED_OVER
+  /// Terminal states, added with group D.
+  ///
+  /// Group B could not reflect a cancelled or returned ORDER on its assignment,
+  /// because this enum had no value to write — so a courier kept a live job for
+  /// an order that no longer existed. That gap was documented in
+  /// orders.config.ts rather than papered over; these close it.
+  CANCELED
+  RETURNED
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -373,9 +381,22 @@ model DeliveryStaff {
   region        String?             @db.VarChar(96)
   country       String?             @db.VarChar(96)
   status        DeliveryStaffStatus @default(ACTIVE)
-  /// Rotatable login code for the courier portal. Unique so it can be looked
-  /// up directly at sign-in.
-  accessCode    String?             @unique @map("access_code") @db.VarChar(32)
+  /// HMAC of the courier's login code — never the code itself.
+  ///
+  /// An access code is a CREDENTIAL. Storing it in plain text means a database
+  /// leak hands over every courier account, and it puts the code into backups,
+  /// query logs and anyone's SELECT.
+  ///
+  /// Plain bcrypt would be the usual answer, but it cannot be looked up: every
+  /// hash carries its own salt, so sign-in would have to scan and compare every
+  /// courier. A keyed HMAC is deterministic, so a unique index still resolves a
+  /// code in one indexed read while the stored value is useless without the
+  /// server secret.
+  ///
+  /// The trade-off, stated plainly: HMAC is fast, so an attacker holding BOTH
+  /// the database and the secret could brute-force short codes. Mitigated by
+  /// generating long codes from a large alphabet and rate-limiting sign-in.
+  accessCodeHash String?            @unique @map("access_code_hash") @db.VarChar(64)
 
   assignments DeliveryAssignment[]
 

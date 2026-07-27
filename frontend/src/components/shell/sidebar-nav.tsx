@@ -7,6 +7,7 @@ import { NavigationPending } from '@/components/motion/navigation-progress';
 import {
   NAVIGATION,
   RESOURCE_GROUP_ORDER,
+  RESOURCES_OUTSIDE_SIDEBAR,
   RESOURCE_ICONS,
   RESOURCE_ICON_FALLBACK,
   type NavGroup,
@@ -45,7 +46,13 @@ export function SidebarNav({ role, onNavigate }: SidebarNavProps) {
   const resourceGroups: NavGroup[] = RESOURCE_GROUP_ORDER.map((groupName) => ({
     labelKey: groupName,
     items: resources
-      .filter((resource) => resource.group === groupName)
+      .filter(
+        (resource) =>
+          resource.group === groupName &&
+          // Notifications live in the top bar; listing them here too would
+          // give the same page two entry points and a stale-looking count.
+          !RESOURCES_OUTSIDE_SIDEBAR.includes(resource.resource),
+      )
       .map((resource) => ({
         href: `/admin/r/${resource.resource}`,
         // Prefer a translated label; fall back to the schema's English one so

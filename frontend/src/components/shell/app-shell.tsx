@@ -6,6 +6,7 @@ import { Menu } from 'lucide-react';
 
 import { LocaleSwitcher } from '@/components/locale-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { NotificationsBell } from '@/components/shell/notifications-bell';
 import { SidebarNav } from '@/components/shell/sidebar-nav';
 import { UserMenu } from '@/components/shell/user-menu';
 import { Button } from '@/components/ui/button';
@@ -70,6 +71,9 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
           {/* ms-auto, not ml-auto — pushes controls to the reading-end edge in
               both directions. */}
           <div className="ms-auto flex items-center gap-1">
+            {/* Notifications live HERE, not in the sidebar: the count changes
+                while you work and has to be visible from every page. */}
+            <NotificationsBell />
             <LocaleSwitcher />
             <ThemeToggle />
             <UserMenu {...user} onSignOut={onSignOut} />
