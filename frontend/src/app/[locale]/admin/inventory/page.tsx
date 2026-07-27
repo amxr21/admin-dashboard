@@ -1,12 +1,13 @@
-import { setRequestLocale } from 'next-intl/server';
+import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { SectionPlaceholder } from '@/components/shell/section-placeholder';
+import { InventoryTable } from '@/components/inventory/inventory-table';
 
 /**
- * Inventory — planned, not yet implemented.
+ * Inventory.
  *
- * A real page rather than a missing route: the nav advertises this section, so
- * a 404 here would read as a broken app instead of an unfinished one.
+ * Stays a Server Component so `setRequestLocale` keeps the shell statically
+ * rendered; the fetching and the two sheets live in InventoryTable, which is
+ * the only part that needs to be a client component.
  */
 export default async function InventoryPage({
   params,
@@ -16,7 +17,16 @@ export default async function InventoryPage({
   const { locale } = await params;
   setRequestLocale(locale);
 
+  const t = await getTranslations('inventory');
+
   return (
-    <SectionPlaceholder section="inventory" />
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
+      </div>
+
+      <InventoryTable />
+    </div>
   );
 }
