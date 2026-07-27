@@ -73,12 +73,27 @@ describe('role → area map', () => {
     expect(canAccessArea(StaffRole.FULFILLMENT, 'staff')).toBe(false);
   });
 
-  it('lets DEMO see every area', () => {
-    // The point of the demo account is a realistic tour, so visibility is
-    // total. Write protection is a separate mechanism — see below.
+  it('lets DEMO see every area EXCEPT staff', () => {
+    /**
+     * This used to assert total visibility, on the reasoning that the demo
+     * account is a realistic tour and writes are blocked separately.
+     *
+     * That was wrong, and the test was documenting the mistake: `staff`
+     * returns real employees — names, email addresses, who is locked out,
+     * when each last signed in — and the demo account is handed to
+     * PROSPECTIVE CLIENTS. Nothing was writable, so no authorisation check
+     * ever failed. It was a privacy leak, not an authorisation bug, which is
+     * why a write-focused rule never caught it.
+     */
     for (const area of AREAS) {
-      expect(canAccessArea(StaffRole.DEMO, area)).toBe(true);
+      expect(canAccessArea(StaffRole.DEMO, area)).toBe(area !== 'staff');
     }
+  });
+
+  it('grants DEMO its areas explicitly, so a new one is not inherited', () => {
+    // Listed rather than a wildcard minus one: a future area holding personal
+    // data has to be added deliberately instead of arriving granted.
+    expect(canAccessArea(StaffRole.DEMO, 'staff')).toBe(false);
   });
 
   it('marks only DEMO as read-only', () => {

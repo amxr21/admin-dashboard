@@ -62,8 +62,35 @@ export const ROLE_AREAS: Record<StaffRole, readonly Grant[]> = {
   ],
   [StaffRole.FULFILLMENT]: ['orders', 'delivery', 'inventory', 'products'],
   [StaffRole.SUPPORT]: ['orders', 'customers', 'reviews'],
-  // Sees everything, changes nothing.
-  [StaffRole.DEMO]: [ALL],
+  /**
+   * Sees the product, changes nothing — but NOT `staff`.
+   *
+   * ─── WHY THIS IS AN EXPLICIT LIST AND NOT `ALL` ──────────────────────
+   * It used to be `[ALL]`, on the reasoning "sees everything, changes
+   * nothing". Read-only was enforced, so nothing could be broken — but the
+   * demo account exists to be handed to PROSPECTIVE CLIENTS, and `staff`
+   * returns real employees: names, email addresses, who is locked out, when
+   * each person last signed in.
+   *
+   * Nothing was writable, so no check failed. It was a privacy leak, not an
+   * authorisation bug, which is exactly why a write-focused rule missed it.
+   *
+   * Listed explicitly rather than `ALL` minus one, so a NEW area is not
+   * granted to demo accounts by default. A future area holding personal data
+   * has to be added here deliberately.
+   */
+  [StaffRole.DEMO]: [
+    'orders',
+    'products',
+    'inventory',
+    'customers',
+    'categories',
+    'discounts',
+    'reviews',
+    'delivery',
+    'reports',
+    'settings',
+  ],
 };
 
 /** Human-readable labels, served to the UI so it never hardcodes its own. */
