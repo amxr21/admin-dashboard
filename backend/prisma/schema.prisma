@@ -212,8 +212,9 @@ model Product {
   orderItems OrderItem[]
   reviews    Review[]
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  stockMovements StockMovement[]
 
   @@index([status])
   @@index([categoryId])
@@ -416,4 +417,50 @@ model DeliveryAssignment {
   @@index([driverId, status])
   @@index([status])
   @@map("delivery_assignments")
+}
+
+/// Why stock moved. Required on every movement — an unexplained adjustment is
+/// indistinguishable from a mistake when someone audits the count later.
+enum StockMovementReason {
+  RECEIVED
+  SOLD
+  DAMAGED
+  LOST
+  RETURNED
+  CORRECTION
+}
+
+/// Stock as a LOG, not a number you overwrite.
+///
+/// `product.stock` is a denormalised running total kept in step by the same
+/// transaction that writes the movement. The movements are the truth; the
+/// column exists so a product list doesn't have to sum a table per row.
+///
+/// Deliberately append-only: there is no update path. Getting a movement wrong
+/// is corrected by a compensating CORRECTION movement, so the trail records
+/// what actually happened, including the mistake.
+model StockMovement {
+  id String @id @default(cuid())
+
+  /// Signed. +50 received, -3 damaged. The sum of deltas for a product equals
+  /// its stock — a test asserts exactly that.
+  delta  Int
+  reason StockMovementReason
+  /// Free-text detail, e.g. "pallet 4, water damage".
+  note   String?             @db.VarChar(255)
+
+  productId String  @map("product_id")
+  /// Cascade: a product's stock history has no meaning without the product.
+  /// Products that appear in an order are archived rather than deleted, so
+  /// this only ever fires for a product nothing refers to.
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  /// Plain id, not a relation — the trail must survive the staff member being
+  /// deleted, exactly like OrderStatusHistory.changedById.
+  actorId String? @map("actor_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([productId, createdAt])
+  @@map("stock_movements")
 }
