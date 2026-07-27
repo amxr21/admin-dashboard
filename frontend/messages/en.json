@@ -482,5 +482,9 @@
     "LOST": "Lost",
     "RETURNED": "Returned",
     "CORRECTION": "Correction"
+  },
+  "notificationsBell": {
+    "unread": "{count, plural, one {# unread notification} other {# unread notifications}}",
+    "none": "Notifications"
   }
 }

@@ -83,9 +83,22 @@ export function TransitionOverlay({ active, label }: TransitionOverlayProps) {
       aria-live="polite"
       className={[
         'fixed inset-0 z-50 flex items-center justify-center',
-        // Semi-transparent so the user keeps their place in the page rather
-        // than staring at a blank screen.
-        'bg-background/70 backdrop-blur-[2px]',
+        /**
+         * BLUR the page, don't wash it out.
+         *
+         * This was `bg-background/70` with a 2px blur — 70% opacity of the
+         * page background is close enough to opaque that it read as a white
+         * flash, and 2px of blur is invisible underneath it. The effect was a
+         * blink rather than a state.
+         *
+         * Now the tint is light and the blur does the work: the layout stays
+         * legible underneath, so the user keeps their place and can see that
+         * the SAME page is busy rather than that a new blank one arrived.
+         */
+        'bg-background/30 backdrop-blur-md',
+        // The blur itself is the transition — fading it in avoids a hard
+        // snap from sharp to blurred.
+        'transition-[backdrop-filter] duration-200',
       ].join(' ')}
     >
       <div className="bg-card text-card-foreground flex items-center gap-3 rounded-lg border px-4 py-3 shadow-lg">
