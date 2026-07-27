@@ -41,8 +41,17 @@ export class AppError extends Error {
     return new AppError(401, 'UNAUTHORIZED', message);
   }
 
-  static forbidden(message = 'You do not have access to this resource'): AppError {
-    return new AppError(403, 'FORBIDDEN', message);
+  /**
+   * `details` is optional here for the same reason it exists on badRequest:
+   * a refusal tied to one field ("you cannot grant a role above your own")
+   * should land on that field in the form, not as a banner the user has to
+   * map back to a control themselves.
+   */
+  static forbidden(
+    message = 'You do not have access to this resource',
+    details?: unknown,
+  ): AppError {
+    return new AppError(403, 'FORBIDDEN', message, details);
   }
 
   static notFound(message = 'Resource not found'): AppError {

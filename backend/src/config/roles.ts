@@ -98,3 +98,52 @@ export function canAccessArea(role: StaffRole, area: Area): boolean {
 export function areasFor(role: StaffRole): readonly Area[] {
   return ROLE_AREAS[role].includes(ALL) ? AREAS : (ROLE_AREAS[role] as readonly Area[]);
 }
+
+/**
+ * Privilege ORDER, highest first. Separate from `ROLE_AREAS` on purpose.
+ *
+ * ─── WHY AREAS ARE NOT A HIERARCHY ───────────────────────────────────
+ * `ROLE_AREAS` answers "may this role open this screen". It deliberately does
+ * NOT imply rank: DEMO reaches every area and outranks nobody, while
+ * FULFILLMENT reaches four areas and outranks nobody either. Deriving rank by
+ * counting areas would make DEMO the most powerful role in the system.
+ *
+ * Rank is only used for one question — who may change whose role — so it is
+ * declared explicitly rather than inferred.
+ */
+const ROLE_ORDER: readonly StaffRole[] = [
+  StaffRole.DEVELOPER,
+  StaffRole.OWNER,
+  StaffRole.MANAGER,
+  StaffRole.FULFILLMENT,
+  StaffRole.SUPPORT,
+  StaffRole.DEMO,
+];
+
+/** Lower number = more privileged. */
+export function rankOf(role: StaffRole): number {
+  const index = ROLE_ORDER.indexOf(role);
+  // An unlisted role is treated as the LEAST privileged rather than the most.
+  // If someone adds a role to the enum and forgets this list, the safe failure
+  // is "cannot do anything", not "outranks everyone".
+  return index === -1 ? ROLE_ORDER.length : index;
+}
+
+/** Does the actor outrank the subject? Equal rank is NOT outranking. */
+export function outranks(actor: StaffRole, subject: StaffRole): boolean {
+  return rankOf(actor) < rankOf(subject);
+}
+
+/**
+ * May this actor grant this role?
+ *
+ * At or below their own rank. An OWNER may create another OWNER — otherwise
+ * only a DEVELOPER could, and a business would be one deleted account away
+ * from having nobody who can hire.
+ *
+ * Granting ABOVE your own rank is privilege escalation, which is the single
+ * most valuable thing to get wrong in a staff screen.
+ */
+export function canAssignRole(actor: StaffRole, target: StaffRole): boolean {
+  return rankOf(target) >= rankOf(actor);
+}

@@ -5,6 +5,8 @@ import { rolesRouter } from './roles.route.js';
 import { ordersRouter } from './orders.route.js';
 import { inventoryRouter } from './inventory.route.js';
 import { couriersRouter } from './couriers.route.js';
+import { staffRouter } from './staff.route.js';
+import { settingsRouter } from './settings.route.js';
 import { resourceRouter } from './resource.route.js';
 
 /**
@@ -23,5 +25,7 @@ v1Router.use(rolesRouter);
 v1Router.use(ordersRouter);
 v1Router.use(inventoryRouter);
 v1Router.use(couriersRouter);
+v1Router.use(staffRouter);
+v1Router.use(settingsRouter);
 // LAST: /r/:resource is a catch-all shape, so it must not shadow a named route.
 v1Router.use(resourceRouter);
