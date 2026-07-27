@@ -3,6 +3,7 @@ import { healthRouter } from './health.route.js';
 import { authRouter } from './auth.route.js';
 import { rolesRouter } from './roles.route.js';
 import { ordersRouter } from './orders.route.js';
+import { inventoryRouter } from './inventory.route.js';
 import { resourceRouter } from './resource.route.js';
 
 /**
@@ -19,5 +20,6 @@ v1Router.use(healthRouter);
 v1Router.use(authRouter);
 v1Router.use(rolesRouter);
 v1Router.use(ordersRouter);
+v1Router.use(inventoryRouter);
 // LAST: /r/:resource is a catch-all shape, so it must not shadow a named route.
 v1Router.use(resourceRouter);

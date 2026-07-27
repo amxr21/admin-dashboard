@@ -418,5 +418,69 @@
       "billedTo": "Billed to",
       "paidBy": "Paid by {method}"
     }
+  },
+  "inventory": {
+    "title": "Inventory",
+    "subtitle": "Stock as a record of what happened to it, not a number you overwrite.",
+    "empty": "No products yet.",
+    "emptyLow": "Nothing is running low.",
+    "total": "{count, plural, one {# product} other {# products}}",
+    "lowBadge": "low (≤ {threshold})",
+    "columns": {
+      "product": "Product",
+      "category": "Category",
+      "stock": "In stock",
+      "actions": "Actions"
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Search by name or SKU"
+    },
+    "filters": {
+      "lowOnly": "Low stock only"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "actions": {
+      "adjust": "Adjust stock for {name}",
+      "adjustShort": "Adjust",
+      "history": "Stock history for {name}"
+    },
+    "adjust": {
+      "title": "Adjust {name}",
+      "current": "Currently {stock} in stock",
+      "reason": "Reason",
+      "reasonPlaceholder": "Why is this changing?",
+      "direction": "Direction",
+      "in": "Add",
+      "out": "Remove",
+      "amount": "Amount",
+      "amountHint": "Enter a whole number greater than zero.",
+      "preview": "{from} → {to}",
+      "wouldGoNegative": "Only {stock} in stock — this would go below zero.",
+      "note": "Note (optional)",
+      "notePlaceholder": "e.g. pallet 4, water damage",
+      "cancel": "Cancel",
+      "record": "Record movement",
+      "saving": "Recording…",
+      "done": "{name} is now at {stock}."
+    },
+    "log": {
+      "title": "Stock history",
+      "current": "now {stock} in stock",
+      "empty": "No movements recorded yet.",
+      "close": "Close",
+      "truncated": "Showing the latest {shown} of {total} movements."
+    }
+  },
+  "stockReason": {
+    "RECEIVED": "Received",
+    "SOLD": "Sold",
+    "DAMAGED": "Damaged",
+    "LOST": "Lost",
+    "RETURNED": "Returned",
+    "CORRECTION": "Correction"
   }
 }

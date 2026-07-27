@@ -418,5 +418,69 @@
       "billedTo": "إلى",
       "paidBy": "الدفع عبر {method}"
     }
+  },
+  "inventory": {
+    "title": "المخزون",
+    "subtitle": "المخزون كسجل لما جرى عليه، لا رقم يُستبدل.",
+    "empty": "لا توجد منتجات بعد.",
+    "emptyLow": "لا يوجد مخزون منخفض.",
+    "total": "{count, plural, zero {لا توجد منتجات} one {منتج واحد} two {منتجان} few {# منتجات} many {# منتجاً} other {# منتج}}",
+    "lowBadge": "منخفض (≤ {threshold})",
+    "columns": {
+      "product": "المنتج",
+      "category": "الفئة",
+      "stock": "المتوفر",
+      "actions": "إجراءات"
+    },
+    "search": {
+      "label": "بحث",
+      "placeholder": "ابحث بالاسم أو رمز SKU"
+    },
+    "filters": {
+      "lowOnly": "المخزون المنخفض فقط"
+    },
+    "pagination": {
+      "previous": "السابق",
+      "next": "التالي"
+    },
+    "actions": {
+      "adjust": "تعديل مخزون {name}",
+      "adjustShort": "تعديل",
+      "history": "سجل مخزون {name}"
+    },
+    "adjust": {
+      "title": "تعديل {name}",
+      "current": "المتوفر حالياً {stock}",
+      "reason": "السبب",
+      "reasonPlaceholder": "ما سبب هذا التغيير؟",
+      "direction": "الاتجاه",
+      "in": "إضافة",
+      "out": "خصم",
+      "amount": "الكمية",
+      "amountHint": "أدخل عدداً صحيحاً أكبر من صفر.",
+      "preview": "{from} ← {to}",
+      "wouldGoNegative": "المتوفر {stock} فقط — هذا سينزل بالمخزون تحت الصفر.",
+      "note": "ملاحظة (اختياري)",
+      "notePlaceholder": "مثال: منصة 4، تلف بالماء",
+      "cancel": "إلغاء",
+      "record": "تسجيل الحركة",
+      "saving": "جارٍ التسجيل…",
+      "done": "أصبح مخزون {name} الآن {stock}."
+    },
+    "log": {
+      "title": "سجل المخزون",
+      "current": "المتوفر الآن {stock}",
+      "empty": "لا توجد حركات مسجَّلة بعد.",
+      "close": "إغلاق",
+      "truncated": "يعرض أحدث {shown} من أصل {total} حركة."
+    }
+  },
+  "stockReason": {
+    "RECEIVED": "وارد",
+    "SOLD": "مُباع",
+    "DAMAGED": "تالف",
+    "LOST": "مفقود",
+    "RETURNED": "مُرتجع",
+    "CORRECTION": "تصحيح"
   }
 }
