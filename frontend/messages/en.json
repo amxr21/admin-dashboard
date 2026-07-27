@@ -486,5 +486,79 @@
   "notificationsBell": {
     "unread": "{count, plural, one {# unread notification} other {# unread notifications}}",
     "none": "Notifications"
+  },
+  "delivery": {
+    "title": "Delivery",
+    "subtitle": "Couriers, and the access code each one signs in with.",
+    "empty": "No couriers yet.",
+    "total": "{count, plural, one {# courier} other {# couriers}}",
+    "columns": {
+      "courier": "Courier",
+      "zone": "Zone",
+      "active": "Active jobs",
+      "code": "Access code",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Name, phone or zone"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "code": {
+      "issued": "Issued",
+      "none": "Not issued"
+    },
+    "actions": {
+      "create": "New courier",
+      "edit": "Edit {name}",
+      "issue": "Issue an access code for {name}",
+      "issueShort": "Issue code",
+      "reissue": "Reissue the access code for {name}",
+      "reissueShort": "Reissue",
+      "revoke": "Revoke {name}'s access code"
+    },
+    "notice": {
+      "revoked": "{name} can no longer sign in."
+    },
+    "accessCode": {
+      "title": "Access code for {name}",
+      "shownOnce": "This is the only time it can be shown. We store a one-way hash, so it cannot be recovered — if it is lost, issue a new one.",
+      "copy": "Copy the access code",
+      "copyHint": "Copy it and give it to the courier directly.",
+      "copied": "Copied to your clipboard.",
+      "done": "I've saved it"
+    },
+    "revoke": {
+      "title": "Revoke {name}'s access code?",
+      "description": "They will be signed out of the courier portal and cannot sign in again until a new code is issued. Their delivery history is kept.",
+      "confirm": "Revoke",
+      "cancel": "Cancel"
+    },
+    "form": {
+      "createTitle": "New courier",
+      "editTitle": "Edit courier",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving…",
+      "nameRequired": "Name is required.",
+      "created": "{name} added.",
+      "updated": "{name} saved.",
+      "inactiveNote": "Deactivating stops them signing in, but does not revoke the code. Revoke it separately if they have left.",
+      "fields": {
+        "name": "Name",
+        "phone": "Phone",
+        "email": "Email",
+        "vehicleType": "Vehicle",
+        "plateNumber": "Plate number",
+        "zone": "Zone",
+        "region": "Region",
+        "country": "Country",
+        "status": "Status"
+      }
+    }
   }
 }
