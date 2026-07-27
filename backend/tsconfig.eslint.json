@@ -11,6 +11,10 @@
   "include": [
     "src/**/*.ts",
     "prisma/**/*.ts",
+    // One-off maintenance scripts (data backfills, diagnostics). They are not
+    // compiled into dist/ — they run under tsx — but they touch the database,
+    // so they need the same type checking as anything that does.
+    "scripts/**/*.ts",
     "vitest.config.ts",
     "vitest.setup.ts"
   ],
