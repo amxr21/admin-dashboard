@@ -12,6 +12,7 @@ import {
   type ResourceConfig,
 } from '../config/admin.config.js';
 import { hooksFor } from './resource-hooks.js';
+import { isEmailShaped } from '../lib/email.js';
 
 /**
  * Generic CRUD, parameterised by config.
@@ -426,7 +427,10 @@ function coerceWriteValue(field: FieldConfig, value: unknown): unknown {
     }
 
     case 'email': {
-      if (typeof value !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      // Not a regex: the previous `/^[^\s@]+@[^\s@]+\.[^\s@]+$/` was a
+      // polynomial ReDoS on a value taken straight from a request body.
+      // See lib/email.ts.
+      if (typeof value !== 'string' || !isEmailShaped(value)) {
         throw AppError.badRequest(`"${field.label}" must be a valid email address`, {
           field: field.name,
         });

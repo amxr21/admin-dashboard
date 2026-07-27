@@ -560,5 +560,100 @@
         "status": "Status"
       }
     }
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Your own preferences, and the settings that apply to everyone.",
+    "loadFailed": "We couldn't load the settings.",
+    "save": "Save changes",
+    "saving": "Saving…",
+    "saved": "Saved.",
+    "unsaved": "{count, plural, one {# unsaved change} other {# unsaved changes}}",
+    "personal": {
+      "title": "Your preferences",
+      "description": "These affect only you, and take effect immediately.",
+      "language": "Language",
+      "theme": "Theme"
+    },
+    "store": {
+      "title": "Store settings",
+      "description": "These apply to everyone. Save to apply them."
+    }
+  },
+  "staff": {
+    "title": "Staff",
+    "subtitle": "Who has access, and how much of it.",
+    "empty": "No staff accounts yet.",
+    "total": "{count, plural, one {# person} other {# people}}",
+    "columns": {
+      "person": "Person",
+      "role": "Role",
+      "status": "Status",
+      "lastLogin": "Last sign-in",
+      "actions": "Actions"
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Name or email"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Deactivated",
+      "locked": "Locked"
+    },
+    "never": "Never",
+    "you": "You",
+    "actions": {
+      "create": "Add someone",
+      "edit": "Edit {name}",
+      "unlock": "Unlock {name}",
+      "unlockShort": "Unlock",
+      "password": "Set a new password for {name}",
+      "passwordShort": "Password"
+    },
+    "notice": {
+      "created": "{name} can now sign in.",
+      "updated": "{name} saved.",
+      "unlocked": "{name} can sign in again.",
+      "passwordSet": "{name}'s password has been changed."
+    },
+    "form": {
+      "createTitle": "Add someone",
+      "editTitle": "Edit access",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving…",
+      "emailRequired": "Email is required.",
+      "passwordHint": "At least 12 characters. You will need to give it to them directly.",
+      "fields": {
+        "email": "Email",
+        "name": "Name",
+        "phone": "Phone",
+        "role": "Role",
+        "password": "Password",
+        "isActive": "Can sign in"
+      },
+      "selfRoleNote": "You cannot change your own role — ask another owner.",
+      "lockedNote": "Locked after too many failed sign-ins. Unlock or set a new password."
+    },
+    "password": {
+      "title": "New password for {name}",
+      "description": "They are not told automatically — give it to them directly. Setting it also clears any lockout.",
+      "label": "New password",
+      "confirm": "Set password",
+      "cancel": "Cancel"
+    }
+  },
+  "staffRole": {
+    "DEVELOPER": "Developer",
+    "OWNER": "Owner",
+    "MANAGER": "Manager",
+    "FULFILLMENT": "Fulfillment",
+    "SUPPORT": "Support",
+    "DEMO": "Demo (read-only)"
   }
 }

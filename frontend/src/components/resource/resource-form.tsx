@@ -18,6 +18,7 @@ import {
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api';
+import { isEmailShaped } from '@/lib/email';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
   createRow,
@@ -48,7 +49,9 @@ import {
 /** Copied verbatim from coerceWriteValue() in resource.service.ts. */
 const MONEY_PATTERN = /^-?\d{1,8}(\.\d{1,2})?$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Email is NOT a regex on either side — the old pattern was a polynomial
+// ReDoS. See lib/email.ts, which mirrors the backend's copy.
 
 /**
  * Sentinel for "no selection" in a Select.
@@ -230,7 +233,7 @@ export function ResourceForm({
             ? null
             : t('errors.date');
         case 'email':
-          return EMAIL_PATTERN.test(text) ? null : t('errors.email');
+          return isEmailShaped(text) ? null : t('errors.email');
         case 'enum':
           return field.options?.includes(text) ? null : t('errors.enum');
         default:
