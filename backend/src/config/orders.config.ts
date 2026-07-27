@@ -35,15 +35,21 @@ export const ORDER_TRANSITIONS: Readonly<Record<OrderStatus, readonly OrderStatu
 /**
  * How an order status change propagates to an existing delivery assignment.
  *
- * Only the two forward states map. `DeliveryStatus` has no cancelled or
- * returned member, so a cancelled order CANNOT have that reflected on its
- * assignment — there is no value to write. Rather than inventing one here or
- * silently leaving the courier with a live job, the gap is left explicit and
- * belongs to group D, which owns the courier side.
+ * ─── THE GAP GROUP B LEFT, NOW CLOSED ────────────────────────────────
+ * `DeliveryStatus` originally had no cancelled or returned member, so a
+ * cancelled order could not have that reflected on its assignment — there was
+ * no value to write, and a courier kept a live job for an order that no longer
+ * existed. That was documented here rather than papered over.
+ *
+ * Group D added the two terminal members, so the mapping is now total over
+ * every order status that a courier needs to hear about.
  */
 export const ASSIGNMENT_ON_ORDER_STATUS: Partial<Record<OrderStatus, DeliveryStatus>> = {
   [OrderStatus.SHIPPED]: DeliveryStatus.OUT_FOR_DELIVERY,
   [OrderStatus.DELIVERED]: DeliveryStatus.DELIVERED,
+  // Stop the courier. Without these the job stayed live on their portal.
+  [OrderStatus.CANCELED]: DeliveryStatus.CANCELED,
+  [OrderStatus.RETURNED]: DeliveryStatus.RETURNED,
 };
 
 export function canTransition(from: OrderStatus, to: OrderStatus): boolean {

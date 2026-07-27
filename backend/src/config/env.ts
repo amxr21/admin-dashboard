@@ -59,6 +59,21 @@ const envSchema = z.object({
   // real blast radius of a leak. Shorten it, don't lengthen it.
   JWT_EXPIRES_IN: z.string().default('7d'),
 
+  // Key for the HMAC that protects courier access codes. No default, for the
+  // same reason as JWT_SECRET: a secret shipped in the code is not a secret,
+  // and here it would let anyone compute a valid code for any courier.
+  //
+  // Separate from JWT_SECRET deliberately — they guard different things, and
+  // rotating this invalidates every courier code without touching staff
+  // sessions, which is the correct blast radius.
+  // Generate with: openssl rand -base64 32
+  DELIVERY_CODE_SECRET: z
+    .string()
+    .min(
+      32,
+      'DELIVERY_CODE_SECRET must be at least 32 characters — generate with `openssl rand -base64 32`',
+    ),
+
   // ─── Brute-force protection ──────────────────────────────────────
   // Failed attempts before an account locks. Counted per-account, so a
   // distributed attack on one email still trips it.
