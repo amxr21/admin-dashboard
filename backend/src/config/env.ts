@@ -34,6 +34,14 @@ const envSchema = z.object({
   // Optional: Sentry is disabled outside production, so local dev needs no DSN.
   SENTRY_DSN: z.string().url().optional().or(z.literal('')),
 
+  // ─── Diagnostics links ───────────────────────────────────────────
+  // Where a developer goes to look, surfaced by GET /diagnostics. These are
+  // dashboard URLs, not credentials — whoever opens one still has to sign in.
+  // Optional because the RUN layer that provisions them is not applied yet;
+  // unset means "no link to offer", not a misconfiguration.
+  SENTRY_DASHBOARD_URL: z.string().url().optional(),
+  LOGS_DASHBOARD_URL: z.string().url().optional(),
+
   // Comma-separated origin list → string[].
   CORS_ORIGINS: z
     .string()
