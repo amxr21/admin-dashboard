@@ -140,6 +140,17 @@ model User {
   accessExpiresAt DateTime? @map("access_expires_at")
   lastLoginAt     DateTime? @map("last_login_at")
 
+  /// Bumped to invalidate every token this user holds.
+  ///
+  /// Without it, a stolen JWT stays valid until it expires — currently seven
+  /// days — and there is nothing anyone can do about it. A password reset or a
+  /// deactivation that leaves the old session working is not a revocation.
+  ///
+  /// The token carries this number; authenticate compares it to the row. One
+  /// increment invalidates every device at once, which is exactly what someone
+  /// asks for when they say a laptop was stolen.
+  tokenVersion    Int       @default(0) @map("token_version")
+
   /// ─── Brute-force protection ──────────────────────────────────────
   /// Per-ACCOUNT, deliberately separate from the per-IP rate limiter.
   /// IP limiting alone does not stop a slow distributed attack against one
@@ -484,4 +495,47 @@ model StockMovement {
 
   @@index([productId, createdAt])
   @@map("stock_movements")
+}
+
+/// Append-only record of who changed what.
+///
+/// ─── WHY THE ENGINE IS THE CHOKE POINT ───────────────────────────────
+/// Every generic resource write goes through one service, so one hook there
+/// covers products, categories, customers, discounts, reviews and anything
+/// added later — without each route remembering to log. Bespoke writes
+/// (orders, inventory, staff, settings) call it explicitly, because they are
+/// the ones a reviewer will look for.
+///
+/// Deliberately NOT a relation to User: the trail has to survive the person
+/// being deleted. An audit row naming a user id that no longer exists is still
+/// evidence; a cascade-deleted audit row is not.
+model AuditLog {
+  id String @id @default(cuid())
+
+  /// What happened: "product.updated", "staff.role.changed", "order.status.changed".
+  action String @db.VarChar(64)
+  /// Which table, so a reviewer can filter without knowing every action name.
+  entity String @db.VarChar(48)
+  /// Row id. Nullable because a delete's target no longer exists to point at.
+  entityId String? @map("entity_id") @db.VarChar(64)
+
+  /// Plain id, not a relation — see above.
+  actorId    String? @map("actor_id") @db.VarChar(64)
+  actorEmail String? @map("actor_email") @db.VarChar(255)
+  actorRole  String? @map("actor_role") @db.VarChar(32)
+
+  /// Changed fields only, never the whole row: a full snapshot of a customer
+  /// would copy their personal data into a table with a longer retention than
+  /// the record itself. Values are redacted for sensitive fields.
+  changes Json?
+
+  /// Correlates with the request logs, so an entry can be traced end to end.
+  requestId String? @map("request_id") @db.VarChar(64)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([entity, entityId])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+  @@map("audit_log")
 }

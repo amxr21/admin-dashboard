@@ -52,7 +52,9 @@ export async function authenticate(
     // Re-read the user every request. The token proves who signed in, not that
     // the account is still active — a user deactivated a minute ago still holds
     // a validly-signed token until it expires.
-    const user = await getAuthenticatedUser(payload.sub);
+    // `payload.tv` carries the token's version; the service compares it to the
+    // row and refuses a token minted before the last revocation.
+    const user = await getAuthenticatedUser(payload.sub, payload.tv);
 
     req.user = user;
 
