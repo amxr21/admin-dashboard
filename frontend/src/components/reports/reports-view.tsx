@@ -1,0 +1,249 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import { useFormatter, useTranslations } from 'next-intl';
+
+import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-chart';
+import { DatePicker } from '@/components/ui/date-picker';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { StatusBadge } from '@/components/status-badge';
+import { ApiError } from '@/lib/api';
+import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import {
+  GRANULARITIES,
+  defaultRange,
+  fetchOverview,
+  fetchRevenue,
+  fetchStatusBreakdown,
+  fetchTopProducts,
+  type Granularity,
+  type Overview,
+  type StatusBreakdown,
+  type TopProducts,
+} from '@/lib/reports-api';
+
+/**
+ * Reports — revenue, best sellers and order outcomes over a chosen window.
+ *
+ * ─── EVERY FIGURE IS A SNAPSHOT, NOT A RECOMPUTATION ─────────────────
+ * The API reads `order.total` and the line-item price recorded at the time of
+ * sale. Editing a price today does not move last quarter's revenue, which is
+ * why two runs of the same report agree.
+ *
+ * ─── THE RANGE IS BOUNDED, AND SAYS SO WHEN REFUSED ──────────────────
+ * The server caps the window because an unbounded range is an unbounded scan.
+ * A refusal names the limit rather than failing generically, so the fix is
+ * obvious.
+ */
+
+export function ReportsView() {
+  const t = useTranslations('reports');
+  const formatter = useFormatter();
+  const translateError = useTranslatedApiError();
+
+  const [range, setRange] = useState(defaultRange);
+  const [granularity, setGranularity] = useState<Granularity>('day');
+
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [points, setPoints] = useState<RevenuePoint[]>([]);
+  const [top, setTop] = useState<TopProducts | null>(null);
+  const [breakdown, setBreakdown] = useState<StatusBreakdown | null>(null);
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // One window, four questions — asked together so every panel describes
+      // the same period rather than drifting as each lands.
+      const [loadedOverview, series, loadedTop, loadedBreakdown] = await Promise.all([
+        fetchOverview(range),
+        fetchRevenue(range, granularity),
+        fetchTopProducts(range, 10),
+        fetchStatusBreakdown(range),
+      ]);
+
+      setOverview(loadedOverview);
+      setPoints(
+        series.points.map((point) => ({
+          date: point.date,
+          // Display-only: a chart needs a number for a pixel height, and this
+          // value never travels back to the server.
+          revenue: Number(point.revenue),
+        })),
+      );
+      setTop(loadedTop);
+      setBreakdown(loadedBreakdown);
+    } catch (caught) {
+      // A 400 here is a REASON — "choose a range of 731 days or fewer" — and
+      // it names the limit. Flattening it would hide the fix.
+      setError(
+        caught instanceof ApiError && caught.status === 400
+          ? caught.message
+          : translateError(caught),
+      );
+      setOverview(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [range, granularity, translateError]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-2">
+          <Label htmlFor="reports-from">{t('from')}</Label>
+          <DatePicker
+            id="reports-from"
+            value={range.from}
+            required
+            onChange={(value) => value && setRange((current) => ({ ...current, from: value }))}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="reports-to">{t('to')}</Label>
+          <DatePicker
+            id="reports-to"
+            value={range.to}
+            required
+            onChange={(value) => value && setRange((current) => ({ ...current, to: value }))}
+          />
+        </div>
+
+        <div className="w-40 space-y-2">
+          <Label htmlFor="reports-granularity">{t('granularity')}</Label>
+          <Select
+            value={granularity}
+            onValueChange={(value) => setGranularity(value as Granularity)}
+          >
+            <SelectTrigger id="reports-granularity">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {GRANULARITIES.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {t(`granularities.${option}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <Button variant="outline" onClick={() => setRange(defaultRange())}>
+          {t('reset')}
+        </Button>
+      </div>
+
+      {error ? (
+        <p
+          role="alert"
+          className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
+        >
+          {error}
+        </p>
+      ) : null}
+
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label={t('summary')}>
+        {isLoading || !overview
+          ? Array.from({ length: 4 }, (_, index) => (
+              <Skeleton key={index} className="h-24 w-full" />
+            ))
+          : (
+              [
+                { key: 'revenue', value: formatter.number(Number(overview.revenue), 'currency') },
+                { key: 'orders', value: formatter.number(overview.orders) },
+                {
+                  key: 'averageOrderValue',
+                  value: formatter.number(Number(overview.averageOrderValue), 'currency'),
+                },
+                { key: 'newCustomers', value: formatter.number(overview.newCustomers) },
+              ] as const
+            ).map((tile) => (
+              <div key={tile.key} className="bg-card rounded-lg border p-4">
+                <p className="text-muted-foreground text-sm">{t(`tiles.${tile.key}`)}</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">{tile.value}</p>
+              </div>
+            ))}
+      </section>
+
+      <RevenueChart data={points} isLoading={isLoading} error={null} />
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="space-y-3">
+          <h2 className="font-medium">{t('topProducts')}</h2>
+
+          {isLoading ? (
+            <Skeleton className="h-48 w-full" />
+          ) : top && top.products.length > 0 ? (
+            <ol className="space-y-2">
+              {top.products.map((product, index) => (
+                <li
+                  key={product.productId ?? `deleted-${String(index)}`}
+                  className="flex items-baseline justify-between gap-3 border-b pb-2"
+                >
+                  <span className="min-w-0 truncate">
+                    {/* Null when the product was hard-deleted — line items keep
+                        a price snapshot but no name, so there is nothing to
+                        fall back to and saying so beats a blank row. */}
+                    {product.name ?? (
+                      <em className="text-muted-foreground">{t('deletedProduct')}</em>
+                    )}
+                    <span className="text-muted-foreground ms-2 text-sm tabular-nums">
+                      ×{formatter.number(product.quantity)}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-medium tabular-nums">
+                    {formatter.number(Number(product.revenue), 'currency')}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-muted-foreground text-sm">{t('noSales')}</p>
+          )}
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="font-medium">{t('statusBreakdown')}</h2>
+
+          {isLoading ? (
+            <Skeleton className="h-48 w-full" />
+          ) : (
+            <ul className="space-y-2">
+              {(breakdown?.statuses ?? []).map((row) => (
+                <li
+                  key={row.status}
+                  className="flex items-center justify-between gap-3 border-b pb-2"
+                >
+                  <StatusBadge kind="orderStatus" value={row.status} />
+                  <span className="text-sm tabular-nums">
+                    {/* Zeroes are shown, not hidden: a missing row reads as
+                        missing data, an explicit 0 reads as "none happened". */}
+                    {formatter.number(row.orders)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}

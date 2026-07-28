@@ -154,7 +154,9 @@
     "totalOrders": "Orders",
     "totalCustomers": "Customers",
     "pendingOrders": "Pending orders",
-    "recentOrders": "Recent orders"
+    "recentOrders": "Recent orders",
+    "canceledOrders": "Cancelled",
+    "lowStockProducts": "Low stock"
   },
   "products": {
     "title": "Products",
@@ -655,5 +657,29 @@
     "FULFILLMENT": "Fulfillment",
     "SUPPORT": "Support",
     "DEMO": "Demo (read-only)"
+  },
+  "reports": {
+    "title": "Reports",
+    "subtitle": "Revenue, best sellers and order outcomes over a window you choose.",
+    "from": "From",
+    "to": "To",
+    "granularity": "Group by",
+    "granularities": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month"
+    },
+    "reset": "Last 30 days",
+    "summary": "Summary",
+    "tiles": {
+      "revenue": "Revenue",
+      "orders": "Orders",
+      "averageOrderValue": "Average order",
+      "newCustomers": "New customers"
+    },
+    "topProducts": "Best sellers",
+    "statusBreakdown": "Order outcomes",
+    "noSales": "No sales in this period.",
+    "deletedProduct": "Deleted product"
   }
 }

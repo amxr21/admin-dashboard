@@ -154,7 +154,9 @@
     "totalOrders": "الطلبات",
     "totalCustomers": "العملاء",
     "pendingOrders": "الطلبات المعلقة",
-    "recentOrders": "أحدث الطلبات"
+    "recentOrders": "أحدث الطلبات",
+    "canceledOrders": "ملغاة",
+    "lowStockProducts": "مخزون منخفض"
   },
   "products": {
     "title": "المنتجات",
@@ -655,5 +657,29 @@
     "FULFILLMENT": "تجهيز الطلبات",
     "SUPPORT": "دعم",
     "DEMO": "عرض توضيحي (قراءة فقط)"
+  },
+  "reports": {
+    "title": "التقارير",
+    "subtitle": "الإيرادات والأكثر مبيعاً ومآلات الطلبات خلال فترة تختارها.",
+    "from": "من",
+    "to": "إلى",
+    "granularity": "التجميع حسب",
+    "granularities": {
+      "day": "يوم",
+      "week": "أسبوع",
+      "month": "شهر"
+    },
+    "reset": "آخر 30 يوماً",
+    "summary": "الملخص",
+    "tiles": {
+      "revenue": "الإيرادات",
+      "orders": "الطلبات",
+      "averageOrderValue": "متوسط الطلب",
+      "newCustomers": "عملاء جدد"
+    },
+    "topProducts": "الأكثر مبيعاً",
+    "statusBreakdown": "مآلات الطلبات",
+    "noSales": "لا مبيعات في هذه الفترة.",
+    "deletedProduct": "منتج محذوف"
   }
 }
