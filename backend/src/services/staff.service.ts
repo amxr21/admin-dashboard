@@ -247,6 +247,21 @@ export async function updateStaff(actor: Actor, id: string, input: UpdateStaffIn
       ...(input.accessExpiresAt === undefined
         ? {}
         : { accessExpiresAt: input.accessExpiresAt ? new Date(input.accessExpiresAt) : null }),
+      /**
+       * Deactivating REVOKES every session.
+       *
+       * `getAuthenticatedUser` already refuses an inactive user on each
+       * request, so this is belt and braces — but it is the difference between
+       * "their next request fails" and "their token is dead". If that check is
+       * ever relaxed for performance, this still holds.
+       *
+       * A role CHANGE also revokes: the old token carries the old role in its
+       * payload, and anything reading the token rather than the row would keep
+       * honouring privileges that were just taken away.
+       */
+      ...(input.isActive === false || (input.role !== undefined && input.role !== subject.role)
+        ? { tokenVersion: { increment: 1 } }
+        : {}),
     },
     select: STAFF_FIELDS,
   });
@@ -290,6 +305,14 @@ export async function resetStaffPassword(actor: Actor, id: string, password: str
       // longer exists.
       lockedUntil: null,
       failedLoginAttempts: 0,
+      /**
+       * REVOKE EVERY EXISTING SESSION.
+       *
+       * Without this, changing someone's password does not lock them — or
+       * whoever took their laptop — out. The old token stays valid for up to
+       * seven days, which makes "I reset their password" mean nothing.
+       */
+      tokenVersion: { increment: 1 },
     },
     select: STAFF_FIELDS,
   });

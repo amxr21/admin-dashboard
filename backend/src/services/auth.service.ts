@@ -16,6 +16,13 @@ import { AppError } from '../errors/AppError.js';
 export interface TokenPayload {
   sub: string;
   role: StaffRole;
+  /**
+   * Token version, for revocation.
+   *
+   * Optional because tokens minted before this existed do not carry it.
+   * Deploying must not sign everyone out — see getAuthenticatedUser.
+   */
+  tv?: number;
 }
 
 /** A user as the API is allowed to return it. */
@@ -41,10 +48,12 @@ export function toSafeUser(user: User): SafeUser {
   return safe;
 }
 
-export function signToken(user: Pick<User, 'id' | 'role'>): string {
-  return jwt.sign({ sub: user.id, role: user.role } satisfies TokenPayload, env.JWT_SECRET, {
-    expiresIn: env.JWT_EXPIRES_IN,
-  } as jwt.SignOptions);
+export function signToken(user: Pick<User, 'id' | 'role' | 'tokenVersion'>): string {
+  return jwt.sign(
+    { sub: user.id, role: user.role, tv: user.tokenVersion } satisfies TokenPayload,
+    env.JWT_SECRET,
+    { expiresIn: env.JWT_EXPIRES_IN } as jwt.SignOptions,
+  );
 }
 
 /**
@@ -64,7 +73,21 @@ export function verifyToken(token: string): TokenPayload {
       throw AppError.unauthorized('Invalid or expired session');
     }
 
-    return { sub: decoded.sub, role: decoded.role as StaffRole };
+    return {
+      sub: decoded.sub,
+      role: decoded.role as StaffRole,
+      /**
+       * Carried through, not dropped.
+       *
+       * This function rebuilds the payload field by field rather than casting,
+       * which is the right instinct — but it means a field added to the token
+       * and NOT added here is silently lost. Revocation looked completely
+       * implemented and did nothing at all until this line existed.
+       *
+       * Narrowed to a number so a forged `tv: "0"` cannot compare loosely.
+       */
+      ...(typeof decoded.tv === 'number' ? { tv: decoded.tv } : {}),
+    };
   } catch (err) {
     if (err instanceof AppError) throw err;
     throw AppError.unauthorized('Invalid or expired session');
@@ -168,7 +191,10 @@ export async function login(email: string, password: string): Promise<LoginResul
  * these checks have to run per-request until token revocation exists
  * (see docs/PROJECT_STATUS.md).
  */
-export async function getAuthenticatedUser(userId: string): Promise<SafeUser> {
+export async function getAuthenticatedUser(
+  userId: string,
+  tokenVersion?: number,
+): Promise<SafeUser> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
 
   if (!user || !user.isActive) {
@@ -179,5 +205,32 @@ export async function getAuthenticatedUser(userId: string): Promise<SafeUser> {
     throw AppError.unauthorized('Invalid or expired session');
   }
 
+  /**
+   * REVOCATION. A token minted before the version was bumped is dead, even
+   * though its signature is valid and it has not expired.
+   *
+   * Tokens issued before this feature existed carry no `tv`, so they are
+   * accepted once — otherwise deploying it would sign every user out. They are
+   * invalidated by the first bump, which is the right trade: no forced logout
+   * on deploy, and full revocation available the moment it is actually needed.
+   */
+  if (tokenVersion !== undefined && tokenVersion !== user.tokenVersion) {
+    throw AppError.unauthorized('Invalid or expired session');
+  }
+
   return toSafeUser(user);
+}
+
+/**
+ * Invalidate every token this user holds, on every device.
+ *
+ * Called on password change and on deactivation. Both are moments where
+ * leaving the old session working means the action did not actually do what
+ * the person asked for — "I reset their password" has to mean they are out.
+ */
+export async function revokeSessions(userId: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { tokenVersion: { increment: 1 } },
+  });
 }
