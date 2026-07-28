@@ -2,6 +2,7 @@
 
 import { useFormatter, useTranslations } from 'next-intl';
 import {
+  Boxes,
   Package,
   ShoppingCart,
   TrendingDown,
@@ -41,6 +42,7 @@ const ICONS = {
   orders: ShoppingCart,
   customers: Users,
   pending: Package,
+  inventory: Boxes,
 } satisfies Record<string, LucideIcon>;
 
 export type StatIcon = keyof typeof ICONS;

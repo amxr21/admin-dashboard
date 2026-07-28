@@ -4,7 +4,6 @@ import { useTranslations } from 'next-intl';
 import { useState, type ReactNode } from 'react';
 import { Menu } from 'lucide-react';
 
-import { LocaleSwitcher } from '@/components/locale-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { NotificationsBell } from '@/components/shell/notifications-bell';
 import { SidebarNav } from '@/components/shell/sidebar-nav';
@@ -74,7 +73,15 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
             {/* Notifications live HERE, not in the sidebar: the count changes
                 while you work and has to be visible from every page. */}
             <NotificationsBell />
-            <LocaleSwitcher />
+
+            {/* The language switcher used to sit here. It MOVED to Settings —
+                deliberately moved, not duplicated, so there is one place to
+                change language rather than two that can disagree about which
+                one someone last used.
+
+                The login page keeps its own, because you have to be able to
+                read the sign-in form before you have a session or a settings
+                page to visit. */}
             <ThemeToggle />
             <UserMenu {...user} onSignOut={onSignOut} />
           </div>

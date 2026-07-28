@@ -154,7 +154,9 @@
     "totalOrders": "الطلبات",
     "totalCustomers": "العملاء",
     "pendingOrders": "الطلبات المعلقة",
-    "recentOrders": "أحدث الطلبات"
+    "recentOrders": "أحدث الطلبات",
+    "canceledOrders": "ملغاة",
+    "lowStockProducts": "مخزون منخفض"
   },
   "products": {
     "title": "المنتجات",
@@ -560,5 +562,124 @@
         "status": "الحالة"
       }
     }
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "subtitle": "تفضيلاتك الخاصة، والإعدادات التي تسري على الجميع.",
+    "loadFailed": "تعذّر تحميل الإعدادات.",
+    "save": "حفظ التغييرات",
+    "saving": "جارٍ الحفظ…",
+    "saved": "تم الحفظ.",
+    "unsaved": "{count, plural, zero {لا تغييرات غير محفوظة} one {تغيير واحد غير محفوظ} two {تغييران غير محفوظين} few {# تغييرات غير محفوظة} many {# تغييراً غير محفوظ} other {# تغيير غير محفوظ}}",
+    "personal": {
+      "title": "تفضيلاتك",
+      "description": "تخصّك وحدك، وتُطبَّق فوراً.",
+      "language": "اللغة",
+      "theme": "المظهر"
+    },
+    "store": {
+      "title": "إعدادات المتجر",
+      "description": "تسري على الجميع. احفظ لتطبيقها."
+    }
+  },
+  "staff": {
+    "title": "الموظفون",
+    "subtitle": "من لديه صلاحية الدخول، وإلى أي مدى.",
+    "empty": "لا توجد حسابات موظفين بعد.",
+    "total": "{count, plural, zero {لا يوجد أحد} one {شخص واحد} two {شخصان} few {# أشخاص} many {# شخصاً} other {# شخص}}",
+    "columns": {
+      "person": "الشخص",
+      "role": "الدور",
+      "status": "الحالة",
+      "lastLogin": "آخر دخول",
+      "actions": "إجراءات"
+    },
+    "search": {
+      "label": "بحث",
+      "placeholder": "الاسم أو البريد الإلكتروني"
+    },
+    "pagination": {
+      "previous": "السابق",
+      "next": "التالي"
+    },
+    "status": {
+      "active": "نشط",
+      "inactive": "معطّل",
+      "locked": "مقفل"
+    },
+    "never": "لم يسجّل الدخول بعد",
+    "you": "أنت",
+    "actions": {
+      "create": "إضافة شخص",
+      "edit": "تعديل {name}",
+      "unlock": "إلغاء قفل {name}",
+      "unlockShort": "إلغاء القفل",
+      "password": "تعيين كلمة مرور جديدة لـ {name}",
+      "passwordShort": "كلمة المرور"
+    },
+    "notice": {
+      "created": "يمكن لـ {name} تسجيل الدخول الآن.",
+      "updated": "تم حفظ {name}.",
+      "unlocked": "يمكن لـ {name} تسجيل الدخول مجدداً.",
+      "passwordSet": "تم تغيير كلمة مرور {name}."
+    },
+    "form": {
+      "createTitle": "إضافة شخص",
+      "editTitle": "تعديل الصلاحية",
+      "cancel": "إلغاء",
+      "save": "حفظ",
+      "saving": "جارٍ الحفظ…",
+      "emailRequired": "البريد الإلكتروني مطلوب.",
+      "passwordHint": "12 حرفاً على الأقل. ستحتاج إلى تسليمها له مباشرة.",
+      "fields": {
+        "email": "البريد الإلكتروني",
+        "name": "الاسم",
+        "phone": "الهاتف",
+        "role": "الدور",
+        "password": "كلمة المرور",
+        "isActive": "يمكنه تسجيل الدخول"
+      },
+      "selfRoleNote": "لا يمكنك تغيير دورك بنفسك — اطلب ذلك من مالك آخر.",
+      "lockedNote": "أُقفل الحساب بعد محاولات دخول فاشلة كثيرة. ألغِ القفل أو عيّن كلمة مرور جديدة."
+    },
+    "password": {
+      "title": "كلمة مرور جديدة لـ {name}",
+      "description": "لن يُبلَّغ تلقائياً — سلّمها له مباشرة. التعيين يلغي أي قفل أيضاً.",
+      "label": "كلمة المرور الجديدة",
+      "confirm": "تعيين كلمة المرور",
+      "cancel": "إلغاء"
+    }
+  },
+  "staffRole": {
+    "DEVELOPER": "مطوّر",
+    "OWNER": "مالك",
+    "MANAGER": "مدير",
+    "FULFILLMENT": "تجهيز الطلبات",
+    "SUPPORT": "دعم",
+    "DEMO": "عرض توضيحي (قراءة فقط)"
+  },
+  "reports": {
+    "title": "التقارير",
+    "subtitle": "الإيرادات والأكثر مبيعاً ومآلات الطلبات خلال فترة تختارها.",
+    "from": "من",
+    "to": "إلى",
+    "granularity": "التجميع حسب",
+    "granularities": {
+      "day": "يوم",
+      "week": "أسبوع",
+      "month": "شهر"
+    },
+    "reset": "آخر 30 يوماً",
+    "summary": "الملخص",
+    "tiles": {
+      "revenue": "الإيرادات",
+      "orders": "الطلبات",
+      "averageOrderValue": "متوسط الطلب",
+      "newCustomers": "عملاء جدد"
+    },
+    "topProducts": "الأكثر مبيعاً",
+    "statusBreakdown": "مآلات الطلبات",
+    "noSales": "لا مبيعات في هذه الفترة.",
+    "deletedProduct": "منتج محذوف"
   }
 }
