@@ -7,6 +7,7 @@ import {
   FolderTree,
   LayoutDashboard,
   Package,
+  RotateCcw,
   Settings,
   ShoppingCart,
   Star,
@@ -61,6 +62,7 @@ export const NAVIGATION: readonly NavGroup[] = [
     items: [
       { href: '/admin/orders', labelKey: 'orders', icon: ShoppingCart, area: 'orders' },
       { href: '/admin/inventory', labelKey: 'inventory', icon: Boxes, area: 'inventory' },
+      { href: '/admin/returns', labelKey: 'returns', icon: RotateCcw, area: 'returns' },
     ],
   },
   {

@@ -21,6 +21,7 @@ export const AREAS = [
   'discounts',
   'reviews',
   'delivery',
+  'returns',
   'reports',
   'settings',
   'staff',
@@ -57,11 +58,12 @@ export const ROLE_AREAS: Record<StaffRole, readonly Grant[]> = {
     'discounts',
     'reviews',
     'delivery',
+    'returns',
     'reports',
     'settings',
   ],
-  [StaffRole.FULFILLMENT]: ['orders', 'delivery', 'inventory', 'products'],
-  [StaffRole.SUPPORT]: ['orders', 'customers', 'reviews'],
+  [StaffRole.FULFILLMENT]: ['orders', 'delivery', 'inventory', 'products', 'returns'],
+  [StaffRole.SUPPORT]: ['orders', 'customers', 'reviews', 'returns'],
   /**
    * Sees the product, changes nothing — but NOT `staff`.
    *
@@ -88,6 +90,7 @@ export const ROLE_AREAS: Record<StaffRole, readonly Grant[]> = {
     'discounts',
     'reviews',
     'delivery',
+    'returns',
     'reports',
     'settings',
   ],

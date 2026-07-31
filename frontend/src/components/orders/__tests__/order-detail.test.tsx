@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createElement, type ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 
-import { render, screen, waitFor } from '@/test/render';
+import { render, screen, waitFor, within } from '@/test/render';
 import { ApiError } from '@/lib/api';
 import { OrderDetail } from '../order-detail';
 import type { OrderDetail as Order } from '@/lib/orders-api';
@@ -25,10 +25,16 @@ vi.mock('@/i18n/navigation', () => ({
 
 const fetchOrder = vi.hoisted(() => vi.fn());
 const changeOrderStatus = vi.hoisted(() => vi.fn());
+const createReturn = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/orders-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/orders-api')>();
   return { ...actual, fetchOrder, changeOrderStatus };
+});
+
+vi.mock('@/lib/returns-api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/returns-api')>();
+  return { ...actual, createReturn };
 });
 
 function makeOrder(overrides: Partial<Order> = {}): Order {
@@ -76,6 +82,7 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
 beforeEach(() => {
   fetchOrder.mockReset();
   changeOrderStatus.mockReset();
+  createReturn.mockReset();
 });
 
 describe('the order itself', () => {
@@ -186,6 +193,73 @@ describe('the status control offers only what the server allows', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
+  });
+});
+
+describe('requesting a return', () => {
+  it('offers it only when RETURNED is a legal next status', async () => {
+    fetchOrder.mockResolvedValue(makeOrder({ nextStatuses: ['SHIPPED', 'CANCELED'] }));
+
+    render(<OrderDetail id="o1" />);
+
+    await screen.findByText('Ceramic Planter');
+    expect(screen.queryByRole('button', { name: /request return/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the button for a DELIVERED order and submits selected items', async () => {
+    fetchOrder.mockResolvedValue(
+      makeOrder({ status: 'DELIVERED', nextStatuses: ['RETURNED'] }),
+    );
+    createReturn.mockResolvedValue({
+      id: 'r1',
+      rmaNumber: 'RMA-ABCD1234',
+      reason: 'damaged',
+      status: 'REQUESTED',
+      resolution: 'NONE',
+      refundAmount: null,
+      restocked: false,
+      createdAt: '2026-07-02T00:00:00.000Z',
+      order: { id: 'o1', orderNumber: 'ORD-1024', status: 'DELIVERED' },
+      customer: null,
+      items: [],
+    });
+
+    render(<OrderDetail id="o1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /request return/i }));
+
+    const dialog = await screen.findByRole('dialog');
+
+    // Select the one line item and give it a reason.
+    await userEvent.click(within(dialog).getByRole('checkbox'));
+    await userEvent.type(within(dialog).getByLabelText(/reason/i), 'arrived damaged');
+    await userEvent.click(within(dialog).getByRole('button', { name: /request return/i }));
+
+    await waitFor(() => {
+      expect(createReturn).toHaveBeenCalledWith({
+        orderId: 'o1',
+        reason: 'arrived damaged',
+        items: [{ orderItemId: 'i1', quantity: 2 }],
+      });
+    });
+
+    expect(await screen.findByText(/RMA-ABCD1234/)).toBeInTheDocument();
+  });
+
+  it('will not submit without a reason', async () => {
+    fetchOrder.mockResolvedValue(
+      makeOrder({ status: 'DELIVERED', nextStatuses: ['RETURNED'] }),
+    );
+
+    render(<OrderDetail id="o1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /request return/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('checkbox'));
+
+    expect(within(dialog).getByRole('button', { name: /request return/i })).toBeDisabled();
+    expect(createReturn).not.toHaveBeenCalled();
   });
 });
 
