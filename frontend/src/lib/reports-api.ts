@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api';
+import { apiDownload, apiFetch } from '@/lib/api';
 
 /**
  * Client for `/api/v1/reports`.
@@ -84,6 +84,18 @@ export async function fetchTopProducts(
 
 export async function fetchStatusBreakdown(range: DateRange): Promise<StatusBreakdown> {
   return apiFetch<StatusBreakdown>(`/reports/status-breakdown?${query({ ...range })}`);
+}
+
+export type ReportView = 'overview' | 'revenue' | 'top-products' | 'status-breakdown';
+
+/** Same endpoint as the JSON fetch above, `format=csv` instead of the shape changing. */
+export async function downloadReportCsv(
+  view: ReportView,
+  range: DateRange,
+  extra: Record<string, string | number | undefined> = {},
+): Promise<void> {
+  const search = query({ ...range, ...extra, format: 'csv' });
+  await apiDownload(`/reports/${view}?${search}`, `${view}.csv`);
 }
 
 /** Local Y/M/D — `toISOString` would shift the day west of Greenwich. */

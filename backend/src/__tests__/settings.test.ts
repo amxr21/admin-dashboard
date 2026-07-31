@@ -215,3 +215,54 @@ describe('the engine cannot reach settings', () => {
     expect((await request(app).get('/api/v1/r/settings').set(auth(ownerToken))).status).toBe(404);
   });
 });
+
+describe('maintenance mode', () => {
+  const customer = () => ({
+    name: `${RUN} maintenance customer`,
+    email: `${RUN}-maintenance-${Date.now()}@example.test`,
+  });
+
+  afterEach(async () => {
+    await prisma.customer.deleteMany({ where: { email: { contains: RUN } } });
+  });
+
+  it('blocks a write from a non-exempt role once enabled', async () => {
+    expect((await save({ 'system.maintenanceMode': true })).status).toBe(200);
+
+    const res = await request(app)
+      .post('/api/v1/r/customers')
+      .set(auth(supportToken))
+      .send(customer());
+
+    expect(res.status).toBe(503);
+    expect((res.body as ErrorBody).error.message).toMatch(/maintenance/i);
+  });
+
+  it('never blocks a read, even while enabled', async () => {
+    await save({ 'system.maintenanceMode': true });
+
+    expect((await request(app).get('/api/v1/r/customers').set(auth(supportToken))).status).toBe(
+      200,
+    );
+  });
+
+  it('exempts OWNER, so maintenance mode is never a one-way door', async () => {
+    await save({ 'system.maintenanceMode': true });
+
+    const res = await request(app)
+      .post('/api/v1/r/customers')
+      .set(auth(ownerToken))
+      .send(customer());
+
+    expect(res.status).toBe(201);
+  });
+
+  it('has no effect at all while off (the default)', async () => {
+    const res = await request(app)
+      .post('/api/v1/r/customers')
+      .set(auth(supportToken))
+      .send(customer());
+
+    expect(res.status).toBe(201);
+  });
+});

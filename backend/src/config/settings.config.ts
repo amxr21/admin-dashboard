@@ -81,6 +81,14 @@ export const SETTINGS = {
     label: 'Low stock threshold',
     description: 'Products at or below this are flagged as low.',
   },
+  'system.maintenanceMode': {
+    type: 'boolean',
+    default: false,
+    area: 'settings',
+    label: 'Maintenance mode',
+    description:
+      'Blocks writes for everyone except owners and developers, who can still turn this back off.',
+  },
 } as const satisfies Record<string, SettingDefinition>;
 
 export type SettingKey = keyof typeof SETTINGS;

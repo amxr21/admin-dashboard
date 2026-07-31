@@ -66,6 +66,8 @@ describe('Arabic is actually translated', () => {
       'language.en',
       'language.ar',
       'auth.emailPlaceholder',
+      // A brand name, same reasoning as "iPhone"/"WhatsApp"/"Excel".
+      'diagnostics.sentry',
     ]);
 
     const untranslated = enKeys.filter(
