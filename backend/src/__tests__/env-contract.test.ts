@@ -79,7 +79,7 @@ describe('every required env var is declared everywhere it is needed', () => {
 });
 
 describe('secrets are never given a fallback value', () => {
-  it.each(['JWT_SECRET', 'DELIVERY_CODE_SECRET'])('%s has no default', (name) => {
+  it.each(['JWT_SECRET', 'DELIVERY_CODE_SECRET', 'PASSWORD_RESET_SECRET'])('%s has no default', (name) => {
     // A secret that ships with the code is not a secret. Anyone who reads the
     // repo can forge a token, or compute a valid courier access code.
     const declaration = new RegExp(`${name}:[\\s\\S]*?(?=^\\s{2}[A-Z][A-Z0-9_]*:|\\}\\);)`, 'm');
@@ -92,7 +92,9 @@ describe('secrets are never given a fallback value', () => {
   it('does not commit a real-looking secret to the workflow', () => {
     // CI values must be obviously throwaway. This catches a paste of a real
     // secret into ci.yml, which git history would then keep forever.
-    const values = [...ci.matchAll(/^\s*(JWT_SECRET|DELIVERY_CODE_SECRET):\s*(.+)$/gm)];
+    const values = [
+      ...ci.matchAll(/^\s*(JWT_SECRET|DELIVERY_CODE_SECRET|PASSWORD_RESET_SECRET):\s*(.+)$/gm),
+    ];
 
     expect(values.length).toBeGreaterThan(0);
 

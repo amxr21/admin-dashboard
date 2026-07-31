@@ -7,6 +7,7 @@ import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import {
   createStaff,
+  issueStaffPasswordResetToken,
   listStaff,
   resetStaffPassword,
   unlockStaff,
@@ -150,4 +151,16 @@ staffRouter.post('/staff/:id/password', ...guard, async (req, res) => {
   req.log.warn({ event: 'staff.password.reset', staffId: id, userId: actor.id });
 
   res.json({ data: { staff } });
+});
+
+staffRouter.post('/staff/:id/reset-token', ...guard, async (req, res) => {
+  const actor = requireUser(req);
+  const id = String(req.params.id);
+
+  const result = await issueStaffPasswordResetToken(actor, id);
+
+  // The token itself is NEVER logged — same rule as a courier access code.
+  req.log.warn({ event: 'staff.password.reset-token.issued', staffId: id, userId: actor.id });
+
+  res.status(201).json({ data: result });
 });

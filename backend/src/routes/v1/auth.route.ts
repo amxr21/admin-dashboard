@@ -3,8 +3,9 @@ import { z } from 'zod';
 
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
-import { loginRateLimit } from '../../middleware/rateLimit.js';
+import { loginRateLimit, passwordResetRateLimit } from '../../middleware/rateLimit.js';
 import { login } from '../../services/auth.service.js';
+import { redeemResetToken } from '../../services/password-reset.service.js';
 
 /**
  * Authentication routes.
@@ -59,6 +60,31 @@ authRouter.post('/auth/login', loginRateLimit, async (req, res) => {
     });
     throw err;
   }
+});
+
+const resetPasswordSchema = z
+  .object({
+    token: z.string().trim().min(1, 'Token is required'),
+    // Same floor as an admin-set password — this one is chosen by the person
+    // it belongs to, but the policy should not be weaker for that.
+    password: z.string().min(12, 'Use at least 12 characters').max(200),
+  })
+  .strict();
+
+// POST /api/v1/auth/reset-password
+authRouter.post('/auth/reset-password', passwordResetRateLimit, async (req, res) => {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    throw AppError.badRequest('Invalid request', parsed.error.flatten());
+  }
+
+  // NEVER log the token or password — only that an attempt happened.
+  req.log.info({ event: 'auth.password-reset.attempted' });
+
+  await redeemResetToken(req, parsed.data.token, parsed.data.password);
+
+  res.status(200).json({ data: { ok: true } });
 });
 
 // GET /api/v1/auth/me
