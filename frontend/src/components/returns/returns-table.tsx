@@ -18,10 +18,10 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { fetchReturns, type ReturnListResult, type ReturnListRow, type ReturnStatus } from '@/lib/returns-api';
 
 const ALL = 'all';
-const PAGE_SIZE = 20;
 
 const STATUSES: ReturnStatus[] = ['REQUESTED', 'APPROVED', 'REJECTED'];
 
@@ -30,6 +30,7 @@ export function ReturnsTable() {
   const tTable = useTranslations('table');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
+  const { tablePageSize } = useAppSettings();
 
   const [result, setResult] = useState<ReturnListResult | null>(null);
   const [page, setPage] = useState(1);
@@ -49,7 +50,7 @@ export function ReturnsTable() {
       setResult(
         await fetchReturns({
           page,
-          pageSize: PAGE_SIZE,
+          pageSize: tablePageSize,
           ...(search ? { search } : {}),
           ...(status === ALL ? {} : { status }),
         }),
@@ -60,7 +61,7 @@ export function ReturnsTable() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, search, status, translateError]);
+  }, [page, search, status, tablePageSize, translateError]);
 
   useEffect(() => {
     void load();

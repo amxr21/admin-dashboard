@@ -264,6 +264,35 @@ function SettingField({ setting, value, error, onChange }: SettingFieldProps) {
           </Select>
         );
 
+      case 'color': {
+        const isValidHex = /^#[0-9a-fA-F]{6}$/.test(String(value));
+
+        return (
+          <div className="flex items-center gap-2">
+            {/* A live swatch, not a native color picker — this app avoids
+                native interactive widgets (see project-ui-system) in favour
+                of a plain validated text field, same as every other string
+                setting. */}
+            <span
+              aria-hidden="true"
+              className="border-border size-8 shrink-0 rounded-md border"
+              style={{ backgroundColor: isValidHex ? String(value) : 'transparent' }}
+            />
+            <Input
+              id={id}
+              type="text"
+              inputMode="text"
+              value={String(value)}
+              placeholder="#2563eb"
+              maxLength={7}
+              className="force-ltr font-mono"
+              onChange={(event) => onChange(event.target.value)}
+              {...aria}
+            />
+          </div>
+        );
+      }
+
       case 'number':
         return (
           <Input

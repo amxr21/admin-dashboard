@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { AppShell } from '@/components/shell/app-shell';
 import { AuthGuard } from '@/components/auth/auth-guard';
 import { SchemaProvider } from '@/components/providers/schema-provider';
+import { SettingsProvider } from '@/components/providers/settings-provider';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from '@/i18n/navigation';
 import type { StaffRole } from '@/config/areas';
@@ -26,6 +27,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           a signed-out user would just be a guaranteed 401 on every page load. */}
       {user ? (
         <SchemaProvider>
+        <SettingsProvider>
         <AppShell
           user={{
             // The API allows a null name; the UI needs something to render.
@@ -40,6 +42,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         >
           {children}
         </AppShell>
+        </SettingsProvider>
         </SchemaProvider>
       ) : null}
     </AuthGuard>

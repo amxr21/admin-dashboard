@@ -40,6 +40,13 @@
   /* ─── Radius ─────────────────────────────────────────────────── */
   --radius: 0.625rem; /* 10px — matches the template's --ui-radius */
 
+  /* ─── Table density ──────────────────────────────────────────── */
+  /* `ui.density`, applied via `[data-density]` on <html> below. Scoped to
+     table cells specifically — "denser UI" as a global spacing multiplier
+     would touch every button, input and card for a setting whose whole
+     point is fitting more ROWS on screen. See table.tsx for the consumer. */
+  --table-cell-py: 0.5rem;
+
   /* ─── Surfaces ───────────────────────────────────────────────── */
   --background: #f6f7f9; /* app canvas — deliberately not pure white */
   --foreground: #1a1a1a;
@@ -182,6 +189,16 @@ html[lang='ar'] {
      inside Arabic text keep Inter rather than IBM Plex's Latin cut. */
   --font-app: var(--font-arabic), var(--font-latin), ui-sans-serif, system-ui,
     sans-serif;
+}
+
+/*
+ * Same shape as the Arabic typeface swap above: `--table-cell-py` is declared
+ * on the unlayered `:root`, so the override has to live out here too, or
+ * `@layer base`/`@layer utilities` would silently outrank it regardless of
+ * selector specificity. `settings-provider.tsx` sets this attribute.
+ */
+[data-density='compact'] {
+  --table-cell-py: 0.25rem;
 }
 
 /*

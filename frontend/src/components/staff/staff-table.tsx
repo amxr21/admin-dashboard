@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import {
   canModify,
   fetchStaff,
@@ -38,8 +39,6 @@ import {
  * inactive), and which row is you.
  */
 
-const PAGE_SIZE = 20;
-
 export function StaffTable() {
   const t = useTranslations('staff');
   const tRole = useTranslations('staffRole');
@@ -47,6 +46,7 @@ export function StaffTable() {
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
   const { user } = useAuth();
+  const { tablePageSize } = useAppSettings();
 
   const [result, setResult] = useState<StaffListResult | null>(null);
   const [page, setPage] = useState(1);
@@ -67,14 +67,14 @@ export function StaffTable() {
     setError(null);
 
     try {
-      setResult(await fetchStaff({ page, pageSize: PAGE_SIZE, ...(search ? { search } : {}) }));
+      setResult(await fetchStaff({ page, pageSize: tablePageSize, ...(search ? { search } : {}) }));
     } catch (caught) {
       setError(translateError(caught));
       setResult(null);
     } finally {
       setIsLoading(false);
     }
-  }, [page, search, translateError]);
+  }, [page, search, tablePageSize, translateError]);
 
   useEffect(() => {
     void load();

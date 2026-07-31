@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import {
   fetchOrders,
   type OrderListResult,
@@ -36,7 +37,6 @@ import {
  */
 
 const ALL = 'all';
-const PAGE_SIZE = 20;
 
 const STATUSES: OrderStatus[] = [
   'PENDING',
@@ -52,6 +52,7 @@ export function OrdersTable() {
   const tTable = useTranslations('table');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
+  const { tablePageSize } = useAppSettings();
 
   const [result, setResult] = useState<OrderListResult | null>(null);
   const [page, setPage] = useState(1);
@@ -71,7 +72,7 @@ export function OrdersTable() {
       setResult(
         await fetchOrders({
           page,
-          pageSize: PAGE_SIZE,
+          pageSize: tablePageSize,
           ...(search ? { search } : {}),
           ...(status === ALL ? {} : { status }),
           ...(from ? { from } : {}),
@@ -84,7 +85,7 @@ export function OrdersTable() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, search, status, from, to, translateError]);
+  }, [page, search, status, from, to, tablePageSize, translateError]);
 
   useEffect(() => {
     void load();

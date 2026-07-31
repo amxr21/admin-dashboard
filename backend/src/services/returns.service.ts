@@ -5,6 +5,8 @@ import type { Request } from 'express';
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { audit } from './audit.service.js';
+import { notify } from './notify.service.js';
+import { getSettingValue } from './settings.service.js';
 import { ASSIGNMENT_ON_ORDER_STATUS, canTransition } from '../config/orders.config.js';
 
 /**
@@ -268,7 +270,18 @@ export async function createReturn(input: CreateReturnInput) {
     return created.id;
   });
 
-  return serialiseReturn(id);
+  const created = await serialiseReturn(id);
+
+  if (await getSettingValue('notifications.returnRequestAlerts')) {
+    notify({
+      type: 'return.requested',
+      title: `Return requested — ${created.rmaNumber}`,
+      body: input.reason,
+      link: '/admin/returns',
+    });
+  }
+
+  return created;
 }
 
 export interface ApproveReturnInput {
