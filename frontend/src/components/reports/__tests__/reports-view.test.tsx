@@ -18,6 +18,7 @@ const fetchOverview = vi.hoisted(() => vi.fn());
 const fetchRevenue = vi.hoisted(() => vi.fn());
 const fetchTopProducts = vi.hoisted(() => vi.fn());
 const fetchStatusBreakdown = vi.hoisted(() => vi.fn());
+const downloadReportCsv = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/reports-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/reports-api')>();
@@ -27,6 +28,7 @@ vi.mock('@/lib/reports-api', async (importOriginal) => {
     fetchRevenue,
     fetchTopProducts,
     fetchStatusBreakdown,
+    downloadReportCsv,
   };
 });
 
@@ -70,6 +72,7 @@ beforeEach(() => {
   fetchRevenue.mockReset();
   fetchTopProducts.mockReset();
   fetchStatusBreakdown.mockReset();
+  downloadReportCsv.mockReset();
 });
 
 describe('the summary', () => {
@@ -198,6 +201,55 @@ describe('failure states', () => {
     render(<ReportsView />);
 
     expect(await screen.findByText(/permission/i)).toBeInTheDocument();
+  });
+});
+
+describe('CSV export', () => {
+  it('exports the summary for the current range', async () => {
+    resolveAll();
+    downloadReportCsv.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+
+    render(<ReportsView />);
+    await screen.findByText(/12,345\.67/);
+
+    await user.click(screen.getByRole('button', { name: /export csv — summary/i }));
+
+    expect(downloadReportCsv).toHaveBeenCalledWith(
+      'overview',
+      expect.objectContaining({ from: expect.any(String), to: expect.any(String) }),
+      undefined,
+    );
+  });
+
+  it('exports revenue with the selected granularity', async () => {
+    resolveAll();
+    downloadReportCsv.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+
+    render(<ReportsView />);
+    await screen.findByText(/12,345\.67/);
+
+    await user.click(screen.getByRole('button', { name: /export csv — revenue/i }));
+
+    expect(downloadReportCsv).toHaveBeenCalledWith(
+      'revenue',
+      expect.anything(),
+      { granularity: 'day' },
+    );
+  });
+
+  it('surfaces a failed export the same way a failed load is shown', async () => {
+    resolveAll();
+    downloadReportCsv.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'nope'));
+    const user = userEvent.setup();
+
+    render(<ReportsView />);
+    await screen.findByText(/12,345\.67/);
+
+    await user.click(screen.getByRole('button', { name: /export csv — summary/i }));
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
 });
 

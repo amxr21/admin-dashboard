@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 
 import { AppError } from '../errors/AppError.js';
 import { getAuthenticatedUser, verifyToken, type SafeUser } from '../services/auth.service.js';
-import { assertCanWrite } from './authorize.js';
+import { assertCanWrite, assertNotInMaintenance } from './authorize.js';
 
 /**
  * Requires a valid Bearer token, and attaches the live user to the request.
@@ -67,6 +67,7 @@ export async function authenticate(
     // would run before req.user exists and silently pass every write through.
     // Every authenticated route therefore gets this for free.
     assertCanWrite(req);
+    await assertNotInMaintenance(req);
 
     next();
   } catch (err) {

@@ -344,6 +344,55 @@ describe('status breakdown', () => {
   });
 });
 
+describe('CSV export', () => {
+  it('overview: a spreadsheet a manager can open, not a blob for engineering to parse', async () => {
+    const res = await get(`/reports/overview?from=${FROM}&to=${TO}&format=csv`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+    expect(res.headers['content-disposition']).toContain('overview.csv');
+
+    const [header, row] = res.text.trim().split('\r\n');
+    expect(header).toBe(
+      'From,To,Revenue,Orders,Canceled orders,New customers,Low stock products,Average order value',
+    );
+    expect(row).toContain(FROM);
+  });
+
+  it('revenue: one row per point, same numbers as the JSON series', async () => {
+    const json = (await get(`/reports/revenue?from=${FROM}&to=${TO}`)).body as SeriesBody;
+    const csv = await get(`/reports/revenue?from=${FROM}&to=${TO}&format=csv`);
+
+    expect(csv.status).toBe(200);
+    const lines = csv.text.trim().split('\r\n');
+    expect(lines[0]).toBe('Date,Revenue,Orders');
+    // Header plus one row per point — not a placeholder count.
+    expect(lines.length).toBe(json.data.points.length + 1);
+  });
+
+  it('top products: falls back for a hard-deleted product, same as the JSON response', async () => {
+    const res = await get(`/reports/top-products?from=${FROM}&to=${TO}&format=csv`);
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain(`${RUN} widget`);
+  });
+
+  it('status breakdown: every status, including the zeroes', async () => {
+    const res = await get(`/reports/status-breakdown?from=${FROM}&to=${TO}&format=csv`);
+
+    expect(res.status).toBe(200);
+    const lines = res.text.trim().split('\r\n');
+    // Header plus one row per OrderStatus value.
+    expect(lines.length).toBe(Object.keys(OrderStatus).length + 1);
+    expect(res.text).toContain('CANCELED,1,');
+  });
+
+  it('rejects an unknown format rather than silently falling back to JSON', async () => {
+    const res = await get(`/reports/overview?from=${FROM}&to=${TO}&format=xml`);
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('the engine does not serve reports', () => {
   it('404s /r/reports', async () => {
     expect((await get('/r/reports')).status).toBe(404);

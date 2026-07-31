@@ -680,6 +680,33 @@
     "topProducts": "Best sellers",
     "statusBreakdown": "Order outcomes",
     "noSales": "No sales in this period.",
-    "deletedProduct": "Deleted product"
+    "deletedProduct": "Deleted product",
+    "exportCsv": "Export CSV"
+  },
+  "diagnostics": {
+    "label": "Developer diagnostics",
+    "uptime": "Uptime",
+    "databaseReachable": "Database reachable",
+    "databaseUnreachable": "Database unreachable",
+    "node": "Node",
+    "database": "Database latency",
+    "recentMigrations": "Recent migrations",
+    "noMigrations": "No migration history found.",
+    "observability": "Observability",
+    "sentry": "Sentry",
+    "logs": "Logs",
+    "configured": "Configured",
+    "notConfigured": "Not configured",
+    "viewDashboard": "View dashboard"
+  },
+  "viewAs": {
+    "label": "View as",
+    "yourRole": "Your role",
+    "banner": "Previewing as {role}. Nothing here changes real permissions.",
+    "exitPreview": "Exit preview",
+    "notVisible": {
+      "title": "Not visible to this role",
+      "description": "{role} does not have access to this area. This is what their sidebar would look like."
+    }
   }
 }

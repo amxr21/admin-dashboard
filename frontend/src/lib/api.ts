@@ -92,3 +92,57 @@ export async function apiFetch<T>(
   const body = (await response.json()) as { data: T };
   return body.data;
 }
+
+/**
+ * Downloads a file the API returns as an attachment (e.g. a report's CSV
+ * export) and saves it via the browser, rather than parsing it as `{ data }`.
+ *
+ * A plain `<a href>` can't carry the Bearer token, so the request goes
+ * through `fetch` here and the response is turned into an object URL a
+ * synthetic link can click through — the one DOM-poking exception to
+ * "components don't touch the document directly" in this codebase, and it
+ * exists only because saving a file has no other browser API.
+ */
+export async function apiDownload(path: string, fallbackFilename: string): Promise<void> {
+  const token = readToken();
+
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    let body: ErrorBody = {};
+    try {
+      body = (await response.json()) as ErrorBody;
+    } catch {
+      // leave body empty
+    }
+
+    throw new ApiError(
+      response.status,
+      body.error?.code ?? 'UNKNOWN_ERROR',
+      body.error?.message ?? `Request failed with status ${response.status}`,
+      body.error?.requestId ?? response.headers.get('x-request-id') ?? undefined,
+      body.error?.details,
+    );
+  }
+
+  const blob = await response.blob();
+  // The server names the file; a hardcoded fallback only covers the response
+  // somehow arriving without the header at all.
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? fallbackFilename;
+
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}

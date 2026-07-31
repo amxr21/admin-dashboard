@@ -680,6 +680,33 @@
     "topProducts": "الأكثر مبيعاً",
     "statusBreakdown": "مآلات الطلبات",
     "noSales": "لا مبيعات في هذه الفترة.",
-    "deletedProduct": "منتج محذوف"
+    "deletedProduct": "منتج محذوف",
+    "exportCsv": "تصدير CSV"
+  },
+  "diagnostics": {
+    "label": "تشخيص المطوّر",
+    "uptime": "مدة التشغيل",
+    "databaseReachable": "قاعدة البيانات متاحة",
+    "databaseUnreachable": "قاعدة البيانات غير متاحة",
+    "node": "إصدار Node",
+    "database": "زمن استجابة قاعدة البيانات",
+    "recentMigrations": "آخر عمليات الترحيل",
+    "noMigrations": "لا يوجد سجل ترحيل.",
+    "observability": "المراقبة",
+    "sentry": "Sentry",
+    "logs": "السجلات",
+    "configured": "مُفعّل",
+    "notConfigured": "غير مُفعّل",
+    "viewDashboard": "عرض اللوحة"
+  },
+  "viewAs": {
+    "label": "عرض كـ",
+    "yourRole": "دورك",
+    "banner": "معاينة كـ {role}. لا شيء هنا يغيّر الصلاحيات الفعلية.",
+    "exitPreview": "إنهاء المعاينة",
+    "notVisible": {
+      "title": "غير مرئي لهذا الدور",
+      "description": "لا يملك {role} صلاحية الوصول إلى هذا القسم. هكذا سيبدو الشريط الجانبي له."
+    }
   }
 }
