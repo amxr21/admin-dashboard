@@ -58,3 +58,5 @@ services:
         sync: false # openssl rand -base64 32
       - key: DELIVERY_CODE_SECRET
         sync: false # openssl rand -base64 32 — rotating invalidates every courier code
+      - key: PASSWORD_RESET_SECRET
+        sync: false # openssl rand -base64 32 — rotating invalidates every outstanding reset token

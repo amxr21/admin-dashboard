@@ -86,13 +86,19 @@ describe('permission-driven navigation', () => {
     expect(screen.queryByRole('link', { name: /reports/i })).not.toBeInTheDocument();
   });
 
-  it('shows everything to a demo account', () => {
-    // A demo that hides half the product is a poor demo. Writes are blocked
-    // server-side, not by hiding navigation.
+  it('shows a demo account almost everything, but not staff', () => {
+    // A demo that hides most of the product is a poor demo — writes are
+    // blocked server-side, not by hiding navigation. But `staff` is a real
+    // exception: it lists real employees (names, emails, lockout state), and
+    // the demo account is handed to prospective clients. This used to be
+    // `ALL` here, which meant DEMO saw a "Staff" link that the API would
+    // then 403 the moment it was clicked — the backend's own role config
+    // (`ROLE_AREAS[DEMO]`) never granted `staff` to begin with. This test was
+    // asserting the drift; it now asserts the real, matching behaviour.
     render(<SidebarNav role="DEMO" />);
 
     expect(screen.getByRole('link', { name: /reports/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /staff/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /staff/i })).not.toBeInTheDocument();
   });
 
   it('hides a group heading when the role can reach none of its items', () => {

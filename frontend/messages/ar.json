@@ -74,6 +74,7 @@
     "discounts": "الخصومات",
     "reviews": "التقييمات",
     "delivery": "التوصيل",
+    "returns": "المرتجعات",
     "reports": "التقارير",
     "settings": "الإعدادات",
     "staff": "الموظفون",
@@ -125,6 +126,17 @@
     "OUT_FOR_DELIVERY": "قيد التوصيل",
     "DELIVERED": "تم التسليم",
     "HANDED_OVER": "تم التسليم للمستلم"
+  },
+  "returnStatus": {
+    "REQUESTED": "قيد الطلب",
+    "APPROVED": "مقبول",
+    "REJECTED": "مرفوض"
+  },
+  "returnResolution": {
+    "NONE": "لم يُحدَّد بعد",
+    "REFUND": "استرداد المبلغ",
+    "STORE_CREDIT": "رصيد للمتجر",
+    "REPLACEMENT": "استبدال"
   },
   "counts": {
     "orders": "{count, plural, =0 {لا توجد طلبات} one {طلب واحد} two {طلبان} few {# طلبات} many {# طلباً} other {# طلب}}",
@@ -336,6 +348,7 @@
     "subtitle": "كل طلب وبنوده وموضعه في مسار العمل.",
     "empty": "لا توجد طلبات بعد.",
     "guest": "زائر",
+    "requestReturn": "طلب إرجاع",
     "placedOn": "تم الطلب في {date}",
     "total": "{count, plural, zero {لا توجد طلبات} one {طلب واحد} two {طلبان} few {# طلبات} many {# طلباً} other {# طلب}}",
     "columns": {
@@ -680,6 +693,101 @@
     "topProducts": "الأكثر مبيعاً",
     "statusBreakdown": "مآلات الطلبات",
     "noSales": "لا مبيعات في هذه الفترة.",
-    "deletedProduct": "منتج محذوف"
+    "deletedProduct": "منتج محذوف",
+    "exportCsv": "تصدير CSV"
+  },
+  "diagnostics": {
+    "label": "تشخيص المطوّر",
+    "uptime": "مدة التشغيل",
+    "databaseReachable": "قاعدة البيانات متاحة",
+    "databaseUnreachable": "قاعدة البيانات غير متاحة",
+    "node": "إصدار Node",
+    "database": "زمن استجابة قاعدة البيانات",
+    "recentMigrations": "آخر عمليات الترحيل",
+    "noMigrations": "لا يوجد سجل ترحيل.",
+    "observability": "المراقبة",
+    "sentry": "Sentry",
+    "logs": "السجلات",
+    "configured": "مُفعّل",
+    "notConfigured": "غير مُفعّل",
+    "viewDashboard": "عرض اللوحة"
+  },
+  "viewAs": {
+    "label": "عرض كـ",
+    "yourRole": "دورك",
+    "banner": "معاينة كـ {role}. لا شيء هنا يغيّر الصلاحيات الفعلية.",
+    "exitPreview": "إنهاء المعاينة",
+    "notVisible": {
+      "title": "غير مرئي لهذا الدور",
+      "description": "لا يملك {role} صلاحية الوصول إلى هذا القسم. هكذا سيبدو الشريط الجانبي له."
+    }
+  },
+  "returns": {
+    "title": "المرتجعات",
+    "subtitle": "طلبات إعادة منتجات — للمراجعة والقبول أو الرفض.",
+    "empty": "لا توجد مرتجعات بعد.",
+    "total": "{count, plural, zero {لا توجد مرتجعات} one {مرتجع واحد} two {مرتجعان} few {# مرتجعات} many {# مرتجعًا} other {# مرتجع}}",
+    "columns": {
+      "rma": "رقم الإرجاع",
+      "order": "الطلب",
+      "customer": "العميل",
+      "items": "العناصر",
+      "requested": "تاريخ الطلب",
+      "status": "الحالة"
+    },
+    "search": {
+      "label": "بحث",
+      "placeholder": "رقم الإرجاع أو رقم الطلب"
+    },
+    "filters": {
+      "allStatuses": "كل الحالات"
+    },
+    "status": {
+      "REQUESTED": "قيد الطلب",
+      "APPROVED": "مقبول",
+      "REJECTED": "مرفوض"
+    },
+    "pagination": {
+      "previous": "السابق",
+      "next": "التالي"
+    },
+    "detail": {
+      "title": "الإرجاع",
+      "reason": "السبب",
+      "items": "العناصر المرتجعة",
+      "productRemoved": "المنتج لم يعد متوفرًا",
+      "resolution": "القرار",
+      "refundAmount": "مبلغ الاسترداد",
+      "restocked": "أُعيد للمخزون",
+      "yes": "نعم",
+      "no": "لا",
+      "chooseResolution": "ما الذي سيحدث للعميل",
+      "resolutionPlaceholder": "اختر النتيجة",
+      "resolutions": {
+        "REFUND": "استرداد المبلغ",
+        "STORE_CREDIT": "رصيد للمتجر",
+        "REPLACEMENT": "استبدال"
+      },
+      "refundAmountLabel": "مبلغ الاسترداد (حتى {max})",
+      "restock": "إعادة العناصر المرتجعة إلى المخزون",
+      "reject": "رفض",
+      "approve": "قبول",
+      "saving": "جارٍ الحفظ…",
+      "approved": "تم قبول {rma}.",
+      "rejected": "تم رفض {rma}."
+    },
+    "request": {
+      "title": "طلب إرجاع — {order}",
+      "subtitle": "اختر ما سيُعاد وسببه. لن يتغيّر الطلب حتى تتم الموافقة.",
+      "items": "العناصر",
+      "productRemoved": "المنتج لم يعد متوفرًا",
+      "quantityFor": "الكمية لـ {item}",
+      "reason": "السبب",
+      "reasonPlaceholder": "لماذا يُعاد هذا المنتج؟",
+      "cancel": "إلغاء",
+      "submit": "طلب الإرجاع",
+      "saving": "جارٍ الإرسال…",
+      "done": "تم تقديم طلب {rma}."
+    }
   }
 }

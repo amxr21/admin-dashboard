@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
+import { Download } from 'lucide-react';
 
 import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-chart';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -21,12 +22,14 @@ import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
   GRANULARITIES,
   defaultRange,
+  downloadReportCsv,
   fetchOverview,
   fetchRevenue,
   fetchStatusBreakdown,
   fetchTopProducts,
   type Granularity,
   type Overview,
+  type ReportView,
   type StatusBreakdown,
   type TopProducts,
 } from '@/lib/reports-api';
@@ -45,6 +48,37 @@ import {
  * obvious.
  */
 
+/**
+ * One shape, reused for every section — the only thing that differs is which
+ * view it exports. `sectionLabel` only reaches the accessible name: four
+ * buttons all reading "Export CSV" are indistinguishable to anyone browsing
+ * by button list rather than visual layout.
+ */
+function ExportButton({
+  label,
+  sectionLabel,
+  isBusy,
+  onExport,
+}: {
+  label: string;
+  sectionLabel: string;
+  isBusy: boolean;
+  onExport: () => void;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={onExport}
+      disabled={isBusy}
+      aria-label={`${label} — ${sectionLabel}`}
+    >
+      <Download className="size-4" aria-hidden="true" />
+      {label}
+    </Button>
+  );
+}
+
 export function ReportsView() {
   const t = useTranslations('reports');
   const formatter = useFormatter();
@@ -60,6 +94,25 @@ export function ReportsView() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exportingView, setExportingView] = useState<ReportView | null>(null);
+
+  const handleExport = useCallback(
+    async (view: ReportView, extra?: Record<string, string | number | undefined>) => {
+      setExportingView(view);
+      setError(null);
+
+      try {
+        await downloadReportCsv(view, range, extra);
+      } catch (caught) {
+        // Same mapping the initial load uses — a download failure is almost
+        // always the same connectivity/auth story as any other request.
+        setError(translateError(caught));
+      } finally {
+        setExportingView(null);
+      }
+    },
+    [range, translateError],
+  );
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -160,34 +213,64 @@ export function ReportsView() {
         </p>
       ) : null}
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label={t('summary')}>
-        {isLoading || !overview
-          ? Array.from({ length: 4 }, (_, index) => (
-              <Skeleton key={index} className="h-24 w-full" />
-            ))
-          : (
-              [
-                { key: 'revenue', value: formatter.number(Number(overview.revenue), 'currency') },
-                { key: 'orders', value: formatter.number(overview.orders) },
-                {
-                  key: 'averageOrderValue',
-                  value: formatter.number(Number(overview.averageOrderValue), 'currency'),
-                },
-                { key: 'newCustomers', value: formatter.number(overview.newCustomers) },
-              ] as const
-            ).map((tile) => (
-              <div key={tile.key} className="bg-card rounded-lg border p-4">
-                <p className="text-muted-foreground text-sm">{t(`tiles.${tile.key}`)}</p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">{tile.value}</p>
-              </div>
-            ))}
+      <section className="space-y-3" aria-label={t('summary')}>
+        <div className="flex items-center justify-between">
+          <h2 className="font-medium">{t('summary')}</h2>
+          <ExportButton
+            label={t('exportCsv')}
+            sectionLabel={t('summary')}
+            isBusy={exportingView === 'overview'}
+            onExport={() => void handleExport('overview')}
+          />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {isLoading || !overview
+            ? Array.from({ length: 4 }, (_, index) => (
+                <Skeleton key={index} className="h-24 w-full" />
+              ))
+            : (
+                [
+                  { key: 'revenue', value: formatter.number(Number(overview.revenue), 'currency') },
+                  { key: 'orders', value: formatter.number(overview.orders) },
+                  {
+                    key: 'averageOrderValue',
+                    value: formatter.number(Number(overview.averageOrderValue), 'currency'),
+                  },
+                  { key: 'newCustomers', value: formatter.number(overview.newCustomers) },
+                ] as const
+              ).map((tile) => (
+                <div key={tile.key} className="bg-card rounded-lg border p-4">
+                  <p className="text-muted-foreground text-sm">{t(`tiles.${tile.key}`)}</p>
+                  <p className="mt-1 text-2xl font-semibold tabular-nums">{tile.value}</p>
+                </div>
+              ))}
+        </div>
       </section>
 
-      <RevenueChart data={points} isLoading={isLoading} error={null} />
+      <div className="space-y-3">
+        <div className="flex justify-end">
+          <ExportButton
+            label={t('exportCsv')}
+            sectionLabel={t('tiles.revenue')}
+            isBusy={exportingView === 'revenue'}
+            onExport={() => void handleExport('revenue', { granularity })}
+          />
+        </div>
+        <RevenueChart data={points} isLoading={isLoading} error={null} />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="space-y-3">
-          <h2 className="font-medium">{t('topProducts')}</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-medium">{t('topProducts')}</h2>
+            <ExportButton
+              label={t('exportCsv')}
+              sectionLabel={t('topProducts')}
+              isBusy={exportingView === 'top-products'}
+              onExport={() => void handleExport('top-products', { limit: 10 })}
+            />
+          </div>
 
           {isLoading ? (
             <Skeleton className="h-48 w-full" />
@@ -221,7 +304,15 @@ export function ReportsView() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="font-medium">{t('statusBreakdown')}</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-medium">{t('statusBreakdown')}</h2>
+            <ExportButton
+              label={t('exportCsv')}
+              sectionLabel={t('statusBreakdown')}
+              isBusy={exportingView === 'status-breakdown'}
+              onExport={() => void handleExport('status-breakdown')}
+            />
+          </div>
 
           {isLoading ? (
             <Skeleton className="h-48 w-full" />

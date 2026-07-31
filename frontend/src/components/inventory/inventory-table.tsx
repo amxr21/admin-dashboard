@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import {
   fetchInventory,
   type InventoryListResult,
@@ -27,13 +28,12 @@ import {
  * the badge and the filter can never disagree with each other or with the API.
  */
 
-const PAGE_SIZE = 20;
-
 export function InventoryTable() {
   const t = useTranslations('inventory');
   const tTable = useTranslations('table');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
+  const { tablePageSize } = useAppSettings();
 
   const [result, setResult] = useState<InventoryListResult | null>(null);
   const [page, setPage] = useState(1);
@@ -55,7 +55,7 @@ export function InventoryTable() {
       setResult(
         await fetchInventory({
           page,
-          pageSize: PAGE_SIZE,
+          pageSize: tablePageSize,
           ...(search ? { search } : {}),
           ...(lowOnly ? { lowStock: true } : {}),
         }),
@@ -66,7 +66,7 @@ export function InventoryTable() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, search, lowOnly, translateError]);
+  }, [page, search, lowOnly, tablePageSize, translateError]);
 
   useEffect(() => {
     void load();

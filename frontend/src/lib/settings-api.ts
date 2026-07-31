@@ -11,7 +11,7 @@ import { apiFetch } from '@/lib/api';
  * much smaller surface.
  */
 
-export type SettingType = 'string' | 'boolean' | 'number' | 'enum';
+export type SettingType = 'string' | 'boolean' | 'number' | 'enum' | 'color';
 
 export interface Setting {
   key: string;

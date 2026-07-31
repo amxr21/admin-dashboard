@@ -15,7 +15,7 @@
  * validation and the defaults all read from this.
  */
 
-export type SettingType = 'string' | 'boolean' | 'number' | 'enum';
+export type SettingType = 'string' | 'boolean' | 'number' | 'enum' | 'color';
 
 export interface SettingDefinition {
   type: SettingType;
@@ -81,6 +81,127 @@ export const SETTINGS = {
     label: 'Low stock threshold',
     description: 'Products at or below this are flagged as low.',
   },
+  'system.maintenanceMode': {
+    type: 'boolean',
+    default: false,
+    area: 'settings',
+    label: 'Maintenance mode',
+    description:
+      'Blocks writes for everyone except owners and developers, who can still turn this back off.',
+  },
+
+  // ─── Brand ──────────────────────────────────────────────────────────
+  'store.logoUrl': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 500,
+    label: 'Logo URL',
+    description: 'A plain image URL, same as any other image field. Shown in the sidebar.',
+  },
+  'store.url': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 255,
+    label: 'Store URL',
+    description: 'Linked from invoices and emails, if you have a customer-facing site.',
+  },
+  'store.tagline': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 200,
+    label: 'Tagline',
+    description: 'A short line shown under the store name on invoices.',
+  },
+  'store.address': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 500,
+    label: 'Address',
+    description: 'Printed on invoices.',
+  },
+  'store.supportPhone': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 40,
+    label: 'Support phone',
+    description: 'Shown alongside the support email.',
+  },
+
+  // ─── Theme ──────────────────────────────────────────────────────────
+  'theme.accentColor': {
+    type: 'color',
+    default: '#2563eb',
+    area: 'settings',
+    label: 'Accent color',
+    description: 'Replaces the default blue everywhere the app uses its primary color.',
+  },
+
+  // ─── Customization ──────────────────────────────────────────────────
+  // Font is deliberately NOT a setting here: every option would need its own
+  // self-hosted next/font registration at BUILD time to stay FOIT-free, and
+  // this project already logged a real incident (2026-07-27) where a runtime
+  // override of the wrong CSS variable silently broke the Arabic font. Adding
+  // fonts to choose from is a deliberate follow-up, not a quick registry entry.
+  'ui.density': {
+    type: 'enum',
+    default: 'comfortable',
+    area: 'settings',
+    options: ['comfortable', 'compact'],
+    label: 'Table density',
+    description: 'Compact rows fit more on screen; comfortable is easier to scan.',
+  },
+  'ui.cornerRadius': {
+    type: 'enum',
+    default: 'default',
+    area: 'settings',
+    options: ['sharp', 'default', 'round'],
+    label: 'Corner radius',
+    description: 'Applies to cards, inputs and buttons across the whole app.',
+  },
+  'ui.editPanelMode': {
+    type: 'enum',
+    default: 'drawer',
+    area: 'settings',
+    options: ['drawer', 'modal'],
+    label: 'Edit panel style',
+    description: 'How the create/edit form opens: a side drawer, or a centered dialog.',
+  },
+
+  // ─── Notifications ──────────────────────────────────────────────────
+  // "New order" has no toggle: nothing in this admin app creates an order (no
+  // POST /orders route exists — orders arrive from elsewhere), so there is no
+  // event to gate. Shipping a toggle with nothing behind it would be a dead
+  // control, which is worse than no control.
+  'notifications.lowStockAlerts': {
+    type: 'boolean',
+    default: true,
+    area: 'settings',
+    label: 'Low-stock alerts',
+    description: 'Notify staff when a product crosses the low-stock threshold.',
+  },
+  'notifications.returnRequestAlerts': {
+    type: 'boolean',
+    default: true,
+    area: 'settings',
+    label: 'Return request alerts',
+    description: 'Notify staff when a customer return is requested.',
+  },
+
+  // ─── Dashboard behavior ─────────────────────────────────────────────
+  'dashboard.tablePageSize': {
+    type: 'number',
+    default: 20,
+    area: 'settings',
+    min: 5,
+    max: 100,
+    label: 'Rows per table page',
+    description: 'Applies to every list in the dashboard.',
+  },
 } as const satisfies Record<string, SettingDefinition>;
 
 export type SettingKey = keyof typeof SETTINGS;
@@ -140,5 +261,13 @@ export function validateSetting(
       }
       return { ok: true, value };
     }
+
+    case 'color':
+      // 6-digit hex only — the one shape every consumer (a CSS custom
+      // property, an <input type="color">-style preview) can use with no
+      // further parsing. Never a name ("blue") or a 3-digit shorthand.
+      return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)
+        ? { ok: true, value: value.toLowerCase() }
+        : { ok: false, message: 'Must be a hex color like #2563eb' };
   }
 }

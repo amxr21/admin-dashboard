@@ -82,6 +82,17 @@ const envSchema = z.object({
       'DELIVERY_CODE_SECRET must be at least 32 characters — generate with `openssl rand -base64 32`',
     ),
 
+  // Key for the HMAC that protects admin-issued password reset tokens. Same
+  // reasoning as DELIVERY_CODE_SECRET: separate from JWT_SECRET so rotating it
+  // invalidates every outstanding reset token without touching staff sessions.
+  // Generate with: openssl rand -base64 32
+  PASSWORD_RESET_SECRET: z
+    .string()
+    .min(
+      32,
+      'PASSWORD_RESET_SECRET must be at least 32 characters — generate with `openssl rand -base64 32`',
+    ),
+
   // ─── Brute-force protection ──────────────────────────────────────
   // Failed attempts before an account locks. Counted per-account, so a
   // distributed attack on one email still trips it.

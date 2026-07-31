@@ -361,6 +361,132 @@ describe('config and code stay in sync', () => {
   });
 });
 
+/**
+ * `audit()` is fire-and-forget by design (see audit.service.ts), so the write
+ * can still be in flight when the HTTP response returns. A short pause is the
+ * same trade the revocation test file makes for the same reason.
+ */
+function waitForAudit() {
+  return new Promise((resolve) => setTimeout(resolve, 400));
+}
+
+describe('the audit trail records generic resource writes', () => {
+  it('logs create, update, a skipped no-op, and delete', async () => {
+    const category = await prisma.category.create({
+      data: { name: `${RUN} auditcat`, slug: `${RUN}-auditcat` },
+    });
+
+    const created = await request(app)
+      .post('/api/v1/r/products')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} audit-create`, price: '12.00', categoryId: category.id });
+
+    expect(created.status).toBe(201);
+    const productId = (created.body as RowBody).data.row.id as string;
+    await waitForAudit();
+
+    const createEntry = await prisma.auditLog.findFirst({
+      where: { entity: 'products', entityId: productId, action: 'products.create' },
+    });
+    expect(createEntry).not.toBeNull();
+    const createChanges = createEntry?.changes as Record<string, { from: unknown; to: unknown }>;
+    expect(createChanges.name?.to).toBe(`${RUN} audit-create`);
+
+    const updated = await request(app)
+      .patch(`/api/v1/r/products/${productId}`)
+      .set(auth(ownerToken))
+      .send({ price: '15.00' });
+
+    expect(updated.status).toBe(200);
+    await waitForAudit();
+
+    const updateEntry = await prisma.auditLog.findFirst({
+      where: { entity: 'products', entityId: productId, action: 'products.update' },
+    });
+    expect(updateEntry).not.toBeNull();
+    const updateChanges = updateEntry?.changes as Record<string, { from: unknown; to: unknown }>;
+    expect(updateChanges.price?.to).toBe('15.00');
+    // Only the field that actually changed is present — not a whole-row copy.
+    expect(updateChanges.name).toBeUndefined();
+
+    // A no-op update (same value again) must produce no new entry.
+    const beforeCount = await prisma.auditLog.count({
+      where: { entity: 'products', entityId: productId, action: 'products.update' },
+    });
+    const noop = await request(app)
+      .patch(`/api/v1/r/products/${productId}`)
+      .set(auth(ownerToken))
+      .send({ price: '15.00' });
+    expect(noop.status).toBe(200);
+    await waitForAudit();
+    const afterCount = await prisma.auditLog.count({
+      where: { entity: 'products', entityId: productId, action: 'products.update' },
+    });
+    expect(afterCount).toBe(beforeCount);
+
+    // Never ordered, so this is a genuine delete, not the archive hook.
+    const deleted = await request(app)
+      .delete(`/api/v1/r/products/${productId}`)
+      .set(auth(ownerToken));
+    expect(deleted.status).toBe(200);
+    expect((deleted.body as { data: { action: string } }).data.action).toBe('deleted');
+    await waitForAudit();
+
+    const deleteEntry = await prisma.auditLog.findFirst({
+      where: { entity: 'products', entityId: productId, action: 'products.delete' },
+    });
+    expect(deleteEntry).not.toBeNull();
+    // A delete is not a field diff — recording every column as "changed to
+    // null" would be a full snapshot of the row wearing a diff's clothes.
+    expect(deleteEntry?.changes).toBeNull();
+
+    await prisma.auditLog.deleteMany({ where: { entity: 'products', entityId: productId } });
+    await prisma.category.delete({ where: { id: category.id } });
+  });
+
+  it('logs an archive with the field that actually changed, when a hook keeps the row', async () => {
+    const category = await prisma.category.create({
+      data: { name: `${RUN} auditarchivecat`, slug: `${RUN}-auditarchivecat` },
+    });
+    const product = await prisma.product.create({
+      data: { name: `${RUN} audit-archived`, price: '5.00', categoryId: category.id },
+    });
+    const customer = await prisma.customer.create({
+      data: { name: `${RUN} auditcust`, email: `${RUN}-auditcust@example.test` },
+    });
+    const order = await prisma.order.create({
+      data: { customerId: customer.id, orderNumber: `${RUN}-AH`, total: '5.00' },
+    });
+    await prisma.orderItem.create({
+      data: { orderId: order.id, productId: product.id, quantity: 1, price: '5.00' },
+    });
+
+    const res = await request(app)
+      .delete(`/api/v1/r/products/${product.id}`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    expect((res.body as { data: { action: string } }).data.action).toBe('archived');
+    await waitForAudit();
+
+    const entry = await prisma.auditLog.findFirst({
+      where: { entity: 'products', entityId: product.id, action: 'products.archive' },
+    });
+    expect(entry).not.toBeNull();
+    const changes = entry?.changes as Record<string, { from: unknown; to: unknown }>;
+    expect(changes.status).toEqual({ from: 'ACTIVE', to: 'ARCHIVED' });
+    // Only the status changed — the name and price are untouched by the hook.
+    expect(changes.name).toBeUndefined();
+
+    await prisma.auditLog.deleteMany({ where: { entity: 'products', entityId: product.id } });
+    await prisma.orderItem.deleteMany({ where: { orderId: order.id } });
+    await prisma.order.delete({ where: { id: order.id } });
+    await prisma.customer.delete({ where: { id: customer.id } });
+    await prisma.product.delete({ where: { id: product.id } });
+    await prisma.category.delete({ where: { id: category.id } });
+  });
+});
+
 describe('duplicate values', () => {
   it('returns 409 naming the field, not a 500 leaking the schema', async () => {
     // A duplicate code is a normal user mistake. Letting Prisma's P2002 reach

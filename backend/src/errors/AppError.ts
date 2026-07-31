@@ -61,4 +61,9 @@ export class AppError extends Error {
   static conflict(message: string, details?: unknown): AppError {
     return new AppError(409, 'CONFLICT', message, details);
   }
+
+  /** The system refused a write on purpose, not because anything is broken. */
+  static serviceUnavailable(message: string): AppError {
+    return new AppError(503, 'SERVICE_UNAVAILABLE', message);
+  }
 }

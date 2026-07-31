@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { Prisma, StaffRole, StockMovementReason } from '@prisma/client';
@@ -95,6 +95,15 @@ function adjust(id: string, body: Record<string, unknown>, token = ownerToken) {
     .send(body);
 }
 
+function saveSetting(body: Record<string, unknown>) {
+  return request(app).patch('/api/v1/settings').set(auth(ownerToken)).send(body);
+}
+
+/** notify() is fire-and-forget — give its write a moment to land. */
+function waitForNotify() {
+  return new Promise((resolve) => setTimeout(resolve, 400));
+}
+
 beforeAll(async () => {
   const [owner, demo, support] = await Promise.all([
     makeUser(StaffRole.OWNER),
@@ -113,6 +122,10 @@ afterAll(async () => {
   // Movements cascade from the product.
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.notification.deleteMany({ where: { title: { contains: RUN } } });
+  await prisma.setting.deleteMany({
+    where: { key: { in: ['inventory.lowStockThreshold', 'notifications.lowStockAlerts'] } },
+  });
   await prisma.$disconnect();
 });
 
@@ -349,5 +362,92 @@ describe('the low-stock view', () => {
 
     expect(res.status).toBe(200);
     expect((res.body as ListBody).data.products.length).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('the live threshold follows the setting, not just the constant', () => {
+  afterEach(async () => {
+    await prisma.setting.deleteMany({ where: { key: 'inventory.lowStockThreshold' } });
+  });
+
+  it('an explicit ?threshold= still wins over the setting', async () => {
+    await saveSetting({ 'inventory.lowStockThreshold': 30 });
+
+    const res = await request(app)
+      .get('/api/v1/inventory?threshold=7')
+      .set(auth(ownerToken));
+
+    expect((res.body as ListBody).data.threshold).toBe(7);
+  });
+
+  it('with no explicit threshold, a saved setting changes what counts as low', async () => {
+    await saveSetting({ 'inventory.lowStockThreshold': 60 });
+
+    const id = await makeProduct(50);
+
+    const res = await request(app)
+      .get(`/api/v1/inventory?lowStock=true&pageSize=100&search=${RUN}`)
+      .set(auth(ownerToken));
+
+    const row = (res.body as ListBody).data.products.find((p) => p.id === id);
+    expect(row).toBeTruthy();
+    expect((res.body as ListBody).data.threshold).toBe(60);
+  });
+});
+
+describe('crossing into low stock notifies staff', () => {
+  afterEach(async () => {
+    await prisma.notification.deleteMany({ where: { title: { contains: RUN } } });
+    await prisma.setting.deleteMany({
+      where: { key: { in: ['inventory.lowStockThreshold', 'notifications.lowStockAlerts'] } },
+    });
+  });
+
+  it('fires once when a movement crosses at-or-below the threshold', async () => {
+    await saveSetting({ 'inventory.lowStockThreshold': 10 });
+    const id = await makeProduct(20);
+    const product = await prisma.product.findUniqueOrThrow({ where: { id } });
+
+    // 20 -> 15: still above 10, no crossing yet.
+    await adjust(id, { delta: -5, reason: 'SOLD' });
+    await waitForNotify();
+    expect(
+      await prisma.notification.count({
+        where: { type: 'inventory.low-stock', title: product.name },
+      }),
+    ).toBe(0);
+
+    // 15 -> 8: crosses the threshold.
+    await adjust(id, { delta: -7, reason: 'SOLD' });
+    await waitForNotify();
+    expect(
+      await prisma.notification.count({
+        where: { type: 'inventory.low-stock', title: product.name },
+      }),
+    ).toBe(1);
+
+    // 8 -> 5: still low, but not a NEW crossing — must not renotify.
+    await adjust(id, { delta: -3, reason: 'SOLD' });
+    await waitForNotify();
+    expect(
+      await prisma.notification.count({
+        where: { type: 'inventory.low-stock', title: product.name },
+      }),
+    ).toBe(1);
+  });
+
+  it('does not fire when notifications.lowStockAlerts is off', async () => {
+    await saveSetting({ 'inventory.lowStockThreshold': 10, 'notifications.lowStockAlerts': false });
+    const id = await makeProduct(20);
+    const product = await prisma.product.findUniqueOrThrow({ where: { id } });
+
+    await adjust(id, { delta: -15, reason: 'SOLD' });
+    await waitForNotify();
+
+    expect(
+      await prisma.notification.count({
+        where: { type: 'inventory.low-stock', title: product.name },
+      }),
+    ).toBe(0);
   });
 });

@@ -22,6 +22,7 @@ export const AREAS = [
   'discounts',
   'reviews',
   'delivery',
+  'returns',
   'reports',
   'settings',
   'staff',
@@ -51,14 +52,32 @@ const ROLE_AREAS: Record<StaffRole, readonly (typeof ALL | Area)[]> = {
     'discounts',
     'reviews',
     'delivery',
+    'returns',
     'reports',
     'settings',
   ],
-  FULFILLMENT: ['orders', 'delivery', 'inventory', 'products'],
-  SUPPORT: ['orders', 'customers', 'reviews'],
-  // Sees everything; writes are blocked server-side at a middleware choke
-  // point, not by hiding UI.
-  DEMO: [ALL],
+  FULFILLMENT: ['orders', 'delivery', 'inventory', 'products', 'returns'],
+  SUPPORT: ['orders', 'customers', 'reviews', 'returns'],
+  /**
+   * Explicit list, NOT `ALL` — this drifted from the backend's real grant
+   * (which excludes `staff` deliberately, see roles.ts on the API side) and
+   * was corrected here to match. `ALL` would have shown DEMO a "Staff" link
+   * that 403s the moment it's clicked — a courtesy failing, never a control:
+   * the API already refused it either way.
+   */
+  DEMO: [
+    'orders',
+    'products',
+    'inventory',
+    'customers',
+    'categories',
+    'discounts',
+    'reviews',
+    'delivery',
+    'returns',
+    'reports',
+    'settings',
+  ],
 };
 
 export function canAccessArea(role: StaffRole, area: Area): boolean {

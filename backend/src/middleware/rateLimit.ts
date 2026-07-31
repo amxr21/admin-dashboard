@@ -45,6 +45,25 @@ export const loginRateLimit = rateLimit({
 });
 
 /**
+ * Password reset redemption. Unauthenticated by nature — anyone can submit a
+ * token — so this is the ONLY defence against guessing one. As strict as
+ * login: a real user redeems once, ever.
+ */
+export const passwordResetRateLimit = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: {
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many attempts from this address. Try again shortly.',
+    },
+  },
+});
+
+/**
  * General API ceiling. Generous — this is a backstop against runaway clients
  * and scrapers, not a security control. Real protection is per-route.
  */

@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { Printer } from 'lucide-react';
+import { Printer, RotateCcw } from 'lucide-react';
 
 import { ErrorScreen } from '@/components/errors/error-screen';
 import { OrderStatusControl } from '@/components/orders/order-status-control';
 import { OrderStatusTimeline } from '@/components/orders/order-status-timeline';
+import { RequestReturnSheet } from '@/components/orders/request-return-sheet';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -41,6 +42,8 @@ export function OrderDetail({ id }: { id: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [returnSheetOpen, setReturnSheetOpen] = useState(false);
+  const [returnMessage, setReturnMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,6 +127,15 @@ export function OrderDetail({ id }: { id: string }) {
             </Link>
           </Button>
 
+          {/* Same truth the status control uses: only offered when the
+              server would actually accept moving this order to RETURNED. */}
+          {order.nextStatuses.includes('RETURNED') ? (
+            <Button variant="outline" onClick={() => setReturnSheetOpen(true)}>
+              <RotateCcw aria-hidden />
+              {t('requestReturn')}
+            </Button>
+          ) : null}
+
           <OrderStatusControl
             orderId={order.id}
             status={order.status}
@@ -132,6 +144,12 @@ export function OrderDetail({ id }: { id: string }) {
           />
         </div>
       </div>
+
+      {returnMessage ? (
+        <p role="status" className="bg-success/10 text-success rounded-md px-3 py-2 text-sm">
+          {returnMessage}
+        </p>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -254,6 +272,16 @@ export function OrderDetail({ id }: { id: string }) {
           </section>
         </div>
       </div>
+
+      <RequestReturnSheet
+        order={order}
+        open={returnSheetOpen}
+        onOpenChange={setReturnSheetOpen}
+        onCreated={(message) => {
+          setReturnMessage(message);
+          setReturnSheetOpen(false);
+        }}
+      />
     </div>
   );
 }

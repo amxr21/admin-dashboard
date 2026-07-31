@@ -2,6 +2,8 @@ import { Prisma, type StockMovementReason } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
+import { getSettingValue } from './settings.service.js';
+import { notify } from './notify.service.js';
 
 /**
  * Stock as a movement log, not a number you overwrite.
@@ -27,13 +29,18 @@ import { AppError } from '../errors/AppError.js';
 const MAX_PAGE_SIZE = 100;
 
 /**
- * Default low-stock floor.
- *
- * One documented number, exported so the frontend imports the same value
- * rather than hardcoding its own — a drifted threshold means the UI flags a
- * different set of products than the API does.
+ * Mirrors `inventory.lowStockThreshold`'s declared default in
+ * `settings.config.ts` — kept as its own constant only so tests here assert
+ * against a named value instead of a magic `5`. The LIVE threshold comes from
+ * the setting itself (see `resolveThreshold` below), never this constant
+ * directly, so an admin changing the setting takes effect everywhere at once.
  */
 export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
+
+/** An explicit `?threshold=` always wins; otherwise the live setting applies. */
+async function resolveThreshold(explicit: number | undefined): Promise<number> {
+  return explicit ?? (await getSettingValue('inventory.lowStockThreshold'));
+}
 
 export interface InventoryListParams {
   page?: number;
@@ -46,7 +53,7 @@ export interface InventoryListParams {
 export async function listInventory(params: InventoryListParams) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, params.pageSize ?? 20));
-  const threshold = params.threshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
+  const threshold = await resolveThreshold(params.threshold);
 
   const where: Prisma.ProductWhereInput = {
     ...(params.search
@@ -161,7 +168,12 @@ export async function adjustStock(productId: string, input: AdjustStockInput) {
     });
   }
 
-  return prisma.$transaction(async (tx) => {
+  // Read outside the transaction: this only decides whether to fire a
+  // best-effort notification afterwards, not anything the transaction's
+  // correctness depends on.
+  const threshold = await resolveThreshold(undefined);
+
+  const result = await prisma.$transaction(async (tx) => {
     const product = await tx.product.findUnique({
       where: { id: productId },
       select: { id: true, name: true, stock: true },
@@ -207,8 +219,23 @@ export async function adjustStock(productId: string, input: AdjustStockInput) {
     return {
       product: updated,
       movement: { ...movement, createdAt: movement.createdAt.toISOString() },
+      // Crossing INTO low stock, not merely being low — otherwise every
+      // further movement on an already-low product renotifies, and the one
+      // crossing that mattered disappears into that noise.
+      crossedIntoLowStock: product.stock > threshold && next <= threshold,
     };
   });
+
+  if (result.crossedIntoLowStock && (await getSettingValue('notifications.lowStockAlerts'))) {
+    notify({
+      type: 'inventory.low-stock',
+      title: result.product.name,
+      body: `${String(result.product.stock)} left — at or below the threshold of ${String(threshold)}.`,
+      link: '/admin/inventory',
+    });
+  }
+
+  return { product: result.product, movement: result.movement };
 }
 
 /**

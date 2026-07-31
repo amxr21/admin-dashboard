@@ -1,8 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
-import type { StaffRole } from '@prisma/client';
+import { StaffRole } from '@prisma/client';
 
 import { AppError } from '../errors/AppError.js';
 import { canAccessArea, isReadOnlyRole, type Area } from '../config/roles.js';
+import { getSettingValue } from '../services/settings.service.js';
 import { requireUser } from './authenticate.js';
 
 /**
@@ -53,6 +54,39 @@ export function assertCanWrite(req: Request): void {
   });
 
   throw AppError.forbidden('This is a read-only demo account. Changes are disabled.');
+}
+
+/**
+ * Throws if `system.maintenanceMode` is on and this write isn't exempt.
+ *
+ * OWNER and DEVELOPER are exempt on purpose: someone has to be able to turn
+ * the setting back off, and locking out the two roles capable of doing that
+ * would make maintenance mode a one-way door.
+ *
+ * Async, unlike `assertCanWrite` — the value lives in the database, not on
+ * the token — so it runs from `authenticate` as a second, separate check
+ * rather than being folded into that synchronous one.
+ */
+export async function assertNotInMaintenance(req: Request): Promise<void> {
+  const user = req.user;
+
+  if (!user) return;
+  if (READ_METHODS.has(req.method)) return;
+  if (user.role === StaffRole.OWNER || user.role === StaffRole.DEVELOPER) return;
+
+  const maintenanceMode = await getSettingValue('system.maintenanceMode');
+  if (!maintenanceMode) return;
+
+  req.log.warn({
+    event: 'authz.write.blocked.maintenance',
+    role: user.role,
+    method: req.method,
+    path: req.path,
+  });
+
+  throw AppError.serviceUnavailable(
+    'The system is in maintenance mode. Try again shortly.',
+  );
 }
 
 /**

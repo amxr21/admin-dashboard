@@ -7,6 +7,7 @@ import {
   FolderTree,
   LayoutDashboard,
   Package,
+  RotateCcw,
   Settings,
   ShoppingCart,
   Star,
@@ -61,6 +62,7 @@ export const NAVIGATION: readonly NavGroup[] = [
     items: [
       { href: '/admin/orders', labelKey: 'orders', icon: ShoppingCart, area: 'orders' },
       { href: '/admin/inventory', labelKey: 'inventory', icon: Boxes, area: 'inventory' },
+      { href: '/admin/returns', labelKey: 'returns', icon: RotateCcw, area: 'returns' },
     ],
   },
   {
@@ -116,3 +118,31 @@ export const RESOURCE_GROUP_ORDER = ['catalogue', 'people', 'system'] as const;
  * bar links straight to it. Dropping the config entry would delete the page.
  */
 export const RESOURCES_OUTSIDE_SIDEBAR: readonly string[] = ['notifications'];
+
+/**
+ * Which area, if any, governs the given path — for "view as" content gating.
+ *
+ * Same two sources as the sidebar: the hand-written NAVIGATION entries for
+ * bespoke pages, and the schema-driven resources for `/admin/r/:resource`.
+ * Returns `undefined` for a path with no area (the dashboard itself, or
+ * anything not in either list) — those are always visible.
+ */
+export function resolveAreaForPath(
+  pathname: string,
+  resources: readonly { resource: string; permissionArea: string }[],
+): Area | undefined {
+  for (const group of NAVIGATION) {
+    for (const item of group.items) {
+      const matches = item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href);
+      if (matches) return item.area;
+    }
+  }
+
+  if (pathname.startsWith('/admin/r/')) {
+    const resourceName = pathname.split('/')[3];
+    const resource = resources.find((candidate) => candidate.resource === resourceName);
+    return resource?.permissionArea as Area | undefined;
+  }
+
+  return undefined;
+}

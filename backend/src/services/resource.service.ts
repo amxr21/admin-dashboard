@@ -1,3 +1,4 @@
+import type { Request } from 'express';
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
@@ -13,6 +14,7 @@ import {
 } from '../config/admin.config.js';
 import { hooksFor } from './resource-hooks.js';
 import { isEmailShaped } from '../lib/email.js';
+import { audit, diff } from './audit.service.js';
 
 /**
  * Generic CRUD, parameterised by config.
@@ -496,9 +498,20 @@ function translateWriteError(error: unknown, config: ResourceConfig): unknown {
   );
 }
 
+/**
+ * `getResourceRow` attaches `${field}__label` keys for the UI. Those are
+ * derived, not stored, so diffing a labelled "before" against an unlabelled
+ * "after" would report every relation field as changed. Stripped before any
+ * diff so the audit trail reflects real column changes only.
+ */
+function stripLabels(row: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(row).filter(([key]) => !key.endsWith('__label')));
+}
+
 export async function createResourceRow(
   config: ResourceConfig,
   body: Record<string, unknown>,
+  req: Request,
 ): Promise<Record<string, unknown>> {
   assertPermitted(config, 'create');
 
@@ -506,7 +519,16 @@ export async function createResourceRow(
 
   try {
     const row = await delegateFor(config).create({ data, select: selectFor(config) });
-    return serializeRow(row, config);
+    const serialized = serializeRow(row, config);
+
+    audit(req, {
+      action: `${config.resource}.create`,
+      entity: config.resource,
+      entityId: typeof serialized.id === 'string' ? serialized.id : null,
+      changes: diff({}, serialized),
+    });
+
+    return serialized;
   } catch (error) {
     throw translateWriteError(error, config);
   }
@@ -516,12 +538,13 @@ export async function updateResourceRow(
   config: ResourceConfig,
   id: string,
   body: Record<string, unknown>,
+  req: Request,
 ): Promise<Record<string, unknown>> {
   assertPermitted(config, 'update');
 
   // Existence first, so a bad id is a 404 rather than Prisma's P2025 surfacing
-  // as a 500.
-  await getResourceRow(config, id);
+  // as a 500. Doubles as the "before" side of the audit diff.
+  const before = await getResourceRow(config, id);
 
   const data = buildWriteData(config, body, { partial: true });
 
@@ -531,7 +554,21 @@ export async function updateResourceRow(
       data,
       select: selectFor(config),
     });
-    return serializeRow(row, config);
+    const after = serializeRow(row, config);
+
+    // An update that changed nothing gets no entry — a reviewer reading the
+    // trail sees decisions, not a row for every save.
+    const changes = diff(stripLabels(before), after);
+    if (Object.keys(changes).length > 0) {
+      audit(req, {
+        action: `${config.resource}.update`,
+        entity: config.resource,
+        entityId: id,
+        changes,
+      });
+    }
+
+    return after;
   } catch (error) {
     throw translateWriteError(error, config);
   }
@@ -546,10 +583,11 @@ export interface DeleteResult {
 export async function deleteResourceRow(
   config: ResourceConfig,
   id: string,
+  req: Request,
 ): Promise<DeleteResult> {
   assertPermitted(config, 'delete');
 
-  await getResourceRow(config, id);
+  const before = await getResourceRow(config, id);
 
   // A resource may refuse the plain delete and do something else — see
   // resource-hooks.ts for why that lives in code rather than config.
@@ -557,10 +595,29 @@ export async function deleteResourceRow(
 
   if (outcome?.handled) {
     // Re-read so the caller gets the row as it now stands, not as it was.
-    return { row: await getResourceRow(config, id), action: outcome.action ?? 'archived' };
+    const after = await getResourceRow(config, id);
+
+    audit(req, {
+      action: `${config.resource}.archive`,
+      entity: config.resource,
+      entityId: id,
+      changes: diff(stripLabels(before), stripLabels(after)),
+    });
+
+    return { row: after, action: outcome.action ?? 'archived' };
   }
 
   const row = await delegateFor(config).delete({ where: { id }, select: selectFor(config) });
+
+  // Not a field diff — the row is gone, not changed. Recording every column as
+  // "changed to null" would be a full snapshot of the deleted row wearing a
+  // diff's clothes, which is exactly what the audit log is designed to avoid.
+  audit(req, {
+    action: `${config.resource}.delete`,
+    entity: config.resource,
+    entityId: id,
+    changes: null,
+  });
 
   return { row: serializeRow(row, config), action: 'deleted' };
 }

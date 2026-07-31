@@ -66,6 +66,8 @@ describe('Arabic is actually translated', () => {
       'language.en',
       'language.ar',
       'auth.emailPlaceholder',
+      // A brand name, same reasoning as "iPhone"/"WhatsApp"/"Excel".
+      'diagnostics.sentry',
     ]);
 
     const untranslated = enKeys.filter(
@@ -105,6 +107,8 @@ describe('DB enum coverage', () => {
       'deliveryStatus',
       ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELIVERED', 'HANDED_OVER'],
     ],
+    ['returnStatus', ['REQUESTED', 'APPROVED', 'REJECTED']],
+    ['returnResolution', ['NONE', 'REFUND', 'STORE_CREDIT', 'REPLACEMENT']],
   ] as const;
 
   it.each(enumNamespaces)('translates every %s value in both locales', (ns, values) => {

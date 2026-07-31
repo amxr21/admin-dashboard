@@ -77,7 +77,11 @@ function TableHead({ className, ...props }: ComponentProps<'th'>) {
     <th
       data-slot="table-head"
       className={cn(
-        'text-muted-foreground h-10 px-2 text-start align-middle font-medium whitespace-nowrap',
+        // `py-(--table-cell-py)` rather than a fixed `h-10`, so
+        // `ui.density` (see globals.css / settings-provider.tsx) can shrink
+        // row height by changing the one custom property both this and
+        // TableCell read.
+        'text-muted-foreground px-2 py-(--table-cell-py) text-start align-middle font-medium whitespace-nowrap',
         '[&:has([role=checkbox])]:w-0 [&:has([role=checkbox])]:pe-0',
         className,
       )}
@@ -91,7 +95,7 @@ function TableCell({ className, ...props }: ComponentProps<'td'>) {
     <td
       data-slot="table-cell"
       className={cn(
-        'p-2 align-middle whitespace-nowrap',
+        'px-2 py-(--table-cell-py) align-middle whitespace-nowrap',
         '[&:has([role=checkbox])]:w-0 [&:has([role=checkbox])]:pe-0',
         className,
       )}

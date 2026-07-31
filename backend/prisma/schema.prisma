@@ -94,6 +94,27 @@ enum ReviewStatus {
   REJECTED
 }
 
+/// Simplified from a 5-value original (which also had RECEIVED and REFUNDED):
+/// only approve and reject are reachable through any route, so those two
+/// states would have been dead — never set, never checked. Approving a
+/// return IS the terminal, resolution-recording action here (see
+/// Return.resolution), not the first step of a longer pipeline.
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+}
+
+/// What happens for the customer once a return is approved. NONE is not a
+/// real outcome — it exists so a freshly REQUESTED return has a value at all,
+/// the same reason Order.paymentMethod is optional rather than required.
+enum ReturnResolution {
+  NONE
+  REFUND
+  STORE_CREDIT
+  REPLACEMENT
+}
+
 enum DiscountType {
   PERCENT
   FIXED
@@ -165,9 +186,35 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  passwordResetTokens PasswordResetToken[]
+
   @@index([role])
   @@index([createdAt])
   @@map("users")
+}
+
+/// An admin-issued, single-use credential that lets a locked-out staff member
+/// set their OWN new password without the admin ever learning it.
+///
+/// Separate table rather than a column on User, like DeliveryStaff.accessCode:
+/// this one is time-boxed and single-use, so it needs its own expiry and
+/// redemption timestamp rather than a single slot that only ever holds one
+/// live value.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Keyed HMAC-SHA256, never the plaintext — same reasoning as courier access
+  /// codes. The plaintext is returned to the issuing admin exactly once.
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  /// NULL until redeemed. A used or expired token is rejected identically to
+  /// an unknown one — telling them apart is an enumeration oracle.
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 /// Key/value application settings. JSON value so a setting can hold a scalar
@@ -255,6 +302,7 @@ model Customer {
 
   orders  Order[]
   reviews Review[]
+  returns Return[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -281,6 +329,7 @@ model Order {
   items         OrderItem[]
   statusHistory OrderStatusHistory[]
   assignment    DeliveryAssignment?
+  returns       Return[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -304,6 +353,8 @@ model OrderItem {
 
   productId String?  @map("product_id")
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  returnItems ReturnItem[]
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -332,6 +383,69 @@ model OrderStatusHistory {
 
   @@index([orderId, createdAt])
   @@map("order_status_history")
+}
+
+/// A return request against a DELIVERED (or SHIPPED) order. Bespoke, not a
+/// configured resource — approving one is a procedure (validates the order
+/// can legally move to RETURNED, optionally restocks, records a resolution),
+/// the same reason orders and delivery are bespoke rather than config.
+model Return {
+  id           String           @id @default(cuid())
+  /// Human-facing reference, e.g. "RMA-7F3K9QZR". Never the row id.
+  rmaNumber    String           @unique @map("rma_number")
+  reason       String           @db.VarChar(500)
+  status       ReturnStatus     @default(REQUESTED)
+  resolution   ReturnResolution @default(NONE)
+  /// Set only when resolution = REFUND. Capped at approval time to the sum of
+  /// the RETURNED line items' recorded price — never the order's live total.
+  refundAmount Decimal?         @map("refund_amount") @db.Decimal(10, 2)
+  /// Whether approving created a matching StockMovement per item. Recorded
+  /// here so the return's own history says whether stock was ever adjusted,
+  /// without re-deriving it from the movement log.
+  restocked    Boolean          @default(false)
+
+  orderId String @map("order_id")
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  customerId String?   @map("customer_id")
+  /// SetNull, same reasoning as Order.customer — a deleted customer must not
+  /// take their return history with them.
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  items ReturnItem[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([orderId])
+  @@index([customerId])
+  @@index([status, createdAt])
+  @@map("returns")
+}
+
+/// A line item being returned — a QUANTITY against an existing OrderItem, not
+/// a copy of it. Price and product are read through the relation so a return
+/// can never disagree with what the order actually recorded.
+model ReturnItem {
+  id       String @id @default(cuid())
+  quantity Int
+
+  returnId String @map("return_id")
+  /// Cascade — a return's items have no meaning without the return.
+  return   Return @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+  orderItemId String    @map("order_item_id")
+  /// Restrict, not cascade or set-null: an order's line items are themselves
+  /// cascade-deleted only with their order, and a Return already cascades
+  /// from Order via its own orderId — deleting just the ITEM while the return
+  /// survives would leave a return line pointing at nothing.
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([returnId])
+  @@index([orderItemId])
+  @@map("return_items")
 }
 
 model Review {

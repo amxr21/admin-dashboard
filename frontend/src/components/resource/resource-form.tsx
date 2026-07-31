@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api';
 import { isEmailShaped } from '@/lib/email';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import {
   createRow,
   fetchRelationOptions,
@@ -139,6 +140,7 @@ export function ResourceForm({
 }: ResourceFormProps) {
   const t = useTranslations('resourceForm');
   const translateError = useTranslatedApiError();
+  const { editPanelMode } = useAppSettings();
 
   const fields = useMemo(() => formFields(schema), [schema]);
   const isEdit = row !== null;
@@ -362,6 +364,7 @@ export function ResourceForm({
     <Sheet open={open} onOpenChange={requestClose}>
       <SheetContent
         side="end"
+        variant={editPanelMode}
         className="w-full max-w-lg overflow-y-auto"
         title={isEdit ? t('editTitle', { label: schema.label }) : t('createTitle', { label: schema.label })}
         // Escape and outside clicks route through the same guard as the

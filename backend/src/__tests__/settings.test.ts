@@ -208,10 +208,127 @@ describe('values are validated against their declared type', () => {
   });
 });
 
+describe('the color type', () => {
+  it('accepts a 6-digit hex color, lowercased', async () => {
+    expect((await save({ 'theme.accentColor': '#ABCDEF' })).status).toBe(200);
+
+    const res = await request(app).get('/api/v1/settings').set(auth(ownerToken));
+    expect(get('theme.accentColor', res.body as SettingsBody)?.value).toBe('#abcdef');
+  });
+
+  it('rejects a color name', async () => {
+    expect((await save({ 'theme.accentColor': 'blue' })).status).toBe(400);
+  });
+
+  it('rejects a 3-digit shorthand', async () => {
+    expect((await save({ 'theme.accentColor': '#fff' })).status).toBe(400);
+  });
+
+  it('rejects a hex without the leading #', async () => {
+    expect((await save({ 'theme.accentColor': '2563eb' })).status).toBe(400);
+  });
+});
+
+describe('the new registry entries this session added', () => {
+  it('all describe themselves with a working default', async () => {
+    const res = await request(app).get('/api/v1/settings').set(auth(ownerToken));
+    const body = res.body as SettingsBody;
+
+    const newKeys = [
+      'store.logoUrl',
+      'store.url',
+      'store.tagline',
+      'store.address',
+      'store.supportPhone',
+      'theme.accentColor',
+      'ui.density',
+      'ui.cornerRadius',
+      'ui.editPanelMode',
+      'notifications.lowStockAlerts',
+      'notifications.returnRequestAlerts',
+      'dashboard.tablePageSize',
+    ];
+
+    for (const key of newKeys) {
+      const setting = get(key, body);
+      expect(setting, `${key} is missing from GET /settings`).toBeTruthy();
+      expect(setting?.isDefault).toBe(true);
+    }
+  });
+
+  it('enforces the enum options on density, corner radius and edit panel mode', async () => {
+    expect((await save({ 'ui.density': 'roomy' })).status).toBe(400);
+    expect((await save({ 'ui.density': 'compact' })).status).toBe(200);
+
+    expect((await save({ 'ui.cornerRadius': 'square' })).status).toBe(400);
+    expect((await save({ 'ui.cornerRadius': 'round' })).status).toBe(200);
+
+    expect((await save({ 'ui.editPanelMode': 'popover' })).status).toBe(400);
+    expect((await save({ 'ui.editPanelMode': 'modal' })).status).toBe(200);
+  });
+
+  it('enforces numeric bounds on the table page size', async () => {
+    expect((await save({ 'dashboard.tablePageSize': 1 })).status).toBe(400);
+    expect((await save({ 'dashboard.tablePageSize': 500 })).status).toBe(400);
+    expect((await save({ 'dashboard.tablePageSize': 50 })).status).toBe(200);
+  });
+});
+
 describe('the engine cannot reach settings', () => {
   it('404s /r/settings', async () => {
     // Key/value pairs with per-key types are not a table of rows, and the
     // allowlist above is not something a field list can express.
     expect((await request(app).get('/api/v1/r/settings').set(auth(ownerToken))).status).toBe(404);
+  });
+});
+
+describe('maintenance mode', () => {
+  const customer = () => ({
+    name: `${RUN} maintenance customer`,
+    email: `${RUN}-maintenance-${Date.now()}@example.test`,
+  });
+
+  afterEach(async () => {
+    await prisma.customer.deleteMany({ where: { email: { contains: RUN } } });
+  });
+
+  it('blocks a write from a non-exempt role once enabled', async () => {
+    expect((await save({ 'system.maintenanceMode': true })).status).toBe(200);
+
+    const res = await request(app)
+      .post('/api/v1/r/customers')
+      .set(auth(supportToken))
+      .send(customer());
+
+    expect(res.status).toBe(503);
+    expect((res.body as ErrorBody).error.message).toMatch(/maintenance/i);
+  });
+
+  it('never blocks a read, even while enabled', async () => {
+    await save({ 'system.maintenanceMode': true });
+
+    expect((await request(app).get('/api/v1/r/customers').set(auth(supportToken))).status).toBe(
+      200,
+    );
+  });
+
+  it('exempts OWNER, so maintenance mode is never a one-way door', async () => {
+    await save({ 'system.maintenanceMode': true });
+
+    const res = await request(app)
+      .post('/api/v1/r/customers')
+      .set(auth(ownerToken))
+      .send(customer());
+
+    expect(res.status).toBe(201);
+  });
+
+  it('has no effect at all while off (the default)', async () => {
+    const res = await request(app)
+      .post('/api/v1/r/customers')
+      .set(auth(supportToken))
+      .send(customer());
+
+    expect(res.status).toBe(201);
   });
 });

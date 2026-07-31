@@ -74,6 +74,7 @@
     "discounts": "Discounts",
     "reviews": "Reviews",
     "delivery": "Delivery",
+    "returns": "Returns",
     "reports": "Reports",
     "settings": "Settings",
     "staff": "Staff",
@@ -125,6 +126,17 @@
     "OUT_FOR_DELIVERY": "Out for delivery",
     "DELIVERED": "Delivered",
     "HANDED_OVER": "Handed over"
+  },
+  "returnStatus": {
+    "REQUESTED": "Requested",
+    "APPROVED": "Approved",
+    "REJECTED": "Rejected"
+  },
+  "returnResolution": {
+    "NONE": "Not decided",
+    "REFUND": "Refund",
+    "STORE_CREDIT": "Store credit",
+    "REPLACEMENT": "Replacement"
   },
   "counts": {
     "orders": "{count, plural, =0 {No orders} one {# order} other {# orders}}",
@@ -336,6 +348,7 @@
     "subtitle": "Every order, its line items, and where it is in the workflow.",
     "empty": "No orders yet.",
     "guest": "Guest",
+    "requestReturn": "Request return",
     "placedOn": "Placed on {date}",
     "total": "{count, plural, one {# order} other {# orders}}",
     "columns": {
@@ -680,6 +693,101 @@
     "topProducts": "Best sellers",
     "statusBreakdown": "Order outcomes",
     "noSales": "No sales in this period.",
-    "deletedProduct": "Deleted product"
+    "deletedProduct": "Deleted product",
+    "exportCsv": "Export CSV"
+  },
+  "diagnostics": {
+    "label": "Developer diagnostics",
+    "uptime": "Uptime",
+    "databaseReachable": "Database reachable",
+    "databaseUnreachable": "Database unreachable",
+    "node": "Node",
+    "database": "Database latency",
+    "recentMigrations": "Recent migrations",
+    "noMigrations": "No migration history found.",
+    "observability": "Observability",
+    "sentry": "Sentry",
+    "logs": "Logs",
+    "configured": "Configured",
+    "notConfigured": "Not configured",
+    "viewDashboard": "View dashboard"
+  },
+  "viewAs": {
+    "label": "View as",
+    "yourRole": "Your role",
+    "banner": "Previewing as {role}. Nothing here changes real permissions.",
+    "exitPreview": "Exit preview",
+    "notVisible": {
+      "title": "Not visible to this role",
+      "description": "{role} does not have access to this area. This is what their sidebar would look like."
+    }
+  },
+  "returns": {
+    "title": "Returns",
+    "subtitle": "Requests to send something back — review, approve or reject.",
+    "empty": "No returns yet.",
+    "total": "{count, plural, one {# return} other {# returns}}",
+    "columns": {
+      "rma": "RMA",
+      "order": "Order",
+      "customer": "Customer",
+      "items": "Items",
+      "requested": "Requested",
+      "status": "Status"
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "RMA number or order number"
+    },
+    "filters": {
+      "allStatuses": "All statuses"
+    },
+    "status": {
+      "REQUESTED": "Requested",
+      "APPROVED": "Approved",
+      "REJECTED": "Rejected"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "detail": {
+      "title": "Return",
+      "reason": "Reason",
+      "items": "Items being returned",
+      "productRemoved": "Product no longer available",
+      "resolution": "Resolution",
+      "refundAmount": "Refund amount",
+      "restocked": "Restocked",
+      "yes": "Yes",
+      "no": "No",
+      "chooseResolution": "What happens for the customer",
+      "resolutionPlaceholder": "Choose an outcome",
+      "resolutions": {
+        "REFUND": "Refund",
+        "STORE_CREDIT": "Store credit",
+        "REPLACEMENT": "Replacement"
+      },
+      "refundAmountLabel": "Refund amount (up to {max})",
+      "restock": "Put the returned items back in stock",
+      "reject": "Reject",
+      "approve": "Approve",
+      "saving": "Saving…",
+      "approved": "{rma} approved.",
+      "rejected": "{rma} rejected."
+    },
+    "request": {
+      "title": "Request a return — {order}",
+      "subtitle": "Select what's coming back and why. This does not change the order until it's approved.",
+      "items": "Items",
+      "productRemoved": "Product no longer available",
+      "quantityFor": "Quantity for {item}",
+      "reason": "Reason",
+      "reasonPlaceholder": "Why is this being returned?",
+      "cancel": "Cancel",
+      "submit": "Request return",
+      "saving": "Submitting…",
+      "done": "{rma} requested."
+    }
   }
 }
