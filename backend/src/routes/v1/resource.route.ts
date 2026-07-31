@@ -122,7 +122,7 @@ resourceRouter.post('/r/:resource', authenticate, async (req, res) => {
   guardArea(req);
   const config = requireResource(String(req.params.resource));
 
-  const row = await createResourceRow(config, req.body as Record<string, unknown>);
+  const row = await createResourceRow(config, req.body as Record<string, unknown>, req);
 
   req.log.info({ event: 'resource.created', resource: config.resource });
 
@@ -138,6 +138,7 @@ resourceRouter.patch('/r/:resource/:id', authenticate, async (req, res) => {
     config,
     String(req.params.id),
     req.body as Record<string, unknown>,
+    req,
   );
 
   req.log.info({ event: 'resource.updated', resource: config.resource });
@@ -150,7 +151,7 @@ resourceRouter.delete('/r/:resource/:id', authenticate, async (req, res) => {
   guardArea(req);
   const config = requireResource(String(req.params.resource));
 
-  const { row, action } = await deleteResourceRow(config, String(req.params.id));
+  const { row, action } = await deleteResourceRow(config, String(req.params.id), req);
 
   req.log.info({ event: `resource.${action}`, resource: config.resource });
 
