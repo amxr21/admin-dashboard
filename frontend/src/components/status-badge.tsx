@@ -58,6 +58,17 @@ const TONES = {
     ON_SHIFT: 'info',
     INACTIVE: 'muted',
   },
+  returnStatus: {
+    REQUESTED: 'warning',
+    APPROVED: 'success',
+    REJECTED: 'destructive',
+  },
+  returnResolution: {
+    NONE: 'muted',
+    REFUND: 'info',
+    STORE_CREDIT: 'secondary',
+    REPLACEMENT: 'secondary',
+  },
   roles: {
     DEVELOPER: 'info',
     OWNER: 'default',
