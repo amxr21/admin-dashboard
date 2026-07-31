@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import {
   fetchCouriers,
   issueAccessCode,
@@ -28,13 +29,12 @@ import {
  * one is an action whose response contains a secret that exists exactly once.
  */
 
-const PAGE_SIZE = 20;
-
 export function CouriersTable() {
   const t = useTranslations('delivery');
   const tTable = useTranslations('table');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
+  const { tablePageSize } = useAppSettings();
 
   const [result, setResult] = useState<CourierListResult | null>(null);
   const [page, setPage] = useState(1);
@@ -55,7 +55,7 @@ export function CouriersTable() {
 
     try {
       setResult(
-        await fetchCouriers({ page, pageSize: PAGE_SIZE, ...(search ? { search } : {}) }),
+        await fetchCouriers({ page, pageSize: tablePageSize, ...(search ? { search } : {}) }),
       );
     } catch (caught) {
       setError(translateError(caught));
@@ -63,7 +63,7 @@ export function CouriersTable() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, search, translateError]);
+  }, [page, search, tablePageSize, translateError]);
 
   useEffect(() => {
     void load();

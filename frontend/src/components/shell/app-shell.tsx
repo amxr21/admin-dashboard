@@ -17,6 +17,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { canAccessArea, isReadOnlyRole, type StaffRole } from '@/config/areas';
 import { resolveAreaForPath } from '@/config/navigation';
 import { useResourceSchema } from '@/components/providers/schema-provider';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { usePathname } from '@/i18n/navigation';
 
 /**
@@ -56,6 +57,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   const [previewedRole, setPreviewedRoleState] = useState<StaffRole | null>(null);
   const pathname = usePathname();
   const { resources } = useResourceSchema();
+  const { logoUrl } = useAppSettings();
 
   const canPreview = user.role === 'OWNER' || user.role === 'DEVELOPER';
 
@@ -86,7 +88,14 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
 
   const sidebarContent = (
     <>
-      <div className="flex h-14 items-center px-3">
+      <div className="flex h-14 items-center gap-2 px-3">
+        {logoUrl ? (
+          // Plain <img>, not next/image — same reasoning as resource-cell.tsx's
+          // image field: the URL is admin-supplied at runtime from settings,
+          // not a build-time known host next/image could be configured for.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logoUrl} alt="" className="h-7 w-auto shrink-0" />
+        ) : null}
         <span className="text-lg font-semibold">admin-dashboard</span>
       </div>
       <SidebarNav role={effectiveRole} onNavigate={() => setDrawerOpen(false)} />

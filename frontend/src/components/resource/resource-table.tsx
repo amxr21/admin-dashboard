@@ -21,6 +21,7 @@ import {
 import { gsap } from '@/lib/gsap';
 import { DURATION, EASE, DISTANCE, STAGGER_TOTAL_MAX } from '@/lib/motion-tokens';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import {
   deleteRow,
   fetchRows,
@@ -44,7 +45,6 @@ import {
  */
 
 const ALL = 'all';
-const PAGE_SIZE = 20;
 
 interface ResourceTableProps {
   schema: ResourceSchema;
@@ -54,6 +54,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
   const t = useTranslations('resource');
   const tTable = useTranslations('table');
   const translateError = useTranslatedApiError();
+  const { tablePageSize } = useAppSettings();
 
   const [result, setResult] = useState<ResourceListResult | null>(null);
   const [page, setPage] = useState(1);
@@ -99,7 +100,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
       setResult(
         await fetchRows(schema.resource, {
           page,
-          pageSize: PAGE_SIZE,
+          pageSize: tablePageSize,
           ...(search ? { search } : {}),
           filters: active,
         }),
@@ -110,7 +111,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [schema.resource, page, search, filters, translateError]);
+  }, [schema.resource, page, search, filters, tablePageSize, translateError]);
 
   useEffect(() => {
     void load();

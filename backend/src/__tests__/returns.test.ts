@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { OrderStatus, Prisma, StaffRole } from '@prisma/client';
@@ -118,6 +118,10 @@ afterAll(async () => {
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.customer.deleteMany({ where: { id: customerId } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.notification.deleteMany({
+    where: { type: 'return.requested', body: { contains: RUN } },
+  });
+  await prisma.setting.deleteMany({ where: { key: 'notifications.returnRequestAlerts' } });
   await prisma.$disconnect();
 });
 
@@ -419,5 +423,56 @@ describe('rejecting a return', () => {
 describe('the engine does not serve returns', () => {
   it('404s /r/returns', async () => {
     expect((await request(app).get('/api/v1/r/returns').set(auth(ownerToken))).status).toBe(404);
+  });
+});
+
+describe('requesting a return notifies staff', () => {
+  function saveSetting(body: Record<string, unknown>) {
+    return request(app).patch('/api/v1/settings').set(auth(ownerToken)).send(body);
+  }
+
+  afterEach(async () => {
+    await prisma.notification.deleteMany({
+      where: { type: 'return.requested', body: { contains: RUN } },
+    });
+    await prisma.setting.deleteMany({ where: { key: 'notifications.returnRequestAlerts' } });
+  });
+
+  it('creates a notification carrying the reason', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const reason = `${RUN} arrived broken`;
+
+    const res = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason, items: [{ orderItemId, quantity: 1 }] });
+    expect(res.status).toBe(201);
+
+    await waitForAudit();
+
+    const notification = await prisma.notification.findFirst({
+      where: { type: 'return.requested', body: reason },
+    });
+    expect(notification).not.toBeNull();
+    expect(notification?.title).toContain((res.body as ReturnBody).data.return.rmaNumber);
+  });
+
+  it('does not notify when notifications.returnRequestAlerts is off', async () => {
+    await saveSetting({ 'notifications.returnRequestAlerts': false });
+
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const reason = `${RUN} disabled alerts`;
+
+    const res = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason, items: [{ orderItemId, quantity: 1 }] });
+    expect(res.status).toBe(201);
+
+    await waitForAudit();
+
+    expect(
+      await prisma.notification.count({ where: { type: 'return.requested', body: reason } }),
+    ).toBe(0);
   });
 });
