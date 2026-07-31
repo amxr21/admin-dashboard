@@ -4,6 +4,7 @@ import { Prisma, StaffRole } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { canAssignRole, outranks } from '../config/roles.js';
+import { createResetToken } from './password-reset.service.js';
 
 /**
  * Staff accounts.
@@ -318,4 +319,24 @@ export async function resetStaffPassword(actor: Actor, id: string, password: str
   });
 
   return serialise(user);
+}
+
+/**
+ * Issue a one-time reset token instead of setting the password directly.
+ *
+ * Same rank rules as every other write here (via `loadSubject`) — an admin
+ * can issue a token for anyone at or below their own rank, never upward.
+ * The plaintext token is returned exactly once, to be handed to the locked-out
+ * person out of band; nothing stores it, so losing it means issuing another.
+ */
+export async function issueStaffPasswordResetToken(actor: Actor, id: string) {
+  const subject = await loadSubject(actor, id);
+
+  const { token, expiresAt } = await createResetToken(subject.id);
+
+  return {
+    staff: { id: subject.id, email: subject.email },
+    token,
+    expiresAt: expiresAt.toISOString(),
+  };
 }

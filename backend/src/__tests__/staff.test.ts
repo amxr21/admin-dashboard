@@ -403,6 +403,58 @@ describe('operational actions', () => {
   });
 });
 
+describe('one-time password reset tokens', () => {
+  // Redemption itself (expiry, single-use, session revocation, enumeration
+  // resistance) is covered end-to-end in password-reset.test.ts — this file
+  // only covers WHO may issue one, which is the same rank rules as every
+  // other staff write.
+  it('an OWNER can issue a token for a lower-rank user', async () => {
+    const res = await request(app)
+      .post(`/api/v1/staff/${supportId}/reset-token`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(201);
+
+    const body = res.body as { data: { staff: { id: string }; token: string; expiresAt: string } };
+    expect(body.data.staff.id).toBe(supportId);
+    // A real, redeemable-looking token, not an id or a hash.
+    expect(body.data.token).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    expect(new Date(body.data.expiresAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('rule 3 applies here too — nobody can issue one for someone who outranks them', async () => {
+    const developer = await makeUser(StaffRole.DEVELOPER, 'dev-resettoken');
+
+    const res = await request(app)
+      .post(`/api/v1/staff/${developer.id}/reset-token`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(403);
+  });
+
+  it('peers can issue one for each other', async () => {
+    // Equal rank is not outranking — two owners must be able to help each other.
+    const res = await request(app)
+      .post(`/api/v1/staff/${secondOwnerId}/reset-token`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(201);
+  });
+
+  it('issuing a new token invalidates any of that user unused ones', async () => {
+    await request(app).post(`/api/v1/staff/${supportId}/reset-token`).set(auth(ownerToken));
+    await request(app).post(`/api/v1/staff/${supportId}/reset-token`).set(auth(ownerToken));
+
+    const live = await prisma.passwordResetToken.count({
+      where: { userId: supportId, usedAt: null },
+    });
+
+    // Whatever ran before this test in the file may have left one too, but
+    // there must never be MORE than one live token for the same user.
+    expect(live).toBe(1);
+  });
+});
+
 describe('input validation', () => {
   it('rejects a duplicate email with 409, not a 500', async () => {
     const res = await request(app)
