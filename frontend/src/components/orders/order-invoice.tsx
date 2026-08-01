@@ -6,6 +6,7 @@ import { Link } from '@/i18n/navigation';
 import { ArrowLeft, ArrowRight, Printer } from 'lucide-react';
 
 import { ErrorScreen } from '@/components/errors/error-screen';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
@@ -31,6 +32,8 @@ export function OrderInvoice({ id }: { id: string }) {
   const tErrors = useTranslations('errorPages.notFound');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
+  const { storeName, storeTagline, storeAddress, storeSupportEmail, storeSupportPhone, logoUrl } =
+    useAppSettings();
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -84,6 +87,36 @@ export function OrderInvoice({ id }: { id: string }) {
       </div>
 
       <article className="bg-card space-y-6 rounded-lg border p-8 print:border-0 print:p-0">
+        {storeName || logoUrl ? (
+          <div className="flex items-center gap-3 border-b pb-4">
+            {logoUrl ? (
+              // A print document has no viewport to optimise for, and
+              // next/image's loader would add a query string that breaks a
+              // plain print — a bare <img> is the correct choice here.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoUrl}
+                alt={t('storeLogoAlt', { name: storeName || '' })}
+                className="h-10 w-auto object-contain"
+              />
+            ) : null}
+            <div>
+              {storeName ? <p className="font-semibold">{storeName}</p> : null}
+              {storeTagline ? (
+                <p className="text-muted-foreground text-sm">{storeTagline}</p>
+              ) : null}
+              {storeAddress ? (
+                <p className="text-muted-foreground text-sm">{storeAddress}</p>
+              ) : null}
+              {storeSupportEmail || storeSupportPhone ? (
+                <p className="text-muted-foreground force-ltr text-sm">
+                  {[storeSupportEmail, storeSupportPhone].filter(Boolean).join(' · ')}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         <header className="flex flex-wrap items-start justify-between gap-4 border-b pb-4">
           <div>
             <h1 className="text-2xl font-semibold">{t('title')}</h1>

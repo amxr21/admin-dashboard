@@ -171,6 +171,15 @@ export const SETTINGS = {
     label: 'Edit panel style',
     description: 'How the create/edit form opens: a side drawer, or a centered dialog.',
   },
+  'ui.sidebarMode': {
+    type: 'enum',
+    default: 'sticky',
+    area: 'settings',
+    options: ['sticky', 'floating'],
+    label: 'Sidebar style',
+    description:
+      'Sticky keeps the sidebar flush with the edge. Floating detaches it with margin, rounded corners and a shadow. Either way it stays pinned in place and never scrolls with the page.',
+  },
 
   // ─── Notifications ──────────────────────────────────────────────────
   // "New order" has no toggle: nothing in this admin app creates an order (no

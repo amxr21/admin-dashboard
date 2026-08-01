@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { Bell, Palette, Settings2, SlidersHorizontal, Store, type LucideIcon } from 'lucide-react';
 
 import { ErrorScreen } from '@/components/errors/error-screen';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
   fetchSettings,
@@ -24,6 +26,58 @@ import {
   saveSettings,
   type Setting,
 } from '@/lib/settings-api';
+
+/**
+ * Key prefix → visual group, purely for layout. `settings.config.ts` on the
+ * backend has no notion of groups — this is a hardcoded, presentation-only map
+ * so a flat registry still reads as sections. A key matching none of these
+ * still renders, under "other", so a future setting can't silently vanish.
+ */
+const GROUPS = [
+  { id: 'brand', icon: Store, match: (key: string) => key.startsWith('store.') },
+  {
+    id: 'appearance',
+    icon: Palette,
+    match: (key: string) => key.startsWith('theme.') || key.startsWith('ui.'),
+  },
+  {
+    id: 'notifications',
+    icon: Bell,
+    match: (key: string) => key.startsWith('notifications.'),
+  },
+  {
+    id: 'operations',
+    icon: SlidersHorizontal,
+    match: (key: string) =>
+      key.startsWith('inventory.') || key.startsWith('dashboard.') || key.startsWith('system.'),
+  },
+] as const;
+
+type GroupId = (typeof GROUPS)[number]['id'] | 'other';
+
+function groupByPrefix(
+  settings: Setting[],
+): { id: GroupId; icon: LucideIcon; items: Setting[] }[] {
+  const buckets = new Map<GroupId, Setting[]>();
+
+  for (const setting of settings) {
+    const id: GroupId = GROUPS.find((group) => group.match(setting.key))?.id ?? 'other';
+    const bucket = buckets.get(id);
+    if (bucket) bucket.push(setting);
+    else buckets.set(id, [setting]);
+  }
+
+  const known = GROUPS.map((group) => ({
+    id: group.id as GroupId,
+    icon: group.icon,
+    items: buckets.get(group.id) ?? [],
+  }));
+  const other = buckets.get('other');
+
+  return [...known, ...(other ? [{ id: 'other' as GroupId, icon: Settings2, items: other }] : [])].filter(
+    (group) => group.items.length > 0,
+  );
+}
 
 /**
  * Store settings, rendered from the server's registry.
@@ -167,15 +221,31 @@ export function SettingsForm() {
         </p>
       ) : null}
 
-      <div className="space-y-5">
-        {settings.map((setting) => (
-          <SettingField
-            key={setting.key}
-            setting={setting}
-            value={values[setting.key] ?? setting.value}
-            error={fieldErrors[setting.key]}
-            onChange={(value) => set(setting.key, value)}
-          />
+      <div className="divide-y">
+        {groupByPrefix(settings).map((group, index) => (
+          <div key={group.id} className={cn('space-y-4', index > 0 && 'pt-6')}>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <group.icon className="text-muted-foreground size-4" aria-hidden="true" />
+                <h3 className="text-sm font-semibold">{t(`groups.${group.id}.title`)}</h3>
+              </div>
+              <p className="text-muted-foreground text-sm">
+                {t(`groups.${group.id}.description`)}
+              </p>
+            </div>
+
+            <div className="space-y-5">
+              {group.items.map((setting) => (
+                <SettingField
+                  key={setting.key}
+                  setting={setting}
+                  value={values[setting.key] ?? setting.value}
+                  error={fieldErrors[setting.key]}
+                  onChange={(value) => set(setting.key, value)}
+                />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
 
