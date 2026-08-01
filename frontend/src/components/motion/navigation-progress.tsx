@@ -2,11 +2,13 @@
 
 import { usePathname } from 'next/navigation';
 import { useLinkStatus } from 'next/link';
+import { useTranslations } from 'next-intl';
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -36,20 +38,37 @@ import { TransitionOverlay } from '@/components/motion/transition-overlay';
  *
  * `useLinkStatus` is the framework telling us, per link, whether ITS
  * navigation is pending. No guessing, and it costs nothing when idle.
+ *
+ * ─── WHY THE OVERLAY NEEDS A LABEL, NOT JUST A COUNT ──────────────────
+ * A bare "Loading…" tells the user something is happening but not what. The
+ * label carries the destination — "Loading Orders…" — so the wait reads as
+ * progress toward somewhere specific rather than a stall.
+ *
+ * Pending links are keyed by a per-instance id (not just counted), because
+ * two links can be pending at once (a fast second click) and each may carry a
+ * DIFFERENT label. Whichever reported most recently wins — it is the one the
+ * user clicked last, so it is the destination they are actually waiting on.
  */
 
-type Report = (delta: 1 | -1) => void;
+type Report = (id: string, active: boolean, label?: string) => void;
 
 const NavigationProgressContext = createContext<Report>(() => undefined);
 
 export function NavigationProgressProvider({ children }: { children: ReactNode }) {
+  const t = useTranslations('common');
   const pathname = usePathname();
-  const [pending, setPending] = useState(0);
+  const [pending, setPending] = useState<Map<string, string | undefined>>(() => new Map());
 
-  const report = useCallback<Report>((delta) => {
-    // A counter, not a boolean: two links can be pending at once (a fast
-    // second click), and a boolean would clear on the first one settling.
-    setPending((current) => Math.max(0, current + delta));
+  const report = useCallback<Report>((id, active, label) => {
+    setPending((current) => {
+      const next = new Map(current);
+      // A Map, not a counter: two links can be pending at once (a fast
+      // second click), each keyed by its own instance so one settling never
+      // clears the other's entry.
+      if (active) next.set(id, label);
+      else next.delete(id);
+      return next;
+    });
   }, []);
 
   const settledAt = useRef(pathname);
@@ -67,15 +86,24 @@ export function NavigationProgressProvider({ children }: { children: ReactNode }
     if (settledAt.current === pathname) return;
 
     settledAt.current = pathname;
-    setPending(0);
+    setPending(new Map());
   }, [pathname]);
 
   const value = useMemo(() => report, [report]);
 
+  // The most recently reported label wins — Map insertion order puts it
+  // last, so `.at(-1)` is whichever link the user clicked most recently.
+  // `undefined` (an item with no label) falls back to the generic
+  // `t('loading')` inside TransitionOverlay itself.
+  const activeLabel = [...pending.values()].at(-1);
+
   return (
     <NavigationProgressContext.Provider value={value}>
       {children}
-      <TransitionOverlay active={pending > 0} />
+      <TransitionOverlay
+        active={pending.size > 0}
+        label={activeLabel ? t('loadingPage', { page: activeLabel }) : undefined}
+      />
     </NavigationProgressContext.Provider>
   );
 }
@@ -86,18 +114,26 @@ export function NavigationProgressProvider({ children }: { children: ReactNode }
  * Renders nothing. It has to be a descendant of the Link because that is where
  * `useLinkStatus` reads from.
  */
-export function NavigationPending() {
+interface NavigationPendingProps {
+  /** The link's destination, shown as "Loading {label}…" while it resolves. */
+  label?: string;
+}
+
+export function NavigationPending({ label }: NavigationPendingProps = {}) {
   const { pending } = useLinkStatus();
   const report = useContext(NavigationProgressContext);
+  // Stable per mounted instance — lets two simultaneously pending links keep
+  // independent entries in the provider's Map instead of colliding.
+  const id = useId();
 
   useEffect(() => {
     if (!pending) return;
 
-    report(1);
-    // The cleanup is what decrements — it runs when the link stops being
-    // pending AND when it unmounts mid-navigation, so the count cannot leak.
-    return () => report(-1);
-  }, [pending, report]);
+    report(id, true, label);
+    // The cleanup is what clears it — it runs when the link stops being
+    // pending AND when it unmounts mid-navigation, so no entry can leak.
+    return () => report(id, false);
+  }, [pending, report, id, label]);
 
   return null;
 }

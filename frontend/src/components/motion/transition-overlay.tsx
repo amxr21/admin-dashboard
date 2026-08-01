@@ -37,42 +37,57 @@ const SHOW_AFTER_MS = 120;
 export function TransitionOverlay({ active, label }: TransitionOverlayProps) {
   const t = useTranslations('common');
   const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
+  const [rendered, setRendered] = useState(false);
 
+  // Show only if the transition survives past the anti-flash threshold.
   useEffect(() => {
-    if (!active) {
-      setVisible(false);
-      return;
-    }
+    if (!active) return;
 
-    const timer = setTimeout(() => setVisible(true), SHOW_AFTER_MS);
+    const timer = setTimeout(() => setRendered(true), SHOW_AFTER_MS);
     return () => clearTimeout(timer);
   }, [active]);
 
+  /**
+   * Enter AND exit are both animated here, imperatively, rather than the
+   * overlay vanishing the instant `active` goes false. Before this, the
+   * moment a navigation settled the overlay just disappeared — a hard cut —
+   * and the new page's OWN fade-in (`PageTransition`) started a beat later,
+   * underneath nothing. Two separate motions read as a stutter. Fading this
+   * out while the new content fades in makes the whole page-change read as
+   * one continuous crossfade instead.
+   */
   useGSAP(
     () => {
-      if (!visible) return;
+      if (!ref.current) return;
 
-      const mm = gsap.matchMedia();
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-      mm.add('(prefers-reduced-motion: no-preference)', () => {
-        gsap.from(ref.current, {
+      if (!active) {
+        if (!rendered) return;
+
+        gsap.to(ref.current, {
           opacity: 0,
-          duration: DURATION.fast,
-          ease: EASE.out,
+          duration: reduced ? REDUCED.duration : DURATION.fast,
+          ease: EASE.in,
+          onComplete: () => setRendered(false),
         });
-      });
+        return;
+      }
 
-      mm.add('(prefers-reduced-motion: reduce)', () => {
-        gsap.from(ref.current, { opacity: 0, duration: REDUCED.duration });
-      });
-
-      return () => mm.revert();
+      gsap.fromTo(
+        ref.current,
+        { opacity: 0 },
+        {
+          opacity: 1,
+          duration: reduced ? REDUCED.duration : DURATION.fast,
+          ease: EASE.out,
+        },
+      );
     },
-    { scope: ref, dependencies: [visible] },
+    { scope: ref, dependencies: [active, rendered] },
   );
 
-  if (!visible) return null;
+  if (!rendered) return null;
 
   return (
     <div

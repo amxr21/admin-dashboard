@@ -69,7 +69,7 @@ export function NotificationsBell() {
         {hasUnread ? (
           <span
             aria-hidden
-            className="bg-destructive text-destructive-foreground absolute -top-0.5 inset-inline-end-0 flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-4 font-medium tabular-nums"
+            className="bg-destructive text-destructive-foreground absolute -top-0.5 end-0 flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-4 font-medium tabular-nums"
           >
             {unread > MAX_BADGE ? `${formatter.number(MAX_BADGE)}+` : formatter.number(unread)}
           </span>

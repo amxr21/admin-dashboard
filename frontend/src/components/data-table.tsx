@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react';
 
 import { Checkbox } from '@/components/ui/checkbox';
+import { ErrorSection } from '@/components/errors/error-section';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -78,7 +79,6 @@ export function DataTable<T>({
   skeletonRows = 5,
 }: DataTableProps<T>) {
   const t = useTranslations('table');
-  const tCommon = useTranslations('common');
   const tStates = useTranslations('states');
   // `selected` is a pluralised COUNT, so it lives in `counts`, not `table`.
   const tCounts = useTranslations('counts');
@@ -261,17 +261,13 @@ export function DataTable<T>({
             ))
           ) : error ? (
             <TableRow>
-              <TableCell colSpan={columnCount} className="h-32 text-center">
-                <p className="text-destructive text-sm font-medium">{error}</p>
-                {onRetry ? (
-                  <button
-                    type="button"
-                    onClick={onRetry}
-                    className="text-muted-foreground hover:text-foreground mt-2 text-sm underline underline-offset-4"
-                  >
-                    {tCommon('retry')}
-                  </button>
-                ) : null}
+              <TableCell colSpan={columnCount} className="p-2">
+                <ErrorSection
+                  title={tStates('error.title')}
+                  description={error}
+                  onRetry={onRetry}
+                  className="border-none p-4"
+                />
               </TableCell>
             </TableRow>
           ) : sortedData.length === 0 ? (
