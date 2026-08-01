@@ -33,8 +33,10 @@ export function RevenueHero({ value, isLoading = false }: RevenueHeroProps) {
     );
   }
 
+  const formatted = formatter.number(value, 'currency');
+
   return (
-    <div className="bg-card flex h-full flex-col justify-center rounded-lg border p-6">
+    <div className="bg-card flex h-full flex-col justify-center overflow-hidden rounded-lg border p-6">
       <div className="flex items-center gap-2">
         <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-md">
           <TrendingUp className="size-4" aria-hidden />
@@ -42,8 +44,28 @@ export function RevenueHero({ value, isLoading = false }: RevenueHeroProps) {
         <span className="text-muted-foreground text-sm">{t('totalRevenue')}</span>
       </div>
 
-      <p className="mt-3 text-3xl font-semibold sm:text-4xl lg:text-5xl">
-        {formatter.number(value, 'currency')}
+      {/*
+       * `lg:text-5xl` (48px) on a real business's revenue figure — e.g.
+       * "AED 54,412.19", 13 characters — overflowed this card's ~265px
+       * inner width by ~60px. Because the card and its parent both leave
+       * `overflow: visible`, that overflow didn't clip or wrap; it bled
+       * onto the ADJACENT chart card and got silently painted over by its
+       * opaque background — a revenue figure quietly missing its last
+       * digit on screen, with nothing indicating it was cut short. Found
+       * by reproducing the live dashboard rather than trusting a skeleton
+       * screenshot.
+       *
+       * Fixed two ways: a smaller ceiling that fits real currency strings
+       * at this column width, AND `overflow-hidden` + `truncate` here as a
+       * deliberate, VISIBLE ellipsis fallback (never a silent one) for any
+       * currency/locale combination that still doesn't fit — with the
+       * full value in `title` so it's never actually lost, only elided.
+       */}
+      <p
+        className="mt-3 truncate text-2xl font-semibold sm:text-3xl lg:text-4xl"
+        title={formatted}
+      >
+        {formatted}
       </p>
     </div>
   );
