@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { render, screen, act } from '@/test/render';
+import { render, screen, act, waitFor } from '@/test/render';
 import { TransitionOverlay } from '../transition-overlay';
 
 /**
@@ -71,14 +71,31 @@ describe('TransitionOverlay', () => {
     expect(screen.getByText('Switching to العربية')).toBeInTheDocument();
   });
 
-  it('disappears when the transition completes', () => {
+  it('fades out, then disappears, when the transition completes', async () => {
+    // A real exit fade now, not a hard cut — see the component's comment on
+    // why: an instant disappearance left a gap before the new page's own
+    // fade-in started, which read as a stutter rather than one transition.
+    //
+    // Real timers for this one: the exit is a GSAP tween completing via
+    // `onComplete`, which GSAP drives off `requestAnimationFrame` — fake
+    // timers here don't tick that, so advancing them can't complete it.
     const { rerender } = render(<TransitionOverlay active />);
     advancePastDelay();
     expect(screen.getByRole('status')).toBeInTheDocument();
 
     rerender(<TransitionOverlay active={false} />);
 
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    // Still present the instant navigation completes — mid fade-out, not
+    // yet removed.
+    expect(screen.getByRole('status')).toBeInTheDocument();
+
+    vi.useRealTimers();
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      },
+      { timeout: 1000 },
+    );
   });
 
   it('cancels a pending show if the transition finishes first', () => {

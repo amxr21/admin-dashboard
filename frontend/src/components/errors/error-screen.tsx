@@ -3,6 +3,7 @@
 import { useGSAP } from '@gsap/react';
 import { useRef, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
+import { TriangleAlert } from 'lucide-react';
 
 import { gsap } from '@/lib/gsap';
 import { DURATION, EASE, DISTANCE } from '@/lib/motion-tokens';
@@ -79,6 +80,14 @@ export function ErrorScreen({
       // page, so it is announced on navigation anyway.
       className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center gap-4 p-8 text-center"
     >
+      {/* Sized for a page-level moment — not the smaller glyph ErrorSection
+          uses for an in-page widget. text-destructive, never a raw color. */}
+      <TriangleAlert
+        data-error-reveal
+        className="text-destructive size-12"
+        aria-hidden
+      />
+
       <h1 data-error-reveal className="text-2xl font-semibold text-balance">
         {title}
       </h1>

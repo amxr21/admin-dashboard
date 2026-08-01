@@ -5,6 +5,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { Download } from 'lucide-react';
 
 import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-chart';
+import { ErrorSection } from '@/components/errors/error-section';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -81,6 +82,7 @@ function ExportButton({
 
 export function ReportsView() {
   const t = useTranslations('reports');
+  const tStates = useTranslations('states');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
 
@@ -205,12 +207,11 @@ export function ReportsView() {
       </div>
 
       {error ? (
-        <p
-          role="alert"
-          className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
-        >
-          {error}
-        </p>
+        <ErrorSection
+          title={tStates('error.title')}
+          description={error}
+          onRetry={() => void load()}
+        />
       ) : null}
 
       <section className="space-y-3" aria-label={t('summary')}>
