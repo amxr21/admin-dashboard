@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Menu } from 'lucide-react';
+import { Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 import { ThemeToggle } from '@/components/theme-toggle';
 import { DiagnosticsBar } from '@/components/shell/diagnostics-bar';
@@ -18,7 +18,9 @@ import { canAccessArea, isReadOnlyRole, type StaffRole } from '@/config/areas';
 import { resolveAreaForPath } from '@/config/navigation';
 import { useResourceSchema } from '@/components/providers/schema-provider';
 import { useAppSettings } from '@/components/providers/settings-provider';
+import { useSidebarCollapse } from '@/hooks/useSidebarCollapse';
 import { usePathname } from '@/i18n/navigation';
+import { cn } from '@/lib/utils';
 
 /**
  * The dashboard chrome: sidebar, topbar, content area.
@@ -57,7 +59,10 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   const [previewedRole, setPreviewedRoleState] = useState<StaffRole | null>(null);
   const pathname = usePathname();
   const { resources } = useResourceSchema();
-  const { logoUrl } = useAppSettings();
+  const { logoUrl, sidebarMode } = useAppSettings();
+  // Collapse/expand is a personal per-browser preference, separate from
+  // `sidebarMode` (store-wide sticky-vs-floating) above — see the hook.
+  const { collapsed, toggle: toggleCollapsed } = useSidebarCollapse();
 
   const canPreview = user.role === 'OWNER' || user.role === 'DEVELOPER';
 
@@ -86,27 +91,79 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
       ? !canAccessArea(previewedRole, currentArea)
       : false;
 
-  const sidebarContent = (
-    <>
-      <div className="flex h-14 items-center gap-2 px-3">
-        {logoUrl ? (
-          // Plain <img>, not next/image — same reasoning as resource-cell.tsx's
-          // image field: the URL is admin-supplied at runtime from settings,
-          // not a build-time known host next/image could be configured for.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logoUrl} alt="" className="h-7 w-auto shrink-0" />
-        ) : null}
-        <span className="text-lg font-semibold">admin-dashboard</span>
-      </div>
-      <SidebarNav role={effectiveRole} onNavigate={() => setDrawerOpen(false)} />
-    </>
-  );
+  /**
+   * Shared between the desktop rail and the mobile drawer, but the two never
+   * collapse the same way: `collapsedForThis` only ever comes in `true` for
+   * the desktop `<aside>` below. The drawer is already a dismissable overlay
+   * — collapsing it too would save no space that matters and would hide the
+   * toggle button behind an interaction nobody expects there.
+   */
+  function renderSidebarContent(collapsedForThis: boolean, showCollapseToggle: boolean) {
+    return (
+      <>
+        <div className="flex h-14 items-center gap-2 px-3">
+          {logoUrl && !collapsedForThis ? (
+            // Plain <img>, not next/image — same reasoning as resource-cell.tsx's
+            // image field: the URL is admin-supplied at runtime from settings,
+            // not a build-time known host next/image could be configured for.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoUrl} alt="" className="h-7 w-auto shrink-0" />
+          ) : null}
+          {!collapsedForThis ? (
+            <span className="truncate text-lg font-semibold">admin-dashboard</span>
+          ) : null}
+          {showCollapseToggle ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ms-auto"
+              onClick={toggleCollapsed}
+              aria-label={collapsedForThis ? t('expandSidebar') : t('collapseSidebar')}
+            >
+              {/* Not .icon-directional: a panel-rail glyph describes an open/
+                  closed STATE, not a reading direction. */}
+              {collapsedForThis ? (
+                <PanelLeftOpen className="size-4" aria-hidden />
+              ) : (
+                <PanelLeftClose className="size-4" aria-hidden />
+              )}
+            </Button>
+          ) : null}
+        </div>
+        <SidebarNav
+          role={effectiveRole}
+          onNavigate={() => setDrawerOpen(false)}
+          collapsed={collapsedForThis}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="flex min-h-dvh">
-      {/* Desktop sidebar. Hidden below lg; the drawer covers those widths. */}
-      <aside className="bg-card hidden w-64 shrink-0 flex-col border-e p-2 lg:flex">
-        {sidebarContent}
+      {/* Desktop sidebar. Hidden below lg; the drawer covers those widths.
+          Pinned to the viewport (sticky + its own height) so a long page
+          scrolls the CONTENT column only — without this, the aside had no
+          height of its own, stretched to match whatever height the content
+          column grew to, and scrolled away with the rest of the page.
+
+          Collapse (`collapsed`, personal/localStorage) only ever changes the
+          WIDTH. `sidebarMode` (store-wide, `ui.sidebarMode`) only ever
+          changes the surrounding chrome (flush edge vs. detached card). The
+          `lg:sticky` + bounded height that pins it to the viewport apply to
+          BOTH branches unconditionally — that is the one thing neither
+          setting is allowed to touch. */}
+      <aside
+        className={cn(
+          'bg-card hidden shrink-0 flex-col p-2 lg:sticky lg:flex',
+          'transition-[width] duration-200 ease-in-out motion-reduce:transition-none',
+          collapsed ? 'w-16' : 'w-64',
+          sidebarMode === 'floating'
+            ? 'mx-3 my-3 rounded-xl border shadow-lg lg:top-3 lg:h-[calc(100dvh-1.5rem)]'
+            : 'border-e lg:top-0 lg:h-dvh',
+        )}
+      >
+        {renderSidebarContent(collapsed, true)}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -120,7 +177,9 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
               </Button>
             </SheetTrigger>
             <SheetContent side="start" title={t('dashboard')}>
-              {sidebarContent}
+              {/* Always expanded: the drawer is already an overlay the user
+                  dismisses outright, so there is no icon-rail to offer here. */}
+              {renderSidebarContent(false, false)}
             </SheetContent>
           </Sheet>
 

@@ -60,7 +60,7 @@ export function Calendar({ className, classNames, showOutsideDays = true, ...pro
         month: 'space-y-3',
         month_caption: 'flex h-9 items-center justify-center',
         caption_label: 'text-sm font-medium',
-        nav: 'flex items-center justify-between absolute inset-inline-0 h-9 px-1',
+        nav: 'flex items-center justify-between absolute start-0 end-0 h-9 px-1',
         button_previous: cn(
           'inline-flex size-7 items-center justify-center rounded-md',
           'text-muted-foreground hover:text-foreground hover:bg-accent',

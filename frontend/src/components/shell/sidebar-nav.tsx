@@ -25,9 +25,17 @@ interface SidebarNavProps {
   role: StaffRole;
   /** Mobile drawer passes a close handler so tapping a link dismisses it. */
   onNavigate?: () => void;
+  /**
+   * Icon-only rail. Labels stay in the DOM (`sr-only`) rather than being
+   * removed — a screen reader must still announce the destination, and it is
+   * what a hover `title` attribute reads from. The mobile drawer never passes
+   * this: collapsing an already-dismissable overlay saves no space that
+   * matters.
+   */
+  collapsed?: boolean;
 }
 
-export function SidebarNav({ role, onNavigate }: SidebarNavProps) {
+export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavProps) {
   const t = useTranslations('nav');
   const pathname = usePathname();
   const { resources } = useResourceSchema();
@@ -108,7 +116,15 @@ export function SidebarNav({ role, onNavigate }: SidebarNavProps) {
         return (
           <div key={group.labelKey ?? `group-${String(groupIndex)}`}>
             {group.labelKey ? (
-              <h2 className="text-muted-foreground px-3 pb-1 text-xs font-medium tracking-wide uppercase">
+              <h2
+                className={cn(
+                  'text-muted-foreground px-3 pb-1 text-xs font-medium tracking-wide uppercase',
+                  // Kept in the DOM for assistive tech, just not painted — an
+                  // icon rail has no room for a heading, but the grouping is
+                  // still real structure a screen reader should get.
+                  collapsed && 'sr-only',
+                )}
+              >
                 {t.has(group.labelKey) ? t(group.labelKey) : group.labelKey}
               </h2>
             ) : null}
@@ -122,6 +138,11 @@ export function SidebarNav({ role, onNavigate }: SidebarNavProps) {
                     ? pathname === '/admin'
                     : pathname.startsWith(item.href);
 
+                // Falls back to the raw key so a resource added to
+                // admin.config.ts before its translation still shows a
+                // usable name instead of throwing.
+                const label = t.has(item.labelKey) ? t(item.labelKey) : item.labelKey;
+
                 return (
                   <li key={item.href}>
                     <Link
@@ -130,25 +151,27 @@ export function SidebarNav({ role, onNavigate }: SidebarNavProps) {
                       // aria-current is what a screen reader announces; the
                       // colour is only for sighted users.
                       aria-current={isActive ? 'page' : undefined}
+                      // No Radix tooltip primitive exists in this codebase yet
+                      // (see components/ui/) — a plain `title` is the minimal,
+                      // acceptable fallback for "what does this icon mean"
+                      // when the rail is collapsed.
+                      title={collapsed ? label : undefined}
                       className={cn(
                         'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+                        collapsed && 'justify-center px-2',
                         isActive
                           ? 'bg-primary/10 text-primary font-medium'
                           : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                       )}
                     >
-                      {/* Reports this link's pending state to the overlay.
-                          Renders nothing; must sit inside the Link. */}
-                      <NavigationPending />
+                      {/* Reports this link's pending state — and its
+                          destination label — to the overlay. Renders
+                          nothing; must sit inside the Link. */}
+                      <NavigationPending label={label} />
 
                       {/* Nav glyphs are objects, not arrows — no mirroring. */}
                       <item.icon className="size-4 shrink-0" aria-hidden />
-                      <span className="truncate">
-                        {/* Falls back to the raw key so a resource added to
-                            admin.config.ts before its translation still shows
-                            a usable name instead of throwing. */}
-                        {t.has(item.labelKey) ? t(item.labelKey) : item.labelKey}
-                      </span>
+                      <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
                     </Link>
                   </li>
                 );
