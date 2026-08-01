@@ -3,6 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -411,44 +420,43 @@ export function ResourceForm({
             ))}
           </div>
 
-          {isConfirmingDiscard ? (
-            <div role="alertdialog" aria-label={t('discard.title')} className="space-y-2 rounded-md border p-3">
-              <p className="text-sm font-medium">{t('discard.title')}</p>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => {
-                    setIsConfirmingDiscard(false);
-                    setIsDirty(false);
-                    onOpenChange(false);
-                  }}
-                >
-                  {t('discard.confirm')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsConfirmingDiscard(false)}
-                >
-                  {t('discard.cancel')}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex justify-end gap-2 border-t pt-4">
-              <Button type="button" variant="outline" onClick={() => requestClose(false)}>
-                {t('cancel')}
-              </Button>
-              <Button type="submit" disabled={isSaving}>
-                {isSaving ? t('saving') : t('save')}
-              </Button>
-            </div>
-          )}
+          <div className="flex justify-end gap-2 border-t pt-4">
+            <Button type="button" variant="outline" onClick={() => requestClose(false)}>
+              {t('cancel')}
+            </Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? t('saving') : t('save')}
+            </Button>
+          </div>
         </form>
       </SheetContent>
+
+      <AlertDialog
+        open={isConfirmingDiscard}
+        onOpenChange={(next) => {
+          if (!next) setIsConfirmingDiscard(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('discard.title')}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsConfirmingDiscard(false)}>
+              {t('discard.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setIsConfirmingDiscard(false);
+                setIsDirty(false);
+                onOpenChange(false);
+              }}
+            >
+              {t('discard.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   );
 }

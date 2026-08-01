@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Search } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { DataTable, type Column } from '@/components/data-table';
 import { ReturnDetailSheet } from '@/components/returns/return-detail-sheet';
@@ -39,7 +40,6 @@ export function ReturnsTable() {
   const [status, setStatus] = useState<ReturnStatus | typeof ALL>(ALL);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -127,18 +127,12 @@ export function ReturnsTable() {
 
   return (
     <div className="space-y-4">
-      {message ? (
-        <p role="status" className="bg-success/10 text-success rounded-md px-3 py-2 text-sm">
-          {message}
-        </p>
-      ) : null}
-
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-56 flex-1 space-y-2">
           <Label htmlFor="return-search">{t('search.label')}</Label>
           <div className="relative">
             <Search
-              className="text-muted-foreground pointer-events-none absolute inset-inline-start-3 top-1/2 size-4 -translate-y-1/2"
+              className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
               aria-hidden
             />
             <Input
@@ -221,7 +215,7 @@ export function ReturnsTable() {
           if (!open) setOpenId(null);
         }}
         onChanged={(text) => {
-          setMessage(text);
+          toast.success(text);
           void load();
         }}
       />

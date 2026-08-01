@@ -7,6 +7,7 @@ import { KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { setStaffPassword, type StaffMember } from '@/lib/staff-api';
@@ -67,58 +68,60 @@ export function StaffPasswordPanel({ member, onDone }: StaffPasswordPanelProps) 
   }
 
   return (
-    <div
-      role="alertdialog"
-      aria-label={t('password.title', { name })}
-      className="border-warning/40 bg-warning/5 space-y-4 rounded-lg border p-4"
-    >
-      <div className="flex items-start gap-3">
-        <KeyRound className="text-warning mt-0.5 size-5 shrink-0" aria-hidden />
-        <div className="min-w-0">
-          <p className="font-medium">{t('password.title', { name })}</p>
-          <p className="text-muted-foreground mt-1 text-sm">{t('password.description')}</p>
+    <Sheet open onOpenChange={(next) => { if (!next) onDone(null); }}>
+      <SheetContent
+        variant="modal"
+        title={t('password.title', { name })}
+        className="space-y-4"
+      >
+        <div className="flex items-start gap-3">
+          <KeyRound className="text-warning mt-0.5 size-5 shrink-0" aria-hidden />
+          <div className="min-w-0">
+            <p className="font-medium">{t('password.title', { name })}</p>
+            <p className="text-muted-foreground mt-1 text-sm">{t('password.description')}</p>
+          </div>
         </div>
-      </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="staff-new-password">{t('password.label')}</Label>
-        <Input
-          id="staff-new-password"
-          // A real password type: the browser must not autofill it from the
-          // ADMIN's saved credentials, and it must not be shoulder-readable.
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          aria-invalid={tooShort ? true : undefined}
-          aria-describedby="staff-password-hint"
-        />
-        <p
-          id="staff-password-hint"
-          className={tooShort ? 'text-destructive text-sm' : 'text-muted-foreground text-sm'}
-        >
-          {t('form.passwordHint')}
-        </p>
-      </div>
+        <div className="space-y-2">
+          <Label htmlFor="staff-new-password">{t('password.label')}</Label>
+          <Input
+            id="staff-new-password"
+            // A real password type: the browser must not autofill it from the
+            // ADMIN's saved credentials, and it must not be shoulder-readable.
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            aria-invalid={tooShort ? true : undefined}
+            aria-describedby="staff-password-hint"
+          />
+          <p
+            id="staff-password-hint"
+            className={tooShort ? 'text-destructive text-sm' : 'text-muted-foreground text-sm'}
+          >
+            {t('form.passwordHint')}
+          </p>
+        </div>
 
-      {error ? (
-        <p role="alert" className="text-destructive text-sm">
-          {error}
-        </p>
-      ) : null}
+        {error ? (
+          <p role="alert" className="text-destructive text-sm">
+            {error}
+          </p>
+        ) : null}
 
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          disabled={password.length < MIN_LENGTH || isSaving}
-          onClick={() => void submit()}
-        >
-          {t('password.confirm')}
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => onDone(null)}>
-          {t('password.cancel')}
-        </Button>
-      </div>
-    </div>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            disabled={password.length < MIN_LENGTH || isSaving}
+            onClick={() => void submit()}
+          >
+            {t('password.confirm')}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => onDone(null)}>
+            {t('password.cancel')}
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }

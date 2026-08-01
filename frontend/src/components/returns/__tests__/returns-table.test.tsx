@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 
 import { render, screen, waitFor, within } from '@/test/render';
 import { ApiError } from '@/lib/api';
+import { Toaster } from '@/components/ui/sonner';
 import { ReturnsTable } from '../returns-table';
 import type { ReturnDetail, ReturnListRow } from '@/lib/returns-api';
 
@@ -149,7 +150,12 @@ describe('approving', () => {
     approveReturn.mockResolvedValue(makeDetail({ status: 'APPROVED', resolution: 'STORE_CREDIT' }));
     const user = userEvent.setup();
 
-    render(<ReturnsTable />);
+    render(
+      <>
+        <ReturnsTable />
+        <Toaster />
+      </>,
+    );
     await user.click(await screen.findByText('RMA-ABCD1234'));
     const dialog = await screen.findByRole('dialog');
     await within(dialog).findByText('Arrived damaged');
@@ -165,7 +171,7 @@ describe('approving', () => {
       });
     });
 
-    expect(await screen.findByRole('status')).toBeInTheDocument();
+    expect(await screen.findByText(/RMA-ABCD1234 approved/)).toBeInTheDocument();
   });
 
   it('surfaces a refused approval rather than failing silently', async () => {

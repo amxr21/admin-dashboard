@@ -8,6 +8,7 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { MotionProvider } from '@/components/motion-provider';
 import { NavigationProgressProvider } from '@/components/motion/navigation-progress';
 import { PageTransition } from '@/components/motion/page-transition';
+import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/hooks/useAuth';
 import { getDirection, routing } from '@/i18n/routing';
 
@@ -106,6 +107,7 @@ export default async function LocaleLayout({
                       snaps. */}
                   <PageTransition>{children}</PageTransition>
                 </NavigationProgressProvider>
+                <Toaster />
               </AuthProvider>
             </MotionProvider>
           </ThemeProvider>

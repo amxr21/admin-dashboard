@@ -3,7 +3,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { KeyRound, Pencil, Plus, Search, ShieldOff } from 'lucide-react';
+import { toast } from 'sonner';
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { DataTable, type Column } from '@/components/data-table';
 import { AccessCodePanel } from '@/components/delivery/access-code-panel';
 import { CourierSheet } from '@/components/delivery/courier-sheet';
@@ -42,7 +53,6 @@ export function CouriersTable() {
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<Courier | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -79,8 +89,6 @@ export function CouriersTable() {
   }, [searchInput]);
 
   async function issue(courier: Courier) {
-    setError(null);
-
     try {
       const result = await issueAccessCode(courier.id);
       // Held in state only while the panel is open. Never persisted anywhere —
@@ -88,10 +96,14 @@ export function CouriersTable() {
       setIssued({ name: result.courier.name, code: result.code });
       await load();
     } catch (caught) {
+      // Action failures are toasts, never `error` — that state is DataTable's
+      // "the table itself couldn't load" surface, and hijacking it here would
+      // replace every row with a retry box for a problem unrelated to loading.
+      //
       // A 400 here is a REASON, not a malfunction — "reactivate this courier
       // before issuing a code". Collapsing it into the generic server message
       // would hide the one sentence that says what to do about it.
-      setError(
+      toast.error(
         caught instanceof ApiError && caught.status === 400
           ? caught.message
           : translateError(caught),
@@ -100,15 +112,13 @@ export function CouriersTable() {
   }
 
   async function revoke(courier: Courier) {
-    setError(null);
-
     try {
       await revokeAccessCode(courier.id);
-      setNotice(t('notice.revoked', { name: courier.name }));
+      toast.success(t('notice.revoked', { name: courier.name }));
       setConfirmRevoke(null);
       await load();
     } catch (caught) {
-      setError(translateError(caught));
+      toast.error(translateError(caught));
     }
   }
 
@@ -211,7 +221,7 @@ export function CouriersTable() {
           <Label htmlFor="courier-search">{t('search.label')}</Label>
           <div className="relative">
             <Search
-              className="text-muted-foreground pointer-events-none absolute inset-inline-start-3 top-1/2 size-4 -translate-y-1/2"
+              className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
               aria-hidden
             />
             <Input
@@ -238,36 +248,32 @@ export function CouriersTable() {
         />
       ) : null}
 
-      {confirmRevoke ? (
-        <div
-          role="alertdialog"
-          aria-label={t('revoke.title', { name: confirmRevoke.name })}
-          className="border-destructive/40 space-y-3 rounded-md border p-4"
-        >
-          <div>
-            <p className="font-medium">{t('revoke.title', { name: confirmRevoke.name })}</p>
-            <p className="text-muted-foreground mt-1 text-sm">{t('revoke.description')}</p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => void revoke(confirmRevoke)}
+      <AlertDialog
+        open={confirmRevoke !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmRevoke(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('revoke.title', { name: confirmRevoke?.name ?? '' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{t('revoke.description')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('revoke.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                if (confirmRevoke) void revoke(confirmRevoke);
+              }}
             >
               {t('revoke.confirm')}
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setConfirmRevoke(null)}>
-              {t('revoke.cancel')}
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      {notice ? (
-        <p role="status" className="bg-muted rounded-md px-3 py-2 text-sm">
-          {notice}
-        </p>
-      ) : null}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <DataTable
         data={result?.couriers ?? []}
@@ -320,7 +326,7 @@ export function CouriersTable() {
           }
         }}
         onSaved={(message) => {
-          setNotice(message);
+          toast.success(message);
           void load();
         }}
       />

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 
 import { render, screen, waitFor } from '@/test/render';
 import { ApiError } from '@/lib/api';
+import { Toaster } from '@/components/ui/sonner';
 import { CouriersTable } from '../couriers-table';
 import type { Courier } from '@/lib/delivery-api';
 
@@ -155,7 +156,12 @@ describe('issuing an access code', () => {
       new ApiError(400, 'BAD_REQUEST', 'Reactivate this courier before issuing a code'),
     );
 
-    render(<CouriersTable />);
+    render(
+      <>
+        <CouriersTable />
+        <Toaster />
+      </>,
+    );
     await screen.findByText('Sami');
     await userEvent.click(screen.getByRole('button', { name: /issue an access code/i }));
 
@@ -181,13 +187,18 @@ describe('revoking', () => {
     resolveWith([makeCourier({ hasAccessCode: true })]);
     revokeAccessCode.mockResolvedValue(undefined);
 
-    render(<CouriersTable />);
+    render(
+      <>
+        <CouriersTable />
+        <Toaster />
+      </>,
+    );
     await screen.findByText('Sami');
     await userEvent.click(screen.getByRole('button', { name: /revoke sami/i }));
     await userEvent.click(screen.getByRole('button', { name: /^revoke$/i }));
 
     await waitFor(() => expect(revokeAccessCode).toHaveBeenCalledWith('c1'));
-    expect(await screen.findByRole('status')).toHaveTextContent(/no longer sign in/i);
+    expect(await screen.findByText(/no longer sign in/i)).toBeInTheDocument();
   });
 
   it('offers no revoke control when there is no code', async () => {

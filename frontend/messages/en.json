@@ -14,6 +14,7 @@
     "next": "Next",
     "previous": "Previous",
     "loading": "Loading…",
+    "loadingPage": "Loading {page}…",
     "retry": "Try again",
     "signOut": "Sign out"
   },
@@ -78,12 +79,15 @@
     "reports": "Reports",
     "settings": "Settings",
     "staff": "Staff",
+    "audit": "Audit log",
     "commerce": "Commerce",
     "people": "People",
     "admin": "Administration",
     "notifications": "Notifications",
     "catalogue": "Catalogue",
-    "system": "System"
+    "system": "System",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar"
   },
   "roles": {
     "DEVELOPER": "Developer",
@@ -159,6 +163,7 @@
   },
   "dashboard": {
     "title": "Dashboard",
+    "subtitle": "A snapshot of revenue, orders and stock for the last 30 days.",
     "revenue": "Revenue",
     "revenueOverTime": "Revenue over time",
     "vsPreviousPeriod": "vs previous period",
@@ -168,7 +173,8 @@
     "pendingOrders": "Pending orders",
     "recentOrders": "Recent orders",
     "canceledOrders": "Cancelled",
-    "lowStockProducts": "Low stock"
+    "lowStockProducts": "Low stock",
+    "viewReports": "View reports"
   },
   "products": {
     "title": "Products",
@@ -431,7 +437,8 @@
       "print": "Print",
       "issued": "Issued",
       "billedTo": "Billed to",
-      "paidBy": "Paid by {method}"
+      "paidBy": "Paid by {method}",
+      "storeLogoAlt": "{name} logo"
     }
   },
   "inventory": {
@@ -593,7 +600,57 @@
     "store": {
       "title": "Store settings",
       "description": "These apply to everyone. Save to apply them."
+    },
+    "groups": {
+      "brand": {
+        "title": "Brand",
+        "description": "Name, contact details, and how the store presents itself."
+      },
+      "appearance": {
+        "title": "Appearance",
+        "description": "Colors, density, and layout defaults across the dashboard."
+      },
+      "notifications": {
+        "title": "Notifications",
+        "description": "Which events alert the team."
+      },
+      "operations": {
+        "title": "Operations",
+        "description": "Stock, table, and maintenance behavior."
+      },
+      "other": {
+        "title": "Other",
+        "description": "Everything else."
+      }
     }
+  },
+  "audit": {
+    "title": "Audit log",
+    "subtitle": "Who changed what, and when.",
+    "columns": {
+      "when": "When",
+      "actor": "Who",
+      "action": "Action",
+      "entity": "Record",
+      "changes": "Changes"
+    },
+    "systemActor": "System",
+    "noChanges": "No field changes recorded",
+    "filters": {
+      "entity": "Entity",
+      "actor": "Actor",
+      "from": "From",
+      "to": "To",
+      "all": "All",
+      "clear": "Clear filters"
+    },
+    "empty": "No matching audit entries.",
+    "total": "{count, plural, =0 {No entries} one {# entry} other {# entries}}",
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "viewHistory": "View history"
   },
   "staff": {
     "title": "Staff",
