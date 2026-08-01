@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { KeyRound, LockOpen, Pencil, Plus, Search } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { DataTable, type Column } from '@/components/data-table';
 import { StaffSheet } from '@/components/staff/staff-sheet';
@@ -54,7 +55,6 @@ export function StaffTable() {
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<StaffMember | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -90,14 +90,16 @@ export function StaffTable() {
   }, [searchInput]);
 
   async function unlock(member: StaffMember) {
-    setError(null);
-
     try {
       await unlockStaff(member.id);
-      setNotice(t('notice.unlocked', { name: member.name ?? member.email }));
+      toast.success(t('notice.unlocked', { name: member.name ?? member.email }));
       await load();
     } catch (caught) {
-      setError(
+      // A failed unlock is an ACTION outcome, not a load failure — it must
+      // not hijack `error`, which DataTable renders as "the table itself
+      // couldn't load" and would replace every row with a retry box for a
+      // problem that has nothing to do with loading.
+      toast.error(
         caught instanceof ApiError && (caught.status === 400 || caught.status === 403)
           ? caught.message
           : translateError(caught),
@@ -211,7 +213,7 @@ export function StaffTable() {
           <Label htmlFor="staff-search">{t('search.label')}</Label>
           <div className="relative">
             <Search
-              className="text-muted-foreground pointer-events-none absolute inset-inline-start-3 top-1/2 size-4 -translate-y-1/2"
+              className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
               aria-hidden
             />
             <Input
@@ -230,17 +232,11 @@ export function StaffTable() {
         </Button>
       </div>
 
-      {notice ? (
-        <p role="status" className="bg-muted rounded-md px-3 py-2 text-sm">
-          {notice}
-        </p>
-      ) : null}
-
       {settingPassword ? (
         <StaffPasswordPanel
           member={settingPassword}
           onDone={(message) => {
-            if (message) setNotice(message);
+            if (message) toast.success(message);
             setSettingPassword(null);
             void load();
           }}
@@ -298,7 +294,7 @@ export function StaffTable() {
           }
         }}
         onSaved={(message) => {
-          setNotice(message);
+          toast.success(message);
           void load();
         }}
       />
