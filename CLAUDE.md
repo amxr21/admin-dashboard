@@ -218,24 +218,24 @@ written; refund amount over the recorded line-item total → 400.
 apart is an enumeration oracle.
 
 ## Current work
-- **Active branch**: `feat/staff-settings` (already merged once as PR #57; two sessions' worth of
-  work now sits on top of that old merge point — 2026-07-31 and 2026-08-01).
-- **In progress**: none — 2026-08-01's scope (see Changelog) is done and verified. The six-skill
-  pass requested on 2026-07-31 (`project-foundations`, `project-docs`, `project-error-log`,
+- **This session's work is now 4 stacked PRs against `dev`**, pushed and open:
+  **#65** `feat(feedback): Toaster + real AlertDialog primitive` (base `dev`) →
+  **#66** `feat(audit): admin viewer for the audit trail` (base #65) →
+  **#67** `feat(settings): brand fields + settings/dashboard redesign` (base #66) →
+  **#68** `feat(shell): collapsible sidebar, dialog motion, transitions` (base #67).
+  Merge in stack order. The prior session's work (2026-07-31) turned out to already be merged via
+  PRs #58-64 — this file previously said otherwise; corrected.
+- **In progress**: none — 2026-08-01's scope is done, verified, and PR'd. The six-skill pass
+  requested on 2026-07-31 (`project-foundations`, `project-docs`, `project-error-log`,
   `project-ship`, `project-test-gen`, `ux-animation-reviewer`) is still outstanding.
-- **Next step**: rest of §U (ROADMAP.md) — "why disabled" tooltips, in-flight button state,
-  optimistic row updates, bulk-action progress. Then segment everything accumulated across both
-  sessions into PRs: audit hook · password reset · (CSV export + diagnostics widget + view-as-role
-  + maintenance-mode, bundled) · Returns/RMA · settings parity + redesign · audit viewer + Toaster/
-  AlertDialog + the `inset-inline-*` Tailwind fix (arguably its own PR given how many files it
-  touches and how independently valuable/urgent it is) · dashboard + sidebar UX pass — one PR per
-  segment, or fewer if segments turn out tightly coupled. User's call.
+- **Next step**: rest of §U (ROADMAP.md) — build a Tooltip primitive for "why disabled", fix the
+  one remaining in-flight-state gap (`staff-password-panel.tsx`), optimistic row updates,
+  bulk-action progress.
 - **Blockers**: none currently. Setup/Schema wizard remains blocked on an architecture decision
   (compiled-TS config vs. a DB-backed override layer) — not started, not in scope.
 - **Context to remember**:
-  - Nothing from either session is committed, pushed, or opened as a PR yet — all uncommitted
-    local changes. Per standing instruction, commit/branch/push/PR is fine to do; merging,
-    retargeting, or updating branches from base is left to the user.
+  - PRs #65-68 (this session) are pushed and open; merging/retargeting them is the user's call per
+    standing instruction.
   - `prisma migrate dev` raising a drop-database-looking alarm has now happened three times on
     this project. The safe recipe when it's a stale `_prisma_migrations` row rather than real
     drift: generate via `prisma migrate diff --from-schema-datamodel/--to-schema-datamodel` (pure
