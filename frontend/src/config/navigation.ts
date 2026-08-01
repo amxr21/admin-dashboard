@@ -5,6 +5,7 @@ import {
   ChartColumn,
   Database,
   FolderTree,
+  History,
   LayoutDashboard,
   Package,
   RotateCcw,
@@ -76,6 +77,7 @@ export const NAVIGATION: readonly NavGroup[] = [
     items: [
       { href: '/admin/reports', labelKey: 'reports', icon: ChartColumn, area: 'reports' },
       { href: '/admin/staff', labelKey: 'staff', icon: UsersRound, area: 'staff' },
+      { href: '/admin/audit', labelKey: 'audit', icon: History, area: 'staff' },
       { href: '/admin/settings', labelKey: 'settings', icon: Settings, area: 'settings' },
     ],
   },

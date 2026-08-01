@@ -1,10 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createElement, type ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 
 import { render, screen, waitFor } from '@/test/render';
 import { ApiError } from '@/lib/api';
+import { Toaster } from '@/components/ui/sonner';
 import { ResourceTable } from '../resource-table';
 import type { ResourceSchema } from '@/lib/resource-api';
+
+// The "view history" link renders a real next-intl Link, which next-intl
+// resolves through `next/navigation` — unavailable in this test environment.
+// Same stub as returns-table.test.tsx.
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ href, children, ...props }: Record<string, unknown>) =>
+    createElement('a', { href, ...props }, children as ReactNode),
+}));
 
 /**
  * One table for every resource. What matters is that it renders from the
@@ -21,6 +31,18 @@ vi.mock('@/lib/resource-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/resource-api')>();
   return { ...actual, fetchRows, deleteRow, fetchRelationOptions };
 });
+
+// ResourceTable reads the actor's role to decide whether to show the "view
+// history" link to the audit trail — a rendering hint only (see
+// useAuth.tsx), so a fixed OWNER stand-in is fine for every test here.
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({
+    user: { id: 'u1', email: 'owner@example.test', name: 'Owner', role: 'OWNER' },
+    isLoading: false,
+    signIn: vi.fn(),
+    signOut: vi.fn(),
+  }),
+}));
 
 const schema: ResourceSchema = {
   resource: 'customers',
@@ -229,13 +251,18 @@ describe('deleting tells the truth about what happened', () => {
     resolveWith([row]);
     deleteRow.mockResolvedValue({ row, action: 'deleted' });
 
-    render(<ResourceTable schema={schema} />);
+    render(
+      <>
+        <ResourceTable schema={schema} />
+        <Toaster />
+      </>,
+    );
     await screen.findByText('Ali');
 
     await userEvent.click(screen.getByRole('button', { name: /delete ali/i }));
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent(/1 record deleted/i);
+    expect(await screen.findByText(/1 record deleted/i)).toBeInTheDocument();
   });
 
   it('says "archived" — not deleted — when the server archived instead', async () => {
@@ -247,14 +274,18 @@ describe('deleting tells the truth about what happened', () => {
     resolveWith([row]);
     deleteRow.mockResolvedValue({ row, action: 'archived' });
 
-    render(<ResourceTable schema={schema} />);
+    render(
+      <>
+        <ResourceTable schema={schema} />
+        <Toaster />
+      </>,
+    );
     await screen.findByText('Ali');
 
     await userEvent.click(screen.getByRole('button', { name: /delete ali/i }));
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
-    const notice = await screen.findByRole('status');
-    expect(notice).toHaveTextContent(/archived instead of deleted/i);
+    const notice = await screen.findByText(/archived instead of deleted/i);
     expect(notice).not.toHaveTextContent(/1 record deleted/i);
   });
 
@@ -265,15 +296,19 @@ describe('deleting tells the truth about what happened', () => {
       .mockResolvedValueOnce({ row, action: 'deleted' })
       .mockResolvedValueOnce({ row: second, action: 'archived' });
 
-    render(<ResourceTable schema={schema} />);
+    render(
+      <>
+        <ResourceTable schema={schema} />
+        <Toaster />
+      </>,
+    );
     await screen.findByText('Ali');
 
     await userEvent.click(screen.getByRole('checkbox', { name: /select all/i }));
     await userEvent.click(screen.getByRole('button', { name: /delete selected/i }));
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
-    const notice = await screen.findByRole('status');
-    expect(notice).toHaveTextContent(/1 record deleted/i);
+    const notice = await screen.findByText(/1 record deleted/i);
     expect(notice).toHaveTextContent(/archived instead of deleted/i);
   });
 
@@ -286,15 +321,19 @@ describe('deleting tells the truth about what happened', () => {
       .mockResolvedValueOnce({ row, action: 'deleted' })
       .mockRejectedValueOnce(new ApiError(403, 'FORBIDDEN', 'nope'));
 
-    render(<ResourceTable schema={schema} />);
+    render(
+      <>
+        <ResourceTable schema={schema} />
+        <Toaster />
+      </>,
+    );
     await screen.findByText('Ali');
 
     await userEvent.click(screen.getByRole('checkbox', { name: /select all/i }));
     await userEvent.click(screen.getByRole('button', { name: /delete selected/i }));
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
-    const notice = await screen.findByRole('status');
-    expect(notice).toHaveTextContent(/1 record deleted/i);
+    const notice = await screen.findByText(/1 record deleted/i);
     expect(notice).toHaveTextContent(/permission/i);
   });
 });

@@ -210,4 +210,54 @@ describe('the audit trail', () => {
     expect(diff({ name: 'A', role: 'OWNER' }, { name: 'A', role: 'OWNER' })).toEqual({});
     expect(diff({ name: 'A' }, { name: 'B' })).toEqual({ name: { from: 'A', to: 'B' } });
   });
+
+  it('narrows by inclusive calendar-date range', async () => {
+    const entry = await prisma.auditLog.create({
+      data: {
+        action: 'test.date-range',
+        entity: 'audit-test-entity',
+        actorId: ownerId,
+        createdAt: new Date('2020-01-15T12:00:00.000Z'),
+      },
+    });
+
+    try {
+      const inRange = await request(app)
+        .get('/api/v1/audit')
+        .query({ entity: 'audit-test-entity', from: '2020-01-15', to: '2020-01-15' })
+        .set(auth(ownerToken));
+
+      expect(inRange.status).toBe(200);
+      const inRangeBody = inRange.body as { data: { entries: { id: string }[] } };
+      expect(inRangeBody.data.entries.map((e) => e.id)).toContain(entry.id);
+
+      // The day after the entry — the WHOLE day it names must not leak into
+      // an adjacent day's range, in either direction.
+      const outOfRange = await request(app)
+        .get('/api/v1/audit')
+        .query({ entity: 'audit-test-entity', from: '2020-01-16' })
+        .set(auth(ownerToken));
+
+      const outOfRangeBody = outOfRange.body as { data: { entries: { id: string }[] } };
+      expect(outOfRangeBody.data.entries.map((e) => e.id)).not.toContain(entry.id);
+    } finally {
+      await prisma.auditLog.delete({ where: { id: entry.id } });
+    }
+  });
+
+  it('lists distinct entities for the filter dropdown, staff-area gated', async () => {
+    const support = await makeUser(StaffRole.SUPPORT, 'auditentities');
+
+    expect(
+      (await request(app).get('/api/v1/audit/entities').set(auth(support.token))).status,
+    ).toBe(403);
+
+    const res = await request(app).get('/api/v1/audit/entities').set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    const body = res.body as { data: string[] };
+    expect(Array.isArray(body.data)).toBe(true);
+    // Written earlier in this suite (the redaction test, entity: 'user').
+    expect(body.data).toContain('user');
+  });
 });

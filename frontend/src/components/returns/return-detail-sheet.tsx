@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
+import { History } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 
 import { StatusBadge } from '@/components/status-badge';
@@ -18,6 +19,8 @@ import {
 } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
+import { canAccessArea, type StaffRole } from '@/config/areas';
+import { useAuth } from '@/hooks/useAuth';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
@@ -54,8 +57,11 @@ export function ReturnDetailSheet({
   onChanged,
 }: ReturnDetailSheetProps) {
   const t = useTranslations('returns.detail');
+  const tAudit = useTranslations('audit');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
+  const { user } = useAuth();
+  const canViewHistory = canAccessArea((user?.role ?? 'DEMO') as StaffRole, 'staff');
 
   const [item, setItem] = useState<ReturnDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -177,6 +183,16 @@ export function ReturnDetailSheet({
               <h2 className="flex items-center gap-3 text-lg font-semibold">
                 <span className="force-ltr">{item.rmaNumber}</span>
                 <StatusBadge kind="returnStatus" value={item.status} />
+                {canViewHistory ? (
+                  <Button variant="ghost" size="icon" className="ms-auto" asChild>
+                    <Link
+                      href={`/admin/audit?entity=return&entityId=${item.id}`}
+                      aria-label={tAudit('viewHistory')}
+                    >
+                      <History aria-hidden />
+                    </Link>
+                  </Button>
+                ) : null}
               </h2>
               <p className="text-muted-foreground mt-1 text-sm">
                 <Link
