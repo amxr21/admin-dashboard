@@ -28,7 +28,7 @@ export function OrderStatusTimeline({ entries, placedAt }: OrderStatusTimelinePr
       {/* The rail. aria-hidden because it carries no information the list
           items don't already state. */}
       <span
-        className="bg-border absolute inset-block-2 inset-inline-start-1.5 w-px"
+        className="bg-border absolute top-2 bottom-2 start-1.5 w-px"
         aria-hidden
       />
 
@@ -73,7 +73,7 @@ export function OrderStatusTimeline({ entries, placedAt }: OrderStatusTimelinePr
 function Dot() {
   return (
     <span
-      className="bg-primary absolute top-1.5 inset-inline-start-[-1.35rem] size-2 rounded-full"
+      className="bg-primary absolute top-1.5 start-[-1.35rem] size-2 rounded-full"
       aria-hidden
     />
   );

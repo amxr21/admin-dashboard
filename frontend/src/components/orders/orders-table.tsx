@@ -162,7 +162,7 @@ export function OrdersTable() {
           <Label htmlFor="order-search">{t('search.label')}</Label>
           <div className="relative">
             <Search
-              className="text-muted-foreground pointer-events-none absolute inset-inline-start-3 top-1/2 size-4 -translate-y-1/2"
+              className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
               aria-hidden
             />
             <Input

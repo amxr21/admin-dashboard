@@ -49,18 +49,31 @@
 - **Where**: `backend/src/routes/v1/reports.route.ts`, `frontend/src/components/reports/`.
 - **Notes**: cancelled orders excluded from revenue but counted as orders; returned orders are NOT
   excluded (the money moved and came back). Revenue reads the order-line snapshot, never live prices.
+  **2026-08-01**: dashboard home page (`/admin`) redesigned — a headline revenue figure
+  (`RevenueHero`) now reads as the centerpiece next to the chart instead of one of four identical
+  tiles, and two widgets (Top Products, Status Breakdown) were added using report endpoints that
+  existed but were previously unused on the dashboard.
 
 ### Settings + Staff
-- **Status**: shipped (core), in progress (parity gaps below)
+- **Status**: shipped, including all §N parity gaps (brand, theme accent, customization,
+  dashboard behavior, notification preferences) — see 2026-08-01 note below
 - **What**: Settings is an allowlist registry (`settings.config.ts`) over a `Json` column — one
   generic form renders itself from `GET /settings`, unknown keys 400. Staff CRUD is deliberately
   bespoke (outside the resource engine) with four enforced rules: no self-promotion, no granting
   above your own rank, no touching someone who outranks you, last OWNER can't be demoted/deactivated.
 - **Where**: `backend/src/config/settings.config.ts`, `backend/src/services/settings.service.ts`,
   `backend/src/services/staff.service.ts`, `frontend/src/app/[locale]/admin/settings/`.
-- **Notes**: maintenance-mode toggle added this session — real enforcement (503 on writes for
-  everyone except OWNER/DEVELOPER), not just a stored flag. See Current work for the settings
-  parity gap list (§N in ROADMAP.md) — not yet built.
+- **Notes**: maintenance-mode toggle real enforcement (503 on writes for everyone except
+  OWNER/DEVELOPER), not just a stored flag. **2026-08-01**: verified the full §N gap list
+  (ROADMAP.md) was already shipped in an earlier session — this file's "Planned / not started"
+  entry for it was stale. Two real gaps found and fixed: brand fields (name/tagline/address/
+  contact) were saved but never displayed anywhere — now wired into the invoice letterhead
+  (`order-invoice.tsx`) and the browser tab title (`settings-provider.tsx`). Settings page itself
+  also got a visual redesign (grouped sections by prefix — Brand/Appearance/Notifications/
+  Operations — consistent card treatment for both "your preferences" and "store settings").
+  Added a new store-wide `ui.sidebarMode` (sticky/floating) setting alongside a separate
+  personal/localStorage sidebar-collapse toggle (not a registry entry — collapse state is
+  per-browser, not org-wide).
 
 ### Returns / RMA
 - **Status**: shipped this session, uncommitted
@@ -87,12 +100,37 @@
   review. Revokes all sessions (`tokenVersion` bump) on redemption.
 
 ### Audit trail
-- **Status**: shipped (backend); generic-engine hook wired this session
+- **Status**: shipped, backend AND frontend viewer
 - **What**: Append-only, field-level diff log of who changed what. Credentials redacted, never
   omitted entirely. Writes never throw — a failed audit write must not fail the operation it logs.
-- **Where**: `backend/src/services/audit.service.ts`.
-- **Notes**: previously only bespoke writes (staff, delivery) called `audit()`. This session wired
-  it into the generic resource engine's create/update/delete, closing the biggest remaining gap.
+  `/admin/audit` page (2026-08-01): filterable by entity, actor, and date range; "view history"
+  icon links from every generic resource row and from the returns detail sheet deep-link into it
+  pre-scoped to that record.
+- **Where**: `backend/src/services/audit.service.ts`, `backend/src/routes/v1/audit.route.ts`,
+  `frontend/src/app/[locale]/admin/audit/`, `frontend/src/components/audit/`,
+  `frontend/src/lib/audit-api.ts`.
+- **Notes**: generic resource engine's create/update/delete call `audit()` with a real field diff.
+  2026-08-01 added backend date-range filtering (`from`/`to`) and `GET /audit/entities` (distinct
+  values for the filter dropdown) — the whole viewer previously had zero frontend surface despite
+  the backend being complete.
+
+### Toaster + confirmation dialogs (frontend feedback)
+- **Status**: shipped 2026-08-01
+- **What**: `sonner`-based toaster (`ui/sonner.tsx`, themed to this app's semantic tokens, mounted
+  once in the root layout) replaced every inline "notice" banner that could scroll off-screen on a
+  long page. A real `AlertDialog` primitive (`ui/alert-dialog.tsx`, Radix, portal + focus trap +
+  native `role="alertdialog"`) replaced every plain `<div role="alertdialog">` confirmation, which
+  had the same off-screen risk since they rendered inline in normal document flow.
+- **Where**: `frontend/src/components/ui/sonner.tsx`, `frontend/src/components/ui/alert-dialog.tsx`;
+  consumers: `resource-table.tsx`, `resource-form.tsx`, `staff-table.tsx`, `couriers-table.tsx`,
+  `returns-table.tsx`, `access-code-panel.tsx`.
+- **Notes**: this was the confirmed P0 bug from the prior session ("delete confirmation renders
+  off-screen"). While migrating, found and fixed a SEPARATE, much bigger, unrelated pre-existing
+  bug: `sheet.tsx` (used for every create/edit form) and 7 other files used invented Tailwind class
+  names (`inset-inline-start-*`, `inset-block-*`) that generated zero CSS — every drawer-style
+  panel in the app was invisible. See the Changelog and `.claude-workbook/errors-log.md`
+  (2026-08-01 entry) for the full story; this is very likely the actual root cause behind every
+  earlier "modal doesn't work" report this project has had.
 
 ### Diagnostics widget (frontend)
 - **Status**: shipped this session, uncommitted
@@ -128,11 +166,16 @@
 - **Setup/Schema wizard** — introspect DB → draft a config → publish. Approved by the user,
   needs an architecture decision first (this app's config is compiled TypeScript, not the
   template's runtime-required JS file — no direct "publish and hot-reload" equivalent).
-- **Settings parity gaps** (§N in ROADMAP.md) — Dashboard behavior (`tablePageSize`), notification
-  preferences, theme accent color, customization (density/corner-radius/edit-panel-mode), and the
-  remaining Brand fields. Scoped and about to be built — see Current work.
 - **Courier portal (D2)** — a second, separate auth surface for couriers signing in by access code.
 - **2FA** — not started.
+- **Rest of §U** (ROADMAP.md) — "why disabled" tooltips, in-flight button state, optimistic row
+  updates with rollback, bulk-action progress. Toaster and the AlertDialog primitive (the first two
+  items) shipped 2026-08-01 — see the Toaster changelog entry.
+- **Staff self-service profile** — no `PATCH /auth/me` or self-service password change yet; a staff
+  member needs an OWNER to edit their own name/phone.
+- **Transactional email** — every "notify" path writes an in-app row only; no ESP integrated.
+  Needs a deliberate in-scope/out-of-scope decision before the notification-preferences settings
+  section's toggles fully mean what they imply.
 
 ## Flows
 
@@ -175,32 +218,60 @@ written; refund amount over the recorded line-item total → 400.
 apart is an enumeration oracle.
 
 ## Current work
-- **Active branch**: `feat/staff-settings` (already merged once as PR #57; this session's work
-  sits on top of that old merge point).
-- **In progress**: Running the six-skill pass (`project-foundations`, `project-docs`,
-  `project-error-log`, `project-ship`, `project-test-gen`, `ux-animation-reviewer`) over this
-  session's uncommitted work, then building the recommended subset of the §N settings-parity gap
-  list (table page size → notification preferences → theme accent color → customization → Brand
-  fields), then splitting everything into logical branches/PRs.
-- **Next step**: finish the skill pass, build the settings additions, then segment: audit hook ·
-  password reset · (CSV export + diagnostics widget + view-as-role + maintenance-mode, bundled,
-  small & related) · Returns/RMA · new settings parity work — one PR per segment (or fewer, if
-  segments turn out tightly coupled).
+- **Active branch**: `feat/staff-settings` (already merged once as PR #57; two sessions' worth of
+  work now sits on top of that old merge point — 2026-07-31 and 2026-08-01).
+- **In progress**: none — 2026-08-01's scope (see Changelog) is done and verified. The six-skill
+  pass requested on 2026-07-31 (`project-foundations`, `project-docs`, `project-error-log`,
+  `project-ship`, `project-test-gen`, `ux-animation-reviewer`) is still outstanding.
+- **Next step**: rest of §U (ROADMAP.md) — "why disabled" tooltips, in-flight button state,
+  optimistic row updates, bulk-action progress. Then segment everything accumulated across both
+  sessions into PRs: audit hook · password reset · (CSV export + diagnostics widget + view-as-role
+  + maintenance-mode, bundled) · Returns/RMA · settings parity + redesign · audit viewer + Toaster/
+  AlertDialog + the `inset-inline-*` Tailwind fix (arguably its own PR given how many files it
+  touches and how independently valuable/urgent it is) · dashboard + sidebar UX pass — one PR per
+  segment, or fewer if segments turn out tightly coupled. User's call.
 - **Blockers**: none currently. Setup/Schema wizard remains blocked on an architecture decision
-  (compiled-TS config vs. a DB-backed override layer) — not started, not in this session's scope.
+  (compiled-TS config vs. a DB-backed override layer) — not started, not in scope.
 - **Context to remember**:
-  - Nothing from this session is committed, pushed, or opened as a PR yet — all uncommitted local
-    changes. Per standing instruction, commit/branch/push/PR is fine to do; merging, retargeting,
-    or updating branches from base is left to the user.
+  - Nothing from either session is committed, pushed, or opened as a PR yet — all uncommitted
+    local changes. Per standing instruction, commit/branch/push/PR is fine to do; merging,
+    retargeting, or updating branches from base is left to the user.
   - `prisma migrate dev` raising a drop-database-looking alarm has now happened three times on
     this project. The safe recipe when it's a stale `_prisma_migrations` row rather than real
     drift: generate via `prisma migrate diff --from-schema-datamodel/--to-schema-datamodel` (pure
     schema diff, no live DB) and apply with `migrate deploy` (skips `migrate dev`'s stricter
     reconciliation). Full writeup in `.claude-workbook/errors-log.md`, rule in `FOUNDATIONS.md` §6.
+  - **New 2026-08-01 rule**: a component test suite that's fully green does NOT prove the UI
+    renders correctly — jsdom doesn't compute real layout, so a Tailwind class that silently
+    generates zero CSS (as `inset-inline-start-*`/`inset-block-*` did, see Changelog and
+    `errors-log.md`) is invisible to it. When a user reports something visibly isn't working and
+    the test suite disagrees, reproduce in a real browser before concluding it's user error.
+  - The backend dev server must be run via `pnpm dev` (tsx watch), never `pnpm start` (runs the
+    last COMPILED build, which silently goes stale the moment a route is added — this caused a
+    real "Settings page 404s" incident on 2026-08-01).
   - Full detailed roadmap, security log (S1–S10) and parity-audit-against-template (§M) live in
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-08-01** — Real `AlertDialog` primitive + Toaster (`sonner`) shipped, closing §U items 1-2;
+  full `/admin/audit` viewer built (backend was complete, frontend had zero surface); §N settings
+  parity gaps found to already be fully shipped from an earlier pass (this file was stale, not the
+  code) — the two real gaps (brand fields never displayed) fixed; settings page and dashboard home
+  page both got a visual redesign pass; sidebar gained collapse/expand + a sticky/floating setting;
+  page transitions now name their destination; error states gained an icon + a section-scoped
+  variant. Found and fixed a P0 pre-existing bug affecting the whole app: `inset-inline-start/end-*`
+  and `inset-block-*` are not real Tailwind utility names and silently produced zero CSS, leaving
+  every drawer-style Sheet (every generic create/edit form, staff/courier panels, mobile nav)
+  invisible — full story in `.claude-workbook/errors-log.md`. All uncommitted.
+- **2026-08-01 (later same day)** — Real motion added to Sheet/AlertDialog: the drawer variant
+  genuinely slides (`translateX`, direction chosen via Tailwind's `rtl:`/`ltr:` variants, verified
+  compiling to a real selector rather than assumed), the modal variant and AlertDialog "pop" (fade +
+  zoom). Page-transition overlay now fades out smoothly instead of vanishing instantly, so a page
+  change reads as one crossfade. A second live bug (`/login`/`/admin/orders` 500ing) was found and
+  fixed — dev-server Fast Refresh corruption from a very long multi-editor session, not a code bug.
+  A fresh, evidence-based re-audit of the remaining UX/motion gap list found it stale in both
+  directions (some items already done and uncredited, "in-flight button state" down to one real gap
+  — see ROADMAP.md §U/§F). All uncommitted.
 - **2026-07-31** — Returns/RMA (full feature), admin-issued password reset, audit hook wired into
   the generic resource engine, reports CSV export, DEVELOPER-only diagnostics widget, "view as
   role" preview, settings maintenance-mode toggle with real enforcement. All uncommitted as of
