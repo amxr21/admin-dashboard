@@ -33,15 +33,34 @@ interface SettingsContextValue {
   isLoading: boolean;
   tablePageSize: number;
   editPanelMode: 'drawer' | 'modal';
+  /** Store-wide visual treatment for the sidebar. Collapse/expand is a
+   *  SEPARATE, personal per-browser preference — see useSidebarCollapse. */
+  sidebarMode: 'sticky' | 'floating';
   /** Empty string means "no logo set" — the sidebar falls back to the store name. */
   logoUrl: string;
+  /** Empty string means "not set" — consumers fall back to their own default. */
+  storeName: string;
+  storeTagline: string;
+  storeAddress: string;
+  storeSupportEmail: string;
+  storeSupportPhone: string;
 }
+
+const BRAND_DEFAULTS = {
+  storeName: '',
+  storeTagline: '',
+  storeAddress: '',
+  storeSupportEmail: '',
+  storeSupportPhone: '',
+};
 
 const SettingsContext = createContext<SettingsContextValue>({
   isLoading: true,
   tablePageSize: 20,
   editPanelMode: 'drawer',
+  sidebarMode: 'sticky',
   logoUrl: '',
+  ...BRAND_DEFAULTS,
 });
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
@@ -49,7 +68,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     isLoading: true,
     tablePageSize: 20,
     editPanelMode: 'drawer',
+    sidebarMode: 'sticky',
     logoUrl: '',
+    ...BRAND_DEFAULTS,
   });
 
   useEffect(() => {
@@ -66,9 +87,22 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         const radiusOption = String(byKey.get('ui.cornerRadius') ?? 'default');
         const pageSize = Number(byKey.get('dashboard.tablePageSize') ?? 20);
         const panelMode = byKey.get('ui.editPanelMode') === 'modal' ? 'modal' : 'drawer';
+        const sidebarMode = byKey.get('ui.sidebarMode') === 'floating' ? 'floating' : 'sticky';
         const logoUrl = String(byKey.get('store.logoUrl') ?? '');
+        const storeName = String(byKey.get('store.name') ?? '');
+        const storeTagline = String(byKey.get('store.tagline') ?? '');
+        const storeAddress = String(byKey.get('store.address') ?? '');
+        const storeSupportEmail = String(byKey.get('store.supportEmail') ?? '');
+        const storeSupportPhone = String(byKey.get('store.supportPhone') ?? '');
 
         const root = document.documentElement;
+
+        // The registry's own description promises this ("Shown on invoices and
+        // in the browser tab") — a Server Component `metadata` export can't
+        // reach a DB-backed setting without a public read endpoint, so this
+        // is the same side-effect trick as the CSS variables above, applied
+        // to the one browser-chrome property that isn't a style.
+        if (storeName) document.title = storeName;
 
         if (/^#[0-9a-fA-F]{6}$/.test(accent) && accent.toLowerCase() !== DEFAULT_ACCENT) {
           root.style.setProperty('--primary', accent);
@@ -95,7 +129,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           isLoading: false,
           tablePageSize: Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20,
           editPanelMode: panelMode,
+          sidebarMode,
           logoUrl,
+          storeName,
+          storeTagline,
+          storeAddress,
+          storeSupportEmail,
+          storeSupportPhone,
         });
       })
       .catch(() => {

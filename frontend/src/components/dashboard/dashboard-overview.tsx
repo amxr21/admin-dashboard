@@ -2,9 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 
 import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-chart';
+import { RevenueHero } from '@/components/dashboard/revenue-hero';
 import { StatTile } from '@/components/dashboard/stat-tile';
+import { StatusBreakdownWidget } from '@/components/dashboard/status-breakdown-widget';
+import { TopProductsWidget } from '@/components/dashboard/top-products-widget';
+import { Link } from '@/i18n/navigation';
 import { Reveal } from '@/components/motion/reveal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
@@ -12,7 +17,11 @@ import {
   defaultRange,
   fetchOverview,
   fetchRevenue,
+  fetchStatusBreakdown,
+  fetchTopProducts,
   type Overview,
+  type StatusBreakdown,
+  type TopProducts,
 } from '@/lib/reports-api';
 
 /**
@@ -28,6 +37,13 @@ import {
  * that looks identical to the real thing is a trap, and it gets more dangerous
  * the more finished the rest of the app looks.
  *
+ * ─── LAYOUT ───────────────────────────────────────────────────────────
+ * Revenue is the headline metric, not a fifth of a four-box row: it gets its
+ * own hero figure next to the chart, sized and placed so it reads first. The
+ * remaining three stats are supporting context underneath, and best sellers /
+ * order outcomes give the page something to look at beyond one number and one
+ * line — both already existed on Reports, just never surfaced here.
+ *
  * ─── A CLIENT COMPONENT, LIKE EVERY OTHER FETCH HERE ─────────────────
  * The token lives in the auth provider, so the request has to happen in the
  * browser. The page around this stays a Server Component so the shell is still
@@ -40,6 +56,8 @@ export function DashboardOverview() {
 
   const [overview, setOverview] = useState<Overview | null>(null);
   const [points, setPoints] = useState<RevenuePoint[]>([]);
+  const [topProducts, setTopProducts] = useState<TopProducts | null>(null);
+  const [statusBreakdown, setStatusBreakdown] = useState<StatusBreakdown | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,10 +65,15 @@ export function DashboardOverview() {
     let cancelled = false;
     const range = defaultRange();
 
-    // Both in parallel: the tiles and the chart describe the same window, so
+    // All in parallel: every panel on this page describes the same window, so
     // there is no reason to make the user wait for them in sequence.
-    Promise.all([fetchOverview(range), fetchRevenue(range, 'day')])
-      .then(([loadedOverview, series]) => {
+    Promise.all([
+      fetchOverview(range),
+      fetchRevenue(range, 'day'),
+      fetchTopProducts(range, 5),
+      fetchStatusBreakdown(range),
+    ])
+      .then(([loadedOverview, series, loadedTop, loadedBreakdown]) => {
         if (cancelled) return;
 
         setOverview(loadedOverview);
@@ -62,6 +85,8 @@ export function DashboardOverview() {
             revenue: Number(point.revenue),
           })),
         );
+        setTopProducts(loadedTop);
+        setStatusBreakdown(loadedBreakdown);
       })
       .catch((caught: unknown) => {
         if (!cancelled) setError(translateError(caught));
@@ -78,21 +103,27 @@ export function DashboardOverview() {
   return (
     <div className="space-y-6">
       <Reveal>
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label={t('title')}>
+        <div className="grid gap-4 lg:grid-cols-3">
+          <RevenueHero
+            value={overview ? Number(overview.revenue) : 0}
+            isLoading={isLoading || !overview}
+          />
+          <div className="lg:col-span-2">
+            <RevenueChart data={points} isLoading={isLoading} error={error} />
+          </div>
+        </div>
+      </Reveal>
+
+      <Reveal>
+        <section className="grid gap-4 sm:grid-cols-3" aria-label={t('title')}>
           {isLoading || !overview ? (
-            // Four skeletons, matching the four tiles — a different count would
-            // make the layout jump when the real data lands.
-            Array.from({ length: 4 }, (_, index) => (
+            // Three skeletons, matching the three supporting tiles — a
+            // different count would make the layout jump when data lands.
+            Array.from({ length: 3 }, (_, index) => (
               <Skeleton key={index} className="h-28 w-full" />
             ))
           ) : (
             <>
-              <StatTile
-                labelKey="totalRevenue"
-                value={Number(overview.revenue)}
-                format="currency"
-                icon="revenue"
-              />
               <StatTile labelKey="totalOrders" value={overview.orders} icon="orders" />
               <StatTile
                 labelKey="canceledOrders"
@@ -114,7 +145,23 @@ export function DashboardOverview() {
       </Reveal>
 
       <Reveal>
-        <RevenueChart data={points} isLoading={isLoading} error={error} />
+        <div className="space-y-3">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <TopProductsWidget data={topProducts} isLoading={isLoading} />
+            <StatusBreakdownWidget data={statusBreakdown} isLoading={isLoading} />
+          </div>
+
+          <div className="flex justify-end">
+            <Link
+              href="/admin/reports"
+              className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
+            >
+              {t('viewReports')}
+              <ArrowRight className="size-3.5 rtl:hidden" aria-hidden />
+              <ArrowLeft className="hidden size-3.5 rtl:block" aria-hidden />
+            </Link>
+          </div>
+        </div>
       </Reveal>
     </div>
   );
