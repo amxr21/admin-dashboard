@@ -3,8 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useGSAP } from '@gsap/react';
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { History, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { DataTable, type Column } from '@/components/data-table';
 import { ResourceCell } from '@/components/resource/resource-cell';
 import { ResourceForm } from '@/components/resource/resource-form';
@@ -18,6 +29,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { canAccessArea, type StaffRole } from '@/config/areas';
+import { useAuth } from '@/hooks/useAuth';
+import { Link } from '@/i18n/navigation';
 import { gsap } from '@/lib/gsap';
 import { DURATION, EASE, DISTANCE, STAGGER_TOTAL_MAX } from '@/lib/motion-tokens';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
@@ -52,9 +66,14 @@ interface ResourceTableProps {
 
 export function ResourceTable({ schema }: ResourceTableProps) {
   const t = useTranslations('resource');
+  const tAudit = useTranslations('audit');
   const tTable = useTranslations('table');
   const translateError = useTranslatedApiError();
   const { tablePageSize } = useAppSettings();
+  const { user } = useAuth();
+  // Same gate as the audit route itself (requireArea('staff')) — showing the
+  // link to someone who cannot open the page would be a courtesy that 403s.
+  const canViewHistory = canAccessArea((user?.role ?? 'DEMO') as StaffRole, 'staff');
 
   const [result, setResult] = useState<ResourceListResult | null>(null);
   const [page, setPage] = useState(1);
@@ -69,9 +88,6 @@ export function ResourceTable({ schema }: ResourceTableProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(
-    null,
-  );
 
   // Mirrors assertPermitted() in resource.service.ts, which is DEFAULT-DENY:
   // only an explicit `true` grants the action. Reading it any looser would
@@ -135,7 +151,6 @@ export function ResourceTable({ schema }: ResourceTableProps) {
     setSearch('');
     setFilters({});
     setSelectedIds(new Set());
-    setNotice(null);
   }, [schema.resource]);
 
   /**
@@ -171,12 +186,9 @@ export function ResourceTable({ schema }: ResourceTableProps) {
     if (archived > 0) parts.push(t('notice.archived', { count: archived }));
 
     if (failed.length > 0) {
-      setNotice({
-        tone: 'error',
-        text: [...parts, translateError(failed[0]?.reason)].join(' '),
-      });
+      toast.error([...parts, translateError(failed[0]?.reason)].join(' '));
     } else {
-      setNotice({ tone: 'ok', text: parts.join(' ') });
+      toast.success(parts.join(' '));
     }
 
     // Removing the last row on a page would otherwise leave the user staring
@@ -263,7 +275,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
    * is the primary way every resource gets edited.
    */
   const columns: readonly Column<ResourceRow>[] =
-    canUpdate || canDelete
+    canUpdate || canDelete || canViewHistory
       ? [
           ...dataColumns,
           {
@@ -297,6 +309,16 @@ export function ResourceTable({ schema }: ResourceTableProps) {
                     <Trash2 aria-hidden />
                   </Button>
                 ) : null}
+                {canViewHistory ? (
+                  <Button variant="ghost" size="icon" asChild>
+                    <Link
+                      href={`/admin/audit?entity=${schema.resource}&entityId=${String(row.id)}`}
+                      aria-label={tAudit('viewHistory')}
+                    >
+                      <History aria-hidden />
+                    </Link>
+                  </Button>
+                ) : null}
               </div>
             ),
           },
@@ -326,58 +348,43 @@ export function ResourceTable({ schema }: ResourceTableProps) {
         </div>
       ) : null}
 
-      {/* role="status" rather than an alert: the outcome is worth announcing
-          but must not interrupt what the user is doing next. */}
-      {notice ? (
-        <p
-          role="status"
-          className={
-            notice.tone === 'error'
-              ? 'bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm'
-              : 'bg-muted text-foreground rounded-md px-3 py-2 text-sm'
-          }
-        >
-          {notice.text}
-        </p>
-      ) : null}
-
-      {pendingDelete ? (
-        <div
-          role="alertdialog"
-          aria-label={t('confirmDelete.title', { count: pendingDelete.length })}
-          className="border-destructive/40 space-y-3 rounded-md border p-4"
-        >
-          <div>
-            <p className="font-medium">
-              {t('confirmDelete.title', { count: pendingDelete.length })}
-            </p>
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('confirmDelete.title', { count: pendingDelete?.length ?? 0 })}
+            </AlertDialogTitle>
             {/* States the archive rule UP FRONT. Finding out after the fact
                 that a "delete" only archived is a worse surprise than being
                 told the rule before confirming. */}
-            <p className="text-muted-foreground mt-1 text-sm">
+            <AlertDialogDescription>
               {t('confirmDelete.description')}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="destructive"
-              size="sm"
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>
+              {t('confirmDelete.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
               disabled={isDeleting}
-              onClick={() => void runDelete(pendingDelete)}
+              onClick={(event) => {
+                // The action would otherwise close the dialog before the
+                // delete finishes — this dialog stays open (and disabled)
+                // until runDelete's own finally clears pendingDelete.
+                event.preventDefault();
+                if (pendingDelete) void runDelete(pendingDelete);
+              }}
             >
               {isDeleting ? t('confirmDelete.working') : t('confirmDelete.confirm')}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={isDeleting}
-              onClick={() => setPendingDelete(null)}
-            >
-              {t('confirmDelete.cancel')}
-            </Button>
-          </div>
-        </div>
-      ) : null}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {canSearch || enumFilters.length > 0 ? (
         <div className="flex flex-wrap items-end gap-3">
@@ -386,7 +393,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
               <Label htmlFor="resource-search">{t('search.label')}</Label>
               <div className="relative">
                 <Search
-                  className="text-muted-foreground pointer-events-none absolute inset-inline-start-3 top-1/2 size-4 -translate-y-1/2"
+                  className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
                   aria-hidden
                 />
                 <Input
@@ -507,7 +514,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
           open={isFormOpen}
           onOpenChange={setIsFormOpen}
           onSaved={(action) => {
-            setNotice({ tone: 'ok', text: t(`notice.${action}`) });
+            toast.success(t(`notice.${action}`));
             void load();
           }}
         />

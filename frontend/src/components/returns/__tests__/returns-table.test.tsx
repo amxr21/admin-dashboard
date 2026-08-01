@@ -22,6 +22,18 @@ vi.mock('@/i18n/navigation', () => ({
     createElement('a', { href, ...props }, children as ReactNode),
 }));
 
+// ReturnDetailSheet reads the actor's role to decide whether to show the
+// "view history" link to the audit trail — a rendering hint only (see
+// useAuth.tsx), so a fixed OWNER stand-in is fine for every test here.
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({
+    user: { id: 'u1', email: 'owner@example.test', name: 'Owner', role: 'OWNER' },
+    isLoading: false,
+    signIn: vi.fn(),
+    signOut: vi.fn(),
+  }),
+}));
+
 const fetchReturns = vi.hoisted(() => vi.fn());
 const fetchReturn = vi.hoisted(() => vi.fn());
 const approveReturn = vi.hoisted(() => vi.fn());

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
-import { listAudit } from '../../services/audit.service.js';
+import { listAudit, listAuditEntities } from '../../services/audit.service.js';
 
 /**
  * The audit trail.
@@ -23,12 +23,16 @@ import { listAudit } from '../../services/audit.service.js';
 
 export const auditRouter = Router();
 
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 const listQuery = z.object({
   page: z.coerce.number().int().positive().optional(),
   pageSize: z.coerce.number().int().positive().optional(),
   entity: z.string().trim().max(48).optional(),
   entityId: z.string().trim().max(64).optional(),
   actorId: z.string().trim().max(64).optional(),
+  from: z.string().trim().regex(DATE_PATTERN).optional(),
+  to: z.string().trim().regex(DATE_PATTERN).optional(),
 });
 
 auditRouter.get('/audit', authenticate, requireArea('staff'), async (req, res) => {
@@ -36,4 +40,10 @@ auditRouter.get('/audit', authenticate, requireArea('staff'), async (req, res) =
   if (!parsed.success) throw AppError.badRequest('Invalid query', parsed.error.flatten());
 
   res.json({ data: await listAudit(parsed.data) });
+});
+
+// Ahead of `/audit/:id`-shaped routes that do not exist yet, but named so it
+// never collides if one is added later.
+auditRouter.get('/audit/entities', authenticate, requireArea('staff'), async (_req, res) => {
+  res.json({ data: await listAuditEntities() });
 });

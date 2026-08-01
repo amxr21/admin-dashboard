@@ -137,6 +137,11 @@ export interface AuditListParams {
   entity?: string;
   entityId?: string;
   actorId?: string;
+  /** Inclusive. Calendar date `YYYY-MM-DD`, interpreted as that day's start UTC. */
+  from?: string;
+  /** Inclusive. Calendar date `YYYY-MM-DD`, interpreted as that day's END UTC —
+   * a plain `lte` on the date string would exclude the whole day it names. */
+  to?: string;
 }
 
 /** Read the trail. There is deliberately no write, update or delete route. */
@@ -144,10 +149,19 @@ export async function listAudit(params: AuditListParams) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 50));
 
+  const createdAt =
+    params.from || params.to
+      ? {
+          ...(params.from ? { gte: new Date(`${params.from}T00:00:00.000Z`) } : {}),
+          ...(params.to ? { lte: new Date(`${params.to}T23:59:59.999Z`) } : {}),
+        }
+      : undefined;
+
   const where = {
     ...(params.entity ? { entity: params.entity } : {}),
     ...(params.entityId ? { entityId: params.entityId } : {}),
     ...(params.actorId ? { actorId: params.actorId } : {}),
+    ...(createdAt ? { createdAt } : {}),
   };
 
   const [rows, total] = await prisma.$transaction([
@@ -170,4 +184,16 @@ export async function listAudit(params: AuditListParams) {
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
   };
+}
+
+/** Distinct entity names actually present in the log, for a filter dropdown
+ * that never offers a value returning zero rows. */
+export async function listAuditEntities(): Promise<string[]> {
+  const rows = await prisma.auditLog.findMany({
+    distinct: ['entity'],
+    select: { entity: true },
+    orderBy: { entity: 'asc' },
+  });
+
+  return rows.map((row) => row.entity);
 }
