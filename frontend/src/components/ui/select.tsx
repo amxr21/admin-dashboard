@@ -94,7 +94,12 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        'focus:bg-accent focus:text-accent-foreground relative flex w-full cursor-default',
+        // Primary-tinted, not `--accent` (amber): a highlighted/focused
+        // option is a candidate SELECTION, and "selected" reads as the
+        // brand blue everywhere else in the app (sidebar active link,
+        // calendar's selected day) — amber is reserved for actual emphasis,
+        // not this.
+        'focus:bg-primary/10 focus:text-primary relative flex w-full cursor-default',
         // ps/pe, not pl/pr — the check indicator sits on the reading-end side
         // and must move in Arabic.
         'items-center rounded-sm py-1.5 ps-2 pe-8 text-sm outline-none select-none',

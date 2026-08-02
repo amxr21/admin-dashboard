@@ -159,8 +159,11 @@ export function GlobalSearch({ role }: { role: StaffRole }) {
             onMouseEnter={() => setActiveIndex(index)}
             className={cn(
               'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-start text-sm',
+              // Primary-tinted, not `--accent` (amber) — matches the sidebar's
+              // own active-link treatment, so "highlighted here" and
+              // "selected there" read as the same concept.
               index === activeIndex
-                ? 'bg-accent text-accent-foreground'
+                ? 'bg-primary/10 text-primary'
                 : 'text-foreground hover:bg-muted',
             )}
           >

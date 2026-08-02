@@ -322,6 +322,13 @@ html[lang='ar'] {
    * suppress transitions on first paint, which is what prevents a fade-in
    * from the wrong theme on load.
    */
+  /*
+   * `border-radius` rides the SAME rule: `ui.cornerRadius` re-points `--radius`
+   * exactly like a theme toggle re-points `--background`/`--card`, and an
+   * instant corner-rounding snap while previewing it live reads as broken in
+   * the same way an instant colour flash would. Not a layout property —
+   * animating it doesn't trigger reflow, only repaint.
+   */
   body,
   [data-slot],
   .bg-background,
@@ -332,7 +339,8 @@ html[lang='ar'] {
     transition:
       background-color 200ms ease,
       border-color 200ms ease,
-      color 200ms ease;
+      color 200ms ease,
+      border-radius 200ms ease;
   }
 
   /* Someone who asked for reduced motion did not ask for a colour crossfade
