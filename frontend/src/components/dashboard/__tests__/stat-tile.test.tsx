@@ -79,6 +79,27 @@ describe('delta judgement', () => {
       toneOf({ labelKey: 'pendingOrders', value: 37, deltaPercent: -5.6, invertDelta: true }),
     ).toContain('success');
   });
+
+  it('infers inversion from labelKey alone, with no explicit invertDelta prop', () => {
+    // The central descriptor (INVERTED_METRICS in stat-tile.tsx) is what
+    // must catch this, not caller discipline — a new call site for a known
+    // inverted metric can't silently paint a rise green just because it
+    // forgot the prop.
+    expect(toneOf({ labelKey: 'canceledOrders', value: 4, deltaPercent: 12 })).toContain(
+      'destructive',
+    );
+    expect(toneOf({ labelKey: 'lowStockProducts', value: 11, deltaPercent: 12 })).toContain(
+      'destructive',
+    );
+  });
+
+  it('an explicit invertDelta still overrides the central default', () => {
+    // A normal (up-is-good) metric forced to invert via the prop — proves
+    // the override path, not just the default path.
+    expect(
+      toneOf({ labelKey: 'totalOrders', value: 10, deltaPercent: 8, invertDelta: true }),
+    ).toContain('destructive');
+  });
 });
 
 describe('non-colour encoding', () => {

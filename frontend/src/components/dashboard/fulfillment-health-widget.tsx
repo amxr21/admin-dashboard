@@ -5,15 +5,17 @@ import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/status-badge';
+import { stripDemoTag } from '@/lib/demo';
 import type { FulfillmentHealth } from '@/lib/reports-api';
 
 /**
  * How long orders actually sit in PENDING/CONFIRMED, and which specific ones
  * are stuck past their SLA right now — a clickable queue, not just a count.
- * The average is real (from completed transitions, `getFulfillmentHealth` in
- * the backend); "needs attention" reflects live state, not the selected
- * report range, the same way a to-do list doesn't care what date range you're
- * looking at.
+ * Both halves — the average AND "needs attention" — are scoped to the same
+ * selected date range as everything else on the page (`getFulfillmentHealth`
+ * in the backend filters both by `placedAt`); a live-state exemption for just
+ * the queue used to leave the two halves of this one widget describing
+ * different windows, silently.
  */
 interface FulfillmentHealthWidgetProps {
   data: FulfillmentHealth | null;
@@ -64,7 +66,7 @@ export function FulfillmentHealthWidget({ data, isLoading = false }: Fulfillment
                       href={`/admin/orders/${row.orderId}`}
                       className="force-ltr truncate hover:underline"
                     >
-                      {row.orderNumber}
+                      {stripDemoTag(row.orderNumber)}
                     </Link>
                     <span className="flex shrink-0 items-center gap-2">
                       <StatusBadge kind="orderStatus" value={row.status} />

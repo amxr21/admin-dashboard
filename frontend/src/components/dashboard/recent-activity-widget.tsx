@@ -4,6 +4,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
+import { stripDemoTag } from '@/lib/demo';
 import type { AuditEntry } from '@/lib/audit-api';
 
 /**
@@ -41,7 +42,9 @@ export function RecentActivityWidget({ entries, isLoading = false }: RecentActiv
           {entries.map((entry) => (
             <li key={entry.id} className="text-sm">
               <p className="truncate">
-                <span className="font-medium">{entry.actorEmail ?? t('system')}</span>{' '}
+                <span className="font-medium">
+                  {stripDemoTag(entry.actorEmail) ?? t('system')}
+                </span>{' '}
                 {/* `action`/`entity` are raw, untranslated strings from the
                     audit log (e.g. "updated products") — same treatment
                     audit-table.tsx already gives them, not a new sentence

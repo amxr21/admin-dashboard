@@ -301,9 +301,9 @@ export function DashboardOverview() {
                   deltaPercent={canceledDelta}
                   comparisonLabel={comparisonLabel}
                   icon="pending"
-                  // A rise in cancellations is BAD — without this the tile would
-                  // paint a spike in them green.
-                  invertDelta
+                  // A rise in cancellations is BAD — the central
+                  // INVERTED_METRICS descriptor in stat-tile.tsx already
+                  // knows this by `labelKey`, no explicit `invertDelta` needed.
                   href="/admin/orders?status=CANCELED"
                 />
               </Reveal>
@@ -319,7 +319,6 @@ export function DashboardOverview() {
                   labelKey="lowStockProducts"
                   value={overview.lowStockProducts}
                   icon="inventory"
-                  invertDelta
                   noDeltaReason={t('liveSnapshot')}
                   href="/admin/inventory?lowStock=true"
                 />

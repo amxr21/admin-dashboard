@@ -51,6 +51,18 @@ const ICONS = {
 
 export type StatIcon = keyof typeof ICONS;
 
+/**
+ * The central polarity descriptor: which metrics have "down is good" as
+ * their default judgement, keyed by `labelKey`. A caller passing `labelKey`
+ * without an explicit `invertDelta` now gets the right colour automatically
+ * — a new KPI tile can't silently paint a growing cancellation/pending/
+ * low-stock count green just because whoever wired it up forgot the prop.
+ * `invertDelta` remains a genuine override for a case this map gets wrong,
+ * it just stops being the ONLY thing standing between a metric and a
+ * backwards colour.
+ */
+const INVERTED_METRICS = new Set(['canceledOrders', 'pendingOrders', 'lowStockProducts']);
+
 export interface StatTileProps {
   labelKey: string;
   value: number;
@@ -66,8 +78,9 @@ export interface StatTileProps {
    *  one that just hasn't loaded yet). Defaults to a generic placeholder. */
   noDeltaReason?: string;
   /**
-   * For metrics where a rise is BAD (refunds, cancellations). Without this the
-   * tile would paint a spike in cancellations green.
+   * For metrics where a rise is BAD (refunds, cancellations). Defaults from
+   * the central `INVERTED_METRICS` descriptor by `labelKey` — pass this only
+   * to OVERRIDE that default, not to supply it from scratch.
    */
   invertDelta?: boolean;
   format?: 'number' | 'currency';
@@ -89,7 +102,7 @@ export function StatTile({
   deltaPercent,
   comparisonLabel,
   noDeltaReason,
-  invertDelta = false,
+  invertDelta,
   format = 'number',
   icon,
   status,
@@ -114,10 +127,12 @@ export function StatTile({
     );
   }
 
+  const effectiveInvertDelta = invertDelta ?? INVERTED_METRICS.has(labelKey);
+
   const hasDelta = deltaPercent !== undefined;
   const isRising = hasDelta && deltaPercent > 0;
   // "Good" is not the same as "up". A rise in cancellations is bad.
-  const isGood = hasDelta && (invertDelta ? deltaPercent < 0 : deltaPercent > 0);
+  const isGood = hasDelta && (effectiveInvertDelta ? deltaPercent < 0 : deltaPercent > 0);
 
   const body = (
     <>
