@@ -63,12 +63,13 @@ export function Calendar({ className, classNames, showOutsideDays = true, ...pro
         nav: 'flex items-center justify-between absolute start-0 end-0 h-9 px-1',
         button_previous: cn(
           'inline-flex size-7 items-center justify-center rounded-md',
-          'text-muted-foreground hover:text-foreground hover:bg-accent',
+          // Same convention as select.tsx — primary-tinted, not amber.
+          'text-muted-foreground hover:text-primary hover:bg-primary/10',
           'transition-colors duration-200 disabled:opacity-30',
         ),
         button_next: cn(
           'inline-flex size-7 items-center justify-center rounded-md',
-          'text-muted-foreground hover:text-foreground hover:bg-accent',
+          'text-muted-foreground hover:text-primary hover:bg-primary/10',
           'transition-colors duration-200 disabled:opacity-30',
         ),
         month_grid: 'w-full border-collapse',
@@ -78,7 +79,7 @@ export function Calendar({ className, classNames, showOutsideDays = true, ...pro
         day: 'size-9 p-0',
         day_button: cn(
           'size-9 rounded-md text-sm font-normal transition-colors duration-200',
-          'hover:bg-accent hover:text-accent-foreground',
+          'hover:bg-primary/10 hover:text-primary',
           'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
           'disabled:pointer-events-none disabled:opacity-40',
         ),

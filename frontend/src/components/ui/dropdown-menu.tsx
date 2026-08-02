@@ -56,7 +56,8 @@ function DropdownMenuItem({
       data-variant={variant}
       className={cn(
         'relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none',
-        'focus:bg-accent/10 focus:text-foreground',
+        // Same convention as select.tsx — primary-tinted, not amber.
+        'focus:bg-primary/10 focus:text-primary',
         'data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10',
         'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         '[&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:pointer-events-none',
