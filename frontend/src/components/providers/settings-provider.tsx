@@ -1,33 +1,56 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 
+import { applyAppearance, cacheAppearance, readAppearance } from '@/lib/apply-appearance';
 import { fetchSettings } from '@/lib/settings-api';
 
 /**
- * Fetches the settings registry ONCE and shares it — same reasoning as
+ * Fetches the settings registry and shares it — same reasoning as
  * SchemaProvider (`schema-provider.tsx`): several unrelated pieces of the
  * shell need a value out of it (table page size, the theme accent, panel
  * style), and each re-fetching independently would mean one request per
  * consumer for data that only changes when someone saves the settings form.
  *
- * ─── APPLYING THE THEME IS A SIDE EFFECT HERE, NOT IN globals.css ────
+ * ─── EVERY DERIVED VALUE IS COMPUTED FROM `effective`, NOT JUST STORED ────
+ * `effective` merges the last-fetched registry with `overrides` — an
+ * in-progress, unsaved edit `SettingsForm` pushes via `previewSetting()`.
+ * Every value this context exposes (CSS custom properties, `editPanelMode`,
+ * `sidebarMode`, the brand strings) is derived from `effective`, so an
+ * override to ANY setting is visible EVERYWHERE it's consumed the instant
+ * it's made — not just the three CSS-driven ones, and not just after a
+ * round-trip to the server. `clearPreview()` (called on unmount by
+ * `SettingsForm`) drops back to the last-fetched registry with nothing else
+ * to undo, because nothing else was ever mutated.
+ *
+ * ─── `refresh()` IS WHAT MAKES A SAVE PERMANENT ──────────────────────────
+ * `SettingsForm` calls `refresh()` right after a successful PATCH. It
+ * re-fetches the registry AND clears `overrides` — the fetch is now
+ * authoritative, so anything still previewed is either already reflected in
+ * it (just saved) or was abandoned, and must stop shadowing the real value
+ * either way.
+ *
+ * ─── APPLYING THE THEME IS A SIDE EFFECT HERE, NOT IN globals.css ────────
  * `--primary` and `--radius` already exist as CSS custom properties on
  * `:root`/`.dark` (see globals.css). Setting them again via an INLINE style
  * on `<html>` wins over both by specificity, in both themes, with no
  * duplication of the token values themselves — the same "re-point the inner
  * variable, never the theme token" rule the font stack already follows (see
  * the 2026-07-27 error-log entry on `@theme inline`). A default/unset value
- * clears the inline override so the CSS defaults show through again.
+ * clears the inline override so the CSS defaults show through again. The
+ * actual DOM mutation lives in `lib/apply-appearance.ts` now, shared with
+ * `SettingsForm`'s live preview so the two can never disagree.
  */
 
-const DEFAULT_ACCENT = '#2563eb';
-
-const RADIUS_BY_OPTION: Record<string, string> = {
-  sharp: '0rem',
-  default: '0.625rem',
-  round: '1rem',
-};
+type Value = string | boolean | number;
 
 interface SettingsContextValue {
   isLoading: boolean;
@@ -44,6 +67,16 @@ interface SettingsContextValue {
   storeAddress: string;
   storeSupportEmail: string;
   storeSupportPhone: string;
+  /** Re-fetches the registry and re-applies every derived side effect. Call
+   *  after a settings save so the change is visible without a page reload. */
+  refresh: () => Promise<void>;
+  /** Applies an UNSAVED value everywhere this setting is consumed — CSS
+   *  custom properties, sidebar mode, edit panel style, brand strings — the
+   *  instant it changes, before Save is ever clicked. */
+  previewSetting: (key: string, value: Value) => void;
+  /** Drops every unsaved preview, reverting to the last-fetched registry.
+   *  Called when the settings form goes away without saving. */
+  clearPreview: () => void;
 }
 
 const BRAND_DEFAULTS = {
@@ -54,101 +87,85 @@ const BRAND_DEFAULTS = {
   storeSupportPhone: '',
 };
 
-const SettingsContext = createContext<SettingsContextValue>({
+const DEFAULT_VALUE: SettingsContextValue = {
   isLoading: true,
   tablePageSize: 20,
   editPanelMode: 'drawer',
   sidebarMode: 'sticky',
   logoUrl: '',
   ...BRAND_DEFAULTS,
-});
+  refresh: async () => {},
+  previewSetting: () => {},
+  clearPreview: () => {},
+};
+
+const SettingsContext = createContext<SettingsContextValue>(DEFAULT_VALUE);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [value, setValue] = useState<SettingsContextValue>({
-    isLoading: true,
-    tablePageSize: 20,
-    editPanelMode: 'drawer',
-    sidebarMode: 'sticky',
-    logoUrl: '',
-    ...BRAND_DEFAULTS,
-  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [byKey, setByKey] = useState<Record<string, Value>>({});
+  const [overrides, setOverrides] = useState<Record<string, Value>>({});
+
+  const load = useCallback(async () => {
+    setIsLoading(true);
+
+    try {
+      const settings = await fetchSettings();
+      setByKey(Object.fromEntries(settings.map((setting) => [setting.key, setting.value])));
+      setOverrides({});
+    } catch {
+      // Swallowed on purpose, same as SchemaProvider: the shell must still
+      // render with the CSS defaults and the hardcoded page size rather than
+      // failing the whole app over a settings-provider outage.
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    void load();
+  }, [load]);
 
-    fetchSettings()
-      .then((settings) => {
-        if (cancelled) return;
+  const effective = useMemo(() => ({ ...byKey, ...overrides }), [byKey, overrides]);
+  const effectiveMap = useMemo(() => new Map(Object.entries(effective)), [effective]);
+  const appearance = useMemo(() => readAppearance(effectiveMap), [effectiveMap]);
+  const hasPreview = Object.keys(overrides).length > 0;
 
-        const byKey = new Map(settings.map((setting) => [setting.key, setting.value]));
+  useEffect(() => {
+    if (isLoading) return;
 
-        const accent = String(byKey.get('theme.accentColor') ?? DEFAULT_ACCENT);
-        const density = String(byKey.get('ui.density') ?? 'comfortable');
-        const radiusOption = String(byKey.get('ui.cornerRadius') ?? 'default');
-        const pageSize = Number(byKey.get('dashboard.tablePageSize') ?? 20);
-        const panelMode = byKey.get('ui.editPanelMode') === 'modal' ? 'modal' : 'drawer';
-        const sidebarMode = byKey.get('ui.sidebarMode') === 'floating' ? 'floating' : 'sticky';
-        const logoUrl = String(byKey.get('store.logoUrl') ?? '');
-        const storeName = String(byKey.get('store.name') ?? '');
-        const storeTagline = String(byKey.get('store.tagline') ?? '');
-        const storeAddress = String(byKey.get('store.address') ?? '');
-        const storeSupportEmail = String(byKey.get('store.supportEmail') ?? '');
-        const storeSupportPhone = String(byKey.get('store.supportPhone') ?? '');
+    applyAppearance(appearance);
 
-        const root = document.documentElement;
+    // Only a COMMITTED appearance is cached for the next page load's blocking
+    // paint — an in-progress, unsaved preview must never survive to it.
+    if (!hasPreview) cacheAppearance(appearance);
+  }, [appearance, isLoading, hasPreview]);
 
-        // The registry's own description promises this ("Shown on invoices and
-        // in the browser tab") — a Server Component `metadata` export can't
-        // reach a DB-backed setting without a public read endpoint, so this
-        // is the same side-effect trick as the CSS variables above, applied
-        // to the one browser-chrome property that isn't a style.
-        if (storeName) document.title = storeName;
-
-        if (/^#[0-9a-fA-F]{6}$/.test(accent) && accent.toLowerCase() !== DEFAULT_ACCENT) {
-          root.style.setProperty('--primary', accent);
-          // Kept white: every accent this control accepts is a saturated
-          // brand color, and computing a real contrast ratio for an
-          // arbitrary hex is a bigger feature than a settings toggle
-          // deserves. The swatch next to the input is the safety net —
-          // a color unreadable against white looks wrong there first.
-          root.style.setProperty('--primary-foreground', '#ffffff');
-        } else {
-          root.style.removeProperty('--primary');
-          root.style.removeProperty('--primary-foreground');
-        }
-
-        if (radiusOption !== 'default' && RADIUS_BY_OPTION[radiusOption]) {
-          root.style.setProperty('--radius', RADIUS_BY_OPTION[radiusOption]);
-        } else {
-          root.style.removeProperty('--radius');
-        }
-
-        root.dataset.density = density === 'compact' ? 'compact' : 'comfortable';
-
-        setValue({
-          isLoading: false,
-          tablePageSize: Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20,
-          editPanelMode: panelMode,
-          sidebarMode,
-          logoUrl,
-          storeName,
-          storeTagline,
-          storeAddress,
-          storeSupportEmail,
-          storeSupportPhone,
-        });
-      })
-      .catch(() => {
-        // Swallowed on purpose, same as SchemaProvider: the shell must still
-        // render with the CSS defaults and the hardcoded page size rather
-        // than failing the whole app over a settings-provider outage.
-        if (!cancelled) setValue((current) => ({ ...current, isLoading: false }));
-      });
-
-    return () => {
-      cancelled = true;
-    };
+  const previewSetting = useCallback((key: string, value: Value) => {
+    setOverrides((current) => ({ ...current, [key]: value }));
   }, []);
+
+  const clearPreview = useCallback(() => {
+    setOverrides({});
+  }, []);
+
+  const pageSize = Number(effective['dashboard.tablePageSize'] ?? 20);
+
+  const value: SettingsContextValue = {
+    isLoading,
+    tablePageSize: Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20,
+    editPanelMode: effective['ui.editPanelMode'] === 'modal' ? 'modal' : 'drawer',
+    sidebarMode: effective['ui.sidebarMode'] === 'floating' ? 'floating' : 'sticky',
+    logoUrl: String(effective['store.logoUrl'] ?? ''),
+    storeName: appearance.storeName,
+    storeTagline: String(effective['store.tagline'] ?? ''),
+    storeAddress: String(effective['store.address'] ?? ''),
+    storeSupportEmail: String(effective['store.supportEmail'] ?? ''),
+    storeSupportPhone: String(effective['store.supportPhone'] ?? ''),
+    refresh: load,
+    previewSetting,
+    clearPreview,
+  };
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }

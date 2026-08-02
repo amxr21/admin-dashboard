@@ -163,7 +163,7 @@
   },
   "dashboard": {
     "title": "Dashboard",
-    "subtitle": "A snapshot of revenue, orders and stock for the last 30 days.",
+    "subtitle": "A snapshot of revenue, orders and stock for the selected period.",
     "revenue": "Revenue",
     "revenueOverTime": "Revenue over time",
     "vsPreviousPeriod": "vs previous period",
@@ -174,7 +174,45 @@
     "recentOrders": "Recent orders",
     "canceledOrders": "Cancelled",
     "lowStockProducts": "Low stock",
-    "viewReports": "View reports"
+    "viewReports": "View reports",
+    "resetRange": "Reset",
+    "lastUpdated": "Updated {time}",
+    "refresh": "Refresh",
+    "fulfillment": {
+      "title": "Fulfillment health",
+      "avgTimeIn": "Avg. time in {status}",
+      "noCompletedYet": "No completed orders yet",
+      "hours": "{count, plural, one {# hour} other {# hours}}",
+      "needsAttention": "{count, plural, one {# order needs attention} other {# orders need attention}}",
+      "hoursAgo": "{count, plural, one {# hour ago} other {# hours ago}}",
+      "daysAgo": "{count, plural, one {# day ago} other {# days ago}}",
+      "allClear": "Nothing stuck past its SLA right now."
+    },
+    "returns": {
+      "title": "Returns",
+      "viewAll": "View all",
+      "returnRate": "Return rate",
+      "refundValue": "Refund value",
+      "unitsReturned": "Units returned",
+      "deletedProduct": "(deleted product)",
+      "units": "{count, plural, one {# unit} other {# units}}",
+      "none": "No returns in this period."
+    },
+    "orderValue": {
+      "title": "Order value distribution"
+    },
+    "activity": {
+      "title": "Recent activity",
+      "viewAll": "View all",
+      "system": "System"
+    },
+    "quickActions": {
+      "title": "Quick actions",
+      "addProduct": "Add product",
+      "lowStock": "View low stock",
+      "auditTrail": "Audit trail",
+      "orderHistory": "Order history"
+    }
   },
   "products": {
     "title": "Products",

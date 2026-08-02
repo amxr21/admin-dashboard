@@ -235,6 +235,195 @@ export async function getTopProducts(params: RangeParams & { limit?: number }) {
   };
 }
 
+/**
+ * How long an unfinished order has been stuck. Not arbitrary: PENDING is
+ * "nobody has confirmed this yet" and CONFIRMED is "confirmed but not yet
+ * shipped" — both are queues someone should be clearing, not states an order
+ * is expected to sit in indefinitely. Exported so the frontend imports the
+ * same numbers rather than restating them (same rule as
+ * `DEFAULT_LOW_STOCK_THRESHOLD` in inventory.service.ts).
+ */
+export const PENDING_SLA_HOURS = 24;
+export const CONFIRMED_SLA_HOURS = 48;
+
+const ATTENTION_STATUSES = [OrderStatus.PENDING, OrderStatus.CONFIRMED] as const;
+const SLA_HOURS_BY_STATUS: Record<(typeof ATTENTION_STATUSES)[number], number> = {
+  PENDING: PENDING_SLA_HOURS,
+  CONFIRMED: CONFIRMED_SLA_HOURS,
+};
+
+/**
+ * Fulfillment health: how long orders actually spend in PENDING/CONFIRMED
+ * (average, from real transitions), and which specific orders are stuck past
+ * their SLA right now — a clickable queue, not just a count.
+ *
+ * ─── AVERAGE COMES FROM COMPLETED TRANSITIONS ONLY ────────────────────
+ * `LEAD()` finds each order's NEXT status-history row; an order still sitting
+ * in PENDING has no next row yet and is correctly excluded from the average
+ * (it belongs in `needsAttention` instead, not in a number that would silently
+ * drag the average down while looking like everything is fine).
+ */
+export async function getFulfillmentHealth(params: RangeParams) {
+  const { start, end } = resolveRange(params);
+
+  const avgRows = await prisma.$queryRaw<{ toStatus: string; avgHours: number | null }[]>`
+    SELECT to_status AS toStatus, AVG(TIMESTAMPDIFF(HOUR, entered_at, next_at)) AS avgHours
+    FROM (
+      SELECT h.to_status,
+             h.created_at AS entered_at,
+             LEAD(h.created_at) OVER (PARTITION BY h.order_id ORDER BY h.created_at) AS next_at
+      FROM order_status_history h
+      JOIN orders o ON o.id = h.order_id
+      WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
+    ) transitions
+    WHERE next_at IS NOT NULL AND to_status IN ('PENDING', 'CONFIRMED')
+    GROUP BY to_status
+  `;
+
+  const stuckPending = await prisma.$queryRaw<
+    { id: string; orderNumber: string; enteredAt: Date }[]
+  >`
+    SELECT id, order_number AS orderNumber, placed_at AS enteredAt
+    FROM orders
+    WHERE status = 'PENDING' AND placed_at < ${new Date(Date.now() - PENDING_SLA_HOURS * 3_600_000)}
+    ORDER BY placed_at ASC
+    LIMIT 50
+  `;
+
+  const stuckConfirmed = await prisma.$queryRaw<
+    { id: string; orderNumber: string; enteredAt: Date }[]
+  >`
+    SELECT o.id, o.order_number AS orderNumber, h.enteredAt
+    FROM orders o
+    JOIN (
+      SELECT order_id, MAX(created_at) AS enteredAt
+      FROM order_status_history
+      WHERE to_status = 'CONFIRMED'
+      GROUP BY order_id
+    ) h ON h.order_id = o.id
+    WHERE o.status = 'CONFIRMED' AND h.enteredAt < ${new Date(Date.now() - CONFIRMED_SLA_HOURS * 3_600_000)}
+    ORDER BY h.enteredAt ASC
+    LIMIT 50
+  `;
+
+  const now = Date.now();
+
+  return {
+    range: { from: params.from, to: params.to },
+    avgHoursInStatus: ATTENTION_STATUSES.map((status) => {
+      const raw = avgRows.find((row) => row.toStatus === status)?.avgHours;
+      return {
+        status,
+        slaHours: SLA_HOURS_BY_STATUS[status],
+        // MySQL's AVG() over an integer TIMESTAMPDIFF can cross the driver as
+        // a string — coerced here so the JSON response is a real number, not
+        // sometimes-a-string depending on the driver's mood.
+        avgHours: raw == null ? null : Number(raw),
+      };
+    }),
+    needsAttention: [
+      ...stuckPending.map((row) => ({ ...row, status: OrderStatus.PENDING })),
+      ...stuckConfirmed.map((row) => ({ ...row, status: OrderStatus.CONFIRMED })),
+    ]
+      .sort((a, b) => a.enteredAt.getTime() - b.enteredAt.getTime())
+      .map((row) => ({
+        orderId: row.id,
+        orderNumber: row.orderNumber,
+        status: row.status,
+        hoursInStatus: Math.floor((now - row.enteredAt.getTime()) / 3_600_000),
+      })),
+  };
+}
+
+/**
+ * Returns/refunds — deliberately not folded into the revenue report, because
+ * "how much came back and why" is a different question from "how much came
+ * in", and burying it inside another report is how it stays under-built.
+ */
+export async function getReturnsSummary(params: RangeParams) {
+  const { start, end } = resolveRange(params);
+
+  const inRange = { createdAt: { gte: start, lt: end } };
+
+  const [returnCount, orderCount, refundAgg, unitsAgg, byProduct] = await prisma.$transaction([
+    prisma.return.count({ where: inRange }),
+    prisma.order.count({ where: { placedAt: { gte: start, lt: end } } }),
+    prisma.return.aggregate({ where: inRange, _sum: { refundAmount: true } }),
+    prisma.returnItem.aggregate({ where: { return: inRange }, _sum: { quantity: true } }),
+    prisma.$queryRaw<
+      { productId: string | null; name: string | null; units: bigint; returns: bigint }[]
+    >`
+      SELECT p.id AS productId, p.name AS name, SUM(ri.quantity) AS units, COUNT(DISTINCT r.id) AS returns
+      FROM return_items ri
+      JOIN returns r ON r.id = ri.return_id
+      JOIN order_items oi ON oi.id = ri.order_item_id
+      LEFT JOIN products p ON p.id = oi.product_id
+      WHERE r.created_at >= ${start} AND r.created_at < ${end}
+      GROUP BY p.id, p.name
+      ORDER BY units DESC
+      LIMIT 10
+    `,
+  ]);
+
+  return {
+    range: { from: params.from, to: params.to },
+    returnCount,
+    orderCount,
+    // Guarded the same way averageOrderValue is — zero orders must render as
+    // an honest zero, never NaN-turned-null.
+    returnRate: orderCount > 0 ? returnCount / orderCount : 0,
+    refundValue: money(refundAgg._sum.refundAmount),
+    unitsReturned: Number(unitsAgg._sum.quantity ?? 0),
+    topReturnedProducts: byProduct.map((row) => ({
+      productId: row.productId,
+      name: row.name,
+      unitsReturned: Number(row.units),
+      returnCount: Number(row.returns),
+    })),
+  };
+}
+
+/** Fixed, ascending buckets — the CASE expression IS the injection boundary:
+ *  no request value ever reaches the SQL string, only bound date parameters. */
+const VALUE_BUCKETS = [
+  { label: '0-50', max: 50 },
+  { label: '50-100', max: 100 },
+  { label: '100-250', max: 250 },
+  { label: '250-500', max: 500 },
+  { label: '500-1000', max: 1000 },
+  { label: '1000+', max: null },
+] as const;
+
+/** Order-value distribution — a histogram, not just the average AOV. */
+export async function getOrderValueDistribution(params: RangeParams) {
+  const { start, end } = resolveRange(params);
+
+  const rows = await prisma.$queryRaw<{ bucket: string; count: bigint }[]>`
+    SELECT
+      CASE
+        WHEN total < 50 THEN '0-50'
+        WHEN total < 100 THEN '50-100'
+        WHEN total < 250 THEN '100-250'
+        WHEN total < 500 THEN '250-500'
+        WHEN total < 1000 THEN '500-1000'
+        ELSE '1000+'
+      END AS bucket,
+      COUNT(*) AS count
+    FROM orders
+    WHERE placed_at >= ${start} AND placed_at < ${end}
+      AND status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+    GROUP BY bucket
+  `;
+
+  return {
+    range: { from: params.from, to: params.to },
+    buckets: VALUE_BUCKETS.map((bucket) => ({
+      label: bucket.label,
+      count: Number(rows.find((row) => row.bucket === bucket.label)?.count ?? 0),
+    })),
+  };
+}
+
 /** Order counts per status, for a breakdown that sums to the total. */
 export async function getStatusBreakdown(params: RangeParams) {
   const { start, end } = resolveRange(params);

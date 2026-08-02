@@ -132,3 +132,69 @@ describe('values exposed to consumers', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('live preview, before Save', () => {
+  function PreviewConsumer() {
+    const { isLoading, editPanelMode, previewSetting, clearPreview } = useAppSettings();
+    if (isLoading) return <p>loading</p>;
+    return (
+      <div>
+        <p>mode:{editPanelMode}</p>
+        <button onClick={() => previewSetting('ui.editPanelMode', 'modal')}>preview modal</button>
+        <button onClick={() => clearPreview()}>revert</button>
+      </div>
+    );
+  }
+
+  it('applies an unsaved value everywhere the setting is consumed, not just the CSS-driven ones', async () => {
+    fetchSettings.mockResolvedValue([setting('ui.editPanelMode', 'drawer')]);
+
+    render(
+      <SettingsProvider>
+        <PreviewConsumer />
+      </SettingsProvider>,
+    );
+
+    await screen.findByText('mode:drawer');
+
+    screen.getByText('preview modal').click();
+
+    expect(await screen.findByText('mode:modal')).toBeInTheDocument();
+  });
+
+  it('reverts to the last-fetched registry on clearPreview()', async () => {
+    fetchSettings.mockResolvedValue([setting('ui.editPanelMode', 'drawer')]);
+
+    render(
+      <SettingsProvider>
+        <PreviewConsumer />
+      </SettingsProvider>,
+    );
+
+    await screen.findByText('mode:drawer');
+    screen.getByText('preview modal').click();
+    await screen.findByText('mode:modal');
+
+    screen.getByText('revert').click();
+
+    expect(await screen.findByText('mode:drawer')).toBeInTheDocument();
+  });
+
+  it('does not cache a still-unsaved preview for the next page load', async () => {
+    fetchSettings.mockResolvedValue([setting('theme.accentColor', '#2563eb')]);
+
+    render(
+      <SettingsProvider>
+        <PreviewConsumer />
+      </SettingsProvider>,
+    );
+
+    await screen.findByText('mode:drawer');
+    localStorage.removeItem('admin.appearance');
+
+    screen.getByText('preview modal').click();
+    await screen.findByText('mode:modal');
+
+    expect(localStorage.getItem('admin.appearance')).toBeNull();
+  });
+});

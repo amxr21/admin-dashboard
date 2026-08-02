@@ -167,7 +167,20 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="bg-card/80 sticky top-0 z-30 flex h-14 items-center gap-2 border-b px-4 backdrop-blur">
+        {/* The top bar tracks `sidebarMode` so the two halves of the shell
+            agree: in `floating` mode it detaches into its own card (margin,
+            radius, shadow, a full border) that floats `top-3` to match the
+            sidebar's gap, instead of the flush, full-bleed `border-b` bar that
+            `sticky` mode uses. Shipping a floating sidebar beside a full-bleed
+            top bar was the exact mismatch this is closing. */}
+        <header
+          className={cn(
+            'bg-card/80 sticky z-30 flex h-14 items-center gap-2 px-4 backdrop-blur',
+            sidebarMode === 'floating'
+              ? 'mx-3 mt-3 rounded-xl border shadow-lg top-3 lg:me-3 lg:ms-0'
+              : 'border-b top-0',
+          )}
+        >
           <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="lg:hidden" aria-label={t('dashboard')}>

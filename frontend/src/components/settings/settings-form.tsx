@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Bell, Palette, Settings2, SlidersHorizontal, Store, type LucideIcon } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { ErrorScreen } from '@/components/errors/error-screen';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -16,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -28,12 +31,34 @@ import {
 } from '@/lib/settings-api';
 
 /**
+ * Enums with 2–3 short, visual choices get a segmented control (all options
+ * visible, one row) instead of a `<Select>` that hides them behind a click.
+ * Genuine lists — currency (5) and language — stay a `<Select>`; a segmented
+ * bar of five currency codes or a growing language list would wrap and defeat
+ * the point. Membership is by key, not option count, so the choice is
+ * deliberate rather than a threshold that silently reclassifies a setting when
+ * someone adds a third currency.
+ */
+const SEGMENTED_ENUM_KEYS = new Set([
+  'ui.density',
+  'ui.cornerRadius',
+  'ui.editPanelMode',
+  'ui.sidebarMode',
+]);
+
+/** Machine enum value → user-facing label. Every option here is a single
+ *  lowercase word, so capitalising the first letter is the whole rule. */
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+/**
  * Key prefix → visual group, purely for layout. `settings.config.ts` on the
  * backend has no notion of groups — this is a hardcoded, presentation-only map
  * so a flat registry still reads as sections. A key matching none of these
  * still renders, under "other", so a future setting can't silently vanish.
  */
-const GROUPS = [
+export const SETTINGS_GROUPS = [
   { id: 'brand', icon: Store, match: (key: string) => key.startsWith('store.') },
   {
     id: 'appearance',
@@ -53,7 +78,7 @@ const GROUPS = [
   },
 ] as const;
 
-type GroupId = (typeof GROUPS)[number]['id'] | 'other';
+export type GroupId = (typeof SETTINGS_GROUPS)[number]['id'] | 'other';
 
 function groupByPrefix(
   settings: Setting[],
@@ -61,13 +86,13 @@ function groupByPrefix(
   const buckets = new Map<GroupId, Setting[]>();
 
   for (const setting of settings) {
-    const id: GroupId = GROUPS.find((group) => group.match(setting.key))?.id ?? 'other';
+    const id: GroupId = SETTINGS_GROUPS.find((group) => group.match(setting.key))?.id ?? 'other';
     const bucket = buckets.get(id);
     if (bucket) bucket.push(setting);
     else buckets.set(id, [setting]);
   }
 
-  const known = GROUPS.map((group) => ({
+  const known = SETTINGS_GROUPS.map((group) => ({
     id: group.id as GroupId,
     icon: group.icon,
     items: buckets.get(group.id) ?? [],
@@ -99,6 +124,7 @@ type Value = string | boolean | number;
 export function SettingsForm() {
   const t = useTranslations('settings');
   const translateError = useTranslatedApiError();
+  const { refresh: refreshAppSettings, previewSetting, clearPreview } = useAppSettings();
 
   const [settings, setSettings] = useState<Setting[] | null>(null);
   const [values, setValues] = useState<Record<string, Value>>({});
@@ -129,8 +155,25 @@ export function SettingsForm() {
     };
   }, [translateError]);
 
+  /**
+   * Reverts any live-previewed, unsaved change when this form goes away —
+   * leaving without saving must not leave the DOM showing a draft. The
+   * provider is the one source of truth for what "reverting" means (drop
+   * `overrides`, fall back to the last-fetched registry), so this is a
+   * one-line call rather than this component recomputing appearance itself.
+   * Deliberately UNMOUNT-only (empty deps): keying on `settings` would also
+   * fire this the instant a save succeeds (settings just changed), racing the
+   * `refresh()` call in `submit()` that already clears `overrides` itself.
+   */
+  useEffect(() => {
+    return () => clearPreview();
+  }, [clearPreview]);
+
   function set(key: string, value: Value) {
     setValues((current) => ({ ...current, [key]: value }));
+    // Preview immediately, before Save — every control is otherwise
+    // indistinguishable from "did nothing" until a save round trip completes.
+    previewSetting(key, value);
     setSaved(false);
     setFieldErrors((current) => {
       if (!(key in current)) return current;
@@ -169,6 +212,11 @@ export function SettingsForm() {
       setSettings(updated);
       setValues(Object.fromEntries(updated.map((s) => [s.key, s.value])));
       setSaved(true);
+      toast.success(t('saved'));
+      // Makes the save visible everywhere else in the app (sidebar, tab title,
+      // invoice letterhead) without a reload — see the note on `refresh()` in
+      // settings-provider.tsx for why this used to require one.
+      void refreshAppSettings();
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 400) {
         // The server reports EVERY bad key at once, so all of them land on
@@ -221,20 +269,29 @@ export function SettingsForm() {
         </p>
       ) : null}
 
-      <div className="divide-y">
+      <div className="space-y-10">
         {groupByPrefix(settings).map((group, index) => (
-          <div key={group.id} className={cn('space-y-4', index > 0 && 'pt-6')}>
+          <section
+            key={group.id}
+            aria-labelledby={`settings-group-${group.id}`}
+            className={cn('space-y-4', index > 0 && 'border-t pt-8')}
+          >
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <group.icon className="text-muted-foreground size-4" aria-hidden="true" />
-                <h3 className="text-sm font-semibold">{t(`groups.${group.id}.title`)}</h3>
+                <group.icon className="text-primary size-5" aria-hidden="true" />
+                <h2
+                  id={`settings-group-${group.id}`}
+                  className="text-lg font-semibold tracking-tight"
+                >
+                  {t(`groups.${group.id}.title`)}
+                </h2>
               </div>
               <p className="text-muted-foreground text-sm">
                 {t(`groups.${group.id}.description`)}
               </p>
             </div>
 
-            <div className="space-y-5">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {group.items.map((setting) => (
                 <SettingField
                   key={setting.key}
@@ -242,10 +299,13 @@ export function SettingsForm() {
                   value={values[setting.key] ?? setting.value}
                   error={fieldErrors[setting.key]}
                   onChange={(value) => set(setting.key, value)}
+                  // Address is the one field genuinely long-form enough to
+                  // want the full row rather than half of it.
+                  fullWidth={setting.key === 'store.address'}
                 />
               ))}
             </div>
-          </div>
+          </section>
         ))}
       </div>
 
@@ -277,10 +337,12 @@ interface SettingFieldProps {
   value: Value;
   error: string | undefined;
   onChange: (value: Value) => void;
+  /** Spans both grid columns instead of sharing a row with its neighbor. */
+  fullWidth?: boolean;
 }
 
 /** One control, chosen by the type the SERVER declared. */
-function SettingField({ setting, value, error, onChange }: SettingFieldProps) {
+function SettingField({ setting, value, error, onChange, fullWidth }: SettingFieldProps) {
   // Only the language namespace is needed here — every other label and
   // description comes from the server's registry, already human-readable.
   const tLanguage = useTranslations('language');
@@ -307,7 +369,24 @@ function SettingField({ setting, value, error, onChange }: SettingFieldProps) {
           </div>
         );
 
-      case 'enum':
+      case 'enum': {
+        // Short, visual choices → a segmented bar; genuine lists stay a Select.
+        if (SEGMENTED_ENUM_KEYS.has(setting.key)) {
+          return (
+            <SegmentedControl
+              id={id}
+              value={String(value)}
+              onChange={onChange}
+              aria-labelledby={`${id}-label`}
+              aria-describedby={aria['aria-describedby']}
+              options={(setting.options ?? []).map((option) => ({
+                value: option,
+                label: titleCase(option),
+              }))}
+            />
+          );
+        }
+
         return (
           <Select value={String(value)} onValueChange={onChange}>
             <SelectTrigger id={id} {...aria}>
@@ -333,6 +412,7 @@ function SettingField({ setting, value, error, onChange }: SettingFieldProps) {
             </SelectContent>
           </Select>
         );
+      }
 
       case 'color': {
         const isValidHex = /^#[0-9a-fA-F]{6}$/.test(String(value));
@@ -397,9 +477,18 @@ function SettingField({ setting, value, error, onChange }: SettingFieldProps) {
   }
 
   return (
-    <div className="space-y-2">
+    <div
+      className={cn(
+        'bg-card/50 space-y-2 rounded-lg border p-4',
+        fullWidth && 'col-span-full',
+      )}
+    >
       {setting.type === 'boolean' ? null : (
-        <Label htmlFor={id}>{setting.label}</Label>
+        // `id` on the label lets the segmented control (a radiogroup, which
+        // can't be the target of htmlFor) name itself via aria-labelledby.
+        <Label id={`${id}-label`} htmlFor={id}>
+          {setting.label}
+        </Label>
       )}
 
       {control()}
