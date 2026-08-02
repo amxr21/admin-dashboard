@@ -87,7 +87,9 @@
     "catalogue": "Catalogue",
     "system": "System",
     "collapseSidebar": "Collapse sidebar",
-    "expandSidebar": "Expand sidebar"
+    "expandSidebar": "Expand sidebar",
+    "search": "Search",
+    "searchPlaceholder": "Jump to…"
   },
   "roles": {
     "DEVELOPER": "Developer",

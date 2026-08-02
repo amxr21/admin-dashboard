@@ -16,6 +16,7 @@ let pathname = '/admin/staff';
 
 vi.mock('@/i18n/navigation', () => ({
   usePathname: () => pathname,
+  useRouter: () => ({ push: vi.fn() }),
   Link: ({ href, children, ...props }: Record<string, unknown>) =>
     createElement('a', { href, ...props }, children as ReactNode),
 }));

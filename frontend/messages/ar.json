@@ -87,7 +87,9 @@
     "catalogue": "الكتالوج",
     "system": "النظام",
     "collapseSidebar": "طي الشريط الجانبي",
-    "expandSidebar": "توسيع الشريط الجانبي"
+    "expandSidebar": "توسيع الشريط الجانبي",
+    "search": "بحث",
+    "searchPlaceholder": "الانتقال إلى…"
   },
   "roles": {
     "DEVELOPER": "مطوّر",

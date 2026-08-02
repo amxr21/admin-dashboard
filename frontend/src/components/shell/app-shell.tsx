@@ -6,6 +6,7 @@ import { Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 import { ThemeToggle } from '@/components/theme-toggle';
 import { DiagnosticsBar } from '@/components/shell/diagnostics-bar';
+import { GlobalSearch } from '@/components/shell/global-search';
 import { NotificationsBell } from '@/components/shell/notifications-bell';
 import { SidebarNav } from '@/components/shell/sidebar-nav';
 import { UserMenu } from '@/components/shell/user-menu';
@@ -140,45 +141,52 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   }
 
   return (
-    <div className="flex min-h-dvh">
+    <div className="flex h-dvh overflow-hidden">
       {/* Desktop sidebar. Hidden below lg; the drawer covers those widths.
-          Pinned to the viewport (sticky + its own height) so a long page
-          scrolls the CONTENT column only — without this, the aside had no
-          height of its own, stretched to match whatever height the content
-          column grew to, and scrolled away with the rest of the page.
+          STRUCTURALLY sized (h-full inside an h-dvh/overflow-hidden shell) —
+          not sticky/fixed. The whole point of the scroll model below is that
+          nothing here needs viewport-relative positioning to stay in place;
+          it stays in place because it is a fixed-size flex track that never
+          scrolls, and <main> is the only element that does.
 
           Collapse (`collapsed`, personal/localStorage) only ever changes the
           WIDTH. `sidebarMode` (store-wide, `ui.sidebarMode`) only ever
-          changes the surrounding chrome (flush edge vs. detached card). The
-          `lg:sticky` + bounded height that pins it to the viewport apply to
-          BOTH branches unconditionally — that is the one thing neither
-          setting is allowed to touch. */}
+          changes the surrounding chrome (flush edge vs. detached card, via
+          margin — `h-full` plus the flex row's default `align-items: stretch`
+          already fills the remaining height around that margin, so no
+          explicit height calc is needed the way viewport-relative `top`
+          positioning used to require). */}
       <aside
         className={cn(
-          'bg-card hidden shrink-0 flex-col p-2 lg:sticky lg:flex',
+          'bg-card hidden h-full shrink-0 flex-col p-2 lg:flex',
           'transition-[width] duration-200 ease-in-out motion-reduce:transition-none',
           collapsed ? 'w-16' : 'w-64',
           sidebarMode === 'floating'
-            ? 'mx-3 my-3 rounded-xl border shadow-lg lg:top-3 lg:h-[calc(100dvh-1.5rem)]'
-            : 'border-e lg:top-0 lg:h-dvh',
+            ? 'm-3 rounded-xl border shadow-lg'
+            : 'border-e',
         )}
       >
         {renderSidebarContent(collapsed, true)}
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* The top bar tracks `sidebarMode` so the two halves of the shell
-            agree: in `floating` mode it detaches into its own card (margin,
-            radius, shadow, a full border) that floats `top-3` to match the
-            sidebar's gap, instead of the flush, full-bleed `border-b` bar that
-            `sticky` mode uses. Shipping a floating sidebar beside a full-bleed
-            top bar was the exact mismatch this is closing. */}
+      {/* The scrolling content column. `overflow-hidden` here (not just on
+          <main>) is deliberate: it is what stops a wide child from ever
+          reintroducing a document-level horizontal scrollbar that would undo
+          the point of containing scroll to one element. */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* No `sticky`/`fixed`, no `z-30` — a flex column with `shrink-0`
+            children holds its position structurally; there is nothing
+            beneath it to scroll past or stack above anymore. Solid `bg-card`
+            (not `bg-card/80` + `backdrop-blur`) because that translucency
+            existed for content sliding underneath a viewport-pinned bar —
+            with <main> as the only scroller, nothing ever slides under this
+            header, so a semi-transparent bar was vestigial, not a look. */}
         <header
           className={cn(
-            'bg-card/80 sticky z-30 flex h-14 items-center gap-2 px-4 backdrop-blur',
+            'bg-card flex h-14 shrink-0 items-center gap-2 px-4',
             sidebarMode === 'floating'
-              ? 'mx-3 mt-3 rounded-xl border shadow-lg top-3 lg:me-3 lg:ms-0'
-              : 'border-b top-0',
+              ? 'mx-3 mt-3 rounded-xl border shadow-lg'
+              : 'border-b',
           )}
         >
           <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
@@ -195,6 +203,12 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
               {renderSidebarContent(false, false)}
             </SheetContent>
           </Sheet>
+
+          {/* Inline-start region. Page title (Phase 2) will join this slot —
+              deliberately not invented here, since no page currently hands
+              the shell a title to render; each page still renders its own
+              <h1> inside <main>. */}
+          <GlobalSearch role={effectiveRole} />
 
           {/* ms-auto, not ml-auto — pushes controls to the reading-end edge in
               both directions. */}
@@ -232,26 +246,39 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
           </div>
         </header>
 
+        {/* Every banner below is `shrink-0`: real content between the
+            structural header and the one scrolling element, not part of
+            what scrolls or what may be compressed to make room for it. */}
         {isPreviewing && previewedRole ? (
-          <ViewAsBanner role={previewedRole} onExit={() => setPreviewedRole(null)} />
+          <div className="shrink-0">
+            <ViewAsBanner role={previewedRole} onExit={() => setPreviewedRole(null)} />
+          </div>
         ) : null}
 
         {/* DEVELOPER only — an operational surface, not a business area, so it
             is gated on the role directly rather than an `area`. See
             diagnostics.route.ts for why. */}
-        {user.role === 'DEVELOPER' ? <DiagnosticsBar /> : null}
+        {user.role === 'DEVELOPER' ? (
+          <div className="shrink-0">
+            <DiagnosticsBar />
+          </div>
+        ) : null}
 
         {isReadOnlyRole(user.role) ? (
           /* Persistent, not a toast. A demo user needs to understand why saves
              don't stick at the moment they try, not have seen a banner once on
              login. The API blocks the write regardless. */
-          <div className="bg-warning/15 text-warning border-warning/30 border-b px-4 py-2 text-sm">
+          <div className="bg-warning/15 text-warning border-warning/30 shrink-0 border-b px-4 py-2 text-sm">
             <strong className="font-medium">{tStates('readOnlyDemo.title')}</strong>{' '}
             {tStates('readOnlyDemo.description')}
           </div>
         ) : null}
 
-        <main className="min-w-0 flex-1 p-4 lg:p-6">
+        {/* THE only scrolling element in the shell. Sidebar and header are
+            fixed-size flex tracks now, not viewport-pinned overlays, so a
+            long page scrolls in here alone — no document-level scrollbar,
+            no competing scroll containers. */}
+        <main className="min-w-0 flex-1 overflow-y-auto p-4 lg:p-6">
           {blockedByPreview && previewedRole ? (
             <ViewAsBlocked role={previewedRole} />
           ) : (
