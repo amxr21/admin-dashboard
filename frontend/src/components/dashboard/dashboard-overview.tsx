@@ -8,7 +8,6 @@ import { FulfillmentHealthWidget } from '@/components/dashboard/fulfillment-heal
 import { OrderValueWidget } from '@/components/dashboard/order-value-widget';
 import { RecentActivityWidget } from '@/components/dashboard/recent-activity-widget';
 import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-chart';
-import { RevenueHero } from '@/components/dashboard/revenue-hero';
 import { ReturnsSummaryWidget } from '@/components/dashboard/returns-summary-widget';
 import { StatTile } from '@/components/dashboard/stat-tile';
 import { StatusBreakdownWidget } from '@/components/dashboard/status-breakdown-widget';
@@ -52,12 +51,17 @@ type Comparison = 'previous' | 'sameLastYear' | 'none';
 
 /**
  * The dashboard, on REAL data — now with a user-controlled range instead of a
- * fixed 30-day window, real period-over-period comparisons (the `StatTile`/
- * `RevenueHero` delta feature already existed and simply went unused), and
- * four widgets that were previously either missing entirely (recent activity,
- * quick actions) or real backend capabilities with no dashboard surface
+ * fixed 30-day window, real period-over-period comparisons, and four widgets
+ * that were previously either missing entirely (recent activity, quick
+ * actions) or real backend capabilities with no dashboard surface
  * (fulfillment health, returns summary, order-value distribution — see
  * `reports.service.ts`).
+ *
+ * ─── REVENUE IS A KPI TILE, NOT A SOLO HERO CARD ──────────────────────
+ * It used to get its own oversized card next to a width-starved chart
+ * (`RevenueHero`, now deleted). Checklist Phase 3 folds it into the same
+ * four-tile strip as Orders/Cancelled/Low stock — one tile anatomy, one grid,
+ * the chart gets the full-width row it was being denied.
  *
  * ─── EVERY NEW NUMBER HERE IS A LIVE QUERY, NEVER FABRICATED ─────────
  * Same discipline as the original overview replacing a sine wave: nothing on
@@ -231,95 +235,125 @@ export function DashboardOverview() {
         </p>
       ) : null}
 
-      <Reveal>
-        <div className="grid gap-4 lg:grid-cols-3">
-          <RevenueHero
-            value={overview ? Number(overview.revenue) : 0}
-            deltaPercent={revenueDelta}
-            comparisonLabel={comparisonLabel}
-            isLoading={isLoading || !overview}
-          />
-          <div className="lg:col-span-2">
-            <RevenueChart data={points} isLoading={isLoading} error={error} />
-          </div>
-        </div>
-      </Reveal>
-
-      <Reveal>
-        <section className="grid gap-4 sm:grid-cols-3" aria-label={t('title')}>
+      {/*
+       * ONE 12-column grid for the rest of the page (checklist Phase 3) —
+       * every section below is a direct child of THIS grid, spanning a
+       * whole number of its columns, rather than each section inventing its
+       * own separate grid. `items-stretch` (the CSS Grid default, stated
+       * explicitly) plus every KPI tile sharing one anatomy is what keeps
+       * the strip's row height even instead of ragged.
+       *
+       * `col-span-12` never changes per breakpoint — it means "full width"
+       * at any column count. Tiles go 12 → 6 → 3 (1-up → 2-up → 4-up) as the
+       * breakpoint grows; widget pairs go 12 → 6 (1-up → 2-up) and stay
+       * there. Driven entirely by Tailwind's breakpoint scale, no inline
+       * pixel widths.
+       */}
+      <div className="grid grid-cols-12 items-stretch gap-4">
+        {/* `contents`: a semantic landmark for the KPI strip that does NOT
+            generate its own box — its children become direct items of the
+            outer 12-col grid instead of a second, nested one. Keeps this
+            page at truly ONE grid, not "one grid plus a nested grid that
+            happens to share its column count." */}
+        <section className="contents" aria-label={t('title')}>
           {isLoading || !overview ? (
-            Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-28 w-full" />)
+            Array.from({ length: 4 }, (_, index) => (
+              <Skeleton key={index} className="col-span-12 h-28 w-full sm:col-span-6 lg:col-span-3" />
+            ))
           ) : (
             <>
-              <StatTile
-                labelKey="totalOrders"
-                value={overview.orders}
-                deltaPercent={ordersDelta}
-                comparisonLabel={comparisonLabel}
-                icon="orders"
-                href="/admin/orders"
-              />
-              <StatTile
-                labelKey="canceledOrders"
-                value={overview.canceledOrders}
-                deltaPercent={canceledDelta}
-                comparisonLabel={comparisonLabel}
-                icon="pending"
-                // A rise in cancellations is BAD — without this the tile would
-                // paint a spike in them green.
-                invertDelta
-                href="/admin/orders?status=CANCELED"
-              />
-              {/* No deltaPercent here on purpose: low-stock is a live snapshot
-                  (`stock <= threshold` right now), not scoped to the selected
-                  date range on the backend — a period-over-period comparison
-                  would just repeat the same number and imply a trend that
-                  isn't real. */}
-              <StatTile
-                labelKey="lowStockProducts"
-                value={overview.lowStockProducts}
-                icon="inventory"
-                invertDelta
-                href="/admin/inventory?lowStock=true"
-              />
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-3">
+                <StatTile
+                  labelKey="totalRevenue"
+                  value={Number(overview.revenue)}
+                  format="currency"
+                  deltaPercent={revenueDelta}
+                  comparisonLabel={comparisonLabel}
+                  icon="revenue"
+                />
+              </Reveal>
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-3" delay={0.03}>
+                <StatTile
+                  labelKey="totalOrders"
+                  value={overview.orders}
+                  deltaPercent={ordersDelta}
+                  comparisonLabel={comparisonLabel}
+                  icon="orders"
+                  href="/admin/orders"
+                />
+              </Reveal>
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-3" delay={0.06}>
+                <StatTile
+                  labelKey="canceledOrders"
+                  value={overview.canceledOrders}
+                  deltaPercent={canceledDelta}
+                  comparisonLabel={comparisonLabel}
+                  icon="pending"
+                  // A rise in cancellations is BAD — without this the tile would
+                  // paint a spike in them green.
+                  invertDelta
+                  href="/admin/orders?status=CANCELED"
+                />
+              </Reveal>
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-3" delay={0.09}>
+                {/* No deltaPercent here on purpose: low-stock is a live
+                    snapshot (`stock <= threshold` right now), not scoped to
+                    the selected date range on the backend — a period-over-
+                    period comparison would just repeat the same number and
+                    imply a trend that isn't real. The delta SLOT still
+                    renders (noDeltaReason), consistent with the other three
+                    tiles. */}
+                <StatTile
+                  labelKey="lowStockProducts"
+                  value={overview.lowStockProducts}
+                  icon="inventory"
+                  invertDelta
+                  noDeltaReason={t('liveSnapshot')}
+                  href="/admin/inventory?lowStock=true"
+                />
+              </Reveal>
             </>
           )}
         </section>
-      </Reveal>
 
-      <Reveal>
-        <div className="grid gap-4 lg:grid-cols-2">
+        <Reveal className="col-span-12">
+          <RevenueChart data={points} isLoading={isLoading} error={error} />
+        </Reveal>
+
+        <Reveal className="col-span-12 sm:col-span-6">
           <FulfillmentHealthWidget data={fulfillment} isLoading={isLoading} />
+        </Reveal>
+        <Reveal className="col-span-12 sm:col-span-6" delay={0.03}>
           <ReturnsSummaryWidget data={returns} isLoading={isLoading} />
-        </div>
-      </Reveal>
+        </Reveal>
 
-      <Reveal>
-        <div className="grid gap-4 lg:grid-cols-2">
+        <Reveal className="col-span-12 sm:col-span-6">
           <TopProductsWidget data={topProducts} isLoading={isLoading} />
+        </Reveal>
+        <Reveal className="col-span-12 sm:col-span-6" delay={0.03}>
           <StatusBreakdownWidget data={statusBreakdown} isLoading={isLoading} />
-        </div>
-      </Reveal>
+        </Reveal>
 
-      <Reveal>
-        <div className="grid gap-4 lg:grid-cols-2">
+        <Reveal className="col-span-12 sm:col-span-6">
           <OrderValueWidget data={orderValue} isLoading={isLoading} />
+        </Reveal>
+        <Reveal className="col-span-12 sm:col-span-6" delay={0.03}>
           <RecentActivityWidget entries={recentActivity} isLoading={isLoading} />
-        </div>
-      </Reveal>
+        </Reveal>
 
-      <Reveal>
-        <div className="flex justify-end">
-          <Link
-            href="/admin/reports"
-            className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
-          >
-            {t('viewReports')}
-            <ArrowRight className="size-3.5 rtl:hidden" aria-hidden />
-            <ArrowLeft className="hidden size-3.5 rtl:block" aria-hidden />
-          </Link>
-        </div>
-      </Reveal>
+        <Reveal className="col-span-12">
+          <div className="flex justify-end">
+            <Link
+              href="/admin/reports"
+              className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
+            >
+              {t('viewReports')}
+              <ArrowRight className="size-3.5 rtl:hidden" aria-hidden />
+              <ArrowLeft className="hidden size-3.5 rtl:block" aria-hidden />
+            </Link>
+          </div>
+        </Reveal>
+      </div>
     </div>
   );
 }

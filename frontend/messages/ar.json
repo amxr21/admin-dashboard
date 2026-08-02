@@ -170,6 +170,8 @@
     "revenueOverTime": "الإيرادات عبر الزمن",
     "vsPreviousPeriod": "مقارنة بالفترة السابقة",
     "vsSameLastYear": "مقارنة بنفس الفترة من العام الماضي",
+    "noComparison": "لا تتوفر مقارنة",
+    "liveSnapshot": "لقطة حالية، غير مرتبطة بالفترة المحددة",
     "totalRevenue": "إجمالي الإيرادات",
     "totalOrders": "الطلبات",
     "totalCustomers": "العملاء",
