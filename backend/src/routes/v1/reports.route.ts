@@ -6,7 +6,10 @@ import { authenticate } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import { toCsv, type CsvColumn } from '../../lib/csv.js';
 import {
+  getFulfillmentHealth,
+  getOrderValueDistribution,
   getOverview,
+  getReturnsSummary,
   getRevenueSeries,
   getStatusBreakdown,
   getTopProducts,
@@ -119,6 +122,60 @@ reportsRouter.get('/reports/top-products', ...guard, async (req, res) => {
   }
 
   res.json({ data: top });
+});
+
+reportsRouter.get('/reports/fulfillment-health', ...guard, async (req, res) => {
+  const parsed = rangeQuery.safeParse(req.query);
+  if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
+
+  const health = await getFulfillmentHealth(parsed.data);
+
+  if (parsed.data.format === 'csv') {
+    sendCsv(res, 'fulfillment-health.csv', health.needsAttention, [
+      { header: 'Order', value: (r) => r.orderNumber },
+      { header: 'Status', value: (r) => r.status },
+      { header: 'Hours in status', value: (r) => r.hoursInStatus },
+    ]);
+    return;
+  }
+
+  res.json({ data: health });
+});
+
+reportsRouter.get('/reports/returns-summary', ...guard, async (req, res) => {
+  const parsed = rangeQuery.safeParse(req.query);
+  if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
+
+  const summary = await getReturnsSummary(parsed.data);
+
+  if (parsed.data.format === 'csv') {
+    sendCsv(res, 'returns-summary.csv', summary.topReturnedProducts, [
+      { header: 'Product ID', value: (r) => r.productId ?? '' },
+      { header: 'Name', value: (r) => r.name ?? '(deleted product)' },
+      { header: 'Units returned', value: (r) => r.unitsReturned },
+      { header: 'Returns', value: (r) => r.returnCount },
+    ]);
+    return;
+  }
+
+  res.json({ data: summary });
+});
+
+reportsRouter.get('/reports/order-value-distribution', ...guard, async (req, res) => {
+  const parsed = rangeQuery.safeParse(req.query);
+  if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
+
+  const distribution = await getOrderValueDistribution(parsed.data);
+
+  if (parsed.data.format === 'csv') {
+    sendCsv(res, 'order-value-distribution.csv', distribution.buckets, [
+      { header: 'Range', value: (r) => r.label },
+      { header: 'Orders', value: (r) => r.count },
+    ]);
+    return;
+  }
+
+  res.json({ data: distribution });
 });
 
 reportsRouter.get('/reports/status-breakdown', ...guard, async (req, res) => {
