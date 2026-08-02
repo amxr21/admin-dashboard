@@ -3,6 +3,8 @@
 import { useFormatter, useTranslations } from 'next-intl';
 import {
   Boxes,
+  ChevronLeft,
+  ChevronRight,
   Package,
   ShoppingCart,
   TrendingDown,
@@ -11,6 +13,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
+import { Link } from '@/i18n/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -50,8 +53,11 @@ export type StatIcon = keyof typeof ICONS;
 export interface StatTileProps {
   labelKey: string;
   value: number;
-  /** Percentage change vs the previous period. Omit when unknown. */
+  /** Percentage change vs the comparison period. Omit when unknown. */
   deltaPercent?: number;
+  /** Names WHICH period the delta compares against — see the same prop on
+   *  `RevenueHero`; must track the dashboard's comparison selector. */
+  comparisonLabel?: string;
   /**
    * For metrics where a rise is BAD (refunds, cancellations). Without this the
    * tile would paint a spike in cancellations green.
@@ -61,16 +67,21 @@ export interface StatTileProps {
   /** Looked up in ICONS — a component cannot cross the RSC boundary. */
   icon?: StatIcon;
   isLoading?: boolean;
+  /** Makes the whole tile a drill-down link — a KPI with nowhere to go is a
+   *  dead end. Omit for tiles with no matching destination view. */
+  href?: string;
 }
 
 export function StatTile({
   labelKey,
   value,
   deltaPercent,
+  comparisonLabel,
   invertDelta = false,
   format = 'number',
   icon,
   isLoading = false,
+  href,
 }: StatTileProps) {
   const Icon = icon ? ICONS[icon] : null;
 
@@ -91,11 +102,23 @@ export function StatTile({
   // "Good" is not the same as "up". A rise in cancellations is bad.
   const isGood = hasDelta && (invertDelta ? deltaPercent < 0 : deltaPercent > 0);
 
-  return (
-    <div className="bg-card rounded-lg border p-4">
-      <div className="text-muted-foreground flex items-center gap-2 text-sm">
-        {Icon ? <Icon className="size-4" aria-hidden /> : null}
-        <span>{t(labelKey)}</span>
+  const body = (
+    <>
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-muted-foreground flex items-center gap-2 text-sm">
+          {Icon ? <Icon className="size-4" aria-hidden /> : null}
+          <span>{t(labelKey)}</span>
+        </div>
+        {/* The drill-down affordance itself — a bare card gives no hint it
+            leads anywhere. Points toward reading-end: two icons swapped by
+            `rtl:`, same pattern as the "View reports" link below on this
+            page, not a single icon rotated. */}
+        {href ? (
+          <>
+            <ChevronRight className="text-muted-foreground/60 size-4 shrink-0 rtl:hidden" aria-hidden />
+            <ChevronLeft className="text-muted-foreground/60 hidden size-4 shrink-0 rtl:block" aria-hidden />
+          </>
+        ) : null}
       </div>
 
       {/* tabular-nums so the digits don't reflow as values update — a jittering
@@ -127,9 +150,31 @@ export function StatTile({
               maximumFractionDigits: 1,
             })}
           </span>
-          <span className="text-muted-foreground">{t('vsPreviousPeriod')}</span>
+          <span className="text-muted-foreground">{comparisonLabel ?? t('vsPreviousPeriod')}</span>
         </p>
       ) : null}
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        // The accessible name has to say where this goes, not just repeat
+        // the visible label — "Orders" the metric and "Orders" the
+        // destination are the same word here, but a screen reader user
+        // shouldn't have to guess that a KPI tile is also a link at all.
+        aria-label={t('viewDetails', { label: t(labelKey) })}
+        className={cn(
+          'bg-card block rounded-lg border p-4 transition-colors',
+          'hover:border-primary/40 hover:bg-primary/5',
+          'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+        )}
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  return <div className="bg-card rounded-lg border p-4">{body}</div>;
 }

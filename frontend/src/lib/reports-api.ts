@@ -177,3 +177,64 @@ export function deltaPercent(current: number, previous: number): number | undefi
   if (previous === 0) return undefined;
   return ((current - previous) / previous) * 100;
 }
+
+/**
+ * The same calendar window one year earlier — for a "same period last year"
+ * comparison, as opposed to `previousPeriod`'s immediately-preceding window.
+ * Plain year subtraction on both ends (not day-count arithmetic): a
+ * year-over-year comparison means "the same dates," not "the same number of
+ * days before." `Date`'s own normalisation handles Feb 29 by rolling to
+ * Mar 1 in a non-leap target year, which is the conventional behaviour.
+ */
+export function samePeriodLastYear(range: DateRange): DateRange {
+  const [fromY, fromM, fromD] = range.from.split('-').map(Number);
+  const [toY, toM, toD] = range.to.split('-').map(Number);
+
+  return {
+    from: toIsoDate(new Date(fromY! - 1, fromM! - 1, fromD)),
+    to: toIsoDate(new Date(toY! - 1, toM! - 1, toD)),
+  };
+}
+
+export type RangePreset = 'today' | '7d' | '30d' | 'mtd' | 'qtd' | 'custom';
+
+/** Computes the concrete range for every preset except `custom`, which has
+ *  no fixed range — the caller keeps whatever the user picked. */
+export function rangeForPreset(preset: Exclude<RangePreset, 'custom'>): DateRange {
+  const today = new Date();
+  const to = toIsoDate(today);
+
+  switch (preset) {
+    case 'today':
+      return { from: to, to };
+    case '7d': {
+      const from = new Date(today);
+      from.setDate(from.getDate() - 6);
+      return { from: toIsoDate(from), to };
+    }
+    case '30d': {
+      const from = new Date(today);
+      from.setDate(from.getDate() - 29);
+      return { from: toIsoDate(from), to };
+    }
+    case 'mtd':
+      return { from: toIsoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to };
+    case 'qtd': {
+      const quarterStartMonth = Math.floor(today.getMonth() / 3) * 3;
+      return { from: toIsoDate(new Date(today.getFullYear(), quarterStartMonth, 1)), to };
+    }
+  }
+}
+
+/** Reverse lookup: does this exact range match one of the fixed presets?
+ *  Drives which preset shows as selected — a custom range that happens not
+ *  to match any preset falls through to `null`, which the field reads as
+ *  "Custom" (whatever the user actually picked, never forced into a
+ *  best-guess preset label). */
+export function presetForRange(range: DateRange): Exclude<RangePreset, 'custom'> | null {
+  const presets: Exclude<RangePreset, 'custom'>[] = ['today', '7d', '30d', 'mtd', 'qtd'];
+  return presets.find((preset) => {
+    const computed = rangeForPreset(preset);
+    return computed.from === range.from && computed.to === range.to;
+  }) ?? null;
+}

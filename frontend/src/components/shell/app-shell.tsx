@@ -8,6 +8,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { DiagnosticsBar } from '@/components/shell/diagnostics-bar';
 import { GlobalSearch } from '@/components/shell/global-search';
 import { NotificationsBell } from '@/components/shell/notifications-bell';
+import { usePageTitle } from '@/components/shell/page-title';
 import { SidebarNav } from '@/components/shell/sidebar-nav';
 import { UserMenu } from '@/components/shell/user-menu';
 import { ViewAsSwitcher } from '@/components/shell/view-as-switcher';
@@ -61,6 +62,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   const pathname = usePathname();
   const { resources } = useResourceSchema();
   const { logoUrl, sidebarMode } = useAppSettings();
+  const pageTitle = usePageTitle();
   // Collapse/expand is a personal per-browser preference, separate from
   // `sidebarMode` (store-wide sticky-vs-floating) above — see the hook.
   const { collapsed, toggle: toggleCollapsed } = useSidebarCollapse();
@@ -204,10 +206,16 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
             </SheetContent>
           </Sheet>
 
-          {/* Inline-start region. Page title (Phase 2) will join this slot —
-              deliberately not invented here, since no page currently hands
-              the shell a title to render; each page still renders its own
-              <h1> inside <main>. */}
+          {/* Inline-start region: the current page's title (opt-in via
+              `<PageTitle>`, see that file for why it's opt-in rather than
+              route-derived), then search. `truncate` + `min-w-0` so a long
+              title can't push search and the reading-end controls off the
+              header on a narrow viewport. */}
+          {pageTitle ? (
+            <h1 className="min-w-0 truncate text-base font-semibold tracking-tight">
+              {pageTitle}
+            </h1>
+          ) : null}
           <GlobalSearch role={effectiveRole} />
 
           {/* ms-auto, not ml-auto — pushes controls to the reading-end edge in

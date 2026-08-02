@@ -1,5 +1,6 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
+import { PageTitle } from '@/components/shell/page-title';
 import { PersonalSettingsPanel } from '@/components/settings/personal-settings-panel';
 import { SettingsForm } from '@/components/settings/settings-form';
 
@@ -10,8 +11,13 @@ import { SettingsForm } from '@/components/settings/settings-form';
  * old category rail that hid every section but the one clicked, which read as a
  * mini-app bolted onto the dashboard rather than a settings page.
  *
- * This stays a Server Component for the static title; the two interactive
- * pieces (`PersonalSettingsPanel`, `SettingsForm`) are client components it
+ * Page title + subtitle moved to the top bar / removed (Phase 2, same
+ * treatment as the dashboard) — the per-SECTION headers below (Brand,
+ * Appearance, ...) stay: those aren't the page title, and nothing yet names
+ * the sections the way a Phase 6 tabbed sub-nav eventually will.
+ *
+ * This stays a Server Component; the two interactive pieces
+ * (`PersonalSettingsPanel`, `SettingsForm`) are client components it
  * composes, so no `'use client'` reaches this file.
  */
 export default async function SettingsPage({
@@ -26,10 +32,7 @@ export default async function SettingsPage({
 
   return (
     <div className="space-y-10">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{t('title')}</h1>
-        <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
-      </div>
+      <PageTitle title={t('title')} />
 
       {/* Personal preferences first — instant, nothing to save — then the
           server-backed store settings with their single shared save bar,

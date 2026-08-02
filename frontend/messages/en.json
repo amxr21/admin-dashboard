@@ -169,6 +169,7 @@
     "revenue": "Revenue",
     "revenueOverTime": "Revenue over time",
     "vsPreviousPeriod": "vs previous period",
+    "vsSameLastYear": "vs same period last year",
     "totalRevenue": "Total revenue",
     "totalOrders": "Orders",
     "totalCustomers": "Customers",
@@ -178,8 +179,15 @@
     "lowStockProducts": "Low stock",
     "viewReports": "View reports",
     "resetRange": "Reset",
-    "lastUpdated": "Updated {time}",
+    "lastUpdated": "Updated {date} {time}",
     "refresh": "Refresh",
+    "viewDetails": "View {label} details",
+    "comparison": {
+      "label": "Compare to",
+      "previousPeriod": "Previous period",
+      "sameLastYear": "Same period last year",
+      "none": "None"
+    },
     "fulfillment": {
       "title": "Fulfillment health",
       "avgTimeIn": "Avg. time in {status}",
@@ -780,6 +788,15 @@
       "month": "Month"
     },
     "reset": "Last 30 days",
+    "presets": {
+      "today": "Today",
+      "last7Days": "Last 7 days",
+      "last30Days": "Last 30 days",
+      "monthToDate": "Month to date",
+      "quarterToDate": "Quarter to date",
+      "custom": "Custom",
+      "apply": "Apply"
+    },
     "summary": "Summary",
     "tiles": {
       "revenue": "Revenue",

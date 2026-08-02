@@ -18,13 +18,23 @@ import { cn } from '@/lib/utils';
 
 interface RevenueHeroProps {
   value: number;
-  /** Percentage change vs the previous period. Omit when unknown (e.g. the
-   *  previous period had zero revenue — a percentage of zero is undefined). */
+  /** Percentage change vs the comparison period. Omit when unknown (e.g. the
+   *  comparison period had zero revenue — a percentage of zero is undefined —
+   *  or the comparison selector is set to "None"). */
   deltaPercent?: number;
+  /** Names WHICH period the delta compares against — driven by the
+   *  dashboard's comparison selector, so this must never hardcode "previous
+   *  period" while showing a year-over-year number. */
+  comparisonLabel?: string;
   isLoading?: boolean;
 }
 
-export function RevenueHero({ value, deltaPercent, isLoading = false }: RevenueHeroProps) {
+export function RevenueHero({
+  value,
+  deltaPercent,
+  comparisonLabel,
+  isLoading = false,
+}: RevenueHeroProps) {
   const t = useTranslations('dashboard');
   const formatter = useFormatter();
 
@@ -90,7 +100,7 @@ export function RevenueHero({ value, deltaPercent, isLoading = false }: RevenueH
               maximumFractionDigits: 1,
             })}
           </span>
-          <span className="text-muted-foreground">{t('vsPreviousPeriod')}</span>
+          <span className="text-muted-foreground">{comparisonLabel ?? t('vsPreviousPeriod')}</span>
         </p>
       ) : null}
     </div>

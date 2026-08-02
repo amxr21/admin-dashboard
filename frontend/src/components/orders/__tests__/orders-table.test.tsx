@@ -23,6 +23,13 @@ vi.mock('@/i18n/navigation', () => ({
     createElement('a', { href, ...props }, children as ReactNode),
 }));
 
+// The dashboard's Cancelled KPI tile deep-links here via `?status=`, read
+// with `useSearchParams` — no query string in these tests, same as visiting
+// the page directly.
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 const fetchOrders = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/orders-api', async (importOriginal) => {

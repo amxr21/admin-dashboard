@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { createElement, type ReactNode } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { render, screen } from '@/test/render';
 import { StatTile } from '../stat-tile';
@@ -8,6 +9,13 @@ import { StatTile } from '../stat-tile';
  * go up?). Conflating them paints a spike in cancellations green, which is
  * worse than showing no delta at all.
  */
+
+// next-intl's navigation module resolves `next/navigation` in a way Vitest
+// cannot follow. Same stub every other component test using `Link` uses.
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ href, children, ...props }: Record<string, unknown>) =>
+    createElement('a', { href, ...props }, children as ReactNode),
+}));
 
 describe('value rendering', () => {
   it('formats a plain number with locale grouping', () => {
@@ -122,6 +130,29 @@ describe('icon lookup', () => {
   it('renders without an icon when none is named', () => {
     const { container } = render(<StatTile labelKey="totalOrders" value={10} />);
     expect(container.querySelector('svg')).toBeNull();
+  });
+});
+
+describe('drill-down link', () => {
+  it('renders as a plain, non-interactive tile when no href is given', () => {
+    const { container } = render(<StatTile labelKey="lowStockProducts" value={3} />);
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(container.querySelector('div.bg-card')).toBeInTheDocument();
+  });
+
+  it('becomes a keyboard-focusable link when href is given', () => {
+    render(<StatTile labelKey="lowStockProducts" value={3} href="/admin/inventory?lowStock=true" />);
+    const link = screen.getByRole('link');
+    expect(link).toHaveAttribute('href', '/admin/inventory?lowStock=true');
+  });
+
+  it('names the destination in the accessible name, not just the metric label', () => {
+    render(<StatTile labelKey="lowStockProducts" value={3} href="/admin/inventory?lowStock=true" />);
+    // "View {label} details" — must differ from the bare visible label so a
+    // screen reader user knows this tile goes somewhere.
+    expect(screen.getByRole('link', { name: /low stock/i })).toHaveAccessibleName(
+      /view.*low stock/i,
+    );
   });
 });
 
