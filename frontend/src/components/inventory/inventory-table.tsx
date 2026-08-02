@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
+import { useSearchParams } from 'next/navigation';
 import { History, Search, SlidersHorizontal } from 'lucide-react';
 
 import { DataTable, type Column } from '@/components/data-table';
@@ -34,12 +35,16 @@ export function InventoryTable() {
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
   const { tablePageSize } = useAppSettings();
+  const searchParams = useSearchParams();
 
   const [result, setResult] = useState<InventoryListResult | null>(null);
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [lowOnly, setLowOnly] = useState(false);
+  // Seeded from `?lowStock=true` — the dashboard's "View low stock" quick
+  // action deep-links here, same lazy-initializer pattern Audit uses for its
+  // own `?entity=`/`?entityId=` deep link.
+  const [lowOnly, setLowOnly] = useState(() => searchParams.get('lowStock') === 'true');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);

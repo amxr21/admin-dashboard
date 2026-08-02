@@ -27,11 +27,11 @@ export default async function DashboardPage({
   const t = await getTranslations('dashboard');
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
-        <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
-      </div>
+    <div className="space-y-5">
+      {/* Title only — the subtitle ("A snapshot of revenue…") described what a
+          dashboard is and cost a permanent row for it; removed so the first
+          data sits directly under one compact control band. */}
+      <h1 className="text-2xl font-semibold tracking-tight">{t('title')}</h1>
       <DashboardOverview />
     </div>
   );

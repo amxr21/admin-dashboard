@@ -6,7 +6,7 @@ import { Download } from 'lucide-react';
 
 import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-chart';
 import { ErrorSection } from '@/components/errors/error-section';
-import { DatePicker } from '@/components/ui/date-picker';
+import { DateRangeField } from '@/components/reports/date-range-field';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -162,25 +162,7 @@ export function ReportsView() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-3">
-        <div className="space-y-2">
-          <Label htmlFor="reports-from">{t('from')}</Label>
-          <DatePicker
-            id="reports-from"
-            value={range.from}
-            required
-            onChange={(value) => value && setRange((current) => ({ ...current, from: value }))}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="reports-to">{t('to')}</Label>
-          <DatePicker
-            id="reports-to"
-            value={range.to}
-            required
-            onChange={(value) => value && setRange((current) => ({ ...current, to: value }))}
-          />
-        </div>
+        <DateRangeField range={range} onChange={setRange} idPrefix="reports" />
 
         <div className="w-40 space-y-2">
           <Label htmlFor="reports-granularity">{t('granularity')}</Label>
