@@ -69,7 +69,11 @@ export function NotificationsBell() {
         {hasUnread ? (
           <span
             aria-hidden
-            className="bg-destructive text-destructive-foreground absolute -top-0.5 end-0 flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-4 font-medium tabular-nums"
+            // `top-0`, not a negative offset: the badge must stay inside the
+            // button's own box. A negative offset had it visually clipping
+            // at the viewport's top edge under the old sticky-positioned
+            // header — see the Phase 1 scroll-model rebuild.
+            className="bg-destructive text-destructive-foreground absolute top-0 end-0 flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-4 font-medium tabular-nums"
           >
             {unread > MAX_BADGE ? `${formatter.number(MAX_BADGE)}+` : formatter.number(unread)}
           </span>
