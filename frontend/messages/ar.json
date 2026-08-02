@@ -163,7 +163,7 @@
   },
   "dashboard": {
     "title": "لوحة التحكم",
-    "subtitle": "لمحة عن الإيرادات والطلبات والمخزون خلال آخر 30 يوماً.",
+    "subtitle": "لمحة عن الإيرادات والطلبات والمخزون للفترة المحددة.",
     "revenue": "الإيرادات",
     "revenueOverTime": "الإيرادات عبر الزمن",
     "vsPreviousPeriod": "مقارنة بالفترة السابقة",
@@ -174,7 +174,45 @@
     "recentOrders": "أحدث الطلبات",
     "canceledOrders": "ملغاة",
     "lowStockProducts": "مخزون منخفض",
-    "viewReports": "عرض التقارير"
+    "viewReports": "عرض التقارير",
+    "resetRange": "إعادة تعيين",
+    "lastUpdated": "آخر تحديث {time}",
+    "refresh": "تحديث",
+    "fulfillment": {
+      "title": "صحة التنفيذ",
+      "avgTimeIn": "متوسط الوقت في حالة {status}",
+      "noCompletedYet": "لا توجد طلبات مكتملة بعد",
+      "hours": "{count, plural, zero {صفر ساعات} one {ساعة واحدة} two {ساعتان} few {# ساعات} many {# ساعة} other {# ساعة}}",
+      "needsAttention": "{count, plural, zero {لا طلبات تحتاج انتباهاً} one {طلب واحد يحتاج انتباهاً} two {طلبان يحتاجان انتباهاً} few {# طلبات تحتاج انتباهاً} many {# طلباً يحتاج انتباهاً} other {# طلب يحتاج انتباهاً}}",
+      "hoursAgo": "{count, plural, zero {الآن} one {منذ ساعة} two {منذ ساعتين} few {منذ # ساعات} many {منذ # ساعة} other {منذ # ساعة}}",
+      "daysAgo": "{count, plural, zero {اليوم} one {منذ يوم} two {منذ يومين} few {منذ # أيام} many {منذ # يوماً} other {منذ # يوم}}",
+      "allClear": "لا يوجد طلب متأخر عن الحد المتفق عليه حالياً."
+    },
+    "returns": {
+      "title": "المرتجعات",
+      "viewAll": "عرض الكل",
+      "returnRate": "معدل الإرجاع",
+      "refundValue": "قيمة المبالغ المستردة",
+      "unitsReturned": "الوحدات المرتجعة",
+      "deletedProduct": "(منتج محذوف)",
+      "units": "{count, plural, zero {صفر وحدات} one {وحدة واحدة} two {وحدتان} few {# وحدات} many {# وحدة} other {# وحدة}}",
+      "none": "لا مرتجعات في هذه الفترة."
+    },
+    "orderValue": {
+      "title": "توزيع قيمة الطلبات"
+    },
+    "activity": {
+      "title": "النشاط الأخير",
+      "viewAll": "عرض الكل",
+      "system": "النظام"
+    },
+    "quickActions": {
+      "title": "إجراءات سريعة",
+      "addProduct": "إضافة منتج",
+      "lowStock": "عرض المخزون المنخفض",
+      "auditTrail": "سجل التدقيق",
+      "orderHistory": "سجل الطلبات"
+    }
   },
   "products": {
     "title": "المنتجات",

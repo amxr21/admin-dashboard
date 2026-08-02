@@ -25,6 +25,13 @@ vi.mock('@/lib/inventory-api', async (importOriginal) => {
   return { ...actual, fetchInventory, fetchMovements, adjustStock };
 });
 
+// The dashboard's "View low stock" quick action deep-links here via
+// `?lowStock=true`, read with `useSearchParams` — no query string in these
+// tests, same as visiting the page directly.
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 function makeRow(overrides: Partial<InventoryRow> = {}): InventoryRow {
   return {
     id: 'p1',
