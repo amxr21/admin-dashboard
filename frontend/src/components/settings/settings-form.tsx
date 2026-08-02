@@ -40,6 +40,7 @@ import {
  * someone adds a third currency.
  */
 const SEGMENTED_ENUM_KEYS = new Set([
+  'theme.fontFamily',
   'ui.density',
   'ui.cornerRadius',
   'ui.editPanelMode',

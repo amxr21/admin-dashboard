@@ -1,5 +1,14 @@
 import type { Metadata } from 'next';
-import { IBM_Plex_Sans_Arabic, Inter } from 'next/font/google';
+import {
+  Cairo,
+  IBM_Plex_Sans_Arabic,
+  Inter,
+  Manrope,
+  Noto_Sans_Arabic,
+  Roboto,
+  Tajawal,
+  Work_Sans,
+} from 'next/font/google';
 import { NextIntlClientProvider, hasLocale } from 'next-intl';
 import { setRequestLocale } from 'next-intl/server';
 import { notFound } from 'next/navigation';
@@ -24,33 +33,68 @@ import '../globals.css';
  * time: no runtime request to Google, no layout shift from a late webfont, no
  * third-party tracking.
  *
- * TWO families, one per script. Arabic MUST have a real Arabic face — a
- * Latin-only font falls back to whatever the OS provides, which varies wildly
- * and usually looks poor. Both are exposed as CSS variables and selected by
- * `[lang]` in globals.css, so no component ever names a typeface.
- */
-
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-latin',
-  display: 'swap',
-});
-
-/**
- * IBM Plex Sans Arabic is NOT a variable font — Google serves it as seven
- * static faces, so every weight used has to be named here or it silently
- * synthesises (a faux-bold smear, which looks worse in Arabic than in Latin
- * because the script's strokes already carry the weight contrast).
+ * FOUR Latin/Arabic PAIRS, one per script each. Arabic MUST have a real Arabic
+ * face — a Latin-only font falls back to whatever the OS provides, which
+ * varies wildly and usually looks poor. Every pair gets its OWN pair of CSS
+ * variables (`--font-latin-<key>` / `--font-arabic-<key>`); which pair is
+ * ACTUALLY used is decided by `theme.fontFamily` re-pointing the generic
+ * `--font-latin`/`--font-arabic` tokens via `[data-font-family]` in
+ * globals.css — the same "re-point the inner variable, never the theme
+ * token" rule `--primary`/`--radius` already follow (see apply-appearance.ts).
+ * Registering all four here costs nothing at runtime: the browser only
+ * fetches the @font-face files for whichever family is actually applied to
+ * rendered text, never the other three.
  *
- * All seven are registered. Inter needs no `weight` because next/font resolves
- * it to a variable font, which covers the whole range in one file.
+ * Static (non-variable) faces need every weight this app uses named
+ * explicitly, or the browser synthesises a faux-bold/faux-medium — see the
+ * 2026-07-27 error-log entry this comment used to warn about for the
+ * previously-single Arabic face. Roboto and Tajawal have no true 600 weight
+ * at all (a real gap in those families, not a registration mistake); `font-
+ * semibold` synthesises slightly for those two only, an accepted trade-off
+ * for offering them as an option.
  */
-const arabic = IBM_Plex_Sans_Arabic({
+
+const interLatin = Inter({ subsets: ['latin'], variable: '--font-latin-default', display: 'swap' });
+const ibmPlexArabic = IBM_Plex_Sans_Arabic({
   subsets: ['arabic'],
   weight: ['100', '200', '300', '400', '500', '600', '700'],
-  variable: '--font-arabic',
+  variable: '--font-arabic-default',
   display: 'swap',
 });
+
+const manropeLatin = Manrope({ subsets: ['latin'], variable: '--font-latin-modern', display: 'swap' });
+const cairoArabic = Cairo({ subsets: ['arabic'], variable: '--font-arabic-modern', display: 'swap' });
+
+const workSansLatin = Work_Sans({ subsets: ['latin'], variable: '--font-latin-neutral', display: 'swap' });
+const tajawalArabic = Tajawal({
+  subsets: ['arabic'],
+  weight: ['400', '500', '700'],
+  variable: '--font-arabic-neutral',
+  display: 'swap',
+});
+
+const robotoLatin = Roboto({
+  subsets: ['latin'],
+  weight: ['400', '500', '700'],
+  variable: '--font-latin-classic',
+  display: 'swap',
+});
+const notoSansArabic = Noto_Sans_Arabic({
+  subsets: ['arabic'],
+  variable: '--font-arabic-classic',
+  display: 'swap',
+});
+
+const FONT_VARIABLES = [
+  interLatin.variable,
+  ibmPlexArabic.variable,
+  manropeLatin.variable,
+  cairoArabic.variable,
+  workSansLatin.variable,
+  tajawalArabic.variable,
+  robotoLatin.variable,
+  notoSansArabic.variable,
+].join(' ');
 
 export const metadata: Metadata = {
   title: 'admin-dashboard',
@@ -85,7 +129,7 @@ export default async function LocaleLayout({
     <html
       lang={locale}
       dir={getDirection(locale)}
-      className={`${inter.variable} ${arabic.variable}`}
+      className={FONT_VARIABLES}
       // next-themes sets class/style on <html> before hydration, so server and
       // client markup legitimately differ on this one element.
       suppressHydrationWarning
