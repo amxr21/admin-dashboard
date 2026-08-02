@@ -1,9 +1,10 @@
 'use client';
 
 import { useFormatter, useTranslations } from 'next-intl';
-import { TrendingUp } from 'lucide-react';
+import { TrendingDown, TrendingUp } from 'lucide-react';
 
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 /**
  * The one hero figure on the page. Revenue outranks the other three stats —
@@ -17,10 +18,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 interface RevenueHeroProps {
   value: number;
+  /** Percentage change vs the previous period. Omit when unknown (e.g. the
+   *  previous period had zero revenue — a percentage of zero is undefined). */
+  deltaPercent?: number;
   isLoading?: boolean;
 }
 
-export function RevenueHero({ value, isLoading = false }: RevenueHeroProps) {
+export function RevenueHero({ value, deltaPercent, isLoading = false }: RevenueHeroProps) {
   const t = useTranslations('dashboard');
   const formatter = useFormatter();
 
@@ -67,6 +71,28 @@ export function RevenueHero({ value, isLoading = false }: RevenueHeroProps) {
       >
         {formatted}
       </p>
+
+      {deltaPercent !== undefined ? (
+        <p
+          className={cn(
+            'mt-1 flex items-center gap-1 text-xs tabular-nums',
+            deltaPercent >= 0 ? 'text-success' : 'text-destructive',
+          )}
+        >
+          {deltaPercent >= 0 ? (
+            <TrendingUp className="size-3.5" aria-hidden />
+          ) : (
+            <TrendingDown className="size-3.5" aria-hidden />
+          )}
+          <span>
+            {formatter.number(Math.abs(deltaPercent) / 100, {
+              style: 'percent',
+              maximumFractionDigits: 1,
+            })}
+          </span>
+          <span className="text-muted-foreground">{t('vsPreviousPeriod')}</span>
+        </p>
+      ) : null}
     </div>
   );
 }

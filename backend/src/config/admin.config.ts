@@ -104,6 +104,10 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       // is not what anyone scans a catalogue for.
       { name: 'description', label: 'Description', type: 'longtext', inList: false },
       { name: 'price', label: 'Price', type: 'money', currency: 'AED', required: true, sortable: true },
+      // Optional and deliberately not in the list view: most rows won't have
+      // it filled in yet, and margin reporting must treat a blank cost as
+      // "not tracked", never as free — see the schema comment on Product.cost.
+      { name: 'cost', label: 'Cost', type: 'money', currency: 'AED', inList: false },
       { name: 'stock', label: 'Stock', type: 'number', sortable: true },
       {
         name: 'categoryId',
