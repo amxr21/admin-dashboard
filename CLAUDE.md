@@ -60,7 +60,13 @@
   a real break in the line, never an interpolated zero; the still-accumulating current bucket
   (today/this week/this month) renders dashed with an "in progress" marker instead of implying a
   settled value; a comparison series (previous period / same period last year) overlays as a second
-  muted/dashed line with its own tooltip row and delta.
+  muted/dashed line with its own tooltip row and delta. **2026-08-03 (Phase 5, PR #85)**: fixed a
+  real internal contradiction in fulfillment health (avg-time respected the date range, the "needs
+  attention" queue didn't) and in returns (`returnCount` was scoped by the return's approval date
+  while its own denominator was scoped by the order's placed date); Order outcomes widget rebuilt
+  as a 3-column icon+count/label grid; seeded rows' `__demo__` tag no longer leaks into two
+  dashboard widgets (display-only strip, `frontend/src/lib/demo.ts`); delta polarity (which metrics
+  are "down is good") now centralized in `StatTile` instead of per-call-site props.
 
 ### Settings + Staff
 - **Status**: shipped, including all §N parity gaps (brand, theme accent, customization,
@@ -227,30 +233,36 @@ apart is an enumeration oracle.
 
 ## Current work
 - **Design Fix Checklist** (a phased dashboard/settings/shell redesign, run session-by-session):
-  Phase 0 (recon) approved. Phases 1-4 built, verified, PR'd:
+  Phase 0 (recon) approved. Phases 1-5 built, verified, PR'd:
   **#80** `fix(shell)`: Phase 1 — scroll-model rebuild, global search, solid topbar (MERGED) →
   **#82** `feat(dashboard)`: Phase 2 — title into top bar, date-range presets, comparison selector
   (MERGED) →
   **#83** `feat(dashboard)`: Phase 3 — one 12-col grid, Revenue folded into the KPI strip,
   full-width chart row (MERGED) →
   **#84** `feat(dashboard)`: Phase 4 — real time-scale revenue chart, honest gaps, period
-  comparison overlay (base `dev`, OPEN). Phases 5-7 remain (metric semantics/data-bug fixes,
-  full Settings rebuild, sidebar IA regrouping) — each has its own STOP-and-ask gate written into
-  the original checklist; the full text of Phases 5-7 isn't transcribed anywhere in this repo, only
-  in the conversation that pasted it — ask the user to re-paste before starting Phase 5.
-  (Older #65-68 from an earlier session are merged.)
-- **In progress**: none — Phase 4's scope is done, verified, and PR'd. The six-skill pass requested
+  comparison overlay (MERGED) →
+  **#85** `feat(dashboard)`: Phase 5 — metric semantics & data integrity fixes (base `dev`, OPEN).
+  Phases 6-7 remain (full Settings rebuild, sidebar IA regrouping) — each has its own STOP-and-ask
+  gate written into the original checklist; the full text of Phases 6-7 isn't transcribed anywhere
+  in this repo, only in the conversation that pasted it — ask the user to re-paste before starting
+  Phase 6. (Older #65-68 from an earlier session are merged.)
+- **In progress**: none — Phase 5's scope is done, verified, and PR'd. The six-skill pass requested
   on 2026-07-31 (`project-foundations`, `project-docs`, `project-error-log`, `project-ship`,
   `project-test-gen`, `ux-animation-reviewer`) is still outstanding.
-- **Next step**: Design Fix Checklist Phase 5 (metric semantics & data integrity — delta polarity,
-  `__demo__` prefixes leaking into the DOM, a returns-count contradiction, "Cancelled" vs
-  "Canceled" spelling) — needs the checklist text re-pasted first. Separately, rest of §U
-  (ROADMAP.md): a Tooltip primitive for "why disabled", the one remaining in-flight-state gap
-  (`staff-password-panel.tsx`), optimistic row updates, bulk-action progress.
+- **Next step**: Design Fix Checklist Phase 6 (Settings rebuild) — needs the checklist text
+  re-pasted first (its 6.41 stop gate needs the original numbered items to act on). Four standing
+  user notes from 2026-08-03 are earmarked for it: a field change must surface a dirty-state signal
+  before Save, not just after; some notification types need an icon, not colour alone; drawer/modal
+  (Sheet/AlertDialog) conversions are NOT a blanket rule, judge per-surface; some fields (e.g.
+  review content) must stay read-only for integrity even though the resource engine would otherwise
+  allow editing them (this last one is really Phase 8's recon to identify, Phase 6 just shouldn't
+  contradict it). Separately, rest of §U (ROADMAP.md): a Tooltip primitive for "why disabled", the
+  one remaining in-flight-state gap (`staff-password-panel.tsx`), optimistic row updates,
+  bulk-action progress, and the loading-overlay-blur / nav-transition-smoothness items noted below.
 - **Blockers**: none currently. Setup/Schema wizard remains blocked on an architecture decision
   (compiled-TS config vs. a DB-backed override layer) — not started, not in scope.
 - **Context to remember**:
-  - PR #84 (this session) is pushed and open; merging is the user's call per standing instruction.
+  - PR #85 (this session) is pushed and open; merging is the user's call per standing instruction.
   - `prisma migrate dev` raising a drop-database-looking alarm has now happened three times on
     this project. The safe recipe when it's a stale `_prisma_migrations` row rather than real
     drift: generate via `prisma migrate diff --from-schema-datamodel/--to-schema-datamodel` (pure
@@ -268,7 +280,20 @@ apart is an enumeration oracle.
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
-- **2026-08-03** — Design Fix Checklist Phase 4 (PR #84, open): the dashboard/reports revenue chart
+- **2026-08-03 (later)** — Design Fix Checklist Phase 5 (PR #85, open): five real data-integrity
+  bugs on the dashboard, found via a fresh Phase-0-style recon rather than assumed from an older
+  summary. `__demo__` seed-tag no longer leaks into the fulfillment "needs attention" queue or
+  recent-activity feed (display-only strip). Fulfillment health's attention queue now respects the
+  selected date range — it used to ignore it while the average-time half of the same widget didn't,
+  a real internal contradiction, not just a design preference. Returns' `returnCount` was mixing two
+  different date fields against its own denominator (the return's approval date vs. the order's
+  placed date), disagreeing with Order Outcomes' RETURNED count for the same window — re-scoped to
+  match. Delta polarity ("down is good" for cancellations/pending/low-stock) centralized into one
+  descriptor instead of relying on every `StatTile` call site to pass `invertDelta` correctly by
+  hand. "Cancelled" → "Canceled" to match the rest of the app (en + ar). Order outcomes widget
+  rebuilt as a 3-column icon+count/label grid — iterated once in-session from an initial vertical-
+  list version after the user sent a screenshot asking for a better use of the card's width.
+- **2026-08-03** — Design Fix Checklist Phase 4 (PR #84, merged): the dashboard/reports revenue chart
   moved from a categorical x-axis (equal spacing per data point regardless of real date gaps) to a
   real time-scale axis over a client-side gap-filled series (a missing date is a real gap, never a
   fabricated zero — consistent with the reports service's existing "never fabricate a value" rule).
