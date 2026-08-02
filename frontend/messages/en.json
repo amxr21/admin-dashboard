@@ -168,6 +168,10 @@
     "subtitle": "A snapshot of revenue, orders and stock for the selected period.",
     "revenue": "Revenue",
     "revenueOverTime": "Revenue over time",
+    "revenueChart": {
+      "inProgress": "In progress — period not yet complete",
+      "noData": "No revenue in this period"
+    },
     "vsPreviousPeriod": "vs previous period",
     "vsSameLastYear": "vs same period last year",
     "noComparison": "No comparison available",

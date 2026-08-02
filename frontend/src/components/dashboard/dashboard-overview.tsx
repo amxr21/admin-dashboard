@@ -36,6 +36,7 @@ import {
   fetchRevenue,
   fetchStatusBreakdown,
   fetchTopProducts,
+  fillRevenueGaps,
   previousPeriod,
   samePeriodLastYear,
   type DateRange,
@@ -80,6 +81,7 @@ export function DashboardOverview() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [previousOverview, setPreviousOverview] = useState<Overview | null>(null);
   const [points, setPoints] = useState<RevenuePoint[]>([]);
+  const [comparisonPoints, setComparisonPoints] = useState<RevenuePoint[] | null>(null);
   const [topProducts, setTopProducts] = useState<TopProducts | null>(null);
   const [statusBreakdown, setStatusBreakdown] = useState<StatusBreakdown | null>(null);
   const [fulfillment, setFulfillment] = useState<FulfillmentHealth | null>(null);
@@ -108,6 +110,7 @@ export function DashboardOverview() {
         loadedOverview,
         loadedPreviousOverview,
         series,
+        comparisonSeries,
         loadedTop,
         loadedBreakdown,
         loadedFulfillment,
@@ -118,6 +121,9 @@ export function DashboardOverview() {
         fetchOverview(range),
         comparisonRange ? fetchOverview(comparisonRange) : Promise.resolve(null),
         fetchRevenue(range, 'day'),
+        // Same "don't pay for a request nobody asked for" discipline as the
+        // KPI tiles' comparisonRange above — "None" fetches nothing.
+        comparisonRange ? fetchRevenue(comparisonRange, 'day') : Promise.resolve(null),
         fetchTopProducts(range, 5),
         fetchStatusBreakdown(range),
         fetchFulfillmentHealth(range),
@@ -128,11 +134,11 @@ export function DashboardOverview() {
 
       setOverview(loadedOverview);
       setPreviousOverview(loadedPreviousOverview);
-      setPoints(
-        series.points.map((point) => ({
-          date: point.date,
-          revenue: Number(point.revenue),
-        })),
+      setPoints(fillRevenueGaps(series.points, range, 'day'));
+      setComparisonPoints(
+        comparisonRange && comparisonSeries
+          ? fillRevenueGaps(comparisonSeries.points, comparisonRange, 'day')
+          : null,
       );
       setTopProducts(loadedTop);
       setStatusBreakdown(loadedBreakdown);
@@ -175,6 +181,12 @@ export function DashboardOverview() {
   // the trailing text on a delta line ("vs previous period"), a different
   // grammatical position that needs its own "vs "-prefixed copy.
   const comparisonLabel = comparison === 'sameLastYear' ? t('vsSameLastYear') : t('vsPreviousPeriod');
+
+  // A noun phrase ("Previous period"), not the "vs "-prefixed variant above —
+  // this labels a tooltip ROW ("Previous period: $120"), a different
+  // grammatical position than a trailing delta caption.
+  const comparisonSeriesLabel =
+    comparison === 'sameLastYear' ? t('comparison.sameLastYear') : t('comparison.previousPeriod');
 
   return (
     <div className="space-y-6">
@@ -317,7 +329,14 @@ export function DashboardOverview() {
         </section>
 
         <Reveal className="col-span-12">
-          <RevenueChart data={points} isLoading={isLoading} error={error} />
+          <RevenueChart
+            data={points}
+            granularity="day"
+            comparisonData={comparisonPoints}
+            comparisonLabel={comparisonSeriesLabel}
+            isLoading={isLoading}
+            error={error}
+          />
         </Reveal>
 
         <Reveal className="col-span-12 sm:col-span-6">

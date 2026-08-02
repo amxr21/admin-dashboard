@@ -1,6 +1,8 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useFormatter, useLocale, useTranslations } from 'next-intl';
+import { TrendingDown, TrendingUp } from 'lucide-react';
 import {
   CartesianGrid,
   Line,
@@ -12,7 +14,10 @@ import {
 } from 'recharts';
 
 import { Skeleton } from '@/components/ui/skeleton';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { getDocumentDirection } from '@/lib/direction';
+import { bucketEnd, type Granularity } from '@/lib/reports-api';
+import { cn } from '@/lib/utils';
 
 /**
  * Revenue over time.
@@ -27,27 +32,91 @@ import { getDocumentDirection } from '@/lib/direction';
  * of the two scales and means nothing. Two measures of different scale get two
  * charts.
  *
+ * ─── A REAL TIME SCALE, NOT A CATEGORICAL ONE ─────────────────────────
+ * `data` arrives GAP-FILLED (see `fillRevenueGaps` in reports-api.ts) — one
+ * entry per calendar bucket in the range, `revenue: null` where nothing sold.
+ * The x-axis plots each bucket's real timestamp (`type="number"`, numeric
+ * domain) rather than Recharts' default categorical axis, which gives every
+ * DATA POINT equal spacing regardless of the calendar gap between it and its
+ * neighbour. Combined with the dense gap-filled input, equal calendar spans
+ * now genuinely occupy equal pixel width.
+ *
+ * ─── A GAP IS A GAP, NEVER A ZERO ──────────────────────────────────────
+ * `revenue: null` renders as a break in the line (`connectNulls={false}`),
+ * matching this project's "never fabricate a value" rule — an interpolated
+ * zero would claim certainty ("nothing sold that day") the data doesn't have.
+ *
  * ─── COLOUR ──────────────────────────────────────────────────────────
- * One series, so `--chart-1` and no legend — the title names it. Colours come
- * from CSS custom properties, so light and dark each use their own VALIDATED
- * step rather than one hex flipped between themes.
+ * Colours come from CSS custom properties, so light and dark each use their
+ * own VALIDATED step rather than one hex flipped between themes.
  *
  * ─── RTL ─────────────────────────────────────────────────────────────
  * Recharts does not read `dir`. A time axis must stay left-to-right even in
  * Arabic (time is not a reading-direction concept), but the y-axis and tooltip
  * DO belong on the reading-start side, so `yAxisOrientation` is direction-aware.
+ *
+ * ─── KEYBOARD ────────────────────────────────────────────────────────
+ * Recharts' `accessibilityLayer` defaults to `true` on every Cartesian chart
+ * — Tab focuses the chart, arrow keys move point-to-point, each move fires
+ * the same tooltip a mouse hover would. Left as the default rather than a
+ * hand-rolled keydown handler.
  */
 
 export interface RevenuePoint {
-  /** ISO date. Formatted for display, never rendered raw. */
+  /** Bucket start date, ISO. */
   date: string;
-  revenue: number;
+  /** `null` is a real gap (nothing sold), never fabricated as zero. */
+  revenue: number | null;
 }
 
 interface RevenueChartProps {
+  /** Gap-filled, ascending by date — see `fillRevenueGaps`. */
   data: readonly RevenuePoint[];
+  granularity: Granularity;
+  /**
+   * A second series over the comparison period (previous period / same
+   * period last year), aligned POSITIONALLY to `data` — comparison[i] is
+   * plotted at data[i]'s x position, with its own real date kept only for
+   * the tooltip. That's what makes an overlay of two different absolute
+   * date ranges readable as one shape.
+   */
+  comparisonData?: readonly RevenuePoint[] | null;
+  /** Noun-phrase label for the comparison row in the tooltip, e.g. "Previous
+   *  period" — must track whichever comparison the caller has selected. */
+  comparisonLabel?: string;
   isLoading?: boolean;
   error?: string | null;
+}
+
+interface ChartDatum {
+  index: number;
+  timestamp: number;
+  date: string;
+  /** Value for a settled bucket; null if incomplete or genuinely empty. */
+  revenue: number | null;
+  /** Value repeated at the boundary + the trailing incomplete bucket(s), so
+   *  a second dashed Line can draw just the "still accumulating" segment. */
+  revenueTrailing: number | null;
+  isProvisional: boolean;
+  comparisonDate?: string;
+  comparisonRevenue?: number | null;
+}
+
+function toTimestamp(date: string): number {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(y!, m! - 1, d).getTime();
+}
+
+/** Evenly spaced tick indices — dense for a short range, thinned out for a
+ *  long one, rather than trusting Recharts' categorical auto-skip. */
+function computeTickIndices(count: number): number[] {
+  if (count === 0) return [];
+  if (count === 1) return [0];
+  const target = count <= 10 ? count : count <= 40 ? 8 : 10;
+  const step = (count - 1) / (target - 1);
+  const indices = new Set<number>();
+  for (let i = 0; i < target; i++) indices.add(Math.round(i * step));
+  return [...indices].sort((a, b) => a - b);
 }
 
 /**
@@ -58,43 +127,162 @@ interface RevenueChartProps {
  */
 interface ChartTooltipProps {
   active?: boolean;
-  payload?: readonly { value?: number }[];
-  label?: string | number;
+  payload?: readonly { payload?: ChartDatum }[];
+  comparisonLabel?: string;
 }
 
-function ChartTooltip({ active, payload, label }: ChartTooltipProps) {
+function ChartTooltip({ active, payload, comparisonLabel }: ChartTooltipProps) {
   const formatter = useFormatter();
   const t = useTranslations('dashboard');
 
-  if (!active || !payload?.length) return null;
+  const datum = payload?.[0]?.payload;
+  if (!active || !datum) return null;
 
-  const value = payload[0]?.value ?? 0;
+  const hasComparison = datum.comparisonRevenue !== undefined;
+  const delta =
+    hasComparison &&
+    datum.revenue !== null &&
+    datum.comparisonRevenue !== null &&
+    datum.comparisonRevenue !== undefined &&
+    datum.comparisonRevenue !== 0
+      ? ((datum.revenue - datum.comparisonRevenue) / datum.comparisonRevenue) * 100
+      : undefined;
 
   return (
-    <div className="bg-popover text-popover-foreground rounded-md border px-3 py-2 text-sm shadow-md">
+    <div className="bg-popover text-popover-foreground min-w-40 rounded-md border px-3 py-2 text-sm shadow-md">
       <p className="text-muted-foreground mb-1 text-xs">
-        {formatter.dateTime(new Date(String(label)), 'short')}
+        {formatter.dateTime(new Date(datum.date), 'short')}
+        {datum.isProvisional ? (
+          <span className="text-muted-foreground/80 ms-1.5">
+            · {t('revenueChart.inProgress')}
+          </span>
+        ) : null}
       </p>
       <p className="font-medium tabular-nums">
-        {t('revenue')}: {formatter.number(value, 'currency')}
+        {t('revenue')}:{' '}
+        {datum.revenue === null ? '—' : formatter.number(datum.revenue, 'currency')}
       </p>
+
+      {hasComparison ? (
+        <>
+          <p className="text-muted-foreground tabular-nums">
+            {comparisonLabel ?? t('comparison.previousPeriod')}
+            {datum.comparisonDate ? (
+              <span className="ms-1">
+                ({formatter.dateTime(new Date(datum.comparisonDate), 'short')})
+              </span>
+            ) : null}
+            :{' '}
+            {datum.comparisonRevenue === null || datum.comparisonRevenue === undefined
+              ? '—'
+              : formatter.number(datum.comparisonRevenue, 'currency')}
+          </p>
+          {delta !== undefined ? (
+            <p
+              className={cn(
+                'mt-0.5 flex items-center gap-1 text-xs tabular-nums',
+                delta >= 0 ? 'text-success' : 'text-destructive',
+              )}
+            >
+              {delta >= 0 ? (
+                <TrendingUp className="size-3" aria-hidden />
+              ) : (
+                <TrendingDown className="size-3" aria-hidden />
+              )}
+              {formatter.number(Math.abs(delta) / 100, {
+                style: 'percent',
+                maximumFractionDigits: 1,
+              })}
+            </p>
+          ) : null}
+        </>
+      ) : null}
     </div>
   );
 }
 
-export function RevenueChart({ data, isLoading = false, error = null }: RevenueChartProps) {
+export function RevenueChart({
+  data,
+  granularity,
+  comparisonData = null,
+  comparisonLabel,
+  isLoading = false,
+  error = null,
+}: RevenueChartProps) {
   const t = useTranslations('dashboard');
-  const tStates = useTranslations('states');
   const formatter = useFormatter();
   const locale = useLocale();
+  const reducedMotion = useReducedMotion();
 
   const isRtl = getDocumentDirection() === 'rtl';
+
+  const chartData = useMemo<ChartDatum[]>(() => {
+    const now = Date.now();
+    const isProvisional = data.map((point) => bucketEnd(point.date, granularity).getTime() > now);
+
+    return data.map((point, index) => {
+      const comparisonPoint = comparisonData?.[index];
+      // The last SETTLED bucket immediately before a provisional one also
+      // gets a `revenueTrailing` value, repeating its own `revenue` — that's
+      // the anchor the dashed "still accumulating" segment draws from.
+      // Recharts only draws a segment between two consecutive non-null
+      // entries, so without this the dashed line would have nothing to join.
+      const isJoiningPoint = !isProvisional[index] && isProvisional[index + 1] === true;
+
+      return {
+        index,
+        timestamp: toTimestamp(point.date),
+        date: point.date,
+        revenue: isProvisional[index] ? null : point.revenue,
+        revenueTrailing: isProvisional[index] || isJoiningPoint ? point.revenue : null,
+        isProvisional: isProvisional[index]!,
+        ...(comparisonData
+          ? {
+              comparisonDate: comparisonPoint?.date,
+              comparisonRevenue: comparisonPoint?.revenue ?? null,
+            }
+          : {}),
+      };
+    });
+  }, [data, comparisonData, granularity]);
+
+  const hasAnyData = chartData.some((d) => d.revenue !== null || d.revenueTrailing !== null);
+  const tickIndices = useMemo(() => computeTickIndices(chartData.length), [chartData.length]);
+  const tickTimestamps = tickIndices.map((i) => chartData[i]!.timestamp);
 
   if (isLoading) {
     return (
       <div className="bg-card rounded-lg border p-4">
         <Skeleton className="h-5 w-32" />
         <Skeleton className="mt-4 h-64 w-full" />
+      </div>
+    );
+  }
+
+  // A one-bucket range (e.g. the "Today" preset) has nothing to draw a LINE
+  // between — a single point is a stat, not a chart. Render it as one.
+  if (chartData.length === 1) {
+    const only = chartData[0]!;
+    return (
+      <div className="bg-card rounded-lg border p-4">
+        <h2 className="mb-4 text-sm font-medium">{t('revenueOverTime')}</h2>
+        {error ? (
+          <p className="text-destructive flex h-64 items-center justify-center text-sm">
+            {error}
+          </p>
+        ) : (
+          <div className="flex h-64 flex-col items-center justify-center gap-1">
+            <p className="text-3xl font-semibold tabular-nums">
+              {only.revenue === null && only.revenueTrailing === null
+                ? '—'
+                : formatter.number((only.revenue ?? only.revenueTrailing)!, 'currency')}
+            </p>
+            <p className="text-muted-foreground text-sm">
+              {formatter.dateTime(new Date(only.date), 'long')}
+              {only.isProvisional ? ` · ${t('revenueChart.inProgress')}` : ''}
+            </p>
+          </div>
+        )}
       </div>
     );
   }
@@ -109,13 +297,17 @@ export function RevenueChart({ data, isLoading = false, error = null }: RevenueC
         <p className="text-destructive flex h-64 items-center justify-center text-sm">
           {error}
         </p>
-      ) : data.length === 0 ? (
+      ) : !hasAnyData ? (
         <p className="text-muted-foreground flex h-64 items-center justify-center text-sm">
-          {tStates('empty.title')}
+          {t('revenueChart.noData')}
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={256}>
-          <LineChart data={[...data]} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+          <LineChart
+            data={chartData}
+            margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
+            accessibilityLayer
+          >
             {/* Recessive grid: horizontal only. Vertical lines add clutter
                 without helping read a trend. */}
             <CartesianGrid
@@ -125,14 +317,20 @@ export function RevenueChart({ data, isLoading = false, error = null }: RevenueC
             />
 
             <XAxis
-              dataKey="date"
+              dataKey="timestamp"
+              type="number"
+              // Default linear scale over numeric epoch-ms values — d3's
+              // "time" scale expects Date objects, and would silently
+              // mishandle the plain numbers `timestamp` carries.
+              domain={['dataMin', 'dataMax']}
+              ticks={tickTimestamps}
               // Time flows left-to-right in every locale — NOT reversed for
               // Arabic. Reversing it would make the trend read backwards.
               reversed={false}
               tickLine={false}
-              axisLine={false}
+              axisLine={{ stroke: 'var(--border)' }}
               tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
-              tickFormatter={(value: string) =>
+              tickFormatter={(value: number) =>
                 new Intl.DateTimeFormat(locale, {
                   day: 'numeric',
                   month: 'short',
@@ -150,16 +348,41 @@ export function RevenueChart({ data, isLoading = false, error = null }: RevenueC
               tickLine={false}
               axisLine={false}
               tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
-              width={64}
+              width={72}
               tickFormatter={(value: number) =>
-                formatter.number(value, { notation: 'compact' })
+                // Composed by hand: next-intl can't merge the named 'currency'
+                // format with `notation: 'compact'` in one call, so the shape
+                // mirrors i18n/request.ts's currency format directly.
+                formatter.number(value, {
+                  style: 'currency',
+                  currency: 'AED',
+                  numberingSystem: 'latn',
+                  notation: 'compact',
+                })
               }
             />
 
             <Tooltip
-              content={<ChartTooltip />}
+              content={<ChartTooltip comparisonLabel={comparisonLabel} />}
               cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
             />
+
+            {comparisonData ? (
+              // Rendered FIRST so it sits behind the primary line in SVG
+              // stacking order — muted and dashed, a reference shape rather
+              // than a second thing competing for attention.
+              <Line
+                type="monotone"
+                dataKey="comparisonRevenue"
+                stroke="var(--muted-foreground)"
+                strokeWidth={1.5}
+                strokeDasharray="4 4"
+                dot={false}
+                activeDot={{ r: 3, strokeWidth: 1, stroke: 'var(--card)' }}
+                connectNulls={false}
+                isAnimationActive={!reducedMotion}
+              />
+            ) : null}
 
             <Line
               type="monotone"
@@ -168,10 +391,25 @@ export function RevenueChart({ data, isLoading = false, error = null }: RevenueC
               // validated step.
               stroke="var(--chart-1)"
               strokeWidth={2}
-              // No dot per point: at 30 points they become noise. The hover
-              // dot marks the value being read instead.
+              dot={{ r: 3, fill: 'var(--chart-1)', strokeWidth: 0 }}
+              activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--card)' }}
+              connectNulls={false}
+              isAnimationActive={!reducedMotion}
+            />
+
+            {/* The still-accumulating tail: same colour, dashed, no dots of
+                its own — a continuation of the line above, not a second
+                series. Only ever non-null for the most recent bucket(s). */}
+            <Line
+              type="monotone"
+              dataKey="revenueTrailing"
+              stroke="var(--chart-1)"
+              strokeWidth={2}
+              strokeDasharray="4 4"
               dot={false}
               activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--card)' }}
+              connectNulls={false}
+              isAnimationActive={!reducedMotion}
             />
           </LineChart>
         </ResponsiveContainer>
