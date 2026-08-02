@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
-import { OrderStatus, Prisma, StaffRole } from '@prisma/client';
+import { OrderStatus, Prisma, ReturnResolution, ReturnStatus, StaffRole } from '@prisma/client';
 
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
@@ -41,6 +41,9 @@ interface BreakdownBody {
 }
 
 const RUN = `reportstest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+/** `order_number` is VARCHAR(40) — RUN alone is already ~32 chars, so a tagged
+ *  suffix needs a short unique base, not the full RUN string. */
+const SHORT_RUN = Math.random().toString(36).slice(2, 10);
 
 const userIds: string[] = [];
 const orderIds: string[] = [];
@@ -390,6 +393,157 @@ describe('CSV export', () => {
   it('rejects an unknown format rather than silently falling back to JSON', async () => {
     const res = await get(`/reports/overview?from=${FROM}&to=${TO}&format=xml`);
     expect(res.status).toBe(400);
+  });
+});
+
+describe('fulfillment health', () => {
+  it('lists an order stuck in PENDING past its SLA, with real elapsed hours', async () => {
+    const stuckOrder = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-stuck-pend`,
+        placedAt: new Date(Date.now() - 48 * 3_600_000),
+        total: new Prisma.Decimal('10.00'),
+        status: OrderStatus.PENDING,
+      },
+    });
+    orderIds.push(stuckOrder.id);
+
+    const body = (await get(`/reports/fulfillment-health?from=${FROM}&to=${TO}`)).body as {
+      data: { needsAttention: { orderId: string; status: string; hoursInStatus: number }[] };
+    };
+
+    const found = body.data.needsAttention.find((row) => row.orderId === stuckOrder.id);
+    expect(found?.status).toBe('PENDING');
+    expect(found?.hoursInStatus).toBeGreaterThanOrEqual(48);
+  });
+
+  it('excludes an order still inside its SLA window', async () => {
+    const freshOrder = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-fresh-pend`,
+        placedAt: new Date(),
+        total: new Prisma.Decimal('10.00'),
+        status: OrderStatus.PENDING,
+      },
+    });
+    orderIds.push(freshOrder.id);
+
+    const body = (await get(`/reports/fulfillment-health?from=${FROM}&to=${TO}`)).body as {
+      data: { needsAttention: { orderId: string }[] };
+    };
+
+    expect(body.data.needsAttention.some((row) => row.orderId === freshOrder.id)).toBe(false);
+  });
+
+  it('averages a completed PENDING transition, excluding an order still waiting', async () => {
+    const completedOrder = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-avg-cmpltd`,
+        placedAt: new Date('2019-03-05T00:00:00.000Z'),
+        total: new Prisma.Decimal('10.00'),
+        status: OrderStatus.CONFIRMED,
+      },
+    });
+    orderIds.push(completedOrder.id);
+
+    await prisma.orderStatusHistory.createMany({
+      data: [
+        {
+          orderId: completedOrder.id,
+          toStatus: OrderStatus.PENDING,
+          createdAt: new Date('2019-03-05T00:00:00.000Z'),
+        },
+        {
+          orderId: completedOrder.id,
+          toStatus: OrderStatus.CONFIRMED,
+          createdAt: new Date('2019-03-05T10:00:00.000Z'),
+        },
+      ],
+    });
+
+    const body = (await get(`/reports/fulfillment-health?from=${FROM}&to=${TO}`)).body as {
+      data: { avgHoursInStatus: { status: string; avgHours: number | null }[] };
+    };
+
+    expect(typeof body.data.avgHoursInStatus.find((row) => row.status === 'PENDING')?.avgHours).toBe(
+      'number',
+    );
+    expect(body.data.avgHoursInStatus.find((row) => row.status === 'PENDING')?.avgHours).toBe(10);
+  });
+
+  it('denies a role without the reports area', async () => {
+    expect(
+      (await get(`/reports/fulfillment-health?from=${FROM}&to=${TO}`, fulfillmentToken)).status,
+    ).toBe(403);
+  });
+});
+
+describe('returns summary', () => {
+  // A separate month from FROM/TO on purpose: this order's total would
+  // otherwise land in a bucket the order-value-distribution test asserts an
+  // exact count on, and cross-describe-block data bleeding into a shared
+  // range is exactly the kind of flake that discipline exists to avoid.
+  const RETURNS_FROM = '2019-04-01';
+  const RETURNS_TO = '2019-04-30';
+
+  it('reports refund value, units returned and per-product breakdown from real Return rows', async () => {
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-return-ord`,
+        placedAt: new Date('2019-04-06T00:00:00.000Z'),
+        total: new Prisma.Decimal('50.00'),
+        status: OrderStatus.RETURNED,
+        items: { create: [{ productId, quantity: 2, price: new Prisma.Decimal('25.00') }] },
+      },
+      include: { items: true },
+    });
+    orderIds.push(order.id);
+
+    const orderItem = order.items[0];
+    if (!orderItem) throw new Error('seed order item missing');
+
+    const returnRow = await prisma.return.create({
+      data: {
+        rmaNumber: `${RUN}-RMA-1`,
+        reason: 'test',
+        status: ReturnStatus.APPROVED,
+        resolution: ReturnResolution.REFUND,
+        refundAmount: new Prisma.Decimal('50.00'),
+        orderId: order.id,
+        createdAt: new Date('2019-04-06T12:00:00.000Z'),
+        items: { create: [{ orderItemId: orderItem.id, quantity: 2 }] },
+      },
+    });
+
+    const body = (await get(`/reports/returns-summary?from=${RETURNS_FROM}&to=${RETURNS_TO}`)).body as {
+      data: {
+        returnCount: number;
+        refundValue: string;
+        unitsReturned: number;
+        topReturnedProducts: { productId: string | null; unitsReturned: number }[];
+      };
+    };
+
+    expect(body.data.returnCount).toBeGreaterThanOrEqual(1);
+    expect(body.data.unitsReturned).toBeGreaterThanOrEqual(2);
+    expect(body.data.topReturnedProducts.some((p) => p.productId === productId)).toBe(true);
+
+    // Cascades ReturnItem — must happen before afterAll's Order cleanup, since
+    // ReturnItem.orderItemId is Restrict, not Cascade, from OrderItem's side.
+    await prisma.return.delete({ where: { id: returnRow.id } });
+  });
+});
+
+describe('order value distribution', () => {
+  it('buckets seeded orders correctly', async () => {
+    const body = (await get(`/reports/order-value-distribution?from=${FROM}&to=${TO}`)).body as {
+      data: { buckets: { label: string; count: number }[] };
+    };
+
+    // From beforeAll: 100.00 and 200.00 land in 100-250; 50.00 lands in 50-100.
+    // The 999.00 CANCELED order is excluded, same as every other revenue view.
+    expect(body.data.buckets.find((b) => b.label === '100-250')?.count).toBe(2);
+    expect(body.data.buckets.find((b) => b.label === '50-100')?.count).toBe(1);
   });
 });
 

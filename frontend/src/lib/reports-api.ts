@@ -54,6 +54,27 @@ export interface StatusBreakdown {
   statuses: { status: string; orders: number; total: string }[];
 }
 
+export interface FulfillmentHealth {
+  range: DateRange;
+  avgHoursInStatus: { status: string; slaHours: number; avgHours: number | null }[];
+  needsAttention: { orderId: string; orderNumber: string; status: string; hoursInStatus: number }[];
+}
+
+export interface ReturnsSummary {
+  range: DateRange;
+  returnCount: number;
+  orderCount: number;
+  returnRate: number;
+  refundValue: string;
+  unitsReturned: number;
+  topReturnedProducts: { productId: string | null; name: string | null; unitsReturned: number; returnCount: number }[];
+}
+
+export interface OrderValueDistribution {
+  range: DateRange;
+  buckets: { label: string; count: number }[];
+}
+
 function query(params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams();
 
@@ -86,6 +107,18 @@ export async function fetchStatusBreakdown(range: DateRange): Promise<StatusBrea
   return apiFetch<StatusBreakdown>(`/reports/status-breakdown?${query({ ...range })}`);
 }
 
+export async function fetchFulfillmentHealth(range: DateRange): Promise<FulfillmentHealth> {
+  return apiFetch<FulfillmentHealth>(`/reports/fulfillment-health?${query({ ...range })}`);
+}
+
+export async function fetchReturnsSummary(range: DateRange): Promise<ReturnsSummary> {
+  return apiFetch<ReturnsSummary>(`/reports/returns-summary?${query({ ...range })}`);
+}
+
+export async function fetchOrderValueDistribution(range: DateRange): Promise<OrderValueDistribution> {
+  return apiFetch<OrderValueDistribution>(`/reports/order-value-distribution?${query({ ...range })}`);
+}
+
 export type ReportView = 'overview' | 'revenue' | 'top-products' | 'status-breakdown';
 
 /** Same endpoint as the JSON fetch above, `format=csv` instead of the shape changing. */
@@ -112,4 +145,35 @@ export function defaultRange(): DateRange {
   from.setDate(from.getDate() - 29);
 
   return { from: toIsoDate(from), to: toIsoDate(to) };
+}
+
+/**
+ * The immediately preceding period of EQUAL LENGTH — what a "vs previous
+ * period" comparison actually means. A 14-day range compares against the
+ * 14 days before it, not against "last month," so the two figures describe
+ * the same amount of business activity.
+ */
+export function previousPeriod(range: DateRange): DateRange {
+  // Local-time arithmetic throughout, matching `defaultRange()` — mixing in
+  // UTC-anchored dates here would disagree with `toIsoDate`'s local getters
+  // and drift a day near midnight in some timezones.
+  const [fromY, fromM, fromD] = range.from.split('-').map(Number);
+  const [toY, toM, toD] = range.to.split('-').map(Number);
+  const from = new Date(fromY!, fromM! - 1, fromD);
+  const to = new Date(toY!, toM! - 1, toD);
+  const days = Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1;
+
+  const prevTo = new Date(from);
+  prevTo.setDate(prevTo.getDate() - 1);
+  const prevFrom = new Date(prevTo);
+  prevFrom.setDate(prevFrom.getDate() - (days - 1));
+
+  return { from: toIsoDate(prevFrom), to: toIsoDate(prevTo) };
+}
+
+/** Percentage change from `previous` to `current`, or `undefined` when the
+ *  previous period was zero — a percentage of zero is undefined, not 0%. */
+export function deltaPercent(current: number, previous: number): number | undefined {
+  if (previous === 0) return undefined;
+  return ((current - previous) / previous) * 100;
 }
