@@ -1,6 +1,7 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { DashboardOverview } from '@/components/dashboard/dashboard-overview';
+import { PageTitle } from '@/components/shell/page-title';
 
 /**
  * The dashboard.
@@ -27,12 +28,13 @@ export default async function DashboardPage({
   const t = await getTranslations('dashboard');
 
   return (
-    <div className="space-y-5">
-      {/* Title only — the subtitle ("A snapshot of revenue…") described what a
-          dashboard is and cost a permanent row for it; removed so the first
-          data sits directly under one compact control band. */}
-      <h1 className="text-2xl font-semibold tracking-tight">{t('title')}</h1>
+    <>
+      {/* Title lives in the top bar now (Phase 2) — the subtitle ("A snapshot
+          of revenue…") described what a dashboard is and cost a permanent
+          row for it; removed entirely rather than moved, so the first data
+          pixel sits directly under one compact control band. */}
+      <PageTitle title={t('title')} />
       <DashboardOverview />
-    </div>
+    </>
   );
 }

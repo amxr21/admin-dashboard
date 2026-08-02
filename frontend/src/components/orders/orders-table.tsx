@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
+import { useSearchParams } from 'next/navigation';
 import { Link } from '@/i18n/navigation';
 import { Search } from 'lucide-react';
 
@@ -53,12 +54,18 @@ export function OrdersTable() {
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
   const { tablePageSize } = useAppSettings();
+  const searchParams = useSearchParams();
 
   const [result, setResult] = useState<OrderListResult | null>(null);
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<OrderStatus | typeof ALL>(ALL);
+  // Seeded from `?status=`, same lazy-initializer pattern as inventory's
+  // `?lowStock=true` deep link — the dashboard's Cancelled KPI tile uses it.
+  const [status, setStatus] = useState<OrderStatus | typeof ALL>(() => {
+    const fromUrl = searchParams.get('status');
+    return fromUrl && STATUSES.includes(fromUrl as OrderStatus) ? (fromUrl as OrderStatus) : ALL;
+  });
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [isLoading, setIsLoading] = useState(true);

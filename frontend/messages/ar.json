@@ -169,6 +169,7 @@
     "revenue": "الإيرادات",
     "revenueOverTime": "الإيرادات عبر الزمن",
     "vsPreviousPeriod": "مقارنة بالفترة السابقة",
+    "vsSameLastYear": "مقارنة بنفس الفترة من العام الماضي",
     "totalRevenue": "إجمالي الإيرادات",
     "totalOrders": "الطلبات",
     "totalCustomers": "العملاء",
@@ -178,8 +179,15 @@
     "lowStockProducts": "مخزون منخفض",
     "viewReports": "عرض التقارير",
     "resetRange": "إعادة تعيين",
-    "lastUpdated": "آخر تحديث {time}",
+    "lastUpdated": "آخر تحديث {date} {time}",
     "refresh": "تحديث",
+    "viewDetails": "عرض تفاصيل {label}",
+    "comparison": {
+      "label": "قارن مع",
+      "previousPeriod": "الفترة السابقة",
+      "sameLastYear": "نفس الفترة من العام الماضي",
+      "none": "بدون"
+    },
     "fulfillment": {
       "title": "صحة التنفيذ",
       "avgTimeIn": "متوسط الوقت في حالة {status}",
@@ -780,6 +788,15 @@
       "month": "شهر"
     },
     "reset": "آخر 30 يوماً",
+    "presets": {
+      "today": "اليوم",
+      "last7Days": "آخر 7 أيام",
+      "last30Days": "آخر 30 يوماً",
+      "monthToDate": "من بداية الشهر",
+      "quarterToDate": "من بداية الربع",
+      "custom": "مخصص",
+      "apply": "تطبيق"
+    },
     "summary": "الملخص",
     "tiles": {
       "revenue": "الإيرادات",

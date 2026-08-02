@@ -16,7 +16,14 @@ import { TopProductsWidget } from '@/components/dashboard/top-products-widget';
 import { Link } from '@/i18n/navigation';
 import { Reveal } from '@/components/motion/reveal';
 import { Button } from '@/components/ui/button';
-import { DateRangeField } from '@/components/reports/date-range-field';
+import { DateRangePresetField } from '@/components/reports/date-range-field';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { fetchAudit, type AuditEntry } from '@/lib/audit-api';
@@ -31,6 +38,7 @@ import {
   fetchStatusBreakdown,
   fetchTopProducts,
   previousPeriod,
+  samePeriodLastYear,
   type DateRange,
   type FulfillmentHealth,
   type OrderValueDistribution,
@@ -39,6 +47,8 @@ import {
   type StatusBreakdown,
   type TopProducts,
 } from '@/lib/reports-api';
+
+type Comparison = 'previous' | 'sameLastYear' | 'none';
 
 /**
  * The dashboard, on REAL data — now with a user-controlled range instead of a
@@ -62,6 +72,7 @@ export function DashboardOverview() {
   const translateError = useTranslatedApiError();
 
   const [range, setRange] = useState<DateRange>(defaultRange);
+  const [comparison, setComparison] = useState<Comparison>('previous');
   const [overview, setOverview] = useState<Overview | null>(null);
   const [previousOverview, setPreviousOverview] = useState<Overview | null>(null);
   const [points, setPoints] = useState<RevenuePoint[]>([]);
@@ -80,6 +91,12 @@ export function DashboardOverview() {
     setError(null);
 
     try {
+      // "None" means genuinely no request, not a fetch whose result gets
+      // discarded — a comparison the user turned off shouldn't still cost a
+      // round trip.
+      const comparisonRange =
+        comparison === 'none' ? null : comparison === 'sameLastYear' ? samePeriodLastYear(range) : previousPeriod(range);
+
       // Every panel describes the same window (or, for fulfillment/activity,
       // "right now") — fetched together so nothing on the page can disagree
       // about when "now" was.
@@ -95,7 +112,7 @@ export function DashboardOverview() {
         loadedActivity,
       ] = await Promise.all([
         fetchOverview(range),
-        fetchOverview(previousPeriod(range)),
+        comparisonRange ? fetchOverview(comparisonRange) : Promise.resolve(null),
         fetchRevenue(range, 'day'),
         fetchTopProducts(range, 5),
         fetchStatusBreakdown(range),
@@ -125,12 +142,15 @@ export function DashboardOverview() {
     } finally {
       setIsLoading(false);
     }
-  }, [range, translateError]);
+  }, [range, comparison, translateError]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  // `previousOverview` is already null whenever comparison === 'none' (see
+  // `load()`), so these fall through to `undefined` — no deltas rendered —
+  // without needing to check `comparison` again here.
   const revenueDelta =
     overview && previousOverview
       ? deltaPercent(Number(overview.revenue), Number(previousOverview.revenue))
@@ -144,21 +164,39 @@ export function DashboardOverview() {
       ? deltaPercent(overview.canceledOrders, previousOverview.canceledOrders)
       : undefined;
 
+  // Names WHICH period a delta compares against — must track `comparison`,
+  // never hardcode "previous period" while potentially showing a
+  // year-over-year number (checklist 2.14). Deliberately NOT the same
+  // strings the comparison picker itself uses ("Previous period") — this is
+  // the trailing text on a delta line ("vs previous period"), a different
+  // grammatical position that needs its own "vs "-prefixed copy.
+  const comparisonLabel = comparison === 'sameLastYear' ? t('vsSameLastYear') : t('vsPreviousPeriod');
+
   return (
     <div className="space-y-6">
-      {/* One control band, not three stacked rows. The date range is inline
-          (labels hidden), Reset is a quiet ghost, "Updated ⟨time⟩" IS the
-          refresh control (the separate button folded into it), and the only
-          real action — Add product — is the primary button at the reading-end.
-          The old ghost-button row (View low stock / Audit trail / Order
-          history) was removed: all three duplicate the sidebar. */}
+      {/* The ONE control band this page has left — title now lives in the
+          top bar (Phase 2). Date range is a single preset trigger (was two
+          bare inputs + Reset), a comparison selector drives every delta's
+          label, "Updated ⟨date⟩ ⟨time⟩" IS the refresh control (the separate
+          button folded into it), and the only real action — Add product —
+          is the primary button at the reading-end. The old ghost-button row
+          (View low stock / Audit trail / Order history) stays removed: all
+          three duplicated the sidebar. */}
       <Reveal>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <DateRangeField range={range} onChange={setRange} idPrefix="dashboard" inline />
-            <Button variant="ghost" size="sm" onClick={() => setRange(defaultRange())}>
-              {t('resetRange')}
-            </Button>
+            <DateRangePresetField range={range} onChange={setRange} idPrefix="dashboard" />
+
+            <Select value={comparison} onValueChange={(value) => setComparison(value as Comparison)}>
+              <SelectTrigger aria-label={t('comparison.label')} className="h-8 w-auto gap-1.5 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="previous">{t('comparison.previousPeriod')}</SelectItem>
+                <SelectItem value="sameLastYear">{t('comparison.sameLastYear')}</SelectItem>
+                <SelectItem value="none">{t('comparison.none')}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -172,6 +210,7 @@ export function DashboardOverview() {
               <RefreshCw className={isLoading ? 'size-3.5 animate-spin' : 'size-3.5'} aria-hidden />
               {lastUpdated
                 ? t('lastUpdated', {
+                    date: formatter.dateTime(lastUpdated, { dateStyle: 'medium' }),
                     time: formatter.dateTime(lastUpdated, { timeStyle: 'short' }),
                   })
                 : t('refresh')}
@@ -197,6 +236,7 @@ export function DashboardOverview() {
           <RevenueHero
             value={overview ? Number(overview.revenue) : 0}
             deltaPercent={revenueDelta}
+            comparisonLabel={comparisonLabel}
             isLoading={isLoading || !overview}
           />
           <div className="lg:col-span-2">
@@ -215,16 +255,20 @@ export function DashboardOverview() {
                 labelKey="totalOrders"
                 value={overview.orders}
                 deltaPercent={ordersDelta}
+                comparisonLabel={comparisonLabel}
                 icon="orders"
+                href="/admin/orders"
               />
               <StatTile
                 labelKey="canceledOrders"
                 value={overview.canceledOrders}
                 deltaPercent={canceledDelta}
+                comparisonLabel={comparisonLabel}
                 icon="pending"
                 // A rise in cancellations is BAD — without this the tile would
                 // paint a spike in them green.
                 invertDelta
+                href="/admin/orders?status=CANCELED"
               />
               {/* No deltaPercent here on purpose: low-stock is a live snapshot
                   (`stock <= threshold` right now), not scoped to the selected
@@ -236,6 +280,7 @@ export function DashboardOverview() {
                 value={overview.lowStockProducts}
                 icon="inventory"
                 invertDelta
+                href="/admin/inventory?lowStock=true"
               />
             </>
           )}
