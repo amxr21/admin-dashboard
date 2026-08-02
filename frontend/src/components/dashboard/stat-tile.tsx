@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import {
   Boxes,
@@ -18,11 +19,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
 /**
- * A single headline number.
- *
- * Per the dataviz form heuristic, a single value's job is a HERO NUMBER, not a
- * chart — a one-bar bar chart or a lone gauge communicates less than the digits
- * do, and costs more space.
+ * A single headline number — the one tile anatomy every KPI in the strip
+ * shares: icon, label, value, delta, optional status. Every slot always
+ * renders SOMETHING, even when the underlying data doesn't have a value for
+ * it (see the delta slot below) — that's what keeps every tile in the strip
+ * the same height without relying on content to accidentally match.
  *
  * The delta carries an icon AND a sign, never colour alone. Red/green is
  * invisible to roughly 1 in 12 men, and this is exactly the "status colour"
@@ -53,11 +54,17 @@ export type StatIcon = keyof typeof ICONS;
 export interface StatTileProps {
   labelKey: string;
   value: number;
-  /** Percentage change vs the comparison period. Omit when unknown. */
+  /** Percentage change vs the comparison period. Omit when the metric has
+   *  no meaningful comparison (e.g. a live snapshot) — the delta SLOT still
+   *  renders, just with a neutral placeholder instead of a number. */
   deltaPercent?: number;
-  /** Names WHICH period the delta compares against — see the same prop on
-   *  `RevenueHero`; must track the dashboard's comparison selector. */
+  /** Names WHICH period the delta compares against; must track the
+   *  dashboard's comparison selector. Ignored when `deltaPercent` is omitted. */
   comparisonLabel?: string;
+  /** Shown in the delta slot in place of a percentage, when this metric
+   *  genuinely has no period-over-period comparison to show (as opposed to
+   *  one that just hasn't loaded yet). Defaults to a generic placeholder. */
+  noDeltaReason?: string;
   /**
    * For metrics where a rise is BAD (refunds, cancellations). Without this the
    * tile would paint a spike in cancellations green.
@@ -66,6 +73,10 @@ export interface StatTileProps {
   format?: 'number' | 'currency';
   /** Looked up in ICONS — a component cannot cross the RSC boundary. */
   icon?: StatIcon;
+  /** Optional status slot — e.g. an attention badge when a metric crosses a
+   *  threshold. Not consumed by any caller yet; the slot exists so a future
+   *  one can fill it without changing the tile's anatomy. */
+  status?: ReactNode;
   isLoading?: boolean;
   /** Makes the whole tile a drill-down link — a KPI with nowhere to go is a
    *  dead end. Omit for tiles with no matching destination view. */
@@ -77,9 +88,11 @@ export function StatTile({
   value,
   deltaPercent,
   comparisonLabel,
+  noDeltaReason,
   invertDelta = false,
   format = 'number',
   icon,
+  status,
   isLoading = false,
   href,
 }: StatTileProps) {
@@ -89,10 +102,14 @@ export function StatTile({
   const formatter = useFormatter();
 
   if (isLoading) {
+    // Three lines, matching the loaded tile's three rows (label, value,
+    // delta) — a skeleton with fewer rows than the real content resizes the
+    // instant data arrives, which reads as a layout jump, not a reveal.
     return (
       <div className="bg-card rounded-lg border p-4">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="mt-3 h-8 w-32" />
+        <Skeleton className="mt-2 h-3.5 w-28" />
       </div>
     );
   }
@@ -109,16 +126,19 @@ export function StatTile({
           {Icon ? <Icon className="size-4" aria-hidden /> : null}
           <span>{t(labelKey)}</span>
         </div>
-        {/* The drill-down affordance itself — a bare card gives no hint it
-            leads anywhere. Points toward reading-end: two icons swapped by
-            `rtl:`, same pattern as the "View reports" link below on this
-            page, not a single icon rotated. */}
-        {href ? (
-          <>
-            <ChevronRight className="text-muted-foreground/60 size-4 shrink-0 rtl:hidden" aria-hidden />
-            <ChevronLeft className="text-muted-foreground/60 hidden size-4 shrink-0 rtl:block" aria-hidden />
-          </>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {status}
+          {/* The drill-down affordance itself — a bare card gives no hint it
+              leads anywhere. Points toward reading-end: two icons swapped by
+              `rtl:`, same pattern as the "View reports" link below on this
+              page, not a single icon rotated. */}
+          {href ? (
+            <>
+              <ChevronRight className="text-muted-foreground/60 size-4 shrink-0 rtl:hidden" aria-hidden />
+              <ChevronLeft className="text-muted-foreground/60 hidden size-4 shrink-0 rtl:block" aria-hidden />
+            </>
+          ) : null}
+        </div>
       </div>
 
       {/* tabular-nums so the digits don't reflow as values update — a jittering
@@ -129,6 +149,12 @@ export function StatTile({
           : formatter.number(value)}
       </p>
 
+      {/* The delta slot ALWAYS renders — never omitted — so every tile in
+          the strip has the same three rows and therefore the same height,
+          whether or not this particular metric has a period-over-period
+          comparison to show. A metric with no delta gets a neutral
+          placeholder here, explaining why, rather than an empty gap that
+          reads as a shorter, ragged card. */}
       {hasDelta ? (
         <p
           className={cn(
@@ -152,7 +178,11 @@ export function StatTile({
           </span>
           <span className="text-muted-foreground">{comparisonLabel ?? t('vsPreviousPeriod')}</span>
         </p>
-      ) : null}
+      ) : (
+        <p className="text-muted-foreground mt-1 text-xs">
+          {noDeltaReason ?? t('noComparison')}
+        </p>
+      )}
     </>
   );
 

@@ -170,6 +170,8 @@
     "revenueOverTime": "Revenue over time",
     "vsPreviousPeriod": "vs previous period",
     "vsSameLastYear": "vs same period last year",
+    "noComparison": "No comparison available",
+    "liveSnapshot": "Live snapshot, not period-scoped",
     "totalRevenue": "Total revenue",
     "totalOrders": "Orders",
     "totalCustomers": "Customers",
