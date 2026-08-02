@@ -11,6 +11,7 @@ import { PageTransition } from '@/components/motion/page-transition';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/hooks/useAuth';
 import { getDirection, routing } from '@/i18n/routing';
+import { getBlockingAppearanceScript } from '@/lib/apply-appearance';
 
 import '../globals.css';
 
@@ -90,6 +91,16 @@ export default async function LocaleLayout({
       suppressHydrationWarning
     >
       <body className="bg-background text-foreground font-sans antialiased">
+        {/* Blocking, runs before hydration — same reasoning as next-themes'
+            own script (see theme-provider.tsx): paints the last-known accent
+            color/corner radius/density from localStorage immediately, so a
+            reload doesn't flash default appearance while SettingsProvider's
+            fetch is in flight. No-ops (and does nothing harmful) on a first
+            visit with no cache yet. */}
+        <script
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: getBlockingAppearanceScript() }}
+        />
         <NextIntlClientProvider>
           <ThemeProvider>
             <MotionProvider>
