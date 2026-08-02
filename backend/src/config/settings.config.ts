@@ -142,11 +142,21 @@ export const SETTINGS = {
   },
 
   // ─── Customization ──────────────────────────────────────────────────
-  // Font is deliberately NOT a setting here: every option would need its own
-  // self-hosted next/font registration at BUILD time to stay FOIT-free, and
-  // this project already logged a real incident (2026-07-27) where a runtime
-  // override of the wrong CSS variable silently broke the Arabic font. Adding
-  // fonts to choose from is a deliberate follow-up, not a quick registry entry.
+  'theme.fontFamily': {
+    type: 'enum',
+    default: 'default',
+    area: 'settings',
+    // Each option is a real Latin+Arabic pair, both self-hosted via next/font
+    // at BUILD time (see the root layout) — never a runtime font load. This
+    // is the deliberate follow-up the comment used to point to here: adding a
+    // font is a registration in the layout plus an option here, not a quick
+    // string field, precisely BECAUSE of the 2026-07-27 incident where a
+    // runtime override of the wrong CSS variable silently broke the Arabic
+    // font — every option is validated at build time instead.
+    options: ['default', 'modern', 'neutral', 'classic'],
+    label: 'Font',
+    description: 'Applies everywhere, in both languages. Each option pairs a matching Latin and Arabic typeface.',
+  },
   'ui.density': {
     type: 'enum',
     default: 'comfortable',

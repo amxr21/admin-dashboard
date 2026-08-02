@@ -33,6 +33,17 @@
 
 :root {
   /* ─── Typeface ───────────────────────────────────────────────── */
+  /* `--font-latin`/`--font-arabic` are the generic tokens every other rule in
+     this file reads. They are NOT set directly by next/font — each
+     registered pair (see the root layout) gets its OWN uniquely-named
+     variable (`--font-latin-default`, `--font-latin-modern`, ...), and these
+     two are re-pointed at whichever pair `theme.fontFamily` selects, via
+     `[data-font-family]` below. Same "re-point the inner variable" rule
+     `--primary`/`--radius` already follow. `default` needs no attribute —
+     it's what these resolve to with none set. */
+  --font-latin: var(--font-latin-default);
+  --font-arabic: var(--font-arabic-default);
+
   /* The live font stack. `--font-sans` in @theme inline points HERE, so this
      is the variable to re-point per script — see the note there. */
   --font-app: var(--font-latin), ui-sans-serif, system-ui, sans-serif;
@@ -199,6 +210,25 @@ html[lang='ar'] {
  */
 [data-density='compact'] {
   --table-cell-py: 0.25rem;
+}
+
+/*
+ * `theme.fontFamily` re-pointing `--font-latin`/`--font-arabic` away from
+ * their `:root` default — same reasoning as the density override above.
+ * `default` needs no rule here at all: with no attribute set, `--font-latin`/
+ * `--font-arabic` already resolve to the `-default` pair from `:root`.
+ */
+[data-font-family='modern'] {
+  --font-latin: var(--font-latin-modern);
+  --font-arabic: var(--font-arabic-modern);
+}
+[data-font-family='neutral'] {
+  --font-latin: var(--font-latin-neutral);
+  --font-arabic: var(--font-arabic-neutral);
+}
+[data-font-family='classic'] {
+  --font-latin: var(--font-latin-classic);
+  --font-arabic: var(--font-arabic-classic);
 }
 
 /*

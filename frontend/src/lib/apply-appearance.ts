@@ -17,6 +17,11 @@ const RADIUS_BY_OPTION: Record<string, string> = {
   round: '1rem',
 };
 
+/** Every option a real, registered `next/font` pair exists for — see the
+ *  root layout. `default` needs no `[data-font-family]` rule at all;
+ *  globals.css's unattributed `:root` already points at it. */
+const FONT_FAMILY_OPTIONS = new Set(['default', 'modern', 'neutral', 'classic']);
+
 /** localStorage key for the blocking pre-hydration script below — same
  *  pattern `next-themes` uses for dark mode (see `theme-provider.tsx`), applied
  *  to the settings this app derives from a DB fetch instead of a toggle. */
@@ -29,7 +34,9 @@ const CACHE_KEY = 'admin.appearance';
  * `load()` — i.e. only for values that came from a real fetch, never from
  * `SettingsForm`'s live, unsaved preview.
  */
-export function cacheAppearance(values: Pick<AppearanceValues, 'accentColor' | 'cornerRadius' | 'density'>): void {
+export function cacheAppearance(
+  values: Pick<AppearanceValues, 'accentColor' | 'cornerRadius' | 'density' | 'fontFamily'>,
+): void {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(values));
   } catch {
@@ -42,6 +49,7 @@ export interface AppearanceValues {
   accentColor: string;
   cornerRadius: string;
   density: string;
+  fontFamily: string;
   storeName: string;
 }
 
@@ -51,6 +59,7 @@ export function readAppearance(byKey: Map<string, string | boolean | number>): A
     accentColor: String(byKey.get('theme.accentColor') ?? DEFAULT_ACCENT),
     cornerRadius: String(byKey.get('ui.cornerRadius') ?? 'default'),
     density: String(byKey.get('ui.density') ?? 'comfortable'),
+    fontFamily: String(byKey.get('theme.fontFamily') ?? 'default'),
     storeName: String(byKey.get('store.name') ?? ''),
   };
 }
@@ -78,6 +87,7 @@ export function getBlockingAppearanceScript(): string {
       root.style.setProperty('--radius',RADIUS[a.cornerRadius]);
     }
     if(a.density==='compact')root.dataset.density='compact';
+    if(a.fontFamily&&a.fontFamily!=='default')root.dataset.fontFamily=a.fontFamily;
   }catch(e){}})();`;
 }
 
@@ -113,4 +123,10 @@ export function applyAppearance(values: AppearanceValues): void {
   }
 
   root.dataset.density = values.density === 'compact' ? 'compact' : 'comfortable';
+
+  if (values.fontFamily !== 'default' && FONT_FAMILY_OPTIONS.has(values.fontFamily)) {
+    root.dataset.fontFamily = values.fontFamily;
+  } else {
+    delete root.dataset.fontFamily;
+  }
 }
