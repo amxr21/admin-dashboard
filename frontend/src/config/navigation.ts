@@ -78,10 +78,24 @@ export const NAVIGATION: readonly NavGroup[] = [
       { href: '/admin/reports', labelKey: 'reports', icon: ChartColumn, area: 'reports' },
       { href: '/admin/staff', labelKey: 'staff', icon: UsersRound, area: 'staff' },
       { href: '/admin/audit', labelKey: 'audit', icon: History, area: 'staff' },
-      { href: '/admin/settings', labelKey: 'settings', icon: Settings, area: 'settings' },
     ],
   },
 ];
+
+/**
+ * Rendered as its own trailing block, after every group above (including the
+ * schema-driven ones merged in at render time) — not as a member of
+ * `NAVIGATION`, because a group declared last in this array would still
+ * render BEFORE the schema-driven groups appended in `SidebarNav` (see the
+ * merge note there). Settings is the one item in the whole nav that belongs
+ * at the true bottom regardless of what else gets added above it.
+ */
+export const SETTINGS_NAV_ITEM: NavItem = {
+  href: '/admin/settings',
+  labelKey: 'settings',
+  icon: Settings,
+  area: 'settings',
+};
 
 /**
  * Icons for schema-driven resources, keyed by resource name.
@@ -124,10 +138,11 @@ export const RESOURCES_OUTSIDE_SIDEBAR: readonly string[] = ['notifications'];
 /**
  * Which area, if any, governs the given path — for "view as" content gating.
  *
- * Same two sources as the sidebar: the hand-written NAVIGATION entries for
- * bespoke pages, and the schema-driven resources for `/admin/r/:resource`.
- * Returns `undefined` for a path with no area (the dashboard itself, or
- * anything not in either list) — those are always visible.
+ * Same sources as the sidebar: the hand-written NAVIGATION entries for
+ * bespoke pages, the standalone SETTINGS_NAV_ITEM, and the schema-driven
+ * resources for `/admin/r/:resource`. Returns `undefined` for a path with no
+ * area (the dashboard itself, or anything not in either list) — those are
+ * always visible.
  */
 export function resolveAreaForPath(
   pathname: string,
@@ -139,6 +154,8 @@ export function resolveAreaForPath(
       if (matches) return item.area;
     }
   }
+
+  if (pathname.startsWith(SETTINGS_NAV_ITEM.href)) return SETTINGS_NAV_ITEM.area;
 
   if (pathname.startsWith('/admin/r/')) {
     const resourceName = pathname.split('/')[3];

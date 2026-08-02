@@ -10,7 +10,9 @@ import {
   RESOURCES_OUTSIDE_SIDEBAR,
   RESOURCE_ICONS,
   RESOURCE_ICON_FALLBACK,
+  SETTINGS_NAV_ITEM,
   type NavGroup,
+  type NavItem,
 } from '@/config/navigation';
 import { canAccessArea, type Area, type StaffRole } from '@/config/areas';
 import { useResourceSchema } from '@/components/providers/schema-provider';
@@ -103,6 +105,53 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
     if (group.labelKey) byKey.set(group.labelKey, copy);
   }
 
+  /** Shared by every group's items AND the trailing Settings item below, so
+   *  the two can never render the link markup differently. */
+  function renderNavLink(item: NavItem) {
+    // Exact match for the index route, prefix match for the rest —
+    // otherwise /admin stays highlighted on every child page.
+    const isActive =
+      item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href);
+
+    // Falls back to the raw key so a resource added to admin.config.ts
+    // before its translation still shows a usable name instead of throwing.
+    const label = t.has(item.labelKey) ? t(item.labelKey) : item.labelKey;
+
+    return (
+      <li key={item.href}>
+        <Link
+          href={item.href}
+          onClick={onNavigate}
+          // aria-current is what a screen reader announces; the colour is
+          // only for sighted users.
+          aria-current={isActive ? 'page' : undefined}
+          // No Radix tooltip primitive exists in this codebase yet (see
+          // components/ui/) — a plain `title` is the minimal, acceptable
+          // fallback for "what does this icon mean" when the rail is
+          // collapsed.
+          title={collapsed ? label : undefined}
+          className={cn(
+            'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+            collapsed && 'justify-center px-2',
+            isActive
+              ? 'bg-primary/10 text-primary font-medium'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          )}
+        >
+          {/* Reports this link's pending state — and its destination label —
+              to the overlay. Renders nothing; must sit inside the Link. */}
+          <NavigationPending label={label} />
+
+          {/* Nav glyphs are objects, not arrows — no mirroring. */}
+          <item.icon className="size-4 shrink-0" aria-hidden />
+          <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
+        </Link>
+      </li>
+    );
+  }
+
+  const canSeeSettings = canAccessArea(role, 'settings');
+
   return (
     <nav className="flex flex-1 flex-col gap-4 overflow-y-auto" aria-label={t('dashboard')}>
       {groups.map((group, groupIndex) => {
@@ -129,57 +178,21 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
               </h2>
             ) : null}
 
-            <ul className="space-y-0.5">
-              {visible.map((item) => {
-                // Exact match for the index route, prefix match for the rest —
-                // otherwise /admin stays highlighted on every child page.
-                const isActive =
-                  item.href === '/admin'
-                    ? pathname === '/admin'
-                    : pathname.startsWith(item.href);
-
-                // Falls back to the raw key so a resource added to
-                // admin.config.ts before its translation still shows a
-                // usable name instead of throwing.
-                const label = t.has(item.labelKey) ? t(item.labelKey) : item.labelKey;
-
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      onClick={onNavigate}
-                      // aria-current is what a screen reader announces; the
-                      // colour is only for sighted users.
-                      aria-current={isActive ? 'page' : undefined}
-                      // No Radix tooltip primitive exists in this codebase yet
-                      // (see components/ui/) — a plain `title` is the minimal,
-                      // acceptable fallback for "what does this icon mean"
-                      // when the rail is collapsed.
-                      title={collapsed ? label : undefined}
-                      className={cn(
-                        'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
-                        collapsed && 'justify-center px-2',
-                        isActive
-                          ? 'bg-primary/10 text-primary font-medium'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                      )}
-                    >
-                      {/* Reports this link's pending state — and its
-                          destination label — to the overlay. Renders
-                          nothing; must sit inside the Link. */}
-                      <NavigationPending label={label} />
-
-                      {/* Nav glyphs are objects, not arrows — no mirroring. */}
-                      <item.icon className="size-4 shrink-0" aria-hidden />
-                      <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            <ul className="space-y-0.5">{visible.map(renderNavLink)}</ul>
           </div>
         );
       })}
+
+      {/* Pinned to the bottom of the nav (mt-auto), after every group above
+          — including the schema-driven ones merged in above — so Settings is
+          always the last item regardless of what else gets added to the
+          nav. See SETTINGS_NAV_ITEM's own comment for why this can't just be
+          "declare it last in NAVIGATION". */}
+      {canSeeSettings ? (
+        <div className="mt-auto border-t pt-2">
+          <ul className="space-y-0.5">{renderNavLink(SETTINGS_NAV_ITEM)}</ul>
+        </div>
+      ) : null}
     </nav>
   );
 }
