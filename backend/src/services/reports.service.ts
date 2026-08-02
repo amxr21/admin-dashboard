@@ -262,6 +262,12 @@ const SLA_HOURS_BY_STATUS: Record<(typeof ATTENTION_STATUSES)[number], number> =
  * in PENDING has no next row yet and is correctly excluded from the average
  * (it belongs in `needsAttention` instead, not in a number that would silently
  * drag the average down while looking like everything is fine).
+ *
+ * ─── BOTH HALVES SHARE THE SAME WINDOW ────────────────────────────────
+ * `needsAttention` used to ignore `start`/`end` entirely (scan every
+ * currently-stuck order, any age) while `avgHoursInStatus` respected the
+ * selected range — two halves of one widget silently describing different
+ * windows. Both now filter by `placedAt`, matching the rest of the dashboard.
  */
 export async function getFulfillmentHealth(params: RangeParams) {
   const { start, end } = resolveRange(params);
@@ -285,7 +291,9 @@ export async function getFulfillmentHealth(params: RangeParams) {
   >`
     SELECT id, order_number AS orderNumber, placed_at AS enteredAt
     FROM orders
-    WHERE status = 'PENDING' AND placed_at < ${new Date(Date.now() - PENDING_SLA_HOURS * 3_600_000)}
+    WHERE status = 'PENDING'
+      AND placed_at < ${new Date(Date.now() - PENDING_SLA_HOURS * 3_600_000)}
+      AND placed_at >= ${start} AND placed_at < ${end}
     ORDER BY placed_at ASC
     LIMIT 50
   `;
@@ -301,7 +309,9 @@ export async function getFulfillmentHealth(params: RangeParams) {
       WHERE to_status = 'CONFIRMED'
       GROUP BY order_id
     ) h ON h.order_id = o.id
-    WHERE o.status = 'CONFIRMED' AND h.enteredAt < ${new Date(Date.now() - CONFIRMED_SLA_HOURS * 3_600_000)}
+    WHERE o.status = 'CONFIRMED'
+      AND h.enteredAt < ${new Date(Date.now() - CONFIRMED_SLA_HOURS * 3_600_000)}
+      AND o.placed_at >= ${start} AND o.placed_at < ${end}
     ORDER BY h.enteredAt ASC
     LIMIT 50
   `;
@@ -339,15 +349,28 @@ export async function getFulfillmentHealth(params: RangeParams) {
  * Returns/refunds — deliberately not folded into the revenue report, because
  * "how much came back and why" is a different question from "how much came
  * in", and burying it inside another report is how it stays under-built.
+ *
+ * ─── `returnRate` NEEDS A COHERENT DENOMINATOR ────────────────────────
+ * `returnCount` is scoped by the RETURN's own approval date, matching the
+ * order-outcomes report's RETURNED count — of the orders PLACED in this
+ * window, how many are known-returned. Dividing that by `orderCount` (orders
+ * placed in the same window) makes `returnRate` a coherent cohort rate that
+ * agrees with the "Order outcomes" widget's RETURNED count for the same
+ * range, rather than mixing a return's approval date against an unrelated
+ * order-placement count. `refundValue`/`unitsReturned`/`topReturnedProducts`
+ * stay scoped by the return's OWN `createdAt` — a deliberately different,
+ * still-valid question ("how much refund flowed out during this window"),
+ * matching revenue's own "recognise when the event happened" rule.
  */
 export async function getReturnsSummary(params: RangeParams) {
   const { start, end } = resolveRange(params);
 
   const inRange = { createdAt: { gte: start, lt: end } };
+  const orderInRange = { placedAt: { gte: start, lt: end } };
 
   const [returnCount, orderCount, refundAgg, unitsAgg, byProduct] = await prisma.$transaction([
-    prisma.return.count({ where: inRange }),
-    prisma.order.count({ where: { placedAt: { gte: start, lt: end } } }),
+    prisma.return.count({ where: { order: orderInRange } }),
+    prisma.order.count({ where: orderInRange }),
     prisma.return.aggregate({ where: inRange, _sum: { refundAmount: true } }),
     prisma.returnItem.aggregate({ where: { return: inRange }, _sum: { quantity: true } }),
     prisma.$queryRaw<

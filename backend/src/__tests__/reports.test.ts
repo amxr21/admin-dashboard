@@ -397,6 +397,13 @@ describe('CSV export', () => {
 });
 
 describe('fulfillment health', () => {
+  // These orders are placed near "now" (real elapsed SLA hours only make
+  // sense against the real clock), so they need a range that actually
+  // covers "now" — the shared FROM/TO constants are a fixed 2019 window and
+  // would exclude them even before the range-scoping fix below.
+  const RECENT_FROM = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
+  const RECENT_TO = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+
   it('lists an order stuck in PENDING past its SLA, with real elapsed hours', async () => {
     const stuckOrder = await prisma.order.create({
       data: {
@@ -408,7 +415,9 @@ describe('fulfillment health', () => {
     });
     orderIds.push(stuckOrder.id);
 
-    const body = (await get(`/reports/fulfillment-health?from=${FROM}&to=${TO}`)).body as {
+    const body = (
+      await get(`/reports/fulfillment-health?from=${RECENT_FROM}&to=${RECENT_TO}`)
+    ).body as {
       data: { needsAttention: { orderId: string; status: string; hoursInStatus: number }[] };
     };
 
@@ -428,11 +437,39 @@ describe('fulfillment health', () => {
     });
     orderIds.push(freshOrder.id);
 
-    const body = (await get(`/reports/fulfillment-health?from=${FROM}&to=${TO}`)).body as {
+    const body = (
+      await get(`/reports/fulfillment-health?from=${RECENT_FROM}&to=${RECENT_TO}`)
+    ).body as {
       data: { needsAttention: { orderId: string }[] };
     };
 
     expect(body.data.needsAttention.some((row) => row.orderId === freshOrder.id)).toBe(false);
+  });
+
+  it('excludes an order stuck past its SLA if it was placed outside the selected range', async () => {
+    // The bug this guards: `needsAttention` used to scan every currently-
+    // stuck order regardless of the selected date range, while the average
+    // above it respected the range — two halves of one widget silently
+    // describing different windows. Both must now agree.
+    const stuckButOutOfRange = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-stuck-out-of-range`,
+        placedAt: new Date(Date.now() - 60 * 86_400_000), // 60 days ago
+        total: new Prisma.Decimal('10.00'),
+        status: OrderStatus.PENDING,
+      },
+    });
+    orderIds.push(stuckButOutOfRange.id);
+
+    const body = (
+      await get(`/reports/fulfillment-health?from=${RECENT_FROM}&to=${RECENT_TO}`)
+    ).body as {
+      data: { needsAttention: { orderId: string }[] };
+    };
+
+    expect(
+      body.data.needsAttention.some((row) => row.orderId === stuckButOutOfRange.id),
+    ).toBe(false);
   });
 
   it('averages a completed PENDING transition, excluding an order still waiting', async () => {
@@ -530,6 +567,57 @@ describe('returns summary', () => {
 
     // Cascades ReturnItem — must happen before afterAll's Order cleanup, since
     // ReturnItem.orderItemId is Restrict, not Cascade, from OrderItem's side.
+    await prisma.return.delete({ where: { id: returnRow.id } });
+  });
+
+  it('scopes returnCount by when the order was placed, not when the return was approved', async () => {
+    // The bug this guards: `returnCount` used to filter on `Return.createdAt`
+    // while `orderCount` (returnRate's denominator) filtered on
+    // `Order.placedAt` — two different date fields in one ratio, and a
+    // number that disagreed with the "Order outcomes" widget's RETURNED
+    // count for the identical window. An order placed OUTSIDE the queried
+    // range whose return was approved INSIDE it must not count here.
+    const orderOutsideRange = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-return-out-of-range`,
+        // Placed a full year before the queried window.
+        placedAt: new Date('2018-04-06T00:00:00.000Z'),
+        total: new Prisma.Decimal('30.00'),
+        status: OrderStatus.RETURNED,
+        items: { create: [{ productId, quantity: 1, price: new Prisma.Decimal('30.00') }] },
+      },
+      include: { items: true },
+    });
+    orderIds.push(orderOutsideRange.id);
+
+    const orderItem = orderOutsideRange.items[0];
+    if (!orderItem) throw new Error('seed order item missing');
+
+    const returnRow = await prisma.return.create({
+      data: {
+        rmaNumber: `${RUN}-RMA-2`,
+        reason: 'test',
+        status: ReturnStatus.APPROVED,
+        resolution: ReturnResolution.REFUND,
+        refundAmount: new Prisma.Decimal('30.00'),
+        orderId: orderOutsideRange.id,
+        // Approved INSIDE the queried window, even though the order itself
+        // was placed a year before it.
+        createdAt: new Date('2019-04-10T00:00:00.000Z'),
+        items: { create: [{ orderItemId: orderItem.id, quantity: 1 }] },
+      },
+    });
+
+    const body = (await get(`/reports/returns-summary?from=${RETURNS_FROM}&to=${RETURNS_TO}`)).body as {
+      data: { returnCount: number };
+    };
+
+    // `refundValue`/`unitsReturned` (asserted in the test above) DO include
+    // this return, since they're deliberately scoped by the return's own
+    // approval date — only `returnCount` (and therefore `returnRate`) must
+    // exclude it.
+    expect(body.data.returnCount).toBe(0);
+
     await prisma.return.delete({ where: { id: returnRow.id } });
   });
 });
