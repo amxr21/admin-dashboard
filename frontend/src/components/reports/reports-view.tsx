@@ -28,6 +28,7 @@ import {
   fetchRevenue,
   fetchStatusBreakdown,
   fetchTopProducts,
+  fillRevenueGaps,
   type Granularity,
   type Overview,
   type ReportView,
@@ -131,14 +132,7 @@ export function ReportsView() {
       ]);
 
       setOverview(loadedOverview);
-      setPoints(
-        series.points.map((point) => ({
-          date: point.date,
-          // Display-only: a chart needs a number for a pixel height, and this
-          // value never travels back to the server.
-          revenue: Number(point.revenue),
-        })),
-      );
+      setPoints(fillRevenueGaps(series.points, range, granularity));
       setTop(loadedTop);
       setBreakdown(loadedBreakdown);
     } catch (caught) {
@@ -240,7 +234,7 @@ export function ReportsView() {
             onExport={() => void handleExport('revenue', { granularity })}
           />
         </div>
-        <RevenueChart data={points} isLoading={isLoading} error={null} />
+        <RevenueChart data={points} granularity={granularity} isLoading={isLoading} error={null} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

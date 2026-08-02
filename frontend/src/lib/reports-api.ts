@@ -226,6 +226,106 @@ export function rangeForPreset(preset: Exclude<RangePreset, 'custom'>): DateRang
   }
 }
 
+/**
+ * Every bucket start date the backend's `getRevenueSeries` could have
+ * produced for this range/granularity — mirrors its SQL bucketing exactly
+ * (day: every calendar day; week: Monday-based ISO week, keyed by its
+ * Monday; month: keyed by the 1st) so gap-filling below can never disagree
+ * with the server about where a bucket boundary falls.
+ */
+export function enumerateBuckets(range: DateRange, granularity: Granularity): string[] {
+  const [fromY, fromM, fromD] = range.from.split('-').map(Number);
+  const [toY, toM, toD] = range.to.split('-').map(Number);
+  const from = new Date(fromY!, fromM! - 1, fromD);
+  const to = new Date(toY!, toM! - 1, toD);
+
+  const buckets: string[] = [];
+
+  if (granularity === 'month') {
+    const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
+    const end = new Date(to.getFullYear(), to.getMonth(), 1);
+    while (cursor <= end) {
+      buckets.push(toIsoDate(cursor));
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    return buckets;
+  }
+
+  const seen = new Set<string>();
+  const cursor = new Date(from);
+  while (cursor <= to) {
+    let key: string;
+    if (granularity === 'week') {
+      const day = cursor.getDay(); // 0 = Sunday .. 6 = Saturday
+      const diffToMonday = day === 0 ? 6 : day - 1;
+      const monday = new Date(cursor);
+      monday.setDate(monday.getDate() - diffToMonday);
+      key = toIsoDate(monday);
+    } else {
+      key = toIsoDate(cursor);
+    }
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      buckets.push(key);
+    }
+
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return buckets;
+}
+
+export interface RevenueGapPoint {
+  /** Bucket start date, ISO. */
+  date: string;
+  /**
+   * `null` means no order landed in this bucket — a real gap, not a zero.
+   * This project's rule is "never fabricate a value" (see CLAUDE.md /
+   * reports.service.ts): the backend only returns rows for buckets that had
+   * activity, so an interpolated zero here would claim certainty ("nothing
+   * sold") the data doesn't have. `null` lets the chart render an honest
+   * break instead of a false flat line.
+   */
+  revenue: number | null;
+}
+
+/**
+ * Fills every bucket the range/granularity implies but the backend didn't
+ * return (because nothing happened in it) with `revenue: null`, so a
+ * time-scaled x-axis gets one entry per real calendar bucket instead of
+ * silently equal-spacing whatever sparse set of dates happened to have
+ * orders.
+ */
+export function fillRevenueGaps(
+  points: readonly { date: string; revenue: string }[],
+  range: DateRange,
+  granularity: Granularity,
+): RevenueGapPoint[] {
+  const byDate = new Map(points.map((point) => [point.date, Number(point.revenue)]));
+
+  return enumerateBuckets(range, granularity).map((date) => ({
+    date,
+    revenue: byDate.has(date) ? byDate.get(date)! : null,
+  }));
+}
+
+/**
+ * Exclusive end of the bucket starting at `date` — the moment the bucket's
+ * data could no longer change. Used to tell a still-accumulating "today" /
+ * "this week" / "this month" bucket apart from a settled one.
+ */
+export function bucketEnd(date: string, granularity: Granularity): Date {
+  const [y, m, d] = date.split('-').map(Number);
+  const end = new Date(y!, m! - 1, d);
+
+  if (granularity === 'month') end.setMonth(end.getMonth() + 1);
+  else if (granularity === 'week') end.setDate(end.getDate() + 7);
+  else end.setDate(end.getDate() + 1);
+
+  return end;
+}
+
 /** Reverse lookup: does this exact range match one of the fixed presets?
  *  Drives which preset shows as selected — a custom range that happens not
  *  to match any preset falls through to `null`, which the field reads as
