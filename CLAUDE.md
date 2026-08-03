@@ -245,24 +245,31 @@ apart is an enumeration oracle.
   Phases 6-7 remain (full Settings rebuild, sidebar IA regrouping) — each has its own STOP-and-ask
   gate written into the original checklist; the full text of Phases 6-7 isn't transcribed anywhere
   in this repo, only in the conversation that pasted it — ask the user to re-paste before starting
-  Phase 6. (Older #65-68 from an earlier session are merged.)
-- **In progress**: none — Phase 5's scope is done, verified, and PR'd. The six-skill pass requested
+  Phase 6. (Older #65-68 from an earlier session are merged.) **#86** `feat(ui)`: a real Tooltip
+  primitive (base `dev`, OPEN) — NOT part of the 7-phase checklist, picked up from the older backlog
+  while Phase 6-7 waited on the re-paste; applied to the collapsed sidebar rail, which had a stopgap
+  `title`-attribute comment marking exactly this gap.
+- **In progress**: none — everything this session opened is PR'd. The six-skill pass requested
   on 2026-07-31 (`project-foundations`, `project-docs`, `project-error-log`, `project-ship`,
   `project-test-gen`, `ux-animation-reviewer`) is still outstanding.
 - **Next step**: Design Fix Checklist Phase 6 (Settings rebuild) — needs the checklist text
   re-pasted first (its 6.41 stop gate needs the original numbered items to act on). Four standing
   user notes from 2026-08-03 are earmarked for it: a field change must surface a dirty-state signal
-  before Save, not just after; some notification types need an icon, not colour alone; drawer/modal
-  (Sheet/AlertDialog) conversions are NOT a blanket rule, judge per-surface; some fields (e.g.
-  review content) must stay read-only for integrity even though the resource engine would otherwise
-  allow editing them (this last one is really Phase 8's recon to identify, Phase 6 just shouldn't
-  contradict it). Separately, rest of §U (ROADMAP.md): a Tooltip primitive for "why disabled", the
-  one remaining in-flight-state gap (`staff-password-panel.tsx`), optimistic row updates,
-  bulk-action progress, and the loading-overlay-blur / nav-transition-smoothness items noted below.
+  before Save, not just after; some notification types need an icon, not colour alone (the Tooltip
+  primitive from #86 is unrelated groundwork, not this note — this one is about the Toaster);
+  drawer/modal (Sheet/AlertDialog) conversions are NOT a blanket rule, judge per-surface; some
+  fields (e.g. review content) must stay read-only for integrity even though the resource engine
+  would otherwise allow editing them (this last one is really Phase 8's recon to identify, Phase 6
+  just shouldn't contradict it). Separately, rest of §U (ROADMAP.md): the one remaining
+  in-flight-state gap (`staff-password-panel.tsx`), optimistic row updates, bulk-action progress,
+  and the loading-overlay-blur / nav-transition-smoothness items noted below. The nav-hover-guide
+  item is likely already covered by #86 as a side effect — re-verify before treating it as separate
+  remaining work.
 - **Blockers**: none currently. Setup/Schema wizard remains blocked on an architecture decision
   (compiled-TS config vs. a DB-backed override layer) — not started, not in scope.
 - **Context to remember**:
-  - PR #85 (this session) is pushed and open; merging is the user's call per standing instruction.
+  - PRs #85 and #86 (this session) are pushed and open; merging is the user's call per standing
+    instruction.
   - `prisma migrate dev` raising a drop-database-looking alarm has now happened three times on
     this project. The safe recipe when it's a stale `_prisma_migrations` row rather than real
     drift: generate via `prisma migrate diff --from-schema-datamodel/--to-schema-datamodel` (pure
@@ -280,6 +287,12 @@ apart is an enumeration oracle.
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-08-03 (even later)** — Real Tooltip primitive (PR #86, open; not part of the 7-phase
+  checklist, an older-backlog item picked up between phases): `components/ui/tooltip.tsx`
+  (Radix, matching Popover/AlertDialog conventions), `TooltipProvider` mounted once in the root
+  layout. Applied to the collapsed sidebar rail, replacing a plain `title` attribute a code comment
+  had already marked as a stopgap for exactly this. `side` computed from the locale rather than
+  `document.dir`, avoiding an SSR/hydration mismatch on Arabic pages.
 - **2026-08-03 (later)** — Design Fix Checklist Phase 5 (PR #85, open): five real data-integrity
   bugs on the dashboard, found via a fresh Phase-0-style recon rather than assumed from an older
   summary. `__demo__` seed-tag no longer leaks into the fulfillment "needs attention" queue or

@@ -2,6 +2,7 @@ import { render as rtlRender, type RenderOptions } from '@testing-library/react'
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactElement, ReactNode } from 'react';
 
+import { TooltipProvider } from '@/components/ui/tooltip';
 import en from '../../messages/en.json';
 import ar from '../../messages/ar.json';
 
@@ -53,7 +54,9 @@ export function render(ui: ReactElement, { locale = 'en', ...options }: Options 
         // resolve it in tests while working fine in the app.
         formats={FORMATS}
       >
-        {children}
+        {/* Mirrors the root layout — `Tooltip` throws without an ancestor
+            `TooltipProvider` (see components/ui/tooltip.tsx). */}
+        <TooltipProvider>{children}</TooltipProvider>
       </NextIntlClientProvider>
     );
   }
