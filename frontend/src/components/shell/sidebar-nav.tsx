@@ -1,9 +1,10 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 
 import { Link, usePathname } from '@/i18n/navigation';
 import { NavigationPending } from '@/components/motion/navigation-progress';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   NAVIGATION,
   RESOURCE_GROUP_ORDER,
@@ -16,6 +17,7 @@ import {
 } from '@/config/navigation';
 import { canAccessArea, type Area, type StaffRole } from '@/config/areas';
 import { useResourceSchema } from '@/components/providers/schema-provider';
+import { getDirection } from '@/i18n/routing';
 import { cn } from '@/lib/utils';
 
 /**
@@ -41,6 +43,10 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
   const t = useTranslations('nav');
   const pathname = usePathname();
   const { resources } = useResourceSchema();
+  // Deterministic from the locale (unlike `getDocumentDirection()`, which
+  // reads `document` and would render 'ltr' on the server then flip after
+  // hydration on an Arabic page — a real mismatch, not just a flash).
+  const isRtl = getDirection(useLocale()) === 'rtl';
 
   /**
    * Schema-driven entries, merged with the hand-written ones.
@@ -117,35 +123,47 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
     // before its translation still shows a usable name instead of throwing.
     const label = t.has(item.labelKey) ? t(item.labelKey) : item.labelKey;
 
+    const link = (
+      <Link
+        href={item.href}
+        onClick={onNavigate}
+        // aria-current is what a screen reader announces; the colour is
+        // only for sighted users.
+        aria-current={isActive ? 'page' : undefined}
+        className={cn(
+          'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+          collapsed && 'justify-center px-2',
+          isActive
+            ? 'bg-primary/10 text-primary font-medium'
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+        )}
+      >
+        {/* Reports this link's pending state — and its destination label —
+            to the overlay. Renders nothing; must sit inside the Link. */}
+        <NavigationPending label={label} />
+
+        {/* Nav glyphs are objects, not arrows — no mirroring. */}
+        <item.icon className="size-4 shrink-0" aria-hidden />
+        <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
+      </Link>
+    );
+
+    // Collapsed rail only: the label is `sr-only` above, so a sighted user
+    // has no way to tell what an icon means without this. `side` is
+    // PHYSICAL in Radix (not logical like `align`), so it's computed here
+    // from the real reading direction rather than left to default — the
+    // tooltip must open INTO the content area, which is the opposite edge
+    // in Arabic.
+    if (!collapsed) return <li key={item.href}>{link}</li>;
+
     return (
       <li key={item.href}>
-        <Link
-          href={item.href}
-          onClick={onNavigate}
-          // aria-current is what a screen reader announces; the colour is
-          // only for sighted users.
-          aria-current={isActive ? 'page' : undefined}
-          // No Radix tooltip primitive exists in this codebase yet (see
-          // components/ui/) — a plain `title` is the minimal, acceptable
-          // fallback for "what does this icon mean" when the rail is
-          // collapsed.
-          title={collapsed ? label : undefined}
-          className={cn(
-            'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
-            collapsed && 'justify-center px-2',
-            isActive
-              ? 'bg-primary/10 text-primary font-medium'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-          )}
-        >
-          {/* Reports this link's pending state — and its destination label —
-              to the overlay. Renders nothing; must sit inside the Link. */}
-          <NavigationPending label={label} />
-
-          {/* Nav glyphs are objects, not arrows — no mirroring. */}
-          <item.icon className="size-4 shrink-0" aria-hidden />
-          <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
-        </Link>
+        <Tooltip>
+          <TooltipTrigger asChild>{link}</TooltipTrigger>
+          <TooltipContent side={isRtl ? 'left' : 'right'}>
+            {label}
+          </TooltipContent>
+        </Tooltip>
       </li>
     );
   }

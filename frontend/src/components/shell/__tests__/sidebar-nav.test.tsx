@@ -141,6 +141,38 @@ describe('interaction', () => {
   });
 });
 
+describe('collapsed rail', () => {
+  it('exposes the label as a tooltip on hover, since the visible text is sr-only', async () => {
+    const user = userEvent.setup();
+    render(<SidebarNav role="OWNER" collapsed />);
+
+    await user.hover(screen.getByRole('link', { name: /orders/i }));
+
+    expect(await screen.findByRole('tooltip', { name: /orders/i }, { timeout: 2000 })).toBeInTheDocument();
+  });
+
+  it('still gives every link its full accessible name, tooltip or not', () => {
+    // The sr-only span is what makes this true — the tooltip is a SIGHTED-user
+    // convenience on top of it, never a replacement for it.
+    render(<SidebarNav role="OWNER" collapsed />);
+
+    expect(screen.getByRole('link', { name: /orders/i })).toBeInTheDocument();
+  });
+
+  it('opens the tooltip toward the reading-start side in Arabic', async () => {
+    // `side` is a PHYSICAL Radix prop, not a logical one — this pins that the
+    // component computes it from the real direction rather than hardcoding
+    // 'right'.
+    const user = userEvent.setup();
+    render(<SidebarNav role="OWNER" collapsed />, { locale: 'ar' });
+
+    await user.hover(screen.getByRole('link', { name: 'الطلبات' }));
+
+    const tooltip = await screen.findByRole('tooltip', {}, { timeout: 2000 });
+    expect(tooltip.getAttribute('data-side')).toBe('left');
+  });
+});
+
 describe('localisation', () => {
   it('renders Arabic labels', () => {
     render(<SidebarNav role="OWNER" />, { locale: 'ar' });

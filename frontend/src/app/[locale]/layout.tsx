@@ -18,6 +18,7 @@ import { MotionProvider } from '@/components/motion-provider';
 import { NavigationProgressProvider } from '@/components/motion/navigation-progress';
 import { PageTransition } from '@/components/motion/page-transition';
 import { Toaster } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/hooks/useAuth';
 import { getDirection, routing } from '@/i18n/routing';
 import { getBlockingAppearanceScript } from '@/lib/apply-appearance';
@@ -152,17 +153,23 @@ export default async function LocaleLayout({
                   states can be translated, and outside the page so the
                   session survives navigation. */}
               <AuthProvider>
-                {/* NavigationProgress covers the wait BEFORE the new page
-                    arrives; PageTransition fades it in once it has. The two
-                    halves of the same navigation — neither covers the other's
-                    half on its own. */}
-                <NavigationProgressProvider>
-                  {/* Covers ordinary navigation AND language switching — a
-                      locale change is a route change, so without this it
-                      snaps. */}
-                  <PageTransition>{children}</PageTransition>
-                </NavigationProgressProvider>
-                <Toaster />
+                {/* One provider for the whole app — centralises
+                    `delayDuration` and is what lets the pointer move between
+                    two adjacent tooltip triggers (e.g. two collapsed sidebar
+                    icons) without re-waiting for the second one. */}
+                <TooltipProvider delayDuration={200}>
+                  {/* NavigationProgress covers the wait BEFORE the new page
+                      arrives; PageTransition fades it in once it has. The two
+                      halves of the same navigation — neither covers the
+                      other's half on its own. */}
+                  <NavigationProgressProvider>
+                    {/* Covers ordinary navigation AND language switching — a
+                        locale change is a route change, so without this it
+                        snaps. */}
+                    <PageTransition>{children}</PageTransition>
+                  </NavigationProgressProvider>
+                  <Toaster />
+                </TooltipProvider>
               </AuthProvider>
             </MotionProvider>
           </ThemeProvider>
