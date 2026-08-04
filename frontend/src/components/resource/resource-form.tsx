@@ -17,6 +17,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ProductGalleryPanel } from '@/components/resource/product-gallery-panel';
+import { ProductVariantsPanel } from '@/components/resource/product-variants-panel';
 import {
   Select,
   SelectContent,
@@ -159,6 +161,12 @@ export function ResourceForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  // Variants/gallery are a product's own sub-records, not generic-engine
+  // fields — managed through their own bespoke panels, opened from this
+  // form rather than nested inside it, so this stays the one place a
+  // conditional `schema.resource === 'products'` check exists.
+  const [variantsPanelOpen, setVariantsPanelOpen] = useState(false);
+  const [galleryPanelOpen, setGalleryPanelOpen] = useState(false);
   const [isConfirmingDiscard, setIsConfirmingDiscard] = useState(false);
   const [relationOptions, setRelationOptions] = useState<
     Record<string, RelationOption[]>
@@ -370,6 +378,7 @@ export function ResourceForm({
   }
 
   return (
+    <>
     <Sheet open={open} onOpenChange={requestClose}>
       <SheetContent
         side="end"
@@ -418,6 +427,17 @@ export function ResourceForm({
                 onChange={(value) => setValue(field.name, value)}
               />
             ))}
+
+            {isEdit && schema.resource === 'products' ? (
+              <div className="flex gap-2 border-t pt-4">
+                <Button type="button" variant="outline" size="sm" onClick={() => setVariantsPanelOpen(true)}>
+                  {t('manageVariants')}
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setGalleryPanelOpen(true)}>
+                  {t('manageGallery')}
+                </Button>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex justify-end gap-2 border-t pt-4">
@@ -458,6 +478,24 @@ export function ResourceForm({
         </AlertDialogContent>
       </AlertDialog>
     </Sheet>
+
+    {isEdit && schema.resource === 'products' ? (
+      <>
+        <ProductVariantsPanel
+          productId={String(row.id)}
+          productName={String(row.name ?? '')}
+          open={variantsPanelOpen}
+          onOpenChange={setVariantsPanelOpen}
+        />
+        <ProductGalleryPanel
+          productId={String(row.id)}
+          productName={String(row.name ?? '')}
+          open={galleryPanelOpen}
+          onOpenChange={setGalleryPanelOpen}
+        />
+      </>
+    ) : null}
+    </>
   );
 }
 
