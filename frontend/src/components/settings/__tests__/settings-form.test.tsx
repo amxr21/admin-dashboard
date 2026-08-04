@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createElement, type ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 
-import { render, screen, waitFor } from '@/test/render';
+import { render, screen, waitFor, within } from '@/test/render';
 import { SettingsForm } from '../settings-form';
 import type { Setting } from '@/lib/settings-api';
 
@@ -70,6 +70,7 @@ function makeSettings(overrides: Partial<Setting>[] = []): Setting[] {
       key: 'theme.accentColor',
       label: 'Accent color',
       type: 'color',
+      options: ['#2563eb', '#4f46e5', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#16a34a', '#0d9488'],
       value: '#2563eb',
       isDefault: true,
       updatedAt: null,
@@ -119,27 +120,31 @@ describe('rendering a control per declared type', () => {
 });
 
 describe('the color control', () => {
-  it('shows the swatch and a hex text field, never a native color picker', async () => {
+  it('renders a curated swatch picker, never a free hex field', async () => {
     fetchSettings.mockResolvedValue(makeSettings());
     render(<SettingsForm />);
 
-    const input = await screen.findByLabelText(/accent color/i);
-    // A plain text field validated as hex — not <input type="color">, which
-    // this app avoids in favour of custom-built controls (project-ui-system).
-    expect(input).toHaveAttribute('type', 'text');
-    expect(input).toHaveValue('#2563eb');
+    // A radiogroup of vetted swatches — not <input type="color"> (this app
+    // avoids native interactive widgets) and not a free-hex text field
+    // either (the server only ever declares palette members as `options`,
+    // see ACCENT_COLOR_PALETTE in settings.config.ts).
+    const group = await screen.findByRole('radiogroup', { name: /accent color/i });
+    const swatches = within(group).getAllByRole('radio');
+    expect(swatches).toHaveLength(8);
+
+    const selected = swatches.find((swatch) => swatch.getAttribute('aria-checked') === 'true');
+    expect(selected).toHaveAttribute('aria-label', '#2563eb');
   });
 
-  it('lets a new hex value be typed and saved', async () => {
+  it('picking a swatch saves that palette value', async () => {
     fetchSettings.mockResolvedValue(makeSettings());
     saveSettings.mockResolvedValue(makeSettings([{ key: 'theme.accentColor', value: '#16a34a' } as Setting]));
     const user = userEvent.setup();
 
     render(<SettingsForm />);
 
-    const input = await screen.findByLabelText(/accent color/i);
-    await user.clear(input);
-    await user.type(input, '#16a34a');
+    const group = await screen.findByRole('radiogroup', { name: /accent color/i });
+    await user.click(within(group).getByRole('radio', { name: '#16a34a' }));
 
     await user.click(screen.getByRole('button', { name: /save/i }));
 

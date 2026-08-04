@@ -61,7 +61,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   const [previewedRole, setPreviewedRoleState] = useState<StaffRole | null>(null);
   const pathname = usePathname();
   const { resources } = useResourceSchema();
-  const { logoUrl, sidebarMode } = useAppSettings();
+  const { logoUrl, sidebarMode, storeName } = useAppSettings();
   const pageTitle = usePageTitle();
   // Collapse/expand is a personal per-browser preference, separate from
   // `sidebarMode` (store-wide sticky-vs-floating) above — see the hook.
@@ -113,7 +113,10 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
             <img src={logoUrl} alt="" className="h-7 w-auto shrink-0" />
           ) : null}
           {!collapsedForThis ? (
-            <span className="truncate text-lg font-semibold">admin-dashboard</span>
+            // Falls back to the generic app name only when the store hasn't
+            // set its own — collapsed hides this entirely (see the aside's
+            // width comment): a rail has no room for a wordmark.
+            <span className="truncate text-lg font-semibold">{storeName || 'admin-dashboard'}</span>
           ) : null}
           {showCollapseToggle ? (
             <Button
@@ -154,18 +157,24 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
           Collapse (`collapsed`, personal/localStorage) only ever changes the
           WIDTH. `sidebarMode` (store-wide, `ui.sidebarMode`) only ever
           changes the surrounding chrome (flush edge vs. detached card, via
-          margin — `h-full` plus the flex row's default `align-items: stretch`
-          already fills the remaining height around that margin, so no
-          explicit height calc is needed the way viewport-relative `top`
-          positioning used to require). */}
+          margin).
+
+          `h-full` (sticky mode) and `m-3` (floating mode) do NOT combine the
+          way the old comment here claimed: `height: 100%` is an EXPLICIT
+          size, so `align-items: stretch`'s margin-subtracting behavior never
+          engages (stretch only applies when the cross size is `auto`) — the
+          box becomes exactly 100% tall and the margin is added on TOP of
+          that, overflowing the parent by the margin amount. Floating mode
+          therefore sizes itself explicitly to `calc(100% - margin)` instead
+          of relying on stretch. */}
       <aside
         className={cn(
-          'bg-card hidden h-full shrink-0 flex-col p-2 lg:flex',
+          'bg-card hidden shrink-0 flex-col p-2 lg:flex',
           'transition-[width] duration-200 ease-in-out motion-reduce:transition-none',
           collapsed ? 'w-16' : 'w-64',
           sidebarMode === 'floating'
-            ? 'm-3 rounded-xl border shadow-lg'
-            : 'border-e',
+            ? 'm-3 h-[calc(100%-1.5rem)] rounded-xl border shadow-lg'
+            : 'h-full border-e',
         )}
       >
         {renderSidebarContent(collapsed, true)}

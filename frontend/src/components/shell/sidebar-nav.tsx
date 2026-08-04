@@ -3,7 +3,6 @@
 import { useLocale, useTranslations } from 'next-intl';
 
 import { Link, usePathname } from '@/i18n/navigation';
-import { NavigationPending } from '@/components/motion/navigation-progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   NAVIGATION,
@@ -138,10 +137,6 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
             : 'text-muted-foreground hover:bg-muted hover:text-foreground',
         )}
       >
-        {/* Reports this link's pending state — and its destination label —
-            to the overlay. Renders nothing; must sit inside the Link. */}
-        <NavigationPending label={label} />
-
         {/* Nav glyphs are objects, not arrows — no mirroring. */}
         <item.icon className="size-4 shrink-0" aria-hidden />
         <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>

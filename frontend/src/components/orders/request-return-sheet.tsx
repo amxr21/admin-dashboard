@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { createReturn } from '@/lib/returns-api';
 import type { OrderDetail } from '@/lib/orders-api';
@@ -40,6 +41,7 @@ export function RequestReturnSheet({
   const t = useTranslations('returns.request');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
+  const { editPanelMode } = useAppSettings();
 
   const [reason, setReason] = useState('');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -85,6 +87,7 @@ export function RequestReturnSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="end"
+        variant={editPanelMode}
         className="w-full max-w-lg overflow-y-auto"
         title={t('title', { order: order.orderNumber })}
       >

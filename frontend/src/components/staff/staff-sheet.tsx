@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ApiError } from '@/lib/api';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
   STAFF_ROLES,
@@ -62,6 +63,7 @@ export function StaffSheet({
   const t = useTranslations('staff');
   const tRole = useTranslations('staffRole');
   const translateError = useTranslatedApiError();
+  const { editPanelMode } = useAppSettings();
 
   const isEdit = member !== null;
   const isSelf = isEdit && member.id === actorId;
@@ -151,6 +153,7 @@ export function StaffSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="end"
+        variant={editPanelMode}
         className="w-full max-w-md overflow-y-auto"
         title={isEdit ? t('form.editTitle') : t('form.createTitle')}
       >

@@ -54,6 +54,8 @@
     }
   },
   "auth": {
+    "title": "Admin sign in",
+    "subtitle": "Access the dashboard",
     "signIn": "Sign in",
     "email": "Email",
     "emailPlaceholder": "you@company.com",

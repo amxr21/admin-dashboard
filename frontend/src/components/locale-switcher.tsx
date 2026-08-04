@@ -2,10 +2,9 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import { useTransition } from 'react';
-import { Languages } from 'lucide-react';
+import { Languages, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { TransitionOverlay } from '@/components/motion/transition-overlay';
 import { usePathname, useRouter } from '@/i18n/navigation';
 import { LOCALES, type Locale } from '@/i18n/routing';
 
@@ -40,32 +39,25 @@ export function LocaleSwitcher() {
   }
 
   return (
-    <>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => switchTo(next)}
-        disabled={isPending}
-        // The label names the language being switched TO, not the current one —
-        // less ambiguous for screen-reader users than a bare "Language".
-        aria-label={t('switchTo', { language: t(next) })}
-      >
-        {/* Not `.icon-directional`: a globe/languages glyph has no direction. */}
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => switchTo(next)}
+      disabled={isPending}
+      // The label names the language being switched TO, not the current one —
+      // less ambiguous for screen-reader users than a bare "Language".
+      aria-label={t('switchTo', { language: t(next) })}
+    >
+      {/* Swaps to a spinner while `startTransition` is in flight — small,
+          inline feedback rather than a full-screen overlay covering the rest
+          of the page. Not `.icon-directional`: neither glyph has a reading
+          direction. */}
+      {isPending ? (
+        <Loader2 className="animate-spin" aria-hidden />
+      ) : (
         <Languages aria-hidden />
-        <span>{t(next)}</span>
-      </Button>
-
-      {/*
-        `startTransition` keeps the CURRENT page interactive while the next one
-        loads, so without this nothing visibly happens between click and the
-        new language appearing — the UI looks frozen, then snaps. A page-enter
-        animation doesn't fix it either: that plays AFTER the new page arrives,
-        covering the wrong half of the wait.
-
-        The overlay only appears if the switch takes longer than ~120ms, so a
-        fast cached switch stays instant rather than flashing a loader.
-      */}
-      <TransitionOverlay active={isPending} label={t('switchTo', { language: t(next) })} />
-    </>
+      )}
+      <span>{t(next)}</span>
+    </Button>
   );
 }

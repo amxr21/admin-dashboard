@@ -54,6 +54,8 @@
     }
   },
   "auth": {
+    "title": "تسجيل دخول المدير",
+    "subtitle": "الوصول إلى لوحة التحكم",
     "signIn": "تسجيل الدخول",
     "email": "البريد الإلكتروني",
     "emailPlaceholder": "you@company.com",

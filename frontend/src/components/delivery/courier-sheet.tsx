@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ApiError } from '@/lib/api';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
   COURIER_STATUSES,
@@ -68,6 +69,7 @@ export function CourierSheet({ courier, open, onOpenChange, onSaved }: CourierSh
   const t = useTranslations('delivery.form');
   const tStatus = useTranslations('deliveryStaffStatus');
   const translateError = useTranslatedApiError();
+  const { editPanelMode } = useAppSettings();
 
   const [values, setValues] = useState<Values>(() => initial(courier));
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +136,7 @@ export function CourierSheet({ courier, open, onOpenChange, onSaved }: CourierSh
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="end"
+        variant={editPanelMode}
         className="w-full max-w-md overflow-y-auto"
         title={isEdit ? t('editTitle') : t('createTitle')}
       >

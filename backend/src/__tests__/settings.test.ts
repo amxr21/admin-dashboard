@@ -209,11 +209,17 @@ describe('values are validated against their declared type', () => {
 });
 
 describe('the color type', () => {
-  it('accepts a 6-digit hex color, lowercased', async () => {
-    expect((await save({ 'theme.accentColor': '#ABCDEF' })).status).toBe(200);
+  it('accepts a palette member, uppercase input lowercased', async () => {
+    expect((await save({ 'theme.accentColor': '#2563EB' })).status).toBe(200);
 
     const res = await request(app).get('/api/v1/settings').set(auth(ownerToken));
-    expect(get('theme.accentColor', res.body as SettingsBody)?.value).toBe('#abcdef');
+    expect(get('theme.accentColor', res.body as SettingsBody)?.value).toBe('#2563eb');
+  });
+
+  it('rejects a well-formed hex that is not in the palette', async () => {
+    // A valid 6-digit hex is necessary but not sufficient — accentColor is a
+    // curated swatch picker (see ACCENT_COLOR_PALETTE), not a free field.
+    expect((await save({ 'theme.accentColor': '#abcdef' })).status).toBe(400);
   });
 
   it('rejects a color name', async () => {
