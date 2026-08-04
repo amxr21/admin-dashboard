@@ -85,6 +85,27 @@ describe('relation', () => {
   });
 });
 
+describe('multiRelation', () => {
+  it('joins the attached labels rather than showing raw ids', () => {
+    renderCell(field({ type: 'multiRelation', name: 'categories' }), {
+      categories: ['id-a', 'id-b'],
+      categories__label: ['Home & Garden', 'Electronics'],
+    });
+
+    expect(screen.getByText('Home & Garden, Electronics')).toBeInTheDocument();
+    expect(screen.queryByText(/id-a/)).not.toBeInTheDocument();
+  });
+
+  it('renders an em dash for an empty set, the same as null elsewhere', () => {
+    const { container } = renderCell(field({ type: 'multiRelation', name: 'categories' }), {
+      categories: [],
+      categories__label: [],
+    });
+
+    expect(container.textContent).toContain('—');
+  });
+});
+
 describe('enum', () => {
   it('renders a translated badge when the field maps to a status', () => {
     renderCell(field({ type: 'enum', name: 'status' }), { status: 'ACTIVE' }, 'products');

@@ -27,7 +27,10 @@ export type FieldType =
   | 'email'
   | 'phone'
   | 'url'
-  | 'relation';
+  | 'relation'
+  /** Many-to-many. The row's value is `string[]` (ids); `${name}__label` is
+   *  the matching `string[]` of labels — see resource.service.ts. */
+  | 'multiRelation';
 
 export interface FieldConfig {
   name: string;
