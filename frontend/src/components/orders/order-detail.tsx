@@ -5,6 +5,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { Printer, RotateCcw } from 'lucide-react';
 
+import { AssignCourierControl } from '@/components/orders/assign-courier-control';
 import { ErrorScreen } from '@/components/errors/error-screen';
 import { OrderStatusControl } from '@/components/orders/order-status-control';
 import { OrderStatusTimeline } from '@/components/orders/order-status-timeline';
@@ -264,6 +265,15 @@ export function OrderDetail({ id }: { id: string }) {
             ) : (
               <p className="text-muted-foreground text-sm">{t('delivery.unassigned')}</p>
             )}
+
+            <AssignCourierControl
+              orderId={order.id}
+              orderStatus={order.status}
+              assignment={order.assignment}
+              onChanged={(assignment) =>
+                setOrder((current) => (current ? { ...current, assignment } : current))
+              }
+            />
           </section>
 
           <section className="bg-card rounded-lg border p-4">

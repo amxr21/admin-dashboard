@@ -372,6 +372,94 @@ export async function assignOrder(input: AssignInput) {
   return assignment;
 }
 
+/**
+ * What a COURIER may set on their own assignment, self-reported from the
+ * field. Deliberately narrower than the full `DeliveryStatus` enum:
+ * OUT_FOR_DELIVERY/DELIVERED/CANCELED/RETURNED can ALSO arrive top-down from
+ * the order side (see `ASSIGNMENT_ON_ORDER_STATUS` in orders.config.ts).
+ * CANCELED and RETURNED stay staff-only here — they follow business rules
+ * (return approval, order cancellation) a courier has no visibility into and
+ * must not be able to shortcut. Confirming DELIVERED here updates only the
+ * ASSIGNMENT, never the order itself — the order's own status stays the
+ * staff side's call, the same one-way direction `ASSIGNMENT_ON_ORDER_STATUS`
+ * already established (order → assignment, never the reverse).
+ */
+const COURIER_TRANSITIONS: Readonly<Partial<Record<DeliveryStatus, readonly DeliveryStatus[]>>> = {
+  [DeliveryStatus.ASSIGNED]: [DeliveryStatus.PICKED_UP],
+  [DeliveryStatus.PICKED_UP]: [DeliveryStatus.OUT_FOR_DELIVERY, DeliveryStatus.HANDED_OVER],
+  [DeliveryStatus.OUT_FOR_DELIVERY]: [DeliveryStatus.DELIVERED, DeliveryStatus.HANDED_OVER],
+};
+
+/** Fields a courier needs to actually make the delivery, and nothing else —
+ *  no other couriers, no other customers' data beyond what this job needs. */
+export async function listOwnAssignments(courierId: string) {
+  const assignments = await prisma.deliveryAssignment.findMany({
+    where: { driverId: courierId },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    select: {
+      id: true,
+      status: true,
+      customerName: true,
+      customerPhone: true,
+      address: true,
+      area: true,
+      city: true,
+      total: true,
+      paymentMethod: true,
+      note: true,
+      createdAt: true,
+      order: { select: { id: true, orderNumber: true } },
+    },
+  });
+
+  return assignments.map((assignment) => ({
+    ...assignment,
+    createdAt: assignment.createdAt.toISOString(),
+  }));
+}
+
+/**
+ * A courier reporting progress on THEIR OWN assignment.
+ *
+ * "Not found" covers both "no such assignment" and "not yours" — same
+ * enumeration-safe shape as `courierForCode`. A courier probing another
+ * courier's assignment id must not be able to tell the two apart.
+ */
+export async function updateAssignmentStatus(
+  assignmentId: string,
+  courierId: string,
+  nextStatus: DeliveryStatus,
+) {
+  const assignment = await prisma.deliveryAssignment.findUnique({
+    where: { id: assignmentId },
+    select: { id: true, driverId: true, status: true },
+  });
+
+  if (!assignment || assignment.driverId !== courierId) {
+    throw AppError.notFound('Assignment not found');
+  }
+
+  const allowed = COURIER_TRANSITIONS[assignment.status] ?? [];
+
+  if (!allowed.includes(nextStatus)) {
+    throw AppError.badRequest(
+      `Cannot move from ${assignment.status} to ${nextStatus}`,
+      { field: 'status' },
+    );
+  }
+
+  return prisma.deliveryAssignment.update({
+    where: { id: assignmentId },
+    data: { status: nextStatus },
+    select: {
+      id: true,
+      status: true,
+      order: { select: { id: true, orderNumber: true } },
+    },
+  });
+}
+
 export async function unassignOrder(assignmentId: string) {
   const assignment = await prisma.deliveryAssignment.findUnique({
     where: { id: assignmentId },
