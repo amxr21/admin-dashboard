@@ -23,6 +23,8 @@ import { ResourceForm } from '@/components/resource/resource-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -80,6 +82,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -286,39 +289,54 @@ export function ResourceTable({ schema }: ResourceTableProps) {
             cell: (row) => (
               <div className="flex justify-end gap-1">
                 {canUpdate ? (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      setFormRow(row);
-                      setIsFormOpen(true);
-                    }}
-                    // The row has no visible label of its own, so the button
-                    // names what it acts on for screen readers.
-                    aria-label={t('actions.editRow', { label: rowLabel(row) })}
-                  >
-                    <Pencil aria-hidden />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setFormRow(row);
+                          setIsFormOpen(true);
+                        }}
+                        // The row has no visible label of its own, so the button
+                        // names what it acts on for screen readers.
+                        aria-label={t('actions.editRow', { label: rowLabel(row) })}
+                      >
+                        <Pencil aria-hidden />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t('actions.editRow', { label: rowLabel(row) })}</TooltipContent>
+                  </Tooltip>
                 ) : null}
                 {canDelete ? (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setPendingDelete([String(row.id)])}
-                    aria-label={t('actions.deleteRow', { label: rowLabel(row) })}
-                  >
-                    <Trash2 aria-hidden />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setPendingDelete([String(row.id)])}
+                        aria-label={t('actions.deleteRow', { label: rowLabel(row) })}
+                      >
+                        <Trash2 aria-hidden />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t('actions.deleteRow', { label: rowLabel(row) })}</TooltipContent>
+                  </Tooltip>
                 ) : null}
                 {canViewHistory ? (
-                  <Button variant="ghost" size="icon" asChild>
-                    <Link
-                      href={`/admin/audit?entity=${schema.resource}&entityId=${String(row.id)}`}
-                      aria-label={tAudit('viewHistory')}
-                    >
-                      <History aria-hidden />
-                    </Link>
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" asChild>
+                        <Link
+                          href={`/admin/audit?entity=${schema.resource}&entityId=${String(row.id)}`}
+                          aria-label={tAudit('viewHistory')}
+                        >
+                          <History aria-hidden />
+                        </Link>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{tAudit('viewHistory')}</TooltipContent>
+                  </Tooltip>
                 ) : null}
               </div>
             ),
@@ -392,25 +410,63 @@ export function ResourceTable({ schema }: ResourceTableProps) {
           {canSearch ? (
             <div className="min-w-56 flex-1 space-y-2">
               <Label htmlFor="resource-search">{t('search.label')}</Label>
-              <div className="relative">
-                <Search
-                  className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
-                  aria-hidden
-                />
-                <Input
-                  id="resource-search"
-                  value={searchInput}
-                  onChange={(event) => setSearchInput(event.target.value)}
-                  // Names the actual columns searched, so nobody wonders why a
-                  // description match returns nothing.
-                  placeholder={t('search.placeholder', {
-                    fields: searchableFields(schema)
-                      .map((field) => field.label)
-                      .join(', '),
-                  })}
-                  className="ps-9"
-                />
-              </div>
+              {/* Suggestions reuse the SAME debounced result the table below
+                  renders from — no second request. Open only once that
+                  result actually reflects the typed query (not a stale
+                  fetch from before the debounce caught up), so a suggestion
+                  can never point at a row that no longer matches. */}
+              <Popover open={canUpdate && searchFocused && searchInput.trim() !== '' && search === searchInput.trim() && (result?.rows.length ?? 0) > 0}>
+                <PopoverAnchor asChild>
+                  <div className="relative">
+                    <Search
+                      className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
+                      aria-hidden
+                    />
+                    <Input
+                      id="resource-search"
+                      value={searchInput}
+                      onChange={(event) => setSearchInput(event.target.value)}
+                      onFocus={() => setSearchFocused(true)}
+                      onBlur={() => setSearchFocused(false)}
+                      // Names the actual columns searched, so nobody wonders why a
+                      // description match returns nothing.
+                      placeholder={t('search.placeholder', {
+                        fields: searchableFields(schema)
+                          .map((field) => field.label)
+                          .join(', '),
+                      })}
+                      className="ps-9"
+                      autoComplete="off"
+                    />
+                  </div>
+                </PopoverAnchor>
+
+                <PopoverContent
+                  align="start"
+                  className="w-72 p-1"
+                  onOpenAutoFocus={(event) => event.preventDefault()}
+                >
+                  <ul>
+                    {(result?.rows ?? []).slice(0, 5).map((row) => (
+                      <li key={String(row.id)}>
+                        <button
+                          type="button"
+                          // mousedown, not click: fires before the input's
+                          // onBlur closes the popover, so the click lands.
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            setFormRow(row);
+                            setIsFormOpen(true);
+                          }}
+                          className="hover:bg-muted flex w-full flex-col items-start gap-0.5 rounded-sm px-2 py-1.5 text-start text-sm"
+                        >
+                          <span className="truncate font-medium">{rowLabel(row)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </PopoverContent>
+              </Popover>
             </div>
           ) : null}
 

@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { gsap, useGSAP } from '@/lib/gsap';
 import { DURATION, EASE } from '@/lib/motion-tokens';
 
@@ -62,19 +63,26 @@ export function ThemeToggle() {
     return <div className="size-9" aria-hidden />;
   }
 
+  const label = isDark ? t('toLight') : t('toDark');
+
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      onClick={() => setTheme(isDark ? 'light' : 'dark')}
-      aria-label={isDark ? t('toLight') : t('toDark')}
-    >
-      {/* Keyed so React remounts the span on change, which re-runs the tween.
-          Neither icon is .icon-directional — a sun and a moon have no reading
-          direction and must not mirror in RTL. */}
-      <span key={isDark ? 'sun' : 'moon'} ref={iconRef} className="inline-flex">
-        {isDark ? <Sun aria-hidden /> : <Moon aria-hidden />}
-      </span>
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setTheme(isDark ? 'light' : 'dark')}
+          aria-label={label}
+        >
+          {/* Keyed so React remounts the span on change, which re-runs the tween.
+              Neither icon is .icon-directional — a sun and a moon have no reading
+              direction and must not mirror in RTL. */}
+          <span key={isDark ? 'sun' : 'moon'} ref={iconRef} className="inline-flex">
+            {isDark ? <Sun aria-hidden /> : <Moon aria-hidden />}
+          </span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }

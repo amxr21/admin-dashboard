@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { createElement, type ReactNode } from 'react';
 
-import { render, screen } from '@/test/render';
+import { render, screen, waitFor } from '@/test/render';
 import { SidebarNav } from '../sidebar-nav';
 
 /**
@@ -142,24 +142,55 @@ describe('interaction', () => {
 });
 
 describe('collapsed rail', () => {
-  it('exposes the label as a tooltip on hover, since the visible text is sr-only', async () => {
+  it('exposes the label as a hover preview, since the visible text is sr-only', async () => {
+    // A HoverCard, not a Tooltip — Radix's own guidance is that a Tooltip's
+    // content must be plain text with no other way to reach it, but this
+    // preview also carries a description and an "Open" cue, so it has no
+    // implicit ARIA role. Queried via its `data-slot`, set in ui/hover-card.tsx.
     const user = userEvent.setup();
     render(<SidebarNav role="OWNER" collapsed />);
 
     await user.hover(screen.getByRole('link', { name: /orders/i }));
 
-    expect(await screen.findByRole('tooltip', { name: /orders/i }, { timeout: 2000 })).toBeInTheDocument();
+    // Portalled to `document.body`, not inside the render `container` —
+    // Radix's HoverCard.Content (like Popover/Tooltip) renders through a
+    // Portal, so it lives outside the tree `container` scopes to.
+    const preview = await waitFor(() => {
+      const found = document.body.querySelector('[data-slot="hover-card-content"]');
+      if (!found) throw new Error('hover preview not open yet');
+      return found;
+    });
+    expect(preview.textContent).toMatch(/orders/i);
   });
 
-  it('still gives every link its full accessible name, tooltip or not', () => {
-    // The sr-only span is what makes this true — the tooltip is a SIGHTED-user
-    // convenience on top of it, never a replacement for it.
+  it('opens the preview on keyboard focus alone, with no mouse hover', async () => {
+    // Radix's HoverCard is deliberately hover-only by its own accessibility
+    // guidance (a "sneak peek", never the sole path to content). A nav
+    // destination has no OTHER preview mechanism and the collapsed rail's
+    // icon has no visible label, so this is a CONTROLLED HoverCard that also
+    // opens on the trigger's own focus/blur — this pins that keyboard focus
+    // alone (no `hover()`, no pointer event at all) is enough.
+    render(<SidebarNav role="OWNER" collapsed />);
+
+    screen.getByRole('link', { name: /orders/i }).focus();
+
+    const preview = await waitFor(() => {
+      const found = document.body.querySelector('[data-slot="hover-card-content"]');
+      if (!found) throw new Error('hover preview not open yet');
+      return found;
+    });
+    expect(preview.textContent).toMatch(/orders/i);
+  });
+
+  it('still gives every link its full accessible name, preview or not', () => {
+    // The sr-only span is what makes this true — the hover preview is a
+    // SIGHTED-user convenience on top of it, never a replacement for it.
     render(<SidebarNav role="OWNER" collapsed />);
 
     expect(screen.getByRole('link', { name: /orders/i })).toBeInTheDocument();
   });
 
-  it('opens the tooltip toward the reading-start side in Arabic', async () => {
+  it('opens the preview toward the reading-start side in Arabic', async () => {
     // `side` is a PHYSICAL Radix prop, not a logical one — this pins that the
     // component computes it from the real direction rather than hardcoding
     // 'right'.
@@ -168,8 +199,15 @@ describe('collapsed rail', () => {
 
     await user.hover(screen.getByRole('link', { name: 'الطلبات' }));
 
-    const tooltip = await screen.findByRole('tooltip', {}, { timeout: 2000 });
-    expect(tooltip.getAttribute('data-side')).toBe('left');
+    // Portalled to `document.body`, not inside the render `container` —
+    // Radix's HoverCard.Content (like Popover/Tooltip) renders through a
+    // Portal, so it lives outside the tree `container` scopes to.
+    const preview = await waitFor(() => {
+      const found = document.body.querySelector('[data-slot="hover-card-content"]');
+      if (!found) throw new Error('hover preview not open yet');
+      return found;
+    });
+    expect(preview.getAttribute('data-side')).toBe('left');
   });
 });
 

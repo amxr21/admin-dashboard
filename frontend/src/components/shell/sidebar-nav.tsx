@@ -1,10 +1,11 @@
 'use client';
 
 import { useLocale, useTranslations } from 'next-intl';
+import { useState } from 'react';
+import { ArrowRight } from 'lucide-react';
 
 import { Link, usePathname } from '@/i18n/navigation';
-import { NavigationPending } from '@/components/motion/navigation-progress';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import {
   NAVIGATION,
   RESOURCE_GROUP_ORDER,
@@ -111,63 +112,6 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
     if (group.labelKey) byKey.set(group.labelKey, copy);
   }
 
-  /** Shared by every group's items AND the trailing Settings item below, so
-   *  the two can never render the link markup differently. */
-  function renderNavLink(item: NavItem) {
-    // Exact match for the index route, prefix match for the rest —
-    // otherwise /admin stays highlighted on every child page.
-    const isActive =
-      item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href);
-
-    // Falls back to the raw key so a resource added to admin.config.ts
-    // before its translation still shows a usable name instead of throwing.
-    const label = t.has(item.labelKey) ? t(item.labelKey) : item.labelKey;
-
-    const link = (
-      <Link
-        href={item.href}
-        onClick={onNavigate}
-        // aria-current is what a screen reader announces; the colour is
-        // only for sighted users.
-        aria-current={isActive ? 'page' : undefined}
-        className={cn(
-          'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
-          collapsed && 'justify-center px-2',
-          isActive
-            ? 'bg-primary/10 text-primary font-medium'
-            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-        )}
-      >
-        {/* Reports this link's pending state — and its destination label —
-            to the overlay. Renders nothing; must sit inside the Link. */}
-        <NavigationPending label={label} />
-
-        {/* Nav glyphs are objects, not arrows — no mirroring. */}
-        <item.icon className="size-4 shrink-0" aria-hidden />
-        <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
-      </Link>
-    );
-
-    // Collapsed rail only: the label is `sr-only` above, so a sighted user
-    // has no way to tell what an icon means without this. `side` is
-    // PHYSICAL in Radix (not logical like `align`), so it's computed here
-    // from the real reading direction rather than left to default — the
-    // tooltip must open INTO the content area, which is the opposite edge
-    // in Arabic.
-    if (!collapsed) return <li key={item.href}>{link}</li>;
-
-    return (
-      <li key={item.href}>
-        <Tooltip>
-          <TooltipTrigger asChild>{link}</TooltipTrigger>
-          <TooltipContent side={isRtl ? 'left' : 'right'}>
-            {label}
-          </TooltipContent>
-        </Tooltip>
-      </li>
-    );
-  }
-
   const canSeeSettings = canAccessArea(role, 'settings');
 
   return (
@@ -196,7 +140,20 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
               </h2>
             ) : null}
 
-            <ul className="space-y-0.5">{visible.map(renderNavLink)}</ul>
+            <ul className="space-y-0.5">
+              {visible.map((item) => (
+                <NavLinkItem
+                  key={item.href}
+                  item={item}
+                  collapsed={collapsed}
+                  isRtl={isRtl}
+                  isActive={
+                    item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href)
+                  }
+                  onNavigate={onNavigate}
+                />
+              ))}
+            </ul>
           </div>
         );
       })}
@@ -208,9 +165,103 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
           "declare it last in NAVIGATION". */}
       {canSeeSettings ? (
         <div className="mt-auto border-t pt-2">
-          <ul className="space-y-0.5">{renderNavLink(SETTINGS_NAV_ITEM)}</ul>
+          <ul className="space-y-0.5">
+            <NavLinkItem
+              item={SETTINGS_NAV_ITEM}
+              collapsed={collapsed}
+              isRtl={isRtl}
+              isActive={pathname.startsWith(SETTINGS_NAV_ITEM.href)}
+              onNavigate={onNavigate}
+            />
+          </ul>
         </div>
       ) : null}
     </nav>
+  );
+}
+
+/**
+ * One nav row plus its hover preview — split out from `SidebarNav` so each
+ * row gets its own `useState` for the preview's open state (a plain
+ * per-item function called from `.map()` can't own hooks; a component can).
+ *
+ * ─── WHY THE PREVIEW IS CONTROLLED, NOT A BARE HoverCard ─────────────────
+ * Radix's `HoverCard` is deliberately hover-only — per its own accessibility
+ * guidance, it must never be the sole way to reach content, so it does not
+ * open on keyboard focus. That is correct for content with another way in,
+ * but a nav destination has NO other way to preview it, and the collapsed
+ * rail's icon has no visible label at all otherwise. So `open` is controlled
+ * here and ALSO flipped on the link's own focus/blur — a keyboard user
+ * tabbing the rail gets the same preview a pointer user hovering it does.
+ */
+interface NavLinkItemProps {
+  item: NavItem;
+  collapsed: boolean;
+  isRtl: boolean;
+  isActive: boolean;
+  onNavigate?: () => void;
+}
+
+function NavLinkItem({ item, collapsed, isRtl, isActive, onNavigate }: NavLinkItemProps) {
+  const t = useTranslations('nav');
+  const [open, setOpen] = useState(false);
+
+  // Falls back to the raw key so a resource added to admin.config.ts before
+  // its translation still shows a usable name instead of throwing.
+  const label = t.has(item.labelKey) ? t(item.labelKey) : item.labelKey;
+  const descriptionKey = `descriptions.${item.labelKey}`;
+  const description = t.has(descriptionKey) ? t(descriptionKey) : undefined;
+
+  return (
+    <li>
+      <HoverCard open={open} onOpenChange={setOpen} openDelay={300} closeDelay={100}>
+        <HoverCardTrigger asChild>
+          <Link
+            href={item.href}
+            onClick={onNavigate}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setOpen(false)}
+            // aria-current is what a screen reader announces; the colour is
+            // only for sighted users.
+            aria-current={isActive ? 'page' : undefined}
+            className={cn(
+              'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+              collapsed && 'justify-center px-2',
+              isActive
+                ? 'bg-primary/10 text-primary font-medium'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            )}
+          >
+            {/* Nav glyphs are objects, not arrows — no mirroring. */}
+            <item.icon className="size-4 shrink-0" aria-hidden />
+            <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
+          </Link>
+        </HoverCardTrigger>
+
+        {/* `side` is PHYSICAL in Radix (not logical like `align`), so it is
+            computed from the real reading direction rather than left to
+            default — the card must open INTO the content area, which is the
+            opposite edge in Arabic, in both collapsed and expanded rails. */}
+        <HoverCardContent side={isRtl ? 'left' : 'right'} align="start">
+          <div className="flex items-start gap-3">
+            <span className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
+              <item.icon className="size-5" aria-hidden />
+            </span>
+            <div className="min-w-0 space-y-1">
+              <p className="leading-none font-semibold">{label}</p>
+              {description ? (
+                <p className="text-muted-foreground text-sm text-pretty">{description}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <p className="text-primary mt-3 flex items-center gap-1 text-sm font-medium">
+            {t('openPage')}
+            {/* Directional: points the way in, which mirrors in RTL. */}
+            <ArrowRight className="icon-directional size-3.5" aria-hidden />
+          </p>
+        </HoverCardContent>
+      </HoverCard>
+    </li>
   );
 }

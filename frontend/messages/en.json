@@ -54,6 +54,8 @@
     }
   },
   "auth": {
+    "title": "Admin sign in",
+    "subtitle": "Access the dashboard",
     "signIn": "Sign in",
     "email": "Email",
     "emailPlaceholder": "you@company.com",
@@ -116,7 +118,24 @@
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar",
     "search": "Search",
-    "searchPlaceholder": "Jump to…"
+    "searchPlaceholder": "Jump to…",
+    "openPage": "Open",
+    "descriptions": {
+      "dashboard": "Revenue, orders, and what needs attention today, at a glance.",
+      "orders": "Every order, its line items, and where it is in the fulfillment workflow.",
+      "products": "Your catalogue — name, price, stock, and category for everything you sell.",
+      "inventory": "Stock levels as a log of what happened, not a number you edit directly.",
+      "customers": "Everyone who's placed an order, with their contact details and history.",
+      "categories": "How products are grouped for browsing and filtering.",
+      "discounts": "Percent or fixed-amount codes, with usage limits and expiry dates.",
+      "reviews": "Customer ratings and comments, waiting for moderation.",
+      "delivery": "Your courier roster, their access codes, and which orders they're carrying.",
+      "returns": "Requests to send something back — review, approve, or reject each one.",
+      "reports": "Revenue over time, top products, and how orders are trending.",
+      "settings": "Brand, appearance, notifications, and security policy — one place for all of it.",
+      "staff": "Who has access to this dashboard, and how much of it they can reach.",
+      "audit": "A record of every change made here, and who made it."
+    }
   },
   "roles": {
     "DEVELOPER": "Developer",
@@ -535,7 +554,8 @@
       "issued": "Issued",
       "billedTo": "Billed to",
       "paidBy": "Paid by {method}",
-      "storeLogoAlt": "{name} logo"
+      "storeLogoAlt": "{name} logo",
+      "taxId": "Tax/VAT no. {id}"
     }
   },
   "inventory": {
@@ -776,6 +796,10 @@
         "title": "Operations",
         "description": "Stock, table, and maintenance behavior."
       },
+      "security": {
+        "title": "Security",
+        "description": "Session length and password policy."
+      },
       "other": {
         "title": "Other",
         "description": "Everything else."
@@ -953,7 +977,11 @@
     "logs": "Logs",
     "configured": "Configured",
     "notConfigured": "Not configured",
-    "viewDashboard": "View dashboard"
+    "viewDashboard": "View dashboard",
+    "migrationsPending": "{count, plural, one {# migration on disk hasn't applied} other {# migrations on disk haven't applied}}",
+    "migrationsInSync": "Applied migrations match disk",
+    "largestTables": "Largest tables",
+    "approxRows": "~{count} rows"
   },
   "viewAs": {
     "label": "View as",
