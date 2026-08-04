@@ -170,7 +170,7 @@ model User {
   /// The token carries this number; authenticate compares it to the row. One
   /// increment invalidates every device at once, which is exactly what someone
   /// asks for when they say a laptop was stolen.
-  tokenVersion    Int       @default(0) @map("token_version")
+  tokenVersion Int @default(0) @map("token_version")
 
   /// ─── Brute-force protection ──────────────────────────────────────
   /// Per-ACCOUNT, deliberately separate from the per-IP rate limiter.
@@ -253,7 +253,8 @@ model Category {
   slug     String  @unique @db.VarChar(160)
   isActive Boolean @default(true) @map("is_active")
 
-  products Product[]
+  products  Product[]
+  discounts Discount[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -281,6 +282,9 @@ model Product {
 
   orderItems OrderItem[]
   reviews    Review[]
+  variants   ProductVariant[]
+  images     ProductImage[]
+  discounts  Discount[]
 
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
@@ -290,6 +294,57 @@ model Product {
   @@index([categoryId])
   @@index([createdAt])
   @@map("products")
+}
+
+/// A flat variant row — "Red / Large" as one line with its own price, stock
+/// and SKU, not an attribute matrix (Size × Color generating combinations).
+/// Deliberately the simpler of the two designs: covers most real catalogues
+/// without the combinatorial-matrix complexity a full attribute system needs.
+///
+/// Inventory-only in this pass: no relation to OrderItem. This codebase has
+/// no real checkout/order-creation flow to wire a variant selection into (see
+/// the Discount model's own note on the same gap) — a variant's stock is
+/// real and append-only, but nothing here claims a variant can be purchased.
+model ProductVariant {
+  id    String  @id @default(cuid())
+  name  String  @db.VarChar(120)
+  sku   String? @unique @db.VarChar(64)
+  price Decimal @db.Decimal(10, 2)
+  /// Denormalised running total, same pattern as Product.stock — the
+  /// movements below are the truth, this column exists so a list doesn't sum
+  /// a table per row.
+  stock Int     @default(0)
+
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  stockMovements StockMovement[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+/// Additional catalogue images beyond `Product.imageUrl` (kept as the
+/// "primary/cover" image — unchanged, still what every existing list/cell
+/// renders). A real model with its own id and `position`, not a JSON array:
+/// matches how everything else with real identity in this schema is
+/// modelled (StockMovement, OrderItem), and `position` needs a real column
+/// to reorder against.
+model ProductImage {
+  id       String @id @default(cuid())
+  url      String @db.VarChar(512)
+  position Int    @default(0)
+
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([productId, position])
+  @@map("product_images")
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -307,9 +362,10 @@ model Customer {
   /// vocabulary, deliberately (see the design note on Order.internalNotes).
   internalNotes String? @map("internal_notes") @db.Text
 
-  orders  Order[]
-  reviews Review[]
-  returns Return[]
+  orders    Order[]
+  reviews   Review[]
+  returns   Return[]
+  discounts Discount[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -482,17 +538,40 @@ model Review {
   @@map("reviews")
 }
 
+/// A discount applies to exactly ONE scope kind, never combined — a
+/// discount is ALL/CATEGORY/PRODUCT/CUSTOMER, not a rule engine stacking
+/// conditions. Matches the "config is an allowlist, not a rule engine"
+/// simplicity already used elsewhere (settings.config.ts, admin.config.ts).
+enum DiscountScope {
+  ALL
+  CATEGORY
+  PRODUCT
+  CUSTOMER
+}
+
 model Discount {
-  id        String       @id @default(cuid())
-  code      String       @unique @db.VarChar(48)
-  type      DiscountType @default(PERCENT)
+  id        String        @id @default(cuid())
+  code      String        @unique @db.VarChar(48)
+  type      DiscountType  @default(PERCENT)
   /// For PERCENT: the percentage itself (10.00 = 10%). For FIXED: a money
   /// amount. Same Decimal(10,2) as every other monetary column.
-  value     Decimal      @db.Decimal(10, 2)
-  maxUses   Int?         @map("max_uses")
-  usedCount Int          @default(0) @map("used_count")
-  expiresAt DateTime?    @map("expires_at")
-  isActive  Boolean      @default(true) @map("is_active")
+  value     Decimal       @db.Decimal(10, 2)
+  maxUses   Int?          @map("max_uses")
+  usedCount Int           @default(0) @map("used_count")
+  expiresAt DateTime?     @map("expires_at")
+  isActive  Boolean       @default(true) @map("is_active")
+  /// Which scope kind this discount targets. Only the ONE matching relation
+  /// below (categories/products/customers) is meaningful when scope is not
+  /// ALL — the admin form shows all three pickers, but the app only ever
+  /// reads the one `scope` names.
+  scope     DiscountScope @default(ALL)
+
+  /// Plain implicit many-to-many — no extra columns on the join, so Prisma
+  /// manages the join table itself rather than a hand-declared model (unlike
+  /// ProductImage, which needs a `position` column and so gets a real model).
+  categories Category[]
+  products   Product[]
+  customers  Customer[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -508,17 +587,17 @@ model Discount {
 /// A courier. Separate from `User` — couriers log into the delivery portal
 /// with an access code, not into the admin dashboard.
 model DeliveryStaff {
-  id            String              @id @default(cuid())
-  name          String              @db.VarChar(255)
-  email         String?             @db.VarChar(255)
-  phone         String?             @db.VarChar(48)
-  vehicleType   String?             @map("vehicle_type") @db.VarChar(48)
-  plateNumber   String?             @map("plate_number") @db.VarChar(48)
-  licenseNumber String?             @map("license_number") @db.VarChar(64)
-  zone          String?             @db.VarChar(96)
-  region        String?             @db.VarChar(96)
-  country       String?             @db.VarChar(96)
-  status        DeliveryStaffStatus @default(ACTIVE)
+  id             String              @id @default(cuid())
+  name           String              @db.VarChar(255)
+  email          String?             @db.VarChar(255)
+  phone          String?             @db.VarChar(48)
+  vehicleType    String?             @map("vehicle_type") @db.VarChar(48)
+  plateNumber    String?             @map("plate_number") @db.VarChar(48)
+  licenseNumber  String?             @map("license_number") @db.VarChar(64)
+  zone           String?             @db.VarChar(96)
+  region         String?             @db.VarChar(96)
+  country        String?             @db.VarChar(96)
+  status         DeliveryStaffStatus @default(ACTIVE)
   /// HMAC of the courier's login code — never the code itself.
   ///
   /// An access code is a CREDENTIAL. Storing it in plain text means a database
@@ -534,7 +613,7 @@ model DeliveryStaff {
   /// The trade-off, stated plainly: HMAC is fast, so an attacker holding BOTH
   /// the database and the secret could brute-force short codes. Mitigated by
   /// generating long codes from a large alphabet and rate-limiting sign-in.
-  accessCodeHash String?            @unique @map("access_code_hash") @db.VarChar(64)
+  accessCodeHash String?             @unique @map("access_code_hash") @db.VarChar(64)
 
   assignments DeliveryAssignment[]
 
@@ -608,11 +687,19 @@ model StockMovement {
   /// Free-text detail, e.g. "pallet 4, water damage".
   note   String?             @db.VarChar(255)
 
-  productId String  @map("product_id")
+  /// Exactly ONE of productId/variantId is set, never both, never neither —
+  /// enforced in stock.service.ts (MySQL has no CHECK constraint for it). A
+  /// product's own movements and a variant's are two separate sums; mixing
+  /// them would break "the sum of deltas equals the stock" for either.
+  productId String?  @map("product_id")
   /// Cascade: a product's stock history has no meaning without the product.
   /// Products that appear in an order are archived rather than deleted, so
   /// this only ever fires for a product nothing refers to.
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  variantId String?         @map("variant_id")
+  /// Cascade, same reasoning as `product` above.
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
 
   /// Plain id, not a relation — the trail must survive the staff member being
   /// deleted, exactly like OrderStatusHistory.changedById.
@@ -621,6 +708,7 @@ model StockMovement {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([productId, createdAt])
+  @@index([variantId, createdAt])
   @@map("stock_movements")
 }
 
@@ -640,9 +728,9 @@ model AuditLog {
   id String @id @default(cuid())
 
   /// What happened: "product.updated", "staff.role.changed", "order.status.changed".
-  action String @db.VarChar(64)
+  action   String  @db.VarChar(64)
   /// Which table, so a reviewer can filter without knowing every action name.
-  entity String @db.VarChar(48)
+  entity   String  @db.VarChar(48)
   /// Row id. Nullable because a delete's target no longer exists to point at.
   entityId String? @map("entity_id") @db.VarChar(64)
 

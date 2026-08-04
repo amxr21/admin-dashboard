@@ -17,6 +17,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ProductGalleryPanel } from '@/components/resource/product-gallery-panel';
+import { ProductVariantsPanel } from '@/components/resource/product-variants-panel';
 import {
   Select,
   SelectContent,
@@ -72,7 +74,7 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
  */
 const NONE = '__none__';
 
-type FormValue = string | boolean;
+type FormValue = string | boolean | string[];
 type FormValues = Record<string, FormValue>;
 
 interface RelationOption {
@@ -99,6 +101,11 @@ interface ResourceFormProps {
 function toFormValue(field: FieldConfig, row: ResourceRow | null): FormValue {
   if (field.type === 'boolean') return Boolean(row?.[field.name] ?? false);
 
+  if (field.type === 'multiRelation') {
+    const raw = row?.[field.name];
+    return Array.isArray(raw) ? raw.map(String) : [];
+  }
+
   const raw = row?.[field.name];
   if (raw === null || raw === undefined) return '';
 
@@ -120,6 +127,7 @@ function initialValues(schema: ResourceSchema, row: ResourceRow | null): FormVal
 /** Form value back to the JSON type the engine expects for this field. */
 function toPayloadValue(field: FieldConfig, value: FormValue): unknown {
   if (field.type === 'boolean') return Boolean(value);
+  if (field.type === 'multiRelation') return Array.isArray(value) ? value : [];
 
   const text = String(value).trim();
 
@@ -159,6 +167,12 @@ export function ResourceForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  // Variants/gallery are a product's own sub-records, not generic-engine
+  // fields — managed through their own bespoke panels, opened from this
+  // form rather than nested inside it, so this stays the one place a
+  // conditional `schema.resource === 'products'` check exists.
+  const [variantsPanelOpen, setVariantsPanelOpen] = useState(false);
+  const [galleryPanelOpen, setGalleryPanelOpen] = useState(false);
   const [isConfirmingDiscard, setIsConfirmingDiscard] = useState(false);
   const [relationOptions, setRelationOptions] = useState<
     Record<string, RelationOption[]>
@@ -180,7 +194,9 @@ export function ResourceForm({
   useEffect(() => {
     if (!open) return;
 
-    const relations = fields.filter((field) => field.type === 'relation');
+    const relations = fields.filter(
+      (field) => field.type === 'relation' || field.type === 'multiRelation',
+    );
     if (relations.length === 0) return;
 
     let cancelled = false;
@@ -226,6 +242,9 @@ export function ResourceForm({
   const validateField = useCallback(
     (field: FieldConfig, value: FormValue): string | null => {
       if (field.type === 'boolean') return null;
+      // Never required — see the field descriptions in admin.config.ts on why
+      // an empty picker is a valid, inert state, not a missing answer.
+      if (field.type === 'multiRelation') return null;
 
       const text = String(value).trim();
 
@@ -262,8 +281,15 @@ export function ResourceForm({
 
       // On edit, send only what changed. It keeps the audit surface small, and
       // the engine rejects an empty PATCH — so an unchanged form closing
-      // silently is better than a confusing 400.
-      if (isEdit && value === toFormValue(field, row)) continue;
+      // silently is better than a confusing 400. Arrays compare by value,
+      // never by reference — `toFormValue` builds a fresh array every render.
+      const unchanged =
+        field.type === 'multiRelation'
+          ? JSON.stringify([...(value as string[])].sort()) ===
+            JSON.stringify([...(toFormValue(field, row) as string[])].sort())
+          : value === toFormValue(field, row);
+
+      if (isEdit && unchanged) continue;
 
       payload[field.name] = toPayloadValue(field, value);
     }
@@ -370,6 +396,7 @@ export function ResourceForm({
   }
 
   return (
+    <>
     <Sheet open={open} onOpenChange={requestClose}>
       <SheetContent
         side="end"
@@ -418,6 +445,17 @@ export function ResourceForm({
                 onChange={(value) => setValue(field.name, value)}
               />
             ))}
+
+            {isEdit && schema.resource === 'products' ? (
+              <div className="flex gap-2 border-t pt-4">
+                <Button type="button" variant="outline" size="sm" onClick={() => setVariantsPanelOpen(true)}>
+                  {t('manageVariants')}
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setGalleryPanelOpen(true)}>
+                  {t('manageGallery')}
+                </Button>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex justify-end gap-2 border-t pt-4">
@@ -458,6 +496,24 @@ export function ResourceForm({
         </AlertDialogContent>
       </AlertDialog>
     </Sheet>
+
+    {isEdit && schema.resource === 'products' ? (
+      <>
+        <ProductVariantsPanel
+          productId={String(row.id)}
+          productName={String(row.name ?? '')}
+          open={variantsPanelOpen}
+          onOpenChange={setVariantsPanelOpen}
+        />
+        <ProductGalleryPanel
+          productId={String(row.id)}
+          productName={String(row.name ?? '')}
+          open={galleryPanelOpen}
+          onOpenChange={setGalleryPanelOpen}
+        />
+      </>
+    ) : null}
+    </>
   );
 }
 
@@ -493,6 +549,46 @@ function FormField({ field, value, error, options, onChange }: FormFieldProps) {
             {...aria}
           />
           <Label htmlFor={id}>{field.label}</Label>
+        </div>
+      );
+    }
+
+    if (field.type === 'multiRelation') {
+      const selected = Array.isArray(value) ? value : [];
+
+      function toggle(optionValue: string, checked: boolean) {
+        onChange(
+          checked
+            ? [...selected, optionValue]
+            : selected.filter((id) => id !== optionValue),
+        );
+      }
+
+      return (
+        <div
+          className="max-h-48 space-y-2 overflow-y-auto rounded-md border p-3"
+          role="group"
+          aria-labelledby={`${id}-label`}
+        >
+          {options.length === 0 ? (
+            <p className="text-muted-foreground text-sm">{t('noOptions')}</p>
+          ) : (
+            options.map((option) => {
+              const optionId = `${id}-${option.value}`;
+              return (
+                <div key={option.value} className="flex items-center gap-2">
+                  <Checkbox
+                    id={optionId}
+                    checked={selected.includes(option.value)}
+                    onCheckedChange={(checked) => toggle(option.value, checked === true)}
+                  />
+                  <Label htmlFor={optionId} className="font-normal">
+                    {option.label}
+                  </Label>
+                </div>
+              );
+            })
+          )}
         </div>
       );
     }
@@ -575,7 +671,7 @@ function FormField({ field, value, error, options, onChange }: FormFieldProps) {
   return (
     <div className="space-y-2">
       {field.type === 'boolean' ? null : (
-        <Label htmlFor={id}>
+        <Label htmlFor={id} id={`${id}-label`}>
           {field.label}
           {field.required ? (
             <span className="text-destructive ms-1" aria-hidden>
