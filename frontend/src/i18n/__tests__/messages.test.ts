@@ -68,8 +68,10 @@ describe('Arabic is actually translated', () => {
       'auth.emailPlaceholder',
       // A brand name, same reasoning as "iPhone"/"WhatsApp"/"Excel".
       'diagnostics.sentry',
-      // A format example, not prose — a URL scheme is the same shape in
-      // every language, same reasoning as `auth.emailPlaceholder` above.
+      // Format examples, not prose — a courier access code's grouping
+      // pattern and a URL scheme are the same shape in every language,
+      // same reasoning as `auth.emailPlaceholder` above.
+      'courier.login.codePlaceholder',
       'imageUpload.urlPlaceholder',
     ]);
 
