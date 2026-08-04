@@ -768,6 +768,10 @@
         "title": "Notifications",
         "description": "Which events alert the team."
       },
+      "email": {
+        "title": "Email",
+        "description": "Send alerts by email in addition to the in-app notification."
+      },
       "operations": {
         "title": "Operations",
         "description": "Stock, table, and maintenance behavior."
