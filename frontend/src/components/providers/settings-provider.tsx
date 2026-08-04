@@ -67,6 +67,7 @@ interface SettingsContextValue {
   storeAddress: string;
   storeSupportEmail: string;
   storeSupportPhone: string;
+  storeTaxId: string;
   /** Re-fetches the registry and re-applies every derived side effect. Call
    *  after a settings save so the change is visible without a page reload. */
   refresh: () => Promise<void>;
@@ -85,6 +86,7 @@ const BRAND_DEFAULTS = {
   storeAddress: '',
   storeSupportEmail: '',
   storeSupportPhone: '',
+  storeTaxId: '',
 };
 
 const DEFAULT_VALUE: SettingsContextValue = {
@@ -162,6 +164,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     storeAddress: String(effective['store.address'] ?? ''),
     storeSupportEmail: String(effective['store.supportEmail'] ?? ''),
     storeSupportPhone: String(effective['store.supportPhone'] ?? ''),
+    storeTaxId: String(effective['store.taxId'] ?? ''),
     refresh: load,
     previewSetting,
     clearPreview,

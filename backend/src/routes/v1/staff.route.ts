@@ -13,6 +13,7 @@ import {
   unlockStaff,
   updateStaff,
 } from '../../services/staff.service.js';
+import { assertPasswordMeetsPolicy } from '../../services/settings.service.js';
 
 /**
  * Staff accounts.
@@ -34,12 +35,16 @@ export const staffRouter = Router();
 const guard = [authenticate, requireArea('staff')] as const;
 
 /**
- * 12 characters, not 8.
+ * The real floor is `security.minPasswordLength`, enforced dynamically via
+ * `assertPasswordMeetsPolicy` at each call site below — this is just the
+ * shape check (present, not absurdly long). Keeping the floor in Settings
+ * rather than here means tightening the policy applies everywhere a
+ * password can be set without touching this file.
  *
  * This password is set BY an admin FOR someone else, so it is typed once and
  * often never changed. It cannot rely on the owner picking well.
  */
-const password = z.string().min(12, 'Use at least 12 characters').max(200);
+const password = z.string().min(1, 'Password is required').max(200);
 
 const listQuery = z.object({
   page: z.coerce.number().int().positive().optional(),
@@ -83,6 +88,7 @@ staffRouter.get('/staff', ...guard, async (req, res) => {
 staffRouter.post('/staff', ...guard, async (req, res) => {
   const parsed = createBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+  await assertPasswordMeetsPolicy(parsed.data.password);
 
   const actor = requireUser(req);
   const created = await createStaff(actor, parsed.data);
@@ -142,6 +148,7 @@ staffRouter.post('/staff/:id/unlock', ...guard, async (req, res) => {
 staffRouter.post('/staff/:id/password', ...guard, async (req, res) => {
   const parsed = z.object({ password }).strict().safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+  await assertPasswordMeetsPolicy(parsed.data.password);
 
   const actor = requireUser(req);
   const id = String(req.params.id);

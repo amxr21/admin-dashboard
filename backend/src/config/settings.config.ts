@@ -136,6 +136,35 @@ export const SETTINGS = {
     label: 'Support phone',
     description: 'Shown alongside the support email.',
   },
+  'store.taxId': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 60,
+    label: 'Tax / VAT registration number',
+    description: 'Printed on invoices alongside the address, if your jurisdiction requires it.',
+  },
+
+  // ─── Security ───────────────────────────────────────────────────────
+  'security.sessionTimeoutMinutes': {
+    type: 'number',
+    default: 10080, // 7 days — matches the previous fixed JWT_EXPIRES_IN default.
+    area: 'settings',
+    min: 5,
+    max: 43200, // 30 days
+    label: 'Session timeout (minutes)',
+    description:
+      'How long a signed-in session stays valid before requiring another login. Shortening this does not sign out existing sessions early — it only shapes the next one issued.',
+  },
+  'security.minPasswordLength': {
+    type: 'number',
+    default: 12,
+    area: 'settings',
+    min: 8,
+    max: 128,
+    label: 'Minimum password length',
+    description: 'Enforced when an admin sets or resets a staff password, and on self-service reset.',
+  },
 
   // ─── Theme ──────────────────────────────────────────────────────────
   'theme.accentColor': {

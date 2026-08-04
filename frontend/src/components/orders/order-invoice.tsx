@@ -32,8 +32,15 @@ export function OrderInvoice({ id }: { id: string }) {
   const tErrors = useTranslations('errorPages.notFound');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
-  const { storeName, storeTagline, storeAddress, storeSupportEmail, storeSupportPhone, logoUrl } =
-    useAppSettings();
+  const {
+    storeName,
+    storeTagline,
+    storeAddress,
+    storeSupportEmail,
+    storeSupportPhone,
+    storeTaxId,
+    logoUrl,
+  } = useAppSettings();
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -111,6 +118,11 @@ export function OrderInvoice({ id }: { id: string }) {
               {storeSupportEmail || storeSupportPhone ? (
                 <p className="text-muted-foreground force-ltr text-sm">
                   {[storeSupportEmail, storeSupportPhone].filter(Boolean).join(' · ')}
+                </p>
+              ) : null}
+              {storeTaxId ? (
+                <p className="text-muted-foreground force-ltr text-sm">
+                  {t('taxId', { id: storeTaxId })}
                 </p>
               ) : null}
             </div>
