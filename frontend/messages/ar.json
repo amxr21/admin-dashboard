@@ -851,6 +851,14 @@
     "deletedProduct": "منتج محذوف",
     "exportCsv": "تصدير CSV"
   },
+  "imageUpload": {
+    "upload": "رفع",
+    "replace": "استبدال",
+    "remove": "إزالة",
+    "pasteUrlInstead": "لصق رابط بدلاً من ذلك",
+    "urlPlaceholder": "https://…",
+    "failed": "فشل الرفع. حاول مرة أخرى."
+  },
   "diagnostics": {
     "label": "تشخيص المطوّر",
     "uptime": "مدة التشغيل",
