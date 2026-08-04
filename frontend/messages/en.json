@@ -469,6 +469,12 @@
       "title": "Payment",
       "unknown": "Not recorded"
     },
+    "notes": {
+      "title": "Internal notes",
+      "placeholder": "Staff-only — never shown to the customer.",
+      "save": "Save",
+      "saving": "Saving…"
+    },
     "timeline": {
       "title": "History",
       "placed": "Order placed",
