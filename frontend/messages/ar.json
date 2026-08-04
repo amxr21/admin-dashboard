@@ -65,6 +65,33 @@
     "accessEnded": "انتهت فترة صلاحية الوصول لهذا الحساب.",
     "rateLimited": "عدد كبير من المحاولات من هذا العنوان. أعد المحاولة بعد قليل."
   },
+  "courier": {
+    "login": {
+      "title": "تسجيل دخول المندوب",
+      "subtitle": "أدخل رمز الدخول الخاص بك",
+      "codeLabel": "رمز الدخول",
+      "codePlaceholder": "XXXX-XXXX-XXXX",
+      "signIn": "تسجيل الدخول",
+      "signingIn": "جارٍ تسجيل الدخول…",
+      "invalidCode": "رمز الدخول غير صحيح.",
+      "rateLimited": "عدد كبير من المحاولات من هذا العنوان. أعد المحاولة بعد قليل."
+    },
+    "dashboard": {
+      "greeting": "مرحبًا، {name}",
+      "activeCount": "{count, plural, zero {لا توصيلات نشطة} one {توصيلة نشطة واحدة} two {توصيلتان نشطتان} few {# توصيلات نشطة} many {# توصيلة نشطة} other {# توصيلة نشطة}}",
+      "refresh": "تحديث",
+      "signOut": "تسجيل الخروج",
+      "loadFailed": "تعذّر تحميل توصيلاتك.",
+      "empty": "لا توجد توصيلات مسندة إليك حاليًا.",
+      "collect": "التحصيل"
+    },
+    "deliveryStatusAction": {
+      "PICKED_UP": "تعليم كـ«تم الاستلام»",
+      "OUT_FOR_DELIVERY": "تعليم كـ«في الطريق»",
+      "DELIVERED": "تعليم كـ«تم التسليم»",
+      "HANDED_OVER": "تعليم كـ«تم التسليم لجهة أخرى»"
+    }
+  },
   "nav": {
     "dashboard": "لوحة التحكم",
     "orders": "الطلبات",
@@ -464,11 +491,24 @@
       "phone": "الهاتف",
       "address": "العنوان",
       "status": "الحالة",
-      "unassigned": "لم يُسنَد مندوب بعد."
+      "unassigned": "لم يُسنَد مندوب بعد.",
+      "assignLabel": "المندوب",
+      "assignPlaceholder": "اختر مندوبًا",
+      "assign": "إسناد",
+      "assigning": "جارٍ الإسناد…",
+      "reassign": "إعادة الإسناد",
+      "unassign": "إلغاء الإسناد",
+      "cancel": "إلغاء"
     },
     "payment": {
       "title": "الدفع",
       "unknown": "غير مسجَّل"
+    },
+    "notes": {
+      "title": "ملاحظات داخلية",
+      "placeholder": "للموظفين فقط — لا تُعرض للعميل.",
+      "save": "حفظ",
+      "saving": "جارٍ الحفظ…"
     },
     "timeline": {
       "title": "السجل",
@@ -562,7 +602,31 @@
   },
   "notificationsBell": {
     "unread": "{count, plural, zero {لا إشعارات غير مقروءة} one {إشعار واحد غير مقروء} two {إشعاران غير مقروءين} few {# إشعارات غير مقروءة} many {# إشعاراً غير مقروء} other {# إشعار غير مقروء}}",
-    "none": "الإشعارات"
+    "none": "الإشعارات",
+    "title": "الإشعارات",
+    "markAllRead": "تعليم الكل كمقروء",
+    "loading": "جارٍ التحميل…",
+    "empty": "لا يوجد غير مقروء.",
+    "viewAll": "عرض كل الإشعارات"
+  },
+  "notificationsPage": {
+    "search": {
+      "label": "بحث",
+      "placeholder": "ابحث في الإشعارات…"
+    },
+    "markAllRead": "تعليم الكل كمقروء",
+    "markedAllRead": "تم تعليم كل الإشعارات كمقروءة.",
+    "loadFailed": "تعذّر تحميل الإشعارات.",
+    "noResults": "لا توجد إشعارات مطابقة لبحثك.",
+    "empty": "لا توجد إشعارات بعد.",
+    "dismiss": "إزالة \"{title}\"",
+    "dismissShort": "إزالة",
+    "confirmDismiss": "إزالة هذا الإشعار؟ لا يمكن التراجع عن هذا.",
+    "cancel": "إلغاء",
+    "total": "{count, plural, zero {لا إشعارات} one {إشعار واحد} two {إشعاران} few {# إشعارات} many {# إشعاراً} other {# إشعار}}",
+    "pageOf": "صفحة {page} من {total}",
+    "detailTitle": "إشعار",
+    "openLink": "فتح الصفحة المرتبطة"
   },
   "delivery": {
     "title": "التوصيل",

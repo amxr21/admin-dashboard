@@ -68,6 +68,10 @@ describe('Arabic is actually translated', () => {
       'auth.emailPlaceholder',
       // A brand name, same reasoning as "iPhone"/"WhatsApp"/"Excel".
       'diagnostics.sentry',
+      // Format examples, not prose — a courier access code's grouping
+      // pattern is the same shape in every language, same reasoning as
+      // `auth.emailPlaceholder` above.
+      'courier.login.codePlaceholder',
     ]);
 
     const untranslated = enKeys.filter(

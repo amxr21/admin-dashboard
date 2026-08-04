@@ -6,11 +6,13 @@ import { ordersRouter } from './orders.route.js';
 import { returnsRouter } from './returns.route.js';
 import { inventoryRouter } from './inventory.route.js';
 import { couriersRouter } from './couriers.route.js';
+import { courierRouter } from './courier.route.js';
 import { staffRouter } from './staff.route.js';
 import { settingsRouter } from './settings.route.js';
 import { diagnosticsRouter } from './diagnostics.route.js';
 import { reportsRouter } from './reports.route.js';
 import { auditRouter } from './audit.route.js';
+import { notificationsRouter } from './notifications.route.js';
 import { resourceRouter } from './resource.route.js';
 
 /**
@@ -30,10 +32,12 @@ v1Router.use(ordersRouter);
 v1Router.use(returnsRouter);
 v1Router.use(inventoryRouter);
 v1Router.use(couriersRouter);
+v1Router.use(courierRouter);
 v1Router.use(staffRouter);
 v1Router.use(settingsRouter);
 v1Router.use(diagnosticsRouter);
 v1Router.use(reportsRouter);
 v1Router.use(auditRouter);
+v1Router.use(notificationsRouter);
 // LAST: /r/:resource is a catch-all shape, so it must not shadow a named route.
 v1Router.use(resourceRouter);

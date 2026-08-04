@@ -138,10 +138,15 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
     labelField: 'title',
     permissionArea: 'settings',
     defaultSort: { field: 'createdAt', dir: 'desc' },
-    // Notifications are EMITTED by the system, never authored by staff. Only
-    // `isRead` is meaningfully editable, so create is off and delete stays on
-    // for clearing noise.
-    permissions: { create: false, update: true, delete: true },
+    // Notifications are EMITTED by the system, never authored OR edited by
+    // staff — the only two things anyone does to one are read it and
+    // dismiss it, neither of which is "editing a record". `update` used to
+    // be `true` so `isRead` could be toggled through the generic engine's
+    // edit form, which read as "you can edit a notification" — wrong frame
+    // for what was actually happening. Reading and marking-all-read are now
+    // bespoke routes (notifications.route.ts); delete stays on for
+    // dismissing.
+    permissions: { create: false, update: false, delete: true },
     fields: [
       { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
       { name: 'type', label: 'Type', type: 'text', readOnly: true, sortable: true },
@@ -185,6 +190,10 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       { name: 'phone', label: 'Phone', type: 'phone', searchable: true },
       { name: 'city', label: 'City', type: 'text', sortable: true },
       { name: 'country', label: 'Country', type: 'text', sortable: true },
+      // Staff-only, never surfaced to the customer — the customer has no API
+      // access to this resource at all, so "staff-only" falls out of the
+      // existing permission model rather than needing a new rule.
+      { name: 'internalNotes', label: 'Internal notes', type: 'longtext', inList: false },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],
   },

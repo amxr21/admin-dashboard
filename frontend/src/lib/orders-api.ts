@@ -66,6 +66,8 @@ export interface OrderDetail {
   total: string | null;
   paymentMethod: string | null;
   placedAt: string;
+  /** Staff-only, never surfaced to the customer. Null when never set. */
+  internalNotes: string | null;
   customer: OrderCustomer | null;
   items: OrderItem[];
   statusHistory: OrderStatusEntry[];
@@ -129,6 +131,15 @@ export async function changeOrderStatus(
   const body = await apiFetch<{ order: OrderDetail }>(`/orders/${id}/status`, {
     method: 'PATCH',
     body: JSON.stringify(note ? { to, note } : { to }),
+  });
+  return body.order;
+}
+
+/** `internalNotes: ''` clears the field — the server stores that as null. */
+export async function updateOrderNotes(id: string, internalNotes: string): Promise<OrderDetail> {
+  const body = await apiFetch<{ order: OrderDetail }>(`/orders/${id}/notes`, {
+    method: 'PATCH',
+    body: JSON.stringify({ internalNotes }),
   });
   return body.order;
 }
