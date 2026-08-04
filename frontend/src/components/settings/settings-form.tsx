@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Bell, Palette, Settings2, SlidersHorizontal, Store, type LucideIcon } from 'lucide-react';
+import { Bell, Mail, Palette, Settings2, SlidersHorizontal, Store, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { ErrorScreen } from '@/components/errors/error-screen';
+import { ImageUploadField } from '@/components/image-upload-field';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -70,6 +71,11 @@ export const SETTINGS_GROUPS = [
     id: 'notifications',
     icon: Bell,
     match: (key: string) => key.startsWith('notifications.'),
+  },
+  {
+    id: 'email',
+    icon: Mail,
+    match: (key: string) => key.startsWith('email.'),
   },
   {
     id: 'operations',
@@ -464,6 +470,22 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
         );
 
       default:
+        // The one string setting that is really an image, not text — a
+        // small rounded square with an upload control, same primitive a
+        // product's `imageUrl` field uses (see resource-form.tsx).
+        if (setting.key === 'store.logoUrl') {
+          return (
+            <ImageUploadField
+              id={id}
+              value={String(value)}
+              onChange={onChange}
+              folder="logo"
+              shape="square"
+              {...aria}
+            />
+          );
+        }
+
         return (
           <Input
             id={id}

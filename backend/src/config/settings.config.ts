@@ -96,8 +96,13 @@ export const SETTINGS = {
     default: '',
     area: 'settings',
     max: 500,
-    label: 'Logo URL',
-    description: 'A plain image URL, same as any other image field. Shown in the sidebar.',
+    label: 'Logo',
+    // Still a plain string under the hood — the value is just a URL — but
+    // the frontend control is an upload widget (`ImageUploadField`) with a
+    // "paste a URL instead" fallback, not a bare text field. This
+    // description is user-facing copy, so it describes what someone
+    // actually sees, not the storage type.
+    description: 'Uploaded to your image host, or paste a URL directly. Shown in the sidebar.',
   },
   'store.url': {
     type: 'string',
@@ -209,6 +214,31 @@ export const SETTINGS = {
     area: 'settings',
     label: 'Return request alerts',
     description: 'Notify staff when a customer return is requested.',
+  },
+
+  // ─── Email ──────────────────────────────────────────────────────────
+  // Only the non-secret half of email config lives here — the SMTP host,
+  // port, username and password are `SMTP_*` environment variables (see
+  // env.ts), never a Setting, because this table is readable by any
+  // signed-in user. `email.enabled` gates BOTH alert toggles above at once —
+  // toggling an alert on with email off still logs the in-app row, it just
+  // doesn't also send mail, so nobody's inbox fills up the moment they flip
+  // one switch without meaning to touch the other.
+  'email.enabled': {
+    type: 'boolean',
+    default: false,
+    area: 'settings',
+    label: 'Send email for alerts',
+    description:
+      'In addition to the in-app notification, also email the support address below for low-stock and return-request alerts. Requires SMTP to be configured on the server.',
+  },
+  'email.fromAddress': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 255,
+    label: 'Send emails from',
+    description: 'The "From" address on outgoing alert emails. Alerts are sent TO the support email above.',
   },
 
   // ─── Dashboard behavior ─────────────────────────────────────────────
