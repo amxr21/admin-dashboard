@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
@@ -181,25 +182,35 @@ export function StaffTable() {
               </Button>
             ) : null}
 
-            <Button
-              variant="ghost"
-              size="icon"
-              disabled={!editable}
-              aria-label={t('actions.password', { name: member.name ?? member.email })}
-              onClick={() => setSettingPassword(member)}
-            >
-              <KeyRound aria-hidden />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={!editable}
+                  aria-label={t('actions.password', { name: member.name ?? member.email })}
+                  onClick={() => setSettingPassword(member)}
+                >
+                  <KeyRound aria-hidden />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t('actions.password', { name: member.name ?? member.email })}</TooltipContent>
+            </Tooltip>
 
-            <Button
-              variant="ghost"
-              size="icon"
-              disabled={!editable}
-              aria-label={t('actions.edit', { name: member.name ?? member.email })}
-              onClick={() => setEditing(member)}
-            >
-              <Pencil aria-hidden />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={!editable}
+                  aria-label={t('actions.edit', { name: member.name ?? member.email })}
+                  onClick={() => setEditing(member)}
+                >
+                  <Pencil aria-hidden />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t('actions.edit', { name: member.name ?? member.email })}</TooltipContent>
+            </Tooltip>
           </div>
         );
       },

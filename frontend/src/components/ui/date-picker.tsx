@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 /**
@@ -123,15 +124,20 @@ export function DatePicker({
           which would sit oddly among the days. Hidden when required, since
           there is nothing valid to clear to. */}
       {selected && !required ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={t('clear')}
-          onClick={() => onChange('')}
-        >
-          <X aria-hidden />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={t('clear')}
+              onClick={() => onChange('')}
+            >
+              <X aria-hidden />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t('clear')}</TooltipContent>
+        </Tooltip>
       ) : null}
     </div>
   );

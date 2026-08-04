@@ -11,6 +11,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 /**
  * Shows a freshly issued access code — once.
@@ -78,9 +79,14 @@ export function AccessCodePanel({ courierName, code, onDone }: AccessCodePanelPr
             {code}
           </code>
 
-          <Button variant="outline" size="icon" onClick={() => void copy()} aria-label={t('copy')}>
-            {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="icon" onClick={() => void copy()} aria-label={t('copy')}>
+                {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('copy')}</TooltipContent>
+          </Tooltip>
         </div>
 
         <div className="flex items-center justify-between gap-3">

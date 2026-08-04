@@ -22,6 +22,7 @@ import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { useAppSettings } from '@/components/providers/settings-provider';
@@ -176,14 +177,19 @@ export function CouriersTable() {
       align: 'end',
       cell: (courier) => (
         <div className="flex justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t('actions.edit', { name: courier.name })}
-            onClick={() => setEditing(courier)}
-          >
-            <Pencil aria-hidden />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t('actions.edit', { name: courier.name })}
+                onClick={() => setEditing(courier)}
+              >
+                <Pencil aria-hidden />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('actions.edit', { name: courier.name })}</TooltipContent>
+          </Tooltip>
 
           <Button
             variant="outline"
@@ -200,14 +206,19 @@ export function CouriersTable() {
           </Button>
 
           {courier.hasAccessCode ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t('actions.revoke', { name: courier.name })}
-              onClick={() => setConfirmRevoke(courier)}
-            >
-              <ShieldOff aria-hidden />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('actions.revoke', { name: courier.name })}
+                  onClick={() => setConfirmRevoke(courier)}
+                >
+                  <ShieldOff aria-hidden />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t('actions.revoke', { name: courier.name })}</TooltipContent>
+            </Tooltip>
           ) : null}
         </div>
       ),

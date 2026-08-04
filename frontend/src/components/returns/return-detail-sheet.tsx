@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -184,14 +185,19 @@ export function ReturnDetailSheet({
                 <span className="force-ltr">{item.rmaNumber}</span>
                 <StatusBadge kind="returnStatus" value={item.status} />
                 {canViewHistory ? (
-                  <Button variant="ghost" size="icon" className="ms-auto" asChild>
-                    <Link
-                      href={`/admin/audit?entity=return&entityId=${item.id}`}
-                      aria-label={tAudit('viewHistory')}
-                    >
-                      <History aria-hidden />
-                    </Link>
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="ms-auto" asChild>
+                        <Link
+                          href={`/admin/audit?entity=return&entityId=${item.id}`}
+                          aria-label={tAudit('viewHistory')}
+                        >
+                          <History aria-hidden />
+                        </Link>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{tAudit('viewHistory')}</TooltipContent>
+                  </Tooltip>
                 ) : null}
               </h2>
               <p className="text-muted-foreground mt-1 text-sm">
