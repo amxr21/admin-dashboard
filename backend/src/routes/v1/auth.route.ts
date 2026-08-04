@@ -6,6 +6,7 @@ import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { loginRateLimit, passwordResetRateLimit } from '../../middleware/rateLimit.js';
 import { login } from '../../services/auth.service.js';
 import { redeemResetToken } from '../../services/password-reset.service.js';
+import { assertPasswordMeetsPolicy } from '../../services/settings.service.js';
 
 /**
  * Authentication routes.
@@ -65,9 +66,11 @@ authRouter.post('/auth/login', loginRateLimit, async (req, res) => {
 const resetPasswordSchema = z
   .object({
     token: z.string().trim().min(1, 'Token is required'),
-    // Same floor as an admin-set password — this one is chosen by the person
-    // it belongs to, but the policy should not be weaker for that.
-    password: z.string().min(12, 'Use at least 12 characters').max(200),
+    // The real floor is `security.minPasswordLength`, enforced dynamically
+    // below via `assertPasswordMeetsPolicy` — same floor as an admin-set
+    // password, kept in one place so the policy can't drift between the two
+    // call sites.
+    password: z.string().min(1, 'Password is required').max(200),
   })
   .strict();
 
@@ -78,6 +81,8 @@ authRouter.post('/auth/reset-password', passwordResetRateLimit, async (req, res)
   if (!parsed.success) {
     throw AppError.badRequest('Invalid request', parsed.error.flatten());
   }
+
+  await assertPasswordMeetsPolicy(parsed.data.password);
 
   // NEVER log the token or password — only that an attempt happened.
   req.log.info({ event: 'auth.password-reset.attempted' });

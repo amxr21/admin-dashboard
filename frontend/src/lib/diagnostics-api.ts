@@ -27,3 +27,27 @@ export interface Diagnostics {
 export async function fetchDiagnostics(): Promise<Diagnostics> {
   return apiFetch<Diagnostics>('/diagnostics');
 }
+
+export interface MigrationStatus {
+  available: boolean;
+  /** On disk, not yet reflected in `_prisma_migrations` — see the route for
+   *  why this is a status report only, with no "apply" action next to it. */
+  pending: string[];
+  appliedNotOnDisk: string[];
+}
+
+export async function fetchMigrationStatus(): Promise<MigrationStatus> {
+  return apiFetch<MigrationStatus>('/diagnostics/db/migrations');
+}
+
+export interface TableStat {
+  table: string;
+  /** InnoDB estimate, not an exact live count — see the route. */
+  approxRows: number | null;
+  dataBytes: number | null;
+  indexBytes: number | null;
+}
+
+export async function fetchTableStats(): Promise<TableStat[]> {
+  return apiFetch<TableStat[]>('/diagnostics/db/tables');
+}

@@ -5,6 +5,7 @@ import type { StaffRole, User } from '@prisma/client';
 import { env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
+import { getSettingValue } from './settings.service.js';
 
 /**
  * Authentication logic. Kept out of the route so it is testable without HTTP
@@ -48,11 +49,22 @@ export function toSafeUser(user: User): SafeUser {
   return safe;
 }
 
-export function signToken(user: Pick<User, 'id' | 'role' | 'tokenVersion'>): string {
+/**
+ * `expiresIn` defaults to the env-configured fallback so every existing
+ * caller (mainly test setup, which mints tokens directly rather than through
+ * `login()`) keeps working unchanged. `login()` is the one real caller that
+ * passes an explicit value, sourced from `security.sessionTimeoutMinutes` —
+ * see there for why the settings read has to happen at that call site rather
+ * than in here.
+ */
+export function signToken(
+  user: Pick<User, 'id' | 'role' | 'tokenVersion'>,
+  expiresIn: string = env.JWT_EXPIRES_IN,
+): string {
   return jwt.sign(
     { sub: user.id, role: user.role, tv: user.tokenVersion } satisfies TokenPayload,
     env.JWT_SECRET,
-    { expiresIn: env.JWT_EXPIRES_IN } as jwt.SignOptions,
+    { expiresIn } as jwt.SignOptions,
   );
 }
 
@@ -180,7 +192,14 @@ export async function login(email: string, password: string): Promise<LoginResul
     data: { lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null },
   });
 
-  return { token: signToken(updated), user: toSafeUser(updated) };
+  // Read live rather than cached: a shortened timeout should take effect on
+  // the very next login, not wait for a process restart.
+  const sessionTimeoutMinutes = await getSettingValue('security.sessionTimeoutMinutes');
+
+  return {
+    token: signToken(updated, `${String(sessionTimeoutMinutes)}m`),
+    user: toSafeUser(updated),
+  };
 }
 
 /**
