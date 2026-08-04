@@ -8,6 +8,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { DiagnosticsBar } from '@/components/shell/diagnostics-bar';
 import { GlobalSearch } from '@/components/shell/global-search';
 import { NotificationsBell } from '@/components/shell/notifications-bell';
+import { OnboardingWelcome } from '@/components/shell/onboarding-welcome';
 import { usePageTitle } from '@/components/shell/page-title';
 import { SidebarNav } from '@/components/shell/sidebar-nav';
 import { UserMenu } from '@/components/shell/user-menu';
@@ -155,6 +156,8 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
 
   return (
     <div className="flex h-dvh overflow-hidden">
+      <OnboardingWelcome />
+
       {/* Desktop sidebar. Hidden below lg; the drawer covers those widths.
           STRUCTURALLY sized (h-full inside an h-dvh/overflow-hidden shell) —
           not sticky/fixed. The whole point of the scroll model below is that

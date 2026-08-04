@@ -17,6 +17,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { DataTable, type Column } from '@/components/data-table';
+import { EmptyState } from '@/components/empty-state';
 import { ResourceCell } from '@/components/resource/resource-cell';
 import { ResourceForm } from '@/components/resource/resource-form';
 import { Button } from '@/components/ui/button';
@@ -506,9 +507,24 @@ export function ResourceTable({ schema }: ResourceTableProps) {
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
         emptyMessage={
-          search || Object.keys(filters).length > 0
-            ? tTable('noResults')
-            : t('empty', { label: schema.label })
+          search || Object.keys(filters).length > 0 ? (
+            tTable('noResults')
+          ) : (
+            <EmptyState
+              title={t('empty', { label: schema.label })}
+              action={
+                canCreate
+                  ? {
+                      label: t('actions.create', { label: schema.label }),
+                      onClick: () => {
+                        setFormRow(null);
+                        setIsFormOpen(true);
+                      },
+                    }
+                  : undefined
+              }
+            />
+          )
         }
         // Selection existed before this with nothing attached to it — rows
         // could be ticked and no action was ever offered.
