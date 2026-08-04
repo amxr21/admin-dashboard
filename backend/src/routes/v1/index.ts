@@ -12,6 +12,7 @@ import { settingsRouter } from './settings.route.js';
 import { diagnosticsRouter } from './diagnostics.route.js';
 import { reportsRouter } from './reports.route.js';
 import { auditRouter } from './audit.route.js';
+import { notificationsRouter } from './notifications.route.js';
 import { variantsRouter } from './variants.route.js';
 import { productImagesRouter } from './product-images.route.js';
 import { resourceRouter } from './resource.route.js';
@@ -39,6 +40,7 @@ v1Router.use(settingsRouter);
 v1Router.use(diagnosticsRouter);
 v1Router.use(reportsRouter);
 v1Router.use(auditRouter);
+v1Router.use(notificationsRouter);
 v1Router.use(variantsRouter);
 v1Router.use(productImagesRouter);
 // LAST: /r/:resource is a catch-all shape, so it must not shadow a named route.

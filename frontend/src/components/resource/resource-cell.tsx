@@ -43,8 +43,15 @@ export function ResourceCell({ field, row, resource }: ResourceCellProps) {
   const value = row[field.name];
 
   // Null is a fact, not a blank. An em dash says "no value" where an empty
-  // cell just looks like the table failed to render.
-  if (value === null || value === undefined || value === '') {
+  // cell just looks like the table failed to render. An empty array is the
+  // same fact for a multiRelation field — "scoped to nothing" — as null is
+  // for everything else.
+  if (
+    value === null ||
+    value === undefined ||
+    value === '' ||
+    (Array.isArray(value) && value.length === 0)
+  ) {
     return <span className="text-muted-foreground">—</span>;
   }
 
@@ -102,6 +109,14 @@ export function ResourceCell({ field, row, resource }: ResourceCellProps) {
       // The engine attaches `<field>__label` alongside the raw key. Showing the
       // cuid would be unreadable, and it leaks an internal id into the UI.
       return <span>{String(row[`${field.name}__label`] ?? value)}</span>;
+
+    case 'multiRelation': {
+      const labels = row[`${field.name}__label`];
+      const items = Array.isArray(labels) ? labels.map(String) : [];
+      return (
+        <span className="line-clamp-2 max-w-xs">{items.join(', ') || String(value)}</span>
+      );
+    }
 
     case 'image':
       return (

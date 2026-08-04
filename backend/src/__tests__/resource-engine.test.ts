@@ -226,6 +226,28 @@ describe('per-resource authorisation', () => {
 
     expect(res.status).toBe(403);
   });
+
+  it('moderates a review without letting staff rewrite its content', async () => {
+    // Staff may change `status` (moderation); `rating`/`body` are the
+    // customer's own words and must stay read-only even though the resource
+    // overall permits `update`.
+    const review = await prisma.review.create({
+      data: { rating: 3, body: `${RUN} original body`, status: 'PENDING' },
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/r/reviews/${review.id}`)
+      .set(auth(ownerToken))
+      .send({ status: 'APPROVED', rating: 1, body: 'rewritten by staff' });
+
+    expect(res.status).toBe(200);
+    const row = (res.body as RowBody).data.row;
+    expect(row.status).toBe('APPROVED');
+    expect(row.rating).toBe(3);
+    expect(row.body).toBe(`${RUN} original body`);
+
+    await prisma.review.delete({ where: { id: review.id } });
+  });
 });
 
 describe('typed values', () => {
@@ -303,6 +325,129 @@ describe('relation labels', () => {
     for (const row of (res.body as ListBody).data.rows) {
       expect(Object.keys(row)).toContain('productId__label');
     }
+  });
+});
+
+describe('multi-relation fields (discount scoping)', () => {
+  const categoryIds: string[] = [];
+  let discountId = '';
+
+  beforeAll(async () => {
+    const categories = await Promise.all(
+      ['A', 'B', 'C'].map((suffix) =>
+        prisma.category.create({
+          data: { name: `${RUN} multirelcat-${suffix}`, slug: `${RUN}-multirelcat-${suffix}` },
+        }),
+      ),
+    );
+    categoryIds.push(...categories.map((c) => c.id));
+  });
+
+  afterAll(async () => {
+    if (discountId) await prisma.discount.delete({ where: { id: discountId } }).catch(() => {});
+    await prisma.category.deleteMany({ where: { id: { in: categoryIds } } });
+  });
+
+  it('creates a row with a multi-relation set and returns sorted ids plus labels', async () => {
+    const [a, b] = categoryIds;
+
+    const res = await request(app)
+      .post('/api/v1/r/discounts')
+      .set(auth(ownerToken))
+      .send({
+        code: `${RUN}-MULTIREL1`,
+        type: 'PERCENT',
+        value: '10.00',
+        scope: 'CATEGORY',
+        categories: [b, a], // deliberately out of order
+      });
+
+    expect(res.status).toBe(201);
+    const row = (res.body as RowBody).data.row;
+    discountId = String(row.id);
+
+    expect(row.categories).toEqual([a, b].sort());
+  });
+
+  it('attaches labels alongside the id array on GET', async () => {
+    const res = await request(app)
+      .get(`/api/v1/r/discounts/${discountId}`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    const row = (res.body as RowBody).data.row;
+
+    expect(row.categories).toHaveLength(2);
+    expect(row.categories__label).toEqual(
+      expect.arrayContaining([expect.stringContaining('multirelcat')]),
+    );
+  });
+
+  it('replaces the whole set with { set: [...] }, not an append', async () => {
+    const [, , c] = categoryIds;
+
+    const res = await request(app)
+      .patch(`/api/v1/r/discounts/${discountId}`)
+      .set(auth(ownerToken))
+      .send({ categories: [c] });
+
+    expect(res.status).toBe(200);
+    expect((res.body as RowBody).data.row.categories).toEqual([c]);
+  });
+
+  it('clears the relation with an empty array', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/r/discounts/${discountId}`)
+      .set(auth(ownerToken))
+      .send({ categories: [] });
+
+    expect(res.status).toBe(200);
+    expect((res.body as RowBody).data.row.categories).toEqual([]);
+  });
+
+  it('rejects an id that does not exist in the target resource', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/r/discounts/${discountId}`)
+      .set(auth(ownerToken))
+      .send({ categories: ['not-a-real-id'] });
+
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorBody).error.message).toMatch(/unknown categories/i);
+  });
+
+  it('rejects a non-array value', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/r/discounts/${discountId}`)
+      .set(auth(ownerToken))
+      .send({ categories: 'not-an-array' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('writes no audit entry when the same set is resubmitted in a different order', async () => {
+    const [a, b] = categoryIds;
+
+    await request(app)
+      .patch(`/api/v1/r/discounts/${discountId}`)
+      .set(auth(ownerToken))
+      .send({ categories: [a, b] });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    const before = await prisma.auditLog.count({
+      where: { entity: 'discounts', entityId: discountId },
+    });
+
+    await request(app)
+      .patch(`/api/v1/r/discounts/${discountId}`)
+      .set(auth(ownerToken))
+      .send({ categories: [b, a] }); // same set, reversed order
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    const after = await prisma.auditLog.count({
+      where: { entity: 'discounts', entityId: discountId },
+    });
+
+    expect(after).toBe(before);
   });
 });
 
