@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { DataTable, type Column } from '@/components/data-table';
+import { EmptyState } from '@/components/empty-state';
 import { AccessCodePanel } from '@/components/delivery/access-code-panel';
 import { CourierSheet } from '@/components/delivery/courier-sheet';
 import { StatusBadge } from '@/components/status-badge';
@@ -282,7 +283,16 @@ export function CouriersTable() {
         isLoading={isLoading}
         error={error}
         onRetry={() => void load()}
-        emptyMessage={search ? tTable('noResults') : t('empty')}
+        emptyMessage={
+          search ? (
+            tTable('noResults')
+          ) : (
+            <EmptyState
+              title={t('empty')}
+              action={{ label: t('actions.create'), onClick: () => setIsCreating(true) }}
+            />
+          )
+        }
       />
 
       {result && result.totalPages > 1 ? (

@@ -274,7 +274,10 @@ export function DataTable<T>({
             <TableRow>
               <TableCell
                 colSpan={columnCount}
-                className="text-muted-foreground h-32 text-center text-sm"
+                // min-h, not h: a plain-text message centers fine at exactly
+                // 32, but a richer `EmptyState` (icon + description + action)
+                // needs to grow past it rather than being clipped.
+                className="text-muted-foreground min-h-32 text-center text-sm"
               >
                 {emptyMessage ?? tStates('empty.title')}
               </TableCell>
