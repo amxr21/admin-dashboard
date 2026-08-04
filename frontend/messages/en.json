@@ -65,6 +65,33 @@
     "accessEnded": "This account's access period has ended.",
     "rateLimited": "Too many attempts from this address. Try again shortly."
   },
+  "courier": {
+    "login": {
+      "title": "Courier sign in",
+      "subtitle": "Enter your access code",
+      "codeLabel": "Access code",
+      "codePlaceholder": "XXXX-XXXX-XXXX",
+      "signIn": "Sign in",
+      "signingIn": "Signing in…",
+      "invalidCode": "That access code isn't right.",
+      "rateLimited": "Too many attempts from this address. Try again shortly."
+    },
+    "dashboard": {
+      "greeting": "Hi, {name}",
+      "activeCount": "{count, plural, =0 {No active deliveries} one {# active delivery} other {# active deliveries}}",
+      "refresh": "Refresh",
+      "signOut": "Sign out",
+      "loadFailed": "Couldn't load your deliveries.",
+      "empty": "No deliveries assigned to you right now.",
+      "collect": "Collect"
+    },
+    "deliveryStatusAction": {
+      "PICKED_UP": "Mark picked up",
+      "OUT_FOR_DELIVERY": "Mark out for delivery",
+      "DELIVERED": "Mark delivered",
+      "HANDED_OVER": "Mark handed over"
+    }
+  },
   "nav": {
     "dashboard": "Dashboard",
     "orders": "Orders",
@@ -463,7 +490,14 @@
       "phone": "Phone",
       "address": "Address",
       "status": "Status",
-      "unassigned": "No courier assigned yet."
+      "unassigned": "No courier assigned yet.",
+      "assignLabel": "Courier",
+      "assignPlaceholder": "Choose a courier",
+      "assign": "Assign",
+      "assigning": "Assigning…",
+      "reassign": "Reassign",
+      "unassign": "Unassign",
+      "cancel": "Cancel"
     },
     "payment": {
       "title": "Payment",
