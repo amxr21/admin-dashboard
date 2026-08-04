@@ -1,5 +1,6 @@
 import { prisma } from '../db/prisma.js';
 import { logger } from '../logger.js';
+import { sendAlertEmail } from './email.service.js';
 
 /**
  * In-app staff notifications.
@@ -14,6 +15,13 @@ import { logger } from '../logger.js';
  * `Notification` has no recipient column — it is a single shared inbox for
  * "dashboard staff", read by the bell in the top bar. One row reaches
  * everyone who can see it; there is no fan-out to compute here.
+ *
+ * ─── EMAIL RIDES ALONG HERE, NOT AT EACH CALL SITE ───────────────────
+ * `notify()` is the one funnel every alert already goes through (low stock,
+ * return requests, ...), so hooking the optional email send in here means
+ * every existing AND future caller gets it for free, gated by the same
+ * `email.enabled` setting — see email.service.ts for why that check (and
+ * the SMTP send itself) never throws back into this "never throws" function.
  */
 
 export interface NotifyInput {
@@ -43,4 +51,9 @@ export function notify(entry: NotifyInput): void {
         error: error instanceof Error ? error.message : String(error),
       });
     });
+
+  // Independent of the write above succeeding or failing — the in-app row
+  // and the email are two separate best-effort side channels, neither
+  // gated on the other.
+  void sendAlertEmail(entry.title, entry.body ?? entry.title);
 }

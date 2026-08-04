@@ -245,6 +245,31 @@ export const SETTINGS = {
     description: 'Notify staff when a customer return is requested.',
   },
 
+  // ─── Email ──────────────────────────────────────────────────────────
+  // Only the non-secret half of email config lives here — the SMTP host,
+  // port, username and password are `SMTP_*` environment variables (see
+  // env.ts), never a Setting, because this table is readable by any
+  // signed-in user. `email.enabled` gates BOTH alert toggles above at once —
+  // toggling an alert on with email off still logs the in-app row, it just
+  // doesn't also send mail, so nobody's inbox fills up the moment they flip
+  // one switch without meaning to touch the other.
+  'email.enabled': {
+    type: 'boolean',
+    default: false,
+    area: 'settings',
+    label: 'Send email for alerts',
+    description:
+      'In addition to the in-app notification, also email the support address below for low-stock and return-request alerts. Requires SMTP to be configured on the server.',
+  },
+  'email.fromAddress': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 255,
+    label: 'Send emails from',
+    description: 'The "From" address on outgoing alert emails. Alerts are sent TO the support email above.',
+  },
+
   // ─── Dashboard behavior ─────────────────────────────────────────────
   'dashboard.tablePageSize': {
     type: 'number',

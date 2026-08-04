@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Bell, Palette, Settings2, Shield, SlidersHorizontal, Store, type LucideIcon } from 'lucide-react';
+import { Bell, Mail, Palette, Settings2, Shield, SlidersHorizontal, Store, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { ErrorScreen } from '@/components/errors/error-screen';
@@ -71,6 +71,11 @@ export const SETTINGS_GROUPS = [
     id: 'notifications',
     icon: Bell,
     match: (key: string) => key.startsWith('notifications.'),
+  },
+  {
+    id: 'email',
+    icon: Mail,
+    match: (key: string) => key.startsWith('email.'),
   },
   {
     id: 'operations',
