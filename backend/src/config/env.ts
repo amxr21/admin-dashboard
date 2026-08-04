@@ -42,6 +42,20 @@ const envSchema = z.object({
   SENTRY_DASHBOARD_URL: z.string().url().optional(),
   LOGS_DASHBOARD_URL: z.string().url().optional(),
 
+  // ─── Outgoing email (SMTP) ─────────────────────────────────────────
+  // Credentials, so they live here and NEVER in the `Setting` table — that
+  // table is readable by any signed-in user (see settings.route.ts), which
+  // is fine for a from-address but not for an SMTP password. What CAN live
+  // in Settings is the non-secret on/off switch and the from-address (see
+  // `email.enabled`/`email.fromAddress` in settings.config.ts) — this app's
+  // existing split between "secret → env" and "preference → Settings"
+  // (compare DELIVERY_CODE_SECRET vs. store.supportEmail). All four optional
+  // and checked TOGETHER, same reasoning as the Cloudinary block above.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+
   // Comma-separated origin list → string[].
   CORS_ORIGINS: z
     .string()
