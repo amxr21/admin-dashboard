@@ -62,3 +62,23 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
     disconnect() {}
   } as unknown as typeof ResizeObserver;
 }
+
+/**
+ * `OnboardingWelcome` (mounted unconditionally in `AppShell`) opens by
+ * default the first time a browser has no "seen" flag in localStorage —
+ * which is EVERY jsdom test run, since each one starts with empty storage.
+ * Left alone, every test that renders `AppShell` gets a modal dialog open
+ * on top of the sidebar it's actually trying to assert against: Radix marks
+ * the rest of the tree `aria-hidden` while its dialog is open, so
+ * `getByRole('link', ...)` for a nav item finds nothing — the accessible
+ * tree contains only the dialog.
+ *
+ * Seeding the flag here (global setup, not a per-test `beforeEach`) means
+ * the shell renders as an already-onboarded browser by default, which is
+ * what nearly every existing test actually wants to assert against. A test
+ * FOR the onboarding overlay itself should clear this key locally rather
+ * than relying on the global default.
+ */
+if (typeof window !== 'undefined') {
+  window.localStorage.setItem('admin-dashboard:onboarding-welcome-seen', 'true');
+}

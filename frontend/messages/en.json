@@ -952,6 +952,17 @@
     "urlPlaceholder": "https://…",
     "failed": "Upload failed. Try again."
   },
+  "onboarding": {
+    "title": "Welcome to admin-dashboard",
+    "subtitle": "A few things that are easy to miss on a first look.",
+    "items": {
+      "search": "Search (top bar) jumps straight to any page — faster than hunting through the sidebar.",
+      "notifications": "The bell shows unread alerts — low stock, return requests — from anywhere in the app.",
+      "sidebar": "Collapse the sidebar to an icon rail from the button at its top when you want more room.",
+      "settings": "Settings controls brand, appearance, notifications and security policy — one place for all of it."
+    },
+    "dismiss": "Got it"
+  },
   "diagnostics": {
     "label": "Developer diagnostics",
     "uptime": "Uptime",

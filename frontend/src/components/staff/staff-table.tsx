@@ -6,12 +6,14 @@ import { KeyRound, LockOpen, Pencil, Plus, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { DataTable, type Column } from '@/components/data-table';
+import { EmptyState } from '@/components/empty-state';
 import { StaffSheet } from '@/components/staff/staff-sheet';
 import { StaffPasswordPanel } from '@/components/staff/staff-password-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
@@ -181,25 +183,35 @@ export function StaffTable() {
               </Button>
             ) : null}
 
-            <Button
-              variant="ghost"
-              size="icon"
-              disabled={!editable}
-              aria-label={t('actions.password', { name: member.name ?? member.email })}
-              onClick={() => setSettingPassword(member)}
-            >
-              <KeyRound aria-hidden />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={!editable}
+                  aria-label={t('actions.password', { name: member.name ?? member.email })}
+                  onClick={() => setSettingPassword(member)}
+                >
+                  <KeyRound aria-hidden />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t('actions.password', { name: member.name ?? member.email })}</TooltipContent>
+            </Tooltip>
 
-            <Button
-              variant="ghost"
-              size="icon"
-              disabled={!editable}
-              aria-label={t('actions.edit', { name: member.name ?? member.email })}
-              onClick={() => setEditing(member)}
-            >
-              <Pencil aria-hidden />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={!editable}
+                  aria-label={t('actions.edit', { name: member.name ?? member.email })}
+                  onClick={() => setEditing(member)}
+                >
+                  <Pencil aria-hidden />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t('actions.edit', { name: member.name ?? member.email })}</TooltipContent>
+            </Tooltip>
           </div>
         );
       },
@@ -250,7 +262,16 @@ export function StaffTable() {
         isLoading={isLoading}
         error={error}
         onRetry={() => void load()}
-        emptyMessage={search ? tTable('noResults') : t('empty')}
+        emptyMessage={
+          search ? (
+            tTable('noResults')
+          ) : (
+            <EmptyState
+              title={t('empty')}
+              action={{ label: t('actions.create'), onClick: () => setIsCreating(true) }}
+            />
+          )
+        }
       />
 
       {result && result.totalPages > 1 ? (
