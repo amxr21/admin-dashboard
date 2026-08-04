@@ -64,6 +64,26 @@ export const passwordResetRateLimit = rateLimit({
 });
 
 /**
+ * Courier access-code sign-in. As strict as staff login, for a stronger
+ * reason: `DeliveryStaff` has no per-account lockout counter the way `User`
+ * does (see `registerFailedAttempt` in auth.service.ts) — this limiter is
+ * the ONLY brute-force defence a courier access code has.
+ */
+export const courierAuthRateLimit = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: {
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many attempts from this address. Try again shortly.',
+    },
+  },
+});
+
+/**
  * General API ceiling. Generous — this is a backstop against runaway clients
  * and scrapers, not a security control. Real protection is per-route.
  */

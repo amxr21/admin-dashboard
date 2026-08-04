@@ -26,6 +26,9 @@ vi.mock('@/i18n/navigation', () => ({
 const fetchOrder = vi.hoisted(() => vi.fn());
 const changeOrderStatus = vi.hoisted(() => vi.fn());
 const createReturn = vi.hoisted(() => vi.fn());
+const fetchCouriers = vi.hoisted(() => vi.fn());
+const assignCourier = vi.hoisted(() => vi.fn());
+const unassignCourier = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/orders-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/orders-api')>();
@@ -35,6 +38,11 @@ vi.mock('@/lib/orders-api', async (importOriginal) => {
 vi.mock('@/lib/returns-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/returns-api')>();
   return { ...actual, createReturn };
+});
+
+vi.mock('@/lib/delivery-api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/delivery-api')>();
+  return { ...actual, fetchCouriers, assignCourier, unassignCourier };
 });
 
 function makeOrder(overrides: Partial<Order> = {}): Order {
@@ -79,10 +87,53 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
   };
 }
 
+const COURIERS = [
+  {
+    id: 'd1',
+    name: 'Sami',
+    email: null,
+    phone: '+971500000001',
+    vehicleType: null,
+    plateNumber: null,
+    zone: null,
+    region: null,
+    country: null,
+    status: 'ACTIVE' as const,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    hasAccessCode: true,
+    activeAssignments: 0,
+  },
+  {
+    id: 'd2',
+    name: 'Retired Courier',
+    email: null,
+    phone: null,
+    vehicleType: null,
+    plateNumber: null,
+    zone: null,
+    region: null,
+    country: null,
+    status: 'INACTIVE' as const,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    hasAccessCode: false,
+    activeAssignments: 0,
+  },
+];
+
 beforeEach(() => {
   fetchOrder.mockReset();
   changeOrderStatus.mockReset();
   createReturn.mockReset();
+  fetchCouriers.mockReset();
+  assignCourier.mockReset();
+  unassignCourier.mockReset();
+  fetchCouriers.mockResolvedValue({
+    couriers: COURIERS,
+    total: COURIERS.length,
+    page: 1,
+    pageSize: 100,
+    totalPages: 1,
+  });
 });
 
 describe('the order itself', () => {
@@ -282,6 +333,134 @@ describe('failure states', () => {
     render(<OrderDetail id="o1" />);
 
     expect(await screen.findByText(/server had a problem/i)).toBeInTheDocument();
+  });
+});
+
+describe('assigning a courier', () => {
+  it('assigns an unassigned order to the chosen courier', async () => {
+    fetchOrder.mockResolvedValue(makeOrder({ assignment: null }));
+    assignCourier.mockResolvedValue({
+      id: 'a1',
+      status: 'ASSIGNED',
+      address: null,
+      city: null,
+      driver: { id: 'd1', name: 'Sami', phone: '+971500000001' },
+    });
+
+    render(<OrderDetail id="o1" />);
+
+    await screen.findByText(/no courier assigned yet/i);
+
+    // Only the active courier is offered — the inactive one is filtered out.
+    await userEvent.click(screen.getByLabelText('Courier'));
+    expect(await screen.findByRole('option', { name: 'Sami' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Retired Courier' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('option', { name: 'Sami' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Assign' }));
+
+    await waitFor(() => {
+      expect(assignCourier).toHaveBeenCalledWith({ orderId: 'o1', driverId: 'd1' });
+    });
+    expect(await screen.findByRole('button', { name: 'Reassign' })).toBeInTheDocument();
+  });
+
+  it('reassigns an already-assigned order', async () => {
+    fetchOrder.mockResolvedValue(
+      makeOrder({
+        assignment: {
+          id: 'a1',
+          status: 'ASSIGNED',
+          address: null,
+          city: null,
+          driver: { id: 'd0', name: 'Original Driver', phone: null },
+        },
+      }),
+    );
+    assignCourier.mockResolvedValue({
+      id: 'a1',
+      status: 'ASSIGNED',
+      address: null,
+      city: null,
+      driver: { id: 'd1', name: 'Sami', phone: '+971500000001' },
+    });
+
+    render(<OrderDetail id="o1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reassign' }));
+    await userEvent.click(screen.getByLabelText('Courier'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Sami' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Assign' }));
+
+    await waitFor(() => {
+      expect(assignCourier).toHaveBeenCalledWith({ orderId: 'o1', driverId: 'd1' });
+    });
+  });
+
+  it('unassigns a courier and returns to the unassigned state', async () => {
+    fetchOrder.mockResolvedValue(
+      makeOrder({
+        assignment: {
+          id: 'a1',
+          status: 'ASSIGNED',
+          address: null,
+          city: null,
+          driver: { id: 'd0', name: 'Original Driver', phone: null },
+        },
+      }),
+    );
+    unassignCourier.mockResolvedValue(undefined);
+
+    render(<OrderDetail id="o1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Unassign' }));
+
+    await waitFor(() => {
+      expect(unassignCourier).toHaveBeenCalledWith('a1');
+    });
+    expect(await screen.findByText(/no courier assigned yet/i)).toBeInTheDocument();
+  });
+
+  it('disables Unassign once the delivery is already complete', async () => {
+    fetchOrder.mockResolvedValue(
+      makeOrder({
+        assignment: {
+          id: 'a1',
+          status: 'DELIVERED',
+          address: null,
+          city: null,
+          driver: { id: 'd0', name: 'Original Driver', phone: null },
+        },
+      }),
+    );
+
+    render(<OrderDetail id="o1" />);
+
+    expect(await screen.findByRole('button', { name: 'Unassign' })).toBeDisabled();
+  });
+
+  it('renders no assignment control at all on a terminal order', async () => {
+    fetchOrder.mockResolvedValue(makeOrder({ status: 'CANCELED', nextStatuses: [] }));
+
+    render(<OrderDetail id="o1" />);
+
+    await screen.findByText(/no courier assigned yet/i);
+    expect(screen.queryByRole('button', { name: 'Assign' })).not.toBeInTheDocument();
+  });
+
+  it('surfaces a refused assignment instead of failing silently', async () => {
+    fetchOrder.mockResolvedValue(makeOrder({ assignment: null }));
+    assignCourier.mockRejectedValue(
+      new ApiError(400, 'BAD_REQUEST', 'That courier is inactive'),
+    );
+
+    render(<OrderDetail id="o1" />);
+
+    await userEvent.click(await screen.findByLabelText('Courier'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Sami' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Assign' }));
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
 });
 
