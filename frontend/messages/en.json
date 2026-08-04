@@ -410,6 +410,8 @@
     "saving": "Saving…",
     "cancel": "Cancel",
     "choose": "Choose…",
+    "manageVariants": "Manage variants",
+    "manageGallery": "Manage gallery",
     "noOptions": "None available.",
     "errors": {
       "required": "This field is required.",
@@ -599,6 +601,39 @@
     "LOST": "Lost",
     "RETURNED": "Returned",
     "CORRECTION": "Correction"
+  },
+  "productVariants": {
+    "title": "Variants — {name}",
+    "subtitle": "Own price, stock and SKU per variant. Inventory only — not yet part of any checkout.",
+    "empty": "No variants yet.",
+    "name": "Name",
+    "sku": "SKU",
+    "price": "Price",
+    "stock": "{count, plural, one {# in stock} other {# in stock}}",
+    "add": "Add",
+    "edit": "Edit",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "adjust": "Adjust stock",
+    "delete": "Delete \"{name}\"",
+    "confirmDelete": "Delete this variant? This can't be undone.",
+    "deleteShort": "Delete",
+    "reasonLabel": "Reason",
+    "reasonPlaceholder": "Choose a reason",
+    "in": "In",
+    "out": "Out",
+    "amount": "Amount",
+    "record": "Record",
+    "wouldGoNegative": "Only {stock} in stock — that amount would go negative."
+  },
+  "productGallery": {
+    "title": "Gallery — {name}",
+    "subtitle": "Additional photos beyond the cover image. Reorder with the arrows.",
+    "empty": "No gallery images yet.",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "delete": "Remove image"
   },
   "notificationsBell": {
     "unread": "{count, plural, one {# unread notification} other {# unread notifications}}",
@@ -880,6 +915,14 @@
     "noSales": "No sales in this period.",
     "deletedProduct": "Deleted product",
     "exportCsv": "Export CSV"
+  },
+  "imageUpload": {
+    "upload": "Upload",
+    "replace": "Replace",
+    "remove": "Remove",
+    "pasteUrlInstead": "Paste a URL instead",
+    "urlPlaceholder": "https://…",
+    "failed": "Upload failed. Try again."
   },
   "diagnostics": {
     "label": "Developer diagnostics",

@@ -410,6 +410,8 @@
     "saving": "جارٍ الحفظ…",
     "cancel": "إلغاء",
     "choose": "اختر…",
+    "manageVariants": "إدارة المتغيرات",
+    "manageGallery": "إدارة المعرض",
     "noOptions": "لا توجد خيارات متاحة.",
     "errors": {
       "required": "هذا الحقل مطلوب.",
@@ -599,6 +601,39 @@
     "LOST": "مفقود",
     "RETURNED": "مُرتجع",
     "CORRECTION": "تصحيح"
+  },
+  "productVariants": {
+    "title": "المتغيرات — {name}",
+    "subtitle": "سعر ومخزون ورمز SKU خاص بكل متغير. للمخزون فقط — ليس جزءًا من أي عملية شراء بعد.",
+    "empty": "لا توجد متغيرات بعد.",
+    "name": "الاسم",
+    "sku": "رمز SKU",
+    "price": "السعر",
+    "stock": "{count, plural, =0 {لا يوجد مخزون} one {قطعة واحدة في المخزون} two {قطعتان في المخزون} few {# قطع في المخزون} many {# قطعة في المخزون} other {# قطعة في المخزون}}",
+    "add": "إضافة",
+    "edit": "تعديل",
+    "save": "حفظ",
+    "saving": "جارٍ الحفظ…",
+    "cancel": "إلغاء",
+    "adjust": "تعديل المخزون",
+    "delete": "حذف \"{name}\"",
+    "confirmDelete": "حذف هذا المتغير؟ لا يمكن التراجع عن هذا.",
+    "deleteShort": "حذف",
+    "reasonLabel": "السبب",
+    "reasonPlaceholder": "اختر سببًا",
+    "in": "إدخال",
+    "out": "إخراج",
+    "amount": "الكمية",
+    "record": "تسجيل",
+    "wouldGoNegative": "يوجد {stock} فقط في المخزون — هذه الكمية ستجعله سالبًا."
+  },
+  "productGallery": {
+    "title": "معرض الصور — {name}",
+    "subtitle": "صور إضافية بخلاف صورة الغلاف. أعد الترتيب باستخدام الأسهم.",
+    "empty": "لا توجد صور في المعرض بعد.",
+    "moveUp": "نقل للأعلى",
+    "moveDown": "نقل للأسفل",
+    "delete": "إزالة الصورة"
   },
   "notificationsBell": {
     "unread": "{count, plural, zero {لا إشعارات غير مقروءة} one {إشعار واحد غير مقروء} two {إشعاران غير مقروءين} few {# إشعارات غير مقروءة} many {# إشعاراً غير مقروء} other {# إشعار غير مقروء}}",
@@ -880,6 +915,14 @@
     "noSales": "لا مبيعات في هذه الفترة.",
     "deletedProduct": "منتج محذوف",
     "exportCsv": "تصدير CSV"
+  },
+  "imageUpload": {
+    "upload": "رفع",
+    "replace": "استبدال",
+    "remove": "إزالة",
+    "pasteUrlInstead": "لصق رابط بدلاً من ذلك",
+    "urlPlaceholder": "https://…",
+    "failed": "فشل الرفع. حاول مرة أخرى."
   },
   "diagnostics": {
     "label": "تشخيص المطوّر",
