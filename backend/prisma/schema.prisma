@@ -297,12 +297,15 @@ model Product {
 // ═══════════════════════════════════════════════════════════════════
 
 model Customer {
-  id      String  @id @default(cuid())
-  name    String  @db.VarChar(200)
-  email   String  @unique @db.VarChar(255)
-  phone   String? @db.VarChar(48)
-  city    String? @db.VarChar(96)
-  country String? @db.VarChar(96)
+  id            String  @id @default(cuid())
+  name          String  @db.VarChar(200)
+  email         String  @unique @db.VarChar(255)
+  phone         String? @db.VarChar(48)
+  city          String? @db.VarChar(96)
+  country       String? @db.VarChar(96)
+  /// Staff-only, never surfaced to the customer. Plain free text — no tag
+  /// vocabulary, deliberately (see the design note on Order.internalNotes).
+  internalNotes String? @map("internal_notes") @db.Text
 
   orders  Order[]
   reviews Review[]
@@ -325,6 +328,12 @@ model Order {
   status        OrderStatus @default(PENDING)
   paymentMethod String?     @map("payment_method") @db.VarChar(48)
   placedAt      DateTime    @default(now()) @map("placed_at")
+  /// Staff-only, never surfaced to the customer — a place to record "called
+  /// twice, no answer" or similar, distinct from `OrderStatusHistory.note`
+  /// (which is tied to one specific status transition). Free text only,
+  /// deliberately: a structured tag vocabulary is a separate, bigger feature
+  /// this app doesn't have yet, and most real usage is exactly a short note.
+  internalNotes String?     @map("internal_notes") @db.Text
 
   customerId String?   @map("customer_id")
   /// SetNull so deleting a customer preserves order history for accounting.

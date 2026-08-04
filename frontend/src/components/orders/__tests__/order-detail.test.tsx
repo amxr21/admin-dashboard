@@ -25,11 +25,12 @@ vi.mock('@/i18n/navigation', () => ({
 
 const fetchOrder = vi.hoisted(() => vi.fn());
 const changeOrderStatus = vi.hoisted(() => vi.fn());
+const updateOrderNotes = vi.hoisted(() => vi.fn());
 const createReturn = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/orders-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/orders-api')>();
-  return { ...actual, fetchOrder, changeOrderStatus };
+  return { ...actual, fetchOrder, changeOrderStatus, updateOrderNotes };
 });
 
 vi.mock('@/lib/returns-api', async (importOriginal) => {
@@ -45,6 +46,7 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     total: '59.98',
     paymentMethod: 'card',
     placedAt: '2026-07-01T10:00:00.000Z',
+    internalNotes: null,
     customer: {
       id: 'c1',
       name: 'Ali',
@@ -82,6 +84,7 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
 beforeEach(() => {
   fetchOrder.mockReset();
   changeOrderStatus.mockReset();
+  updateOrderNotes.mockReset();
   createReturn.mockReset();
 });
 
@@ -282,6 +285,53 @@ describe('failure states', () => {
     render(<OrderDetail id="o1" />);
 
     expect(await screen.findByText(/server had a problem/i)).toBeInTheDocument();
+  });
+});
+
+describe('internal notes', () => {
+  it('disables Save until the text actually differs from what is saved', async () => {
+    fetchOrder.mockResolvedValue(makeOrder({ internalNotes: 'existing note' }));
+
+    render(<OrderDetail id="o1" />);
+
+    const textarea = await screen.findByPlaceholderText(/staff-only/i);
+    expect(textarea).toHaveValue('existing note');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+
+    await userEvent.type(textarea, '!');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+  });
+
+  it('saves the edited notes', async () => {
+    fetchOrder.mockResolvedValue(makeOrder({ internalNotes: null }));
+    updateOrderNotes.mockResolvedValue(makeOrder({ internalNotes: 'called twice, no answer' }));
+
+    render(<OrderDetail id="o1" />);
+
+    const textarea = await screen.findByPlaceholderText(/staff-only/i);
+    await userEvent.type(textarea, 'called twice, no answer');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(updateOrderNotes).toHaveBeenCalledWith('o1', 'called twice, no answer');
+    });
+    // Save disables again once the saved value matches what's shown.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
+  it('surfaces a failed save instead of losing the edit silently', async () => {
+    fetchOrder.mockResolvedValue(makeOrder({ internalNotes: null }));
+    updateOrderNotes.mockRejectedValue(new ApiError(500, 'SERVER_ERROR', 'boom'));
+
+    render(<OrderDetail id="o1" />);
+
+    const textarea = await screen.findByPlaceholderText(/staff-only/i);
+    await userEvent.type(textarea, 'x');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    // The typed text is not thrown away on a failed save.
+    expect(textarea).toHaveValue('x');
   });
 });
 

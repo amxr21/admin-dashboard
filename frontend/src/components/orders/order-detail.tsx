@@ -6,6 +6,7 @@ import { Link } from '@/i18n/navigation';
 import { Printer, RotateCcw } from 'lucide-react';
 
 import { ErrorScreen } from '@/components/errors/error-screen';
+import { OrderNotesSection } from '@/components/orders/order-notes-section';
 import { OrderStatusControl } from '@/components/orders/order-status-control';
 import { OrderStatusTimeline } from '@/components/orders/order-status-timeline';
 import { RequestReturnSheet } from '@/components/orders/request-return-sheet';
@@ -270,6 +271,8 @@ export function OrderDetail({ id }: { id: string }) {
             <h2 className="mb-3 font-medium">{t('payment.title')}</h2>
             <p className="text-sm">{order.paymentMethod ?? t('payment.unknown')}</p>
           </section>
+
+          <OrderNotesSection order={order} onChanged={setOrder} />
         </div>
       </div>
 
