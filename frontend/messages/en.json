@@ -601,7 +601,31 @@
   },
   "notificationsBell": {
     "unread": "{count, plural, one {# unread notification} other {# unread notifications}}",
-    "none": "Notifications"
+    "none": "Notifications",
+    "title": "Notifications",
+    "markAllRead": "Mark all as read",
+    "loading": "Loading…",
+    "empty": "Nothing unread.",
+    "viewAll": "View all notifications"
+  },
+  "notificationsPage": {
+    "search": {
+      "label": "Search",
+      "placeholder": "Search notifications…"
+    },
+    "markAllRead": "Mark all as read",
+    "markedAllRead": "All notifications marked as read.",
+    "loadFailed": "Couldn't load notifications.",
+    "noResults": "No notifications match your search.",
+    "empty": "No notifications yet.",
+    "dismiss": "Dismiss \"{title}\"",
+    "dismissShort": "Dismiss",
+    "confirmDismiss": "Dismiss this notification? This can't be undone.",
+    "cancel": "Cancel",
+    "total": "{count, plural, =0 {No notifications} one {# notification} other {# notifications}}",
+    "pageOf": "Page {page} of {total}",
+    "detailTitle": "Notification",
+    "openLink": "Open the linked page"
   },
   "delivery": {
     "title": "Delivery",

@@ -601,7 +601,31 @@
   },
   "notificationsBell": {
     "unread": "{count, plural, zero {لا إشعارات غير مقروءة} one {إشعار واحد غير مقروء} two {إشعاران غير مقروءين} few {# إشعارات غير مقروءة} many {# إشعاراً غير مقروء} other {# إشعار غير مقروء}}",
-    "none": "الإشعارات"
+    "none": "الإشعارات",
+    "title": "الإشعارات",
+    "markAllRead": "تعليم الكل كمقروء",
+    "loading": "جارٍ التحميل…",
+    "empty": "لا يوجد غير مقروء.",
+    "viewAll": "عرض كل الإشعارات"
+  },
+  "notificationsPage": {
+    "search": {
+      "label": "بحث",
+      "placeholder": "ابحث في الإشعارات…"
+    },
+    "markAllRead": "تعليم الكل كمقروء",
+    "markedAllRead": "تم تعليم كل الإشعارات كمقروءة.",
+    "loadFailed": "تعذّر تحميل الإشعارات.",
+    "noResults": "لا توجد إشعارات مطابقة لبحثك.",
+    "empty": "لا توجد إشعارات بعد.",
+    "dismiss": "إزالة \"{title}\"",
+    "dismissShort": "إزالة",
+    "confirmDismiss": "إزالة هذا الإشعار؟ لا يمكن التراجع عن هذا.",
+    "cancel": "إلغاء",
+    "total": "{count, plural, zero {لا إشعارات} one {إشعار واحد} two {إشعاران} few {# إشعارات} many {# إشعاراً} other {# إشعار}}",
+    "pageOf": "صفحة {page} من {total}",
+    "detailTitle": "إشعار",
+    "openLink": "فتح الصفحة المرتبطة"
   },
   "delivery": {
     "title": "التوصيل",
