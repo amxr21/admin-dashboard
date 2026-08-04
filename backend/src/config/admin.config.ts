@@ -185,6 +185,10 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       { name: 'phone', label: 'Phone', type: 'phone', searchable: true },
       { name: 'city', label: 'City', type: 'text', sortable: true },
       { name: 'country', label: 'Country', type: 'text', sortable: true },
+      // Staff-only, never surfaced to the customer — the customer has no API
+      // access to this resource at all, so "staff-only" falls out of the
+      // existing permission model rather than needing a new rule.
+      { name: 'internalNotes', label: 'Internal notes', type: 'longtext', inList: false },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],
   },

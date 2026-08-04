@@ -9,6 +9,7 @@ import {
   changeOrderStatus,
   getOrder,
   listOrders,
+  updateOrderInternalNotes,
 } from '../../services/orders.service.js';
 
 /**
@@ -47,6 +48,14 @@ const statusBody = z
   })
   .strict();
 
+const notesBody = z
+  .object({
+    // Empty string clears the notes — nullable is expressed as "", never
+    // omitted, so a PATCH with no body can't be mistaken for "clear this".
+    internalNotes: z.string().trim().max(2000),
+  })
+  .strict();
+
 ordersRouter.get('/orders', ...guard, async (req, res) => {
   const parsed = listQuery.safeParse(req.query);
 
@@ -82,6 +91,22 @@ ordersRouter.patch('/orders/:id/status', ...guard, async (req, res) => {
     to: order.status,
     userId: user.id,
   });
+
+  res.json({ data: { order } });
+});
+
+ordersRouter.patch('/orders/:id/notes', ...guard, async (req, res) => {
+  const parsed = notesBody.safeParse(req.body);
+
+  if (!parsed.success) {
+    throw AppError.badRequest('Invalid request', parsed.error.flatten());
+  }
+
+  const order = await updateOrderInternalNotes(
+    String(req.params.id),
+    parsed.data.internalNotes || null,
+    req,
+  );
 
   res.json({ data: { order } });
 });

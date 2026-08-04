@@ -5,7 +5,9 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { Printer, RotateCcw } from 'lucide-react';
 
+import { AssignCourierControl } from '@/components/orders/assign-courier-control';
 import { ErrorScreen } from '@/components/errors/error-screen';
+import { OrderNotesSection } from '@/components/orders/order-notes-section';
 import { OrderStatusControl } from '@/components/orders/order-status-control';
 import { OrderStatusTimeline } from '@/components/orders/order-status-timeline';
 import { RequestReturnSheet } from '@/components/orders/request-return-sheet';
@@ -264,12 +266,23 @@ export function OrderDetail({ id }: { id: string }) {
             ) : (
               <p className="text-muted-foreground text-sm">{t('delivery.unassigned')}</p>
             )}
+
+            <AssignCourierControl
+              orderId={order.id}
+              orderStatus={order.status}
+              assignment={order.assignment}
+              onChanged={(assignment) =>
+                setOrder((current) => (current ? { ...current, assignment } : current))
+              }
+            />
           </section>
 
           <section className="bg-card rounded-lg border p-4">
             <h2 className="mb-3 font-medium">{t('payment.title')}</h2>
             <p className="text-sm">{order.paymentMethod ?? t('payment.unknown')}</p>
           </section>
+
+          <OrderNotesSection order={order} onChanged={setOrder} />
         </div>
       </div>
 

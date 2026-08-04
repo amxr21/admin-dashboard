@@ -1,7 +1,9 @@
 import { OrderStatus, Prisma } from '@prisma/client';
+import type { Request } from 'express';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
+import { audit, diff } from './audit.service.js';
 import {
   ASSIGNMENT_ON_ORDER_STATUS,
   canTransition,
@@ -124,6 +126,7 @@ export async function getOrder(id: string) {
       total: true,
       paymentMethod: true,
       placedAt: true,
+      internalNotes: true,
       customer: {
         select: { id: true, name: true, email: true, phone: true, city: true, country: true },
       },
@@ -169,6 +172,7 @@ export async function getOrder(id: string) {
     total: money(order.total),
     paymentMethod: order.paymentMethod,
     placedAt: order.placedAt.toISOString(),
+    internalNotes: order.internalNotes,
     customer: order.customer,
     items: order.items.map((item) => ({
       id: item.id,
@@ -255,6 +259,39 @@ export async function changeOrderStatus(id: string, input: ChangeStatusInput) {
       });
     }
   });
+
+  return getOrder(id);
+}
+
+/**
+ * Internal notes — staff-only, never surfaced to the customer. A plain field
+ * edit, unlike `changeOrderStatus`: no transition table, no side effect on the
+ * assignment, so it goes through the generic `audit()`/`diff()` helpers rather
+ * than a bespoke history table (that's what `OrderStatusHistory` is for).
+ */
+export async function updateOrderInternalNotes(
+  id: string,
+  internalNotes: string | null,
+  req: Request,
+) {
+  const before = await prisma.order.findUnique({
+    where: { id },
+    select: { internalNotes: true },
+  });
+
+  if (!before) throw AppError.notFound('Order not found');
+
+  await prisma.order.update({ where: { id }, data: { internalNotes } });
+
+  const changes = diff({ internalNotes: before.internalNotes }, { internalNotes });
+  if (Object.keys(changes).length > 0) {
+    audit(req, {
+      action: 'order.notes.updated',
+      entity: 'orders',
+      entityId: id,
+      changes,
+    });
+  }
 
   return getOrder(id);
 }

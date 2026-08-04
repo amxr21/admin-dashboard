@@ -110,3 +110,38 @@ export async function issueAccessCode(
 export async function revokeAccessCode(id: string): Promise<void> {
   await apiFetch<undefined>(`/couriers/${id}/access-code`, { method: 'DELETE' });
 }
+
+export interface Assignment {
+  id: string;
+  status: string;
+  address: string | null;
+  city: string | null;
+  driver: { id: string; name: string; phone: string | null } | null;
+}
+
+export interface AssignCourierInput {
+  orderId: string;
+  driverId: string;
+  address?: string;
+  city?: string;
+  note?: string;
+}
+
+/**
+ * Assigns an order to a courier, or reassigns it to a different one.
+ *
+ * The backend `upsert`s on `orderId` (see `couriers.service.ts`), so calling
+ * this again with a different `driverId` on an already-assigned order is a
+ * reassignment, not a second row — never call `unassignCourier` first.
+ */
+export async function assignCourier(input: AssignCourierInput): Promise<Assignment> {
+  const body = await apiFetch<{ assignment: Assignment }>('/assignments', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return body.assignment;
+}
+
+export async function unassignCourier(assignmentId: string): Promise<void> {
+  await apiFetch<undefined>(`/assignments/${assignmentId}`, { method: 'DELETE' });
+}
