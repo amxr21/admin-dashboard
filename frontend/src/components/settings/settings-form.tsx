@@ -427,30 +427,40 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
       }
 
       case 'color': {
-        const isValidHex = /^#[0-9a-fA-F]{6}$/.test(String(value));
-
+        // A curated swatch picker, not a free-hex field — the server only
+        // ever declares `options` it has vetted for legible contrast in both
+        // themes (see `ACCENT_COLOR_PALETTE` in settings.config.ts), and
+        // `validateSetting` enforces membership, so this control can't drift
+        // from what the server actually allows.
         return (
-          <div className="flex items-center gap-2">
-            {/* A live swatch, not a native color picker — this app avoids
-                native interactive widgets (see project-ui-system) in favour
-                of a plain validated text field, same as every other string
-                setting. */}
-            <span
-              aria-hidden="true"
-              className="border-border size-8 shrink-0 rounded-md border"
-              style={{ backgroundColor: isValidHex ? String(value) : 'transparent' }}
-            />
-            <Input
-              id={id}
-              type="text"
-              inputMode="text"
-              value={String(value)}
-              placeholder="#2563eb"
-              maxLength={7}
-              className="force-ltr font-mono"
-              onChange={(event) => onChange(event.target.value)}
-              {...aria}
-            />
+          <div
+            role="radiogroup"
+            aria-labelledby={`${id}-label`}
+            aria-describedby={aria['aria-describedby']}
+            className="flex flex-wrap gap-2"
+          >
+            {(setting.options ?? []).map((option) => {
+              const selected = String(value).toLowerCase() === option.toLowerCase();
+
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={option}
+                  onClick={() => onChange(option)}
+                  className={cn(
+                    'focus-visible:ring-ring size-8 shrink-0 rounded-full border transition-transform',
+                    'focus-visible:ring-2 focus-visible:outline-none',
+                    selected
+                      ? 'border-foreground ring-foreground scale-110 ring-2 ring-offset-2 ring-offset-background'
+                      : 'border-border hover:scale-105',
+                  )}
+                  style={{ backgroundColor: option }}
+                />
+              );
+            })}
           </div>
         );
       }

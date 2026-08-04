@@ -21,6 +21,7 @@ import {
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { canAccessArea, type StaffRole } from '@/config/areas';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
@@ -62,6 +63,7 @@ export function ReturnDetailSheet({
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
   const { user } = useAuth();
+  const { editPanelMode } = useAppSettings();
   const canViewHistory = canAccessArea((user?.role ?? 'DEMO') as StaffRole, 'staff');
 
   const [item, setItem] = useState<ReturnDetail | null>(null);
@@ -165,6 +167,7 @@ export function ReturnDetailSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="end"
+        variant={editPanelMode}
         className="w-full max-w-lg overflow-y-auto"
         title={item ? item.rmaNumber : t('title')}
       >

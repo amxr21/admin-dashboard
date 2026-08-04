@@ -6,6 +6,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { fetchMovements, type MovementListResult } from '@/lib/inventory-api';
 
@@ -32,6 +33,7 @@ export function MovementLogSheet({
   const tReason = useTranslations('stockReason');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
+  const { editPanelMode } = useAppSettings();
 
   const [result, setResult] = useState<MovementListResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -64,6 +66,7 @@ export function MovementLogSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="end"
+        variant={editPanelMode}
         className="w-full max-w-md overflow-y-auto"
         title={t('title')}
       >

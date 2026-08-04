@@ -17,6 +17,7 @@ import {
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
   STOCK_REASONS,
@@ -66,6 +67,7 @@ export function StockAdjustSheet({
   const tReason = useTranslations('stockReason');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
+  const { editPanelMode } = useAppSettings();
 
   const [direction, setDirection] = useState<Direction>('in');
   const [amount, setAmount] = useState('');
@@ -141,6 +143,7 @@ export function StockAdjustSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="end"
+        variant={editPanelMode}
         className="w-full max-w-md overflow-y-auto"
         title={t('title', { name: product.name })}
       >

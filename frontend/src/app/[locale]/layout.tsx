@@ -15,7 +15,6 @@ import { notFound } from 'next/navigation';
 
 import { ThemeProvider } from '@/components/theme-provider';
 import { MotionProvider } from '@/components/motion-provider';
-import { NavigationProgressProvider } from '@/components/motion/navigation-progress';
 import { PageTransition } from '@/components/motion/page-transition';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -158,16 +157,13 @@ export default async function LocaleLayout({
                     two adjacent tooltip triggers (e.g. two collapsed sidebar
                     icons) without re-waiting for the second one. */}
                 <TooltipProvider delayDuration={200}>
-                  {/* NavigationProgress covers the wait BEFORE the new page
-                      arrives; PageTransition fades it in once it has. The two
-                      halves of the same navigation — neither covers the
-                      other's half on its own. */}
-                  <NavigationProgressProvider>
-                    {/* Covers ordinary navigation AND language switching — a
-                        locale change is a route change, so without this it
-                        snaps. */}
-                    <PageTransition>{children}</PageTransition>
-                  </NavigationProgressProvider>
+                  {/* Covers ordinary navigation AND language switching — a
+                      locale change is a route change, so without this it
+                      snaps. The full-screen blur backdrop that used to cover
+                      the WAIT before a page arrived was removed — it isn't a
+                      full page-level provider anymore, just this per-page
+                      fade-in. */}
+                  <PageTransition>{children}</PageTransition>
                   <Toaster />
                 </TooltipProvider>
               </AuthProvider>

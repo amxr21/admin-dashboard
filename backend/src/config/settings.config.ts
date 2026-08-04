@@ -31,6 +31,24 @@ export interface SettingDefinition {
   description?: string;
 }
 
+/**
+ * The only accent colors a store may pick. Each is a Tailwind `600` shade —
+ * dark enough to hold a legible white label (`--primary-foreground`) as a
+ * button background in both themes, which an arbitrary staff-typed hex has no
+ * guarantee of. Picking a color is a `SettingField` swatch click, never a
+ * text field — see `settings-form.tsx`.
+ */
+export const ACCENT_COLOR_PALETTE = [
+  '#2563eb', // blue (default)
+  '#4f46e5', // indigo
+  '#7c3aed', // violet
+  '#db2777', // pink
+  '#dc2626', // red
+  '#ea580c', // orange
+  '#16a34a', // green
+  '#0d9488', // teal
+] as const;
+
 export const SETTINGS = {
   'store.name': {
     type: 'string',
@@ -171,6 +189,13 @@ export const SETTINGS = {
     type: 'color',
     default: '#2563eb',
     area: 'settings',
+    // A curated palette, not a free-form picker: every value here is chosen
+    // to hold up as `--primary` against both the light and dark surface
+    // tokens (see globals.css) — an arbitrary hex a staff member typed in
+    // has no such guarantee (a pale yellow, say, fails contrast against a
+    // white button label). `validateSetting` enforces membership below, the
+    // same way an `enum` setting enforces its `options`.
+    options: ACCENT_COLOR_PALETTE,
     label: 'Accent color',
     description: 'Replaces the default blue everywhere the app uses its primary color.',
   },
@@ -340,12 +365,28 @@ export function validateSetting(
       return { ok: true, value };
     }
 
-    case 'color':
+    case 'color': {
       // 6-digit hex only — the one shape every consumer (a CSS custom
       // property, an <input type="color">-style preview) can use with no
       // further parsing. Never a name ("blue") or a 3-digit shorthand.
-      return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)
-        ? { ok: true, value: value.toLowerCase() }
-        : { ok: false, message: 'Must be a hex color like #2563eb' };
+      if (typeof value !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(value)) {
+        return { ok: false, message: 'Must be a hex color like #2563eb' };
+      }
+
+      const normalised = value.toLowerCase();
+
+      // Membership check, same shape as `enum` — a color setting with
+      // `options` declared (every one today) is a swatch picker, not a free
+      // text field, and the server enforces that rather than trusting the
+      // frontend control to.
+      if (definition.options && !definition.options.includes(normalised)) {
+        return {
+          ok: false,
+          message: `Must be one of: ${definition.options.join(', ')}`,
+        };
+      }
+
+      return { ok: true, value: normalised };
+    }
   }
 }

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ApiError } from '@/lib/api';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { setStaffPassword, type StaffMember } from '@/lib/staff-api';
 
@@ -37,6 +38,7 @@ const MIN_LENGTH = 12;
 export function StaffPasswordPanel({ member, onDone }: StaffPasswordPanelProps) {
   const t = useTranslations('staff');
   const translateError = useTranslatedApiError();
+  const { editPanelMode } = useAppSettings();
 
   const [password, setPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -70,7 +72,7 @@ export function StaffPasswordPanel({ member, onDone }: StaffPasswordPanelProps) 
   return (
     <Sheet open onOpenChange={(next) => { if (!next) onDone(null); }}>
       <SheetContent
-        variant="modal"
+        variant={editPanelMode}
         title={t('password.title', { name })}
         className="space-y-4"
       >
