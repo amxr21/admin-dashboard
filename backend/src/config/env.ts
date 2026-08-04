@@ -42,6 +42,18 @@ const envSchema = z.object({
   SENTRY_DASHBOARD_URL: z.string().url().optional(),
   LOGS_DASHBOARD_URL: z.string().url().optional(),
 
+  // ─── Image uploads ───────────────────────────────────────────────
+  // All three optional, and deliberately checked TOGETHER (see
+  // `upload.service.ts`) rather than each independently: a cloud name with no
+  // secret is a half-configuration that would fail on the first real upload
+  // rather than at boot, which is exactly what parsing env eagerly here is
+  // meant to prevent. Unset means "image upload is off" (the settings/product
+  // forms fall back to a plain URL field), not a misconfiguration — this
+  // feature is opt-in per deployment.
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
+
   // ─── Outgoing email (SMTP) ─────────────────────────────────────────
   // Credentials, so they live here and NEVER in the `Setting` table — that
   // table is readable by any signed-in user (see settings.route.ts), which
