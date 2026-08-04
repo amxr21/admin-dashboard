@@ -37,7 +37,12 @@ export type FieldType =
   | 'email'
   | 'phone'
   | 'url'
-  | 'relation';
+  | 'relation'
+  /** Many-to-many. `relation` names the target the same way `relation` does,
+   *  but the value is an array of ids rather than one. Renders as a
+   *  checkbox-list picker; written via Prisma's `{ set: [...] }`, which
+   *  replaces the whole relation list atomically. */
+  | 'multiRelation';
 
 export interface RelationSpec {
   /** Resource name to resolve labels from. Must itself be configured. */
@@ -212,6 +217,39 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       { name: 'usedCount', label: 'Used', type: 'number', readOnly: true, sortable: true },
       { name: 'isActive', label: 'Active', type: 'boolean', sortable: true },
       { name: 'expiresAt', label: 'Expires', type: 'datetime', sortable: true },
+      {
+        name: 'scope',
+        label: 'Scope',
+        type: 'enum',
+        options: ['ALL', 'CATEGORY', 'PRODUCT', 'CUSTOMER'],
+        sortable: true,
+      },
+      // All three pickers are always shown — the generic form has no notion
+      // of "only show this field when another field has value X". Only the
+      // ONE matching the chosen scope is ever read by anything (there's no
+      // apply-logic yet at all; see the field descriptions below and
+      // ROADMAP.md's note on this), so an unused picker is inert, not wrong.
+      {
+        name: 'categories',
+        label: 'Categories (used only when Scope = Category)',
+        type: 'multiRelation',
+        relation: { resource: 'categories', labelField: 'name' },
+        inList: false,
+      },
+      {
+        name: 'products',
+        label: 'Products (used only when Scope = Product)',
+        type: 'multiRelation',
+        relation: { resource: 'products', labelField: 'name' },
+        inList: false,
+      },
+      {
+        name: 'customers',
+        label: 'Customers (used only when Scope = Customer)',
+        type: 'multiRelation',
+        relation: { resource: 'customers', labelField: 'name' },
+        inList: false,
+      },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],
   },
@@ -228,8 +266,8 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
     permissions: { create: false, update: true, delete: true },
     fields: [
       { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
-      { name: 'rating', label: 'Rating', type: 'number', sortable: true },
-      { name: 'body', label: 'Comment', type: 'longtext', inList: false },
+      { name: 'rating', label: 'Rating', type: 'number', sortable: true, readOnly: true },
+      { name: 'body', label: 'Comment', type: 'longtext', inList: false, readOnly: true },
       {
         name: 'status',
         label: 'Status',

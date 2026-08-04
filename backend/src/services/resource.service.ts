@@ -4,7 +4,6 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import {
-  fieldNames,
   getResourceConfig,
   searchableFields,
   sortableFields,
@@ -119,16 +118,35 @@ function serializeRow(
   const out: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(row)) {
+    const field = byName.get(key);
+
+    if (field?.type === 'multiRelation') {
+      // Prisma returns the nested rows selected below (`{ id: true }`); sorted
+      // so the id array has a STABLE order regardless of the join table's own
+      // row order — otherwise the same set written twice could diff as
+      // "changed" purely from reordering (see the audit `diff()` note).
+      out[key] = Array.isArray(value)
+        ? (value as { id: unknown }[]).map((r) => String(r.id)).sort()
+        : [];
+      continue;
+    }
+
     // Relation labels are attached separately below and carry no field config.
-    out[key] = serializeValue(value, byName.get(key));
+    out[key] = serializeValue(value, field);
   }
 
   return out;
 }
 
 /** `select` built from config — the reason an undeclared column can't leak. */
-function selectFor(config: ResourceConfig): Record<string, true> {
-  return Object.fromEntries(fieldNames(config).map((name) => [name, true]));
+function selectFor(config: ResourceConfig): Record<string, unknown> {
+  return Object.fromEntries(
+    config.fields.map((field): [string, unknown] =>
+      field.type === 'multiRelation'
+        ? [field.name, { select: { id: true } }]
+        : [field.name, true],
+    ),
+  );
 }
 
 export interface ListParams {
@@ -274,10 +292,37 @@ async function attachRelationLabels(
     // Destructured so the narrowing survives into the async callbacks below —
     // TypeScript cannot keep `field.relation` narrowed across an await.
     const relation = field.relation;
-    if (field.type !== 'relation' || !relation) continue;
+    if (!relation || (field.type !== 'relation' && field.type !== 'multiRelation')) continue;
 
     const target = getResourceConfig(relation.resource);
     if (!target) continue;
+
+    if (field.type === 'multiRelation') {
+      const ids = [
+        ...new Set(
+          rows.flatMap((row) => (Array.isArray(row[field.name]) ? (row[field.name] as string[]) : [])),
+        ),
+      ];
+
+      if (ids.length === 0) {
+        for (const row of rows) row[`${field.name}__label`] = [];
+        continue;
+      }
+
+      const related = await delegateFor(target).findMany({
+        where: { id: { in: ids } },
+        select: { id: true, [relation.labelField]: true },
+      });
+      const labels = new Map(
+        related.map((row) => [String(row.id), row[relation.labelField]]),
+      );
+
+      for (const row of rows) {
+        const rowIds = Array.isArray(row[field.name]) ? (row[field.name] as string[]) : [];
+        row[`${field.name}__label`] = rowIds.map((id) => labels.get(id) ?? null);
+      }
+      continue;
+    }
 
     const ids = [
       ...new Set(
@@ -331,11 +376,11 @@ export async function getResourceRow(
  * those would make the API annoying without making it safer, since dropping
  * them is already complete protection against mass assignment.
  */
-function buildWriteData(
+async function buildWriteData(
   config: ResourceConfig,
   body: Record<string, unknown>,
   { partial }: { partial: boolean },
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
   const data: Record<string, unknown> = {};
 
   for (const field of writableFields(config)) {
@@ -348,7 +393,10 @@ function buildWriteData(
       continue;
     }
 
-    data[field.name] = coerceWriteValue(field, body[field.name]);
+    data[field.name] =
+      field.type === 'multiRelation'
+        ? await coerceMultiRelationValue(field, body[field.name], { partial })
+        : coerceWriteValue(field, body[field.name]);
   }
 
   if (Object.keys(data).length === 0) {
@@ -356,6 +404,62 @@ function buildWriteData(
   }
 
   return data;
+}
+
+/**
+ * Validates a multi-relation write and turns it into a nested Prisma
+ * relation write that REPLACES the whole list — the right verb for a picker
+ * whose value is "this is now the complete set", not a delta.
+ *
+ * `set` and `connect` are not interchangeable here despite both meaning
+ * "attach these": Prisma's nested `create` input only accepts `connect` (or
+ * `create`/`connectOrCreate`) — `set` is update-only, since "replace the
+ * list" presupposes a list already exists to replace. An empty array on
+ * create needs no key at all; an empty `connect: []` is accepted but is
+ * needless noise on a brand new row with nothing to attach yet.
+ *
+ * IDs are checked against the target table before the write reaches Prisma —
+ * letting a bad id surface as Prisma's own nested-connect error would be a
+ * generic 500 rather than a 400 naming the field, the same reasoning
+ * `coerceWriteValue` applies to every other type.
+ */
+async function coerceMultiRelationValue(
+  field: FieldConfig,
+  value: unknown,
+  { partial }: { partial: boolean },
+): Promise<{ set: { id: string }[] } | { connect: { id: string }[] } | undefined> {
+  if (!Array.isArray(value) || value.some((v) => typeof v !== 'string' || v.length === 0)) {
+    throw AppError.badRequest(`"${field.label}" must be a list of ids`, { field: field.name });
+  }
+
+  const ids = [...new Set(value as string[])];
+
+  if (ids.length === 0) {
+    return partial ? { set: [] } : undefined;
+  }
+
+  const relation = field.relation;
+  if (!relation) {
+    throw new Error(`Field "${field.name}" is multiRelation but declares no relation target.`);
+  }
+
+  const target = requireResource(relation.resource);
+  const found = await delegateFor(target).findMany({
+    where: { id: { in: ids } },
+    select: { id: true },
+  });
+
+  if (found.length !== ids.length) {
+    const foundIds = new Set(found.map((row) => String(row.id)));
+    const missing = ids.filter((id) => !foundIds.has(id));
+    throw AppError.badRequest(`"${field.label}" references unknown ${relation.resource}`, {
+      field: field.name,
+      missing,
+    });
+  }
+
+  const refs = ids.map((id) => ({ id }));
+  return partial ? { set: refs } : { connect: refs };
 }
 
 function coerceWriteValue(field: FieldConfig, value: unknown): unknown {
@@ -515,7 +619,7 @@ export async function createResourceRow(
 ): Promise<Record<string, unknown>> {
   assertPermitted(config, 'create');
 
-  const data = buildWriteData(config, body, { partial: false });
+  const data = await buildWriteData(config, body, { partial: false });
 
   try {
     const row = await delegateFor(config).create({ data, select: selectFor(config) });
@@ -546,7 +650,7 @@ export async function updateResourceRow(
   // as a 500. Doubles as the "before" side of the audit diff.
   const before = await getResourceRow(config, id);
 
-  const data = buildWriteData(config, body, { partial: true });
+  const data = await buildWriteData(config, body, { partial: true });
 
   try {
     const row = await delegateFor(config).update({

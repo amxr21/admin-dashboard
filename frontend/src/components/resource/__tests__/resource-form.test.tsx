@@ -385,6 +385,108 @@ describe('unsaved changes', () => {
   });
 });
 
+describe('multi-relation picker (discount scoping)', () => {
+  const multiRelationSchema: ResourceSchema = {
+    ...schema,
+    resource: 'discounts',
+    fields: [
+      ...schema.fields,
+      {
+        name: 'categories',
+        label: 'Categories',
+        type: 'multiRelation',
+        relation: { resource: 'categories', labelField: 'name' },
+      },
+    ],
+  };
+
+  function renderMultiRelationForm(row: Record<string, unknown> | null = null) {
+    const onSaved = vi.fn();
+    const onOpenChange = vi.fn();
+    const result = render(
+      <ResourceForm
+        schema={multiRelationSchema}
+        row={row}
+        open
+        onOpenChange={onOpenChange}
+        onSaved={onSaved}
+      />,
+    );
+    return { ...result, onSaved, onOpenChange };
+  }
+
+  beforeEach(() => {
+    fetchRelationOptions.mockResolvedValue([
+      { value: 'cat-a', label: 'Home & Garden' },
+      { value: 'cat-b', label: 'Electronics' },
+    ]);
+  });
+
+  it('renders one checkbox per fetched option', async () => {
+    renderMultiRelationForm();
+
+    expect(await screen.findByLabelText('Home & Garden')).toBeInTheDocument();
+    expect(screen.getByLabelText('Electronics')).toBeInTheDocument();
+  });
+
+  it('pre-checks the ids already on the row when editing', async () => {
+    renderMultiRelationForm({ ...existing, categories: ['cat-b'] });
+
+    expect(await screen.findByLabelText('Electronics')).toBeChecked();
+    expect(screen.getByLabelText('Home & Garden')).not.toBeChecked();
+  });
+
+  it('sends the checked ids as an array on create', async () => {
+    createRow.mockResolvedValue({ id: 'new' });
+    renderMultiRelationForm();
+
+    await userEvent.type(await screen.findByLabelText(/name/i), 'Vase');
+    await userEvent.type(screen.getByLabelText(/price/i), '5.00');
+    await userEvent.click(await screen.findByLabelText('Home & Garden'));
+    await userEvent.click(screen.getByLabelText('Electronics'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(createRow).toHaveBeenCalled());
+
+    const payload = createRow.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(payload.categories).toEqual(['cat-a', 'cat-b']);
+  });
+
+  it('unchecking one option removes only that id', async () => {
+    updateRow.mockResolvedValue(existing);
+    renderMultiRelationForm({ ...existing, categories: ['cat-a', 'cat-b'] });
+
+    await userEvent.click(await screen.findByLabelText('Home & Garden'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(updateRow).toHaveBeenCalled());
+    const payload = updateRow.mock.calls[0]?.[2] as Record<string, unknown>;
+    expect(payload.categories).toEqual(['cat-b']);
+  });
+
+  it('does not send the field when the same set is toggled back', async () => {
+    updateRow.mockResolvedValue(existing);
+    renderMultiRelationForm({ ...existing, categories: ['cat-a'] });
+
+    // Uncheck then re-check the same option — net no change.
+    const checkbox = await screen.findByLabelText('Home & Garden');
+    await userEvent.click(checkbox);
+    await userEvent.click(checkbox);
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    // Nothing changed at all, so the form closes without calling the API —
+    // same behaviour as the plain "editing sends a minimal patch" case.
+    await waitFor(() => expect(updateRow).not.toHaveBeenCalled());
+  });
+
+  it('shows a message instead of an empty list when there are no options', async () => {
+    fetchRelationOptions.mockResolvedValue([]);
+    renderMultiRelationForm();
+
+    expect(await screen.findByText(/none available/i)).toBeInTheDocument();
+  });
+});
+
 describe('localisation', () => {
   it('renders in Arabic', async () => {
     renderForm(null, 'ar');
