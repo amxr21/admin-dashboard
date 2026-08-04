@@ -154,6 +154,35 @@ export const SETTINGS = {
     label: 'Support phone',
     description: 'Shown alongside the support email.',
   },
+  'store.taxId': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 60,
+    label: 'Tax / VAT registration number',
+    description: 'Printed on invoices alongside the address, if your jurisdiction requires it.',
+  },
+
+  // ─── Security ───────────────────────────────────────────────────────
+  'security.sessionTimeoutMinutes': {
+    type: 'number',
+    default: 10080, // 7 days — matches the previous fixed JWT_EXPIRES_IN default.
+    area: 'settings',
+    min: 5,
+    max: 43200, // 30 days
+    label: 'Session timeout (minutes)',
+    description:
+      'How long a signed-in session stays valid before requiring another login. Shortening this does not sign out existing sessions early — it only shapes the next one issued.',
+  },
+  'security.minPasswordLength': {
+    type: 'number',
+    default: 12,
+    area: 'settings',
+    min: 8,
+    max: 128,
+    label: 'Minimum password length',
+    description: 'Enforced when an admin sets or resets a staff password, and on self-service reset.',
+  },
 
   // ─── Theme ──────────────────────────────────────────────────────────
   'theme.accentColor': {
@@ -239,6 +268,31 @@ export const SETTINGS = {
     area: 'settings',
     label: 'Return request alerts',
     description: 'Notify staff when a customer return is requested.',
+  },
+
+  // ─── Email ──────────────────────────────────────────────────────────
+  // Only the non-secret half of email config lives here — the SMTP host,
+  // port, username and password are `SMTP_*` environment variables (see
+  // env.ts), never a Setting, because this table is readable by any
+  // signed-in user. `email.enabled` gates BOTH alert toggles above at once —
+  // toggling an alert on with email off still logs the in-app row, it just
+  // doesn't also send mail, so nobody's inbox fills up the moment they flip
+  // one switch without meaning to touch the other.
+  'email.enabled': {
+    type: 'boolean',
+    default: false,
+    area: 'settings',
+    label: 'Send email for alerts',
+    description:
+      'In addition to the in-app notification, also email the support address below for low-stock and return-request alerts. Requires SMTP to be configured on the server.',
+  },
+  'email.fromAddress': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 255,
+    label: 'Send emails from',
+    description: 'The "From" address on outgoing alert emails. Alerts are sent TO the support email above.',
   },
 
   // ─── Dashboard behavior ─────────────────────────────────────────────

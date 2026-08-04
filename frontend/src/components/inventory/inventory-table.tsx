@@ -11,6 +11,7 @@ import { StockAdjustSheet } from '@/components/inventory/stock-adjust-sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import {
@@ -136,14 +137,19 @@ export function InventoryTable() {
       align: 'end',
       cell: (row) => (
         <div className="flex justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t('actions.history', { name: row.name })}
-            onClick={() => setViewingLog(row.id)}
-          >
-            <History aria-hidden />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t('actions.history', { name: row.name })}
+                onClick={() => setViewingLog(row.id)}
+              >
+                <History aria-hidden />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('actions.history', { name: row.name })}</TooltipContent>
+          </Tooltip>
           <Button
             variant="outline"
             size="sm"

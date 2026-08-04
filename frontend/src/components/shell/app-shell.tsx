@@ -8,6 +8,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { DiagnosticsBar } from '@/components/shell/diagnostics-bar';
 import { GlobalSearch } from '@/components/shell/global-search';
 import { NotificationsBell } from '@/components/shell/notifications-bell';
+import { OnboardingWelcome } from '@/components/shell/onboarding-welcome';
 import { usePageTitle } from '@/components/shell/page-title';
 import { SidebarNav } from '@/components/shell/sidebar-nav';
 import { UserMenu } from '@/components/shell/user-menu';
@@ -16,6 +17,7 @@ import { ViewAsBanner } from '@/components/shell/view-as-banner';
 import { ViewAsBlocked } from '@/components/shell/view-as-blocked';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { canAccessArea, isReadOnlyRole, type StaffRole } from '@/config/areas';
 import { resolveAreaForPath } from '@/config/navigation';
 import { useResourceSchema } from '@/components/providers/schema-provider';
@@ -119,21 +121,28 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
             <span className="truncate text-lg font-semibold">{storeName || 'admin-dashboard'}</span>
           ) : null}
           {showCollapseToggle ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="ms-auto"
-              onClick={toggleCollapsed}
-              aria-label={collapsedForThis ? t('expandSidebar') : t('collapseSidebar')}
-            >
-              {/* Not .icon-directional: a panel-rail glyph describes an open/
-                  closed STATE, not a reading direction. */}
-              {collapsedForThis ? (
-                <PanelLeftOpen className="size-4" aria-hidden />
-              ) : (
-                <PanelLeftClose className="size-4" aria-hidden />
-              )}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="ms-auto"
+                  onClick={toggleCollapsed}
+                  aria-label={collapsedForThis ? t('expandSidebar') : t('collapseSidebar')}
+                >
+                  {/* Not .icon-directional: a panel-rail glyph describes an open/
+                      closed STATE, not a reading direction. */}
+                  {collapsedForThis ? (
+                    <PanelLeftOpen className="size-4" aria-hidden />
+                  ) : (
+                    <PanelLeftClose className="size-4" aria-hidden />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {collapsedForThis ? t('expandSidebar') : t('collapseSidebar')}
+              </TooltipContent>
+            </Tooltip>
           ) : null}
         </div>
         <SidebarNav
@@ -147,6 +156,8 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
 
   return (
     <div className="flex h-dvh overflow-hidden">
+      <OnboardingWelcome />
+
       {/* Desktop sidebar. Hidden below lg; the drawer covers those widths.
           STRUCTURALLY sized (h-full inside an h-dvh/overflow-hidden shell) —
           not sticky/fixed. The whole point of the scroll model below is that

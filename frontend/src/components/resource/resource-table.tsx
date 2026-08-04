@@ -17,12 +17,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { DataTable, type Column } from '@/components/data-table';
+import { EmptyState } from '@/components/empty-state';
 import { ResourceCell } from '@/components/resource/resource-cell';
 import { ResourceForm } from '@/components/resource/resource-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -287,39 +289,54 @@ export function ResourceTable({ schema }: ResourceTableProps) {
             cell: (row) => (
               <div className="flex justify-end gap-1">
                 {canUpdate ? (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      setFormRow(row);
-                      setIsFormOpen(true);
-                    }}
-                    // The row has no visible label of its own, so the button
-                    // names what it acts on for screen readers.
-                    aria-label={t('actions.editRow', { label: rowLabel(row) })}
-                  >
-                    <Pencil aria-hidden />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setFormRow(row);
+                          setIsFormOpen(true);
+                        }}
+                        // The row has no visible label of its own, so the button
+                        // names what it acts on for screen readers.
+                        aria-label={t('actions.editRow', { label: rowLabel(row) })}
+                      >
+                        <Pencil aria-hidden />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t('actions.editRow', { label: rowLabel(row) })}</TooltipContent>
+                  </Tooltip>
                 ) : null}
                 {canDelete ? (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setPendingDelete([String(row.id)])}
-                    aria-label={t('actions.deleteRow', { label: rowLabel(row) })}
-                  >
-                    <Trash2 aria-hidden />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setPendingDelete([String(row.id)])}
+                        aria-label={t('actions.deleteRow', { label: rowLabel(row) })}
+                      >
+                        <Trash2 aria-hidden />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t('actions.deleteRow', { label: rowLabel(row) })}</TooltipContent>
+                  </Tooltip>
                 ) : null}
                 {canViewHistory ? (
-                  <Button variant="ghost" size="icon" asChild>
-                    <Link
-                      href={`/admin/audit?entity=${schema.resource}&entityId=${String(row.id)}`}
-                      aria-label={tAudit('viewHistory')}
-                    >
-                      <History aria-hidden />
-                    </Link>
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" asChild>
+                        <Link
+                          href={`/admin/audit?entity=${schema.resource}&entityId=${String(row.id)}`}
+                          aria-label={tAudit('viewHistory')}
+                        >
+                          <History aria-hidden />
+                        </Link>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{tAudit('viewHistory')}</TooltipContent>
+                  </Tooltip>
                 ) : null}
               </div>
             ),
@@ -490,9 +507,24 @@ export function ResourceTable({ schema }: ResourceTableProps) {
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
         emptyMessage={
-          search || Object.keys(filters).length > 0
-            ? tTable('noResults')
-            : t('empty', { label: schema.label })
+          search || Object.keys(filters).length > 0 ? (
+            tTable('noResults')
+          ) : (
+            <EmptyState
+              title={t('empty', { label: schema.label })}
+              action={
+                canCreate
+                  ? {
+                      label: t('actions.create', { label: schema.label }),
+                      onClick: () => {
+                        setFormRow(null);
+                        setIsFormOpen(true);
+                      },
+                    }
+                  : undefined
+              }
+            />
+          )
         }
         // Selection existed before this with nothing attached to it — rows
         // could be ticked and no action was ever offered.
