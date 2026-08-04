@@ -253,7 +253,8 @@ model Category {
   slug     String  @unique @db.VarChar(160)
   isActive Boolean @default(true) @map("is_active")
 
-  products Product[]
+  products  Product[]
+  discounts Discount[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -281,6 +282,7 @@ model Product {
 
   orderItems OrderItem[]
   reviews    Review[]
+  discounts  Discount[]
 
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
@@ -304,9 +306,10 @@ model Customer {
   city    String? @db.VarChar(96)
   country String? @db.VarChar(96)
 
-  orders  Order[]
-  reviews Review[]
-  returns Return[]
+  orders    Order[]
+  reviews   Review[]
+  returns   Return[]
+  discounts Discount[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -473,17 +476,40 @@ model Review {
   @@map("reviews")
 }
 
+/// A discount applies to exactly ONE scope kind, never combined — a
+/// discount is ALL/CATEGORY/PRODUCT/CUSTOMER, not a rule engine stacking
+/// conditions. Matches the "config is an allowlist, not a rule engine"
+/// simplicity already used elsewhere (settings.config.ts, admin.config.ts).
+enum DiscountScope {
+  ALL
+  CATEGORY
+  PRODUCT
+  CUSTOMER
+}
+
 model Discount {
-  id        String       @id @default(cuid())
-  code      String       @unique @db.VarChar(48)
-  type      DiscountType @default(PERCENT)
+  id        String        @id @default(cuid())
+  code      String        @unique @db.VarChar(48)
+  type      DiscountType  @default(PERCENT)
   /// For PERCENT: the percentage itself (10.00 = 10%). For FIXED: a money
   /// amount. Same Decimal(10,2) as every other monetary column.
-  value     Decimal      @db.Decimal(10, 2)
-  maxUses   Int?         @map("max_uses")
-  usedCount Int          @default(0) @map("used_count")
-  expiresAt DateTime?    @map("expires_at")
-  isActive  Boolean      @default(true) @map("is_active")
+  value     Decimal       @db.Decimal(10, 2)
+  maxUses   Int?          @map("max_uses")
+  usedCount Int           @default(0) @map("used_count")
+  expiresAt DateTime?     @map("expires_at")
+  isActive  Boolean       @default(true) @map("is_active")
+  /// Which scope kind this discount targets. Only the ONE matching relation
+  /// below (categories/products/customers) is meaningful when scope is not
+  /// ALL — the admin form shows all three pickers, but the app only ever
+  /// reads the one `scope` names.
+  scope     DiscountScope @default(ALL)
+
+  /// Plain implicit many-to-many — no extra columns on the join, so Prisma
+  /// manages the join table itself rather than a hand-declared model (unlike
+  /// ProductImage, which needs a `position` column and so gets a real model).
+  categories Category[]
+  products   Product[]
+  customers  Customer[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

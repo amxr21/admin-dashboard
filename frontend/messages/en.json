@@ -383,6 +383,7 @@
     "saving": "Saving…",
     "cancel": "Cancel",
     "choose": "Choose…",
+    "noOptions": "None available.",
     "errors": {
       "required": "This field is required.",
       "money": "Enter an amount with up to two decimal places, like 19.99.",
