@@ -6,6 +6,7 @@ import { Bell, Palette, Settings2, SlidersHorizontal, Store, type LucideIcon } f
 import { toast } from 'sonner';
 
 import { ErrorScreen } from '@/components/errors/error-screen';
+import { ImageUploadField } from '@/components/image-upload-field';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -464,6 +465,22 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
         );
 
       default:
+        // The one string setting that is really an image, not text — a
+        // small rounded square with an upload control, same primitive a
+        // product's `imageUrl` field uses (see resource-form.tsx).
+        if (setting.key === 'store.logoUrl') {
+          return (
+            <ImageUploadField
+              id={id}
+              value={String(value)}
+              onChange={onChange}
+              folder="logo"
+              shape="square"
+              {...aria}
+            />
+          );
+        }
+
         return (
           <Input
             id={id}

@@ -94,6 +94,47 @@ export async function apiFetch<T>(
 }
 
 /**
+ * Same envelope handling as `apiFetch`, for a multipart body.
+ *
+ * Deliberately a SEPARATE function rather than a flag on `apiFetch`: that one
+ * hardcodes `Content-Type: application/json` on every request, which is
+ * exactly wrong for `FormData` — the browser has to set its own
+ * `multipart/form-data` Content-Type (with the boundary parameter, which JS
+ * cannot compute ahead of time), so this omits the header entirely rather
+ * than fighting it.
+ */
+export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  const token = readToken();
+
+  const response = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    body: formData,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    let body: ErrorBody = {};
+    try {
+      body = (await response.json()) as ErrorBody;
+    } catch {
+      // leave body empty
+    }
+
+    throw new ApiError(
+      response.status,
+      body.error?.code ?? 'UNKNOWN_ERROR',
+      body.error?.message ?? `Request failed with status ${response.status}`,
+      body.error?.requestId ?? response.headers.get('x-request-id') ?? undefined,
+      body.error?.details,
+    );
+  }
+
+  const body = (await response.json()) as { data: T };
+  return body.data;
+}
+
+/**
  * Downloads a file the API returns as an attachment (e.g. a report's CSV
  * export) and saves it via the browser, rather than parsing it as `{ data }`.
  *

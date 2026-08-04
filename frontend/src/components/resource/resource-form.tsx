@@ -15,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
+import { ImageUploadField } from '@/components/image-upload-field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -415,6 +416,7 @@ export function ResourceForm({
                 value={values[field.name] ?? ''}
                 error={fieldErrors[field.name]}
                 options={relationOptions[field.name] ?? []}
+                resourceFolder={schema.resource}
                 onChange={(value) => setValue(field.name, value)}
               />
             ))}
@@ -466,11 +468,16 @@ interface FormFieldProps {
   value: FormValue;
   error: string | undefined;
   options: RelationOption[];
+  /** Which Cloudinary folder an `image`-type field's upload belongs in —
+   *  the resource name is a reasonable bucket (`products`, `categories`);
+   *  the backend falls back to a generic one for anything it doesn't
+   *  recognise, so this never needs to stay in sync with that allowlist. */
+  resourceFolder: string;
   onChange: (value: FormValue) => void;
 }
 
 /** One labelled control, chosen by the field's SEMANTIC type. */
-function FormField({ field, value, error, options, onChange }: FormFieldProps) {
+function FormField({ field, value, error, options, resourceFolder, onChange }: FormFieldProps) {
   const t = useTranslations('resourceForm');
   const id = `field-${field.name}`;
   const errorId = `${id}-error`;
@@ -550,6 +557,19 @@ function FormField({ field, value, error, options, onChange }: FormFieldProps) {
           value={text}
           onChange={(event) => onChange(event.target.value)}
           rows={4}
+          {...aria}
+        />
+      );
+    }
+
+    if (field.type === 'image') {
+      return (
+        <ImageUploadField
+          id={id}
+          value={text}
+          onChange={onChange}
+          folder={resourceFolder}
+          shape="wide"
           {...aria}
         />
       );

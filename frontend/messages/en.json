@@ -816,6 +816,14 @@
     "deletedProduct": "Deleted product",
     "exportCsv": "Export CSV"
   },
+  "imageUpload": {
+    "upload": "Upload",
+    "replace": "Replace",
+    "remove": "Remove",
+    "pasteUrlInstead": "Paste a URL instead",
+    "urlPlaceholder": "https://…",
+    "failed": "Upload failed. Try again."
+  },
   "diagnostics": {
     "label": "Developer diagnostics",
     "uptime": "Uptime",

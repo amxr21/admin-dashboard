@@ -96,8 +96,13 @@ export const SETTINGS = {
     default: '',
     area: 'settings',
     max: 500,
-    label: 'Logo URL',
-    description: 'A plain image URL, same as any other image field. Shown in the sidebar.',
+    label: 'Logo',
+    // Still a plain string under the hood — the value is just a URL — but
+    // the frontend control is an upload widget (`ImageUploadField`) with a
+    // "paste a URL instead" fallback, not a bare text field. This
+    // description is user-facing copy, so it describes what someone
+    // actually sees, not the storage type.
+    description: 'Uploaded to your image host, or paste a URL directly. Shown in the sidebar.',
   },
   'store.url': {
     type: 'string',
