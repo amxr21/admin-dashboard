@@ -128,8 +128,15 @@
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar",
     "search": "Search",
-    "searchPlaceholder": "Jump to…",
+    "searchPlaceholder": "Search orders, customers, products…",
     "openPage": "Open",
+    "searchGroups": {
+      "pages": "Pages",
+      "orders": "Orders",
+      "customers": "Customers",
+      "products": "Products",
+      "noResults": "No matches"
+    },
     "descriptions": {
       "dashboard": "Revenue, orders, and what needs attention today, at a glance.",
       "orders": "Every order, its line items, and where it is in the fulfillment workflow.",
@@ -740,6 +747,9 @@
       "label": "Search",
       "placeholder": "Name, phone or zone"
     },
+    "filters": {
+      "allStatuses": "All statuses"
+    },
     "pagination": {
       "previous": "Previous",
       "next": "Next"
@@ -794,6 +804,45 @@
         "region": "Region",
         "country": "Country",
         "status": "Status"
+      }
+    },
+    "detail": {
+      "back": "Back to couriers",
+      "region": "Region",
+      "country": "Country",
+      "phone": "Phone",
+      "email": "Email",
+      "vehicle": "Vehicle",
+      "plateNumber": "Plate number",
+      "recentAssignments": "Recent assignments",
+      "noAssignments": {
+        "title": "No assignments yet",
+        "description": "Orders assigned to this courier will appear here."
+      },
+      "columns": {
+        "order": "Order",
+        "deliveryStatus": "Delivery status",
+        "assignedAt": "Assigned"
+      },
+      "dangerZone": {
+        "title": "Danger zone",
+        "description": "Actions here affect this courier's ability to work — think before confirming.",
+        "deactivate": {
+          "title": "Deactivate courier",
+          "description": "Stops them signing in to the courier portal and receiving new deliveries. Their access code is kept, not revoked — see the roster if you need to revoke it too.",
+          "action": "Deactivate",
+          "confirmPhrase": "DEACTIVATE",
+          "confirm": {
+            "title": "Deactivate {name}?",
+            "descriptionWithActive": "{name} has {count, plural, one {# active delivery} other {# active deliveries}} right now. Deactivating does not reassign or cancel them.",
+            "description": "{name} will no longer be able to sign in to the courier portal or be assigned new deliveries.",
+            "typePhrase": "Type {phrase} to confirm.",
+            "cancel": "Cancel",
+            "action": "Deactivate"
+          },
+          "done": "{name} has been deactivated."
+        },
+        "alreadyInactive": "This courier is already deactivated."
       }
     }
   },
@@ -1204,5 +1253,10 @@
     "SUCCESS": "Success",
     "DENIED": "Denied",
     "ERROR": "Error"
+  },
+  "filters": {
+    "applied": "Filters:",
+    "remove": "Remove filter {label}",
+    "clearAll": "Clear all"
   }
 }
