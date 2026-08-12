@@ -1,7 +1,7 @@
 /**
- * Guards against the two silent-merge failures this repo has hit repeatedly
- * when many sibling feature branches (split from one shared checkpoint
- * commit) independently touch the same file region:
+ * Guards against the silent-merge failures this repo has hit repeatedly when
+ * many sibling feature branches (split from one shared checkpoint commit)
+ * independently touch the same file region:
  *
  *   1. `backend/src/routes/v1/index.ts` — a 3-way merge sees two
  *      non-conflicting insertions (two different new routers added near each
@@ -13,7 +13,14 @@
  *      block: two branches independently touch the same enum, git keeps both
  *      copies, and `prisma generate` fails with P1012 in CI, 3+ jobs deep,
  *      with no line number pointing at the actual repo problem.
- *      (Real incident: PR #106.)
+ *      (Real incident: PR #106, and again as `ProductRedirect` on
+ *      feat/resource-import-export — that one auto-merged with NO conflict
+ *      markers at all, so git alone can't be trusted to flag this class.)
+ *   3. `frontend/messages/{en,ar}.json` — two branches each add a new
+ *      top-level section to the same object; a bad manual resolution can
+ *      duplicate a JSON key. `JSON.parse` silently keeps the LAST of two
+ *      duplicate keys with no warning, so this is invisible until someone
+ *      notices a string that should be there isn't.
  *
  * Run via `pnpm --filter ./backend check:merge` — wired into the pre-push
  * hook and as a dedicated fast CI job so this surfaces in seconds, before
@@ -23,6 +30,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = join(import.meta.dirname, '..');
+const WORKSPACE_ROOT = join(ROOT, '..');
 
 let failed = false;
 
@@ -86,8 +94,56 @@ function checkPrismaDuplicateBlocks(): void {
   }
 }
 
+/**
+ * Sibling-level duplicate object keys in a JSON file. `JSON.parse` accepts
+ * this silently (last write wins) so it never surfaces as a parse error —
+ * only as content that mysteriously isn't there.
+ */
+function findDuplicateJsonKeys(src: string): string[] {
+  const duplicates: string[] = [];
+  const stack: Array<Set<string>> = [new Set()];
+
+  for (const line of src.split('\n')) {
+    const keyMatch = line.match(/^\s*"([^"]+)"\s*:/);
+    if (keyMatch) {
+      const key = keyMatch[1];
+      const currentLevel = stack[stack.length - 1];
+      if (currentLevel.has(key)) {
+        duplicates.push(key);
+      }
+      currentLevel.add(key);
+    }
+
+    // Approximate: counts braces per line, which is fine for these
+    // pretty-printed, one-key-per-line catalogue files.
+    for (const ch of line) {
+      if (ch === '{') stack.push(new Set());
+      else if (ch === '}') stack.pop();
+    }
+  }
+
+  return duplicates;
+}
+
+function checkMessageCatalogues(): void {
+  for (const locale of ['en', 'ar']) {
+    const path = join(WORKSPACE_ROOT, 'frontend/messages', `${locale}.json`);
+    const src = readFileSync(path, 'utf8');
+
+    const duplicates = findDuplicateJsonKeys(src);
+    for (const key of duplicates) {
+      fail(
+        `frontend/messages/${locale}.json: '${key}' appears twice as a sibling key — ` +
+          `a merge likely duplicated a block. JSON.parse silently keeps the LAST copy and drops ` +
+          `the first, with no error.`,
+      );
+    }
+  }
+}
+
 checkRouterRegistrations();
 checkPrismaDuplicateBlocks();
+checkMessageCatalogues();
 
 if (failed) {
   console.error(
