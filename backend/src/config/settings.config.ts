@@ -183,6 +183,24 @@ export const SETTINGS = {
     label: 'Minimum password length',
     description: 'Enforced when an admin sets or resets a staff password, and on self-service reset.',
   },
+  'security.ipAllowlist': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 4000,
+    label: 'IP allowlist',
+    description:
+      'Comma-separated IPs or CIDR ranges (e.g. "203.0.113.0/24, 198.51.100.9"). Empty = disabled, the default and the only safe starting state. OWNER and DEVELOPER always bypass this check, even when their own IP is not listed — otherwise a wrong range locks out the only people who could fix it.',
+  },
+  'security.require2faForRoles': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 200,
+    label: 'Require 2FA for roles',
+    description:
+      'Comma-separated role names (e.g. "OWNER, MANAGER"). Staff in a listed role who have not enabled 2FA can still sign in and use everything EXCEPT write actions until they do — never a hard lockout. Empty = disabled, the default.',
+  },
 
   // ─── Theme ──────────────────────────────────────────────────────────
   'theme.accentColor': {

@@ -64,6 +64,26 @@ export const passwordResetRateLimit = rateLimit({
 });
 
 /**
+ * Self-service password change (`PATCH /auth/me/password`). Requires the
+ * CURRENT password, verified via `bcrypt.compare` — that comparison is itself
+ * a guessable-password oracle for whoever holds a valid session, so it needs
+ * the same defence as login rather than inheriting the general write limiter.
+ */
+export const selfPasswordChangeRateLimit = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: {
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many attempts from this address. Try again shortly.',
+    },
+  },
+});
+
+/**
  * Courier access-code sign-in. As strict as staff login, for a stronger
  * reason: `DeliveryStaff` has no per-account lockout counter the way `User`
  * does (see `registerFailedAttempt` in auth.service.ts) — this limiter is
