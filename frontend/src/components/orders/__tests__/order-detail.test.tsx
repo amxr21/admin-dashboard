@@ -226,7 +226,9 @@ describe('the status control offers only what the server allows', () => {
 
     await userEvent.click(await screen.findByLabelText(/move to/i));
     await userEvent.click(await screen.findByRole('option', { name: 'Shipped' }));
-    await userEvent.type(screen.getByLabelText(/note/i), 'left the warehouse');
+    // Specifically the status-change note: the delivery section has its own
+    // "Note for the courier" field, so a bare /note/i now matches both.
+    await userEvent.type(screen.getByLabelText(/note \(optional\)/i), 'left the warehouse');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() => {
@@ -423,6 +425,8 @@ describe('assigning a courier', () => {
           status: 'ASSIGNED',
           address: null,
           city: null,
+          attemptCount: 0,
+          failureReason: null,
           driver: { id: 'd0', name: 'Original Driver', phone: null },
         },
       }),
@@ -455,6 +459,8 @@ describe('assigning a courier', () => {
           status: 'ASSIGNED',
           address: null,
           city: null,
+          attemptCount: 0,
+          failureReason: null,
           driver: { id: 'd0', name: 'Original Driver', phone: null },
         },
       }),
@@ -479,6 +485,8 @@ describe('assigning a courier', () => {
           status: 'DELIVERED',
           address: null,
           city: null,
+          attemptCount: 0,
+          failureReason: null,
           driver: { id: 'd0', name: 'Original Driver', phone: null },
         },
       }),

@@ -32,6 +32,12 @@ function Consumer() {
   );
 }
 
+function CurrencyConsumer() {
+  const { isLoading, storeCurrency } = useAppSettings();
+  if (isLoading) return <p>loading</p>;
+  return <p>currency:{storeCurrency}</p>;
+}
+
 beforeEach(() => {
   fetchSettings.mockReset();
   document.documentElement.removeAttribute('style');
@@ -130,6 +136,46 @@ describe('values exposed to consumers', () => {
     expect(
       await screen.findByText('50/modal/https://cdn.example.test/logo.png'),
     ).toBeInTheDocument();
+  });
+
+  it('exposes the live store.currency', async () => {
+    fetchSettings.mockResolvedValue([setting('store.currency', 'SAR')]);
+
+    render(
+      <SettingsProvider>
+        <CurrencyConsumer />
+      </SettingsProvider>,
+    );
+
+    expect(await screen.findByText('currency:SAR')).toBeInTheDocument();
+  });
+
+  it('falls back to AED when store.currency is missing or malformed', async () => {
+    // Format-only guard, not an allowlist of real ISO codes — the server
+    // (settings.config.ts) is the one place that enum is declared. This only
+    // catches a value shaped nothing like a currency code from ever reaching
+    // Intl.NumberFormat.
+    fetchSettings.mockResolvedValue([setting('store.currency', 'not-a-code')]);
+
+    render(
+      <SettingsProvider>
+        <CurrencyConsumer />
+      </SettingsProvider>,
+    );
+
+    expect(await screen.findByText('currency:AED')).toBeInTheDocument();
+  });
+
+  it('falls back to AED when store.currency is absent entirely', async () => {
+    fetchSettings.mockResolvedValue([]);
+
+    render(
+      <SettingsProvider>
+        <CurrencyConsumer />
+      </SettingsProvider>,
+    );
+
+    expect(await screen.findByText('currency:AED')).toBeInTheDocument();
   });
 });
 

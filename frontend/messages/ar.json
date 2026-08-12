@@ -85,13 +85,23 @@
       "signOut": "تسجيل الخروج",
       "loadFailed": "تعذّر تحميل توصيلاتك.",
       "empty": "لا توجد توصيلات مسندة إليك حاليًا.",
-      "collect": "التحصيل"
+      "collect": "التحصيل",
+      "emptyCompleted": "لا توجد توصيلات مكتملة بعد.",
+      "reportFailureCancel": "إلغاء",
+      "reportFailureDescription": "ماذا حدث؟ سيظهر هذا للموظفين ليقرروا إعادة المحاولة أو إعادة الإسناد.",
+      "reportFailurePlaceholder": "مثال: العميل غير موجود، رفض الاستلام، عنوان خاطئ",
+      "reportFailureSubmitting": "جارٍ الإرسال…",
+      "reportFailureTitle": "الإبلاغ عن محاولة فاشلة",
+      "viewActive": "نشطة ({count})",
+      "viewCompleted": "مكتملة ({count})",
+      "viewLabel": "التوصيلات"
     },
     "deliveryStatusAction": {
       "PICKED_UP": "تعليم كـ«تم الاستلام»",
       "OUT_FOR_DELIVERY": "تعليم كـ«في الطريق»",
       "DELIVERED": "تعليم كـ«تم التسليم»",
-      "HANDED_OVER": "تعليم كـ«تم التسليم لجهة أخرى»"
+      "HANDED_OVER": "تعليم كـ«تم التسليم لجهة أخرى»",
+      "FAILED_ATTEMPT": "الإبلاغ عن محاولة فاشلة"
     }
   },
   "nav": {
@@ -177,7 +187,8 @@
     "PICKED_UP": "تم الاستلام",
     "OUT_FOR_DELIVERY": "قيد التوصيل",
     "DELIVERED": "تم التسليم",
-    "HANDED_OVER": "تم التسليم للمستلم"
+    "HANDED_OVER": "تم التسليم للمستلم",
+    "FAILED_ATTEMPT": "محاولة فاشلة"
   },
   "returnStatus": {
     "REQUESTED": "قيد الطلب",
@@ -541,7 +552,14 @@
       "assigning": "جارٍ الإسناد…",
       "reassign": "إعادة الإسناد",
       "unassign": "إلغاء الإسناد",
-      "cancel": "إلغاء"
+      "cancel": "إلغاء",
+      "addressHint": "يرى المندوب العنوان المسجل هنا فقط.",
+      "addressLabel": "عنوان التوصيل",
+      "addressPlaceholder": "الشارع، المبنى، الشقة",
+      "cityLabel": "المدينة",
+      "cityPlaceholder": "المدينة",
+      "noteLabel": "ملاحظة للمندوب",
+      "notePlaceholder": "اختياري، مثل الاتصال عند الوصول"
     },
     "payment": {
       "title": "الدفع",
