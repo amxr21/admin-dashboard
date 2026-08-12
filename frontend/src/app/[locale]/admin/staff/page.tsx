@@ -1,5 +1,7 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
+import { NavLabelHeading } from '@/components/shell/nav-label-heading';
+import { PermissionsMatrix } from '@/components/staff/permissions-matrix';
 import { StaffTable } from '@/components/staff/staff-table';
 
 /**
@@ -22,11 +24,13 @@ export default async function StaffPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <NavLabelHeading labelKey="staff" defaultTitle={t('title')} />
         <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
       </div>
 
       <StaffTable />
+
+      <PermissionsMatrix />
     </div>
   );
 }

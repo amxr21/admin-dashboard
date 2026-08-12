@@ -4,6 +4,7 @@ import { prisma } from '../../db/prisma.js';
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
+import { audit } from '../../services/audit.service.js';
 import {
   SETTINGS,
   isSettingKey,
@@ -111,6 +112,18 @@ settingsRouter.patch('/settings', authenticate, requireArea('settings'), async (
     throw AppError.badRequest('Some settings could not be saved', { fields: errors });
   }
 
+  // Read the BEFORE state first, so the audit entry is a real field diff —
+  // same reasoning as the generic resource engine's create/update path —
+  // rather than only naming which keys changed with no before/after.
+  const before = new Map(
+    (
+      await prisma.setting.findMany({
+        where: { key: { in: writes.map((write) => write.key) } },
+        select: { key: true, value: true },
+      })
+    ).map((row) => [row.key, row.value]),
+  );
+
   await prisma.$transaction(
     writes.map((write) =>
       prisma.setting.upsert({
@@ -131,5 +144,64 @@ settingsRouter.patch('/settings', authenticate, requireArea('settings'), async (
     userId: user.id,
   });
 
+  // Unlike the log line above, the audit entry DOES carry values — it is the
+  // "per-section last-modified + audit link" the settings page reads back
+  // (B3.8), and a diff that only names the key without showing what changed
+  // would be strictly less useful than every other audited write in this app.
+  audit(req, {
+    action: 'settings.updated',
+    entity: 'settings',
+    changes: Object.fromEntries(
+      writes.map((write) => [
+        write.key,
+        { from: before.get(write.key) ?? SETTINGS[write.key].default, to: write.value },
+      ]),
+    ),
+  });
+
   res.json({ data: { settings: await readAll() } });
 });
+
+/**
+ * DELETE /api/v1/settings/:key
+ *
+ * "Revert to default" — deletes the stored row so `readAll`'s existing
+ * "a missing row means never changed" rule takes over and the declared
+ * default in `settings.config.ts` becomes the live value again. Not a
+ * separate concept from `isDefault: true` — this route is what PRODUCES
+ * that state, rather than the form needing to know the default value itself
+ * (which the API never sends, on purpose — `value` already means "the live
+ * value," and shipping a second `default` field on every setting for the
+ * rare revert case would be a wart on every other read of this endpoint).
+ */
+settingsRouter.delete(
+  '/settings/:key',
+  authenticate,
+  requireArea('settings'),
+  async (req, res) => {
+    const key = String(req.params.key);
+
+    if (!isSettingKey(key)) {
+      throw AppError.badRequest('Unknown setting', { field: key });
+    }
+
+    const existing = await prisma.setting.findUnique({ where: { key }, select: { value: true } });
+
+    await prisma.setting.deleteMany({ where: { key } });
+
+    const user = requireUser(req);
+    req.log.info({ event: 'settings.reverted', key, userId: user.id });
+
+    // Only when there was actually a stored row to revert — a delete of
+    // nothing (already at default) is a no-op, not an auditable change.
+    if (existing) {
+      audit(req, {
+        action: 'settings.reverted',
+        entity: 'settings',
+        changes: { [key]: { from: existing.value, to: SETTINGS[key].default } },
+      });
+    }
+
+    res.json({ data: { settings: await readAll() } });
+  },
+);

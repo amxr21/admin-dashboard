@@ -151,3 +151,38 @@ describe('the preview dropdown', () => {
     );
   });
 });
+
+describe('staying fresh without a remount (B5.1)', () => {
+  it('polls for the count again after the interval elapses', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mockCountAndPreview(1, [makeRow()]);
+      render(<NotificationsBell />);
+
+      await vi.waitFor(() => expect(fetchRows).toHaveBeenCalledTimes(1));
+
+      mockCountAndPreview(4, [makeRow()]);
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(fetchRows.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(await screen.findByText('4')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refreshes the count when the tab becomes visible again', async () => {
+    mockCountAndPreview(0, []);
+    render(<NotificationsBell />);
+    await waitFor(() => expect(fetchRows).toHaveBeenCalledTimes(1));
+
+    mockCountAndPreview(2, [makeRow()]);
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(await screen.findByText('2')).toBeInTheDocument();
+  });
+});

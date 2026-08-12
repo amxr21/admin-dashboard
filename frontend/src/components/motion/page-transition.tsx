@@ -61,5 +61,22 @@ export function PageTransition({ children }: { children: ReactNode }) {
     { scope: ref, dependencies: [pathname] },
   );
 
-  return <div ref={ref}>{children}</div>;
+  // `h-full` closes the height chain from `<body>` down to AppShell's own
+  // `h-dvh overflow-hidden` wrapper, so this div is clamped to the viewport
+  // instead of growing to its content's natural height.
+  //
+  // This ONLY works because globals.css gives `html` and `body` an explicit
+  // `height: 100%` — a percentage height resolves to `auto` when the parent
+  // has no definite height, so without those two rules this class silently
+  // does nothing. That was a real bug: the `y` offset below nudges a
+  // viewport-tall child down inside an auto-height parent, making the
+  // document taller than the viewport and adding a second, document-level
+  // scrollbar that scrolled into empty space under every admin page. If you
+  // ever remove the height rules in globals.css, this breaks again and the
+  // symptom will look like a motion bug rather than a CSS one.
+  return (
+    <div ref={ref} className="h-full">
+      {children}
+    </div>
+  );
 }

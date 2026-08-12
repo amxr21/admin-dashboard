@@ -73,6 +73,29 @@ describe('Arabic is actually translated', () => {
       // same reasoning as `auth.emailPlaceholder` above.
       'courier.login.codePlaceholder',
       'imageUpload.urlPlaceholder',
+      // The timezone abbreviation, shown in every timestamp's hover tooltip
+      // — an international standard term, not prose, same reasoning as
+      // "Sentry"/"iPhone" above.
+      'table.utc',
+      // Literal phrases the user must type verbatim to confirm a
+      // destructive Danger Zone action (B3.4) — deliberately NOT prose to
+      // translate. Translating "DELETE" to its Arabic equivalent would mean
+      // the confirmation input has to accept two different correct answers
+      // depending on script, which is more fragile than one fixed token.
+      'settings.dangerZone.deactivate.confirmPhrase',
+      'settings.dangerZone.transferOwnership.confirmPhrase',
+      'settings.dangerZone.deleteTestData.confirmPhrase',
+      // Same literal-token reasoning as the settings danger-zone entries
+      // above, applied to the courier danger-zone panel (C5.2) — a
+      // pre-existing gap in this allowlist, not new.
+      'delivery.detail.dangerZone.deactivate.confirmPhrase',
+      // Acronyms that don't translate, same reasoning as "Sentry"/"iPhone".
+      'reports.exportFormats.csv',
+      'reports.exportFormats.pdf',
+      // An email-address example, same reasoning as
+      // `courier.login.codePlaceholder`/`imageUpload.urlPlaceholder` above —
+      // a format example, not prose.
+      'reports.scheduled.form.recipientsPlaceholder',
     ]);
 
     const untranslated = enKeys.filter(

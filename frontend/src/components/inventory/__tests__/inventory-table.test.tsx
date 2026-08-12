@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createElement, useEffect, useReducer, type ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 
 import { render, screen, waitFor } from '@/test/render';
@@ -25,11 +26,63 @@ vi.mock('@/lib/inventory-api', async (importOriginal) => {
   return { ...actual, fetchInventory, fetchMovements, adjustStock };
 });
 
-// The dashboard's "View low stock" quick action deep-links here via
-// `?lowStock=true`, read with `useSearchParams` — no query string in these
-// tests, same as visiting the page directly.
+/**
+ * A STATEFUL stand-in for the URL bar.
+ *
+ * Search, the low-stock toggle and the page round-trip through the query
+ * string. A mock that swallowed writes and kept reporting an empty
+ * `useSearchParams()` would break that loop — the component would write the
+ * filter, read back "no filter", and never re-fetch — so the assertions below
+ * about asking the SERVER for the low-stock view would pass while the feature
+ * was broken.
+ *
+ * The router half comes from `vitest.setup.ts`, but its `replace` is inert, so
+ * it is overridden here to feed this store.
+ */
+const urlState = vi.hoisted(() => {
+  let current = new URLSearchParams();
+  const listeners = new Set<() => void>();
+
+  return {
+    get: () => current,
+    reset: () => {
+      current = new URLSearchParams();
+    },
+    write: (href: string) => {
+      current = new URLSearchParams(href.split('?')[1] ?? '');
+      for (const listener of listeners) listener();
+    },
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+});
+
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ href, children, ...props }: Record<string, unknown>) =>
+    createElement('a', { href, ...props }, children as ReactNode),
+  useRouter: () => ({
+    push: (href: string) => urlState.write(href),
+    replace: (href: string) => urlState.write(href),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  usePathname: () => '/admin/inventory',
+  redirect: vi.fn(),
+  getPathname: ({ href }: { href: string }) => href,
+}));
+
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => {
+    const [, force] = useReducer((count: number) => count + 1, 0);
+    useEffect(() => urlState.subscribe(force), []);
+    return urlState.get();
+  },
 }));
 
 function makeRow(overrides: Partial<InventoryRow> = {}): InventoryRow {
@@ -58,6 +111,9 @@ function resolveWith(products: InventoryRow[], threshold = 5) {
 }
 
 beforeEach(() => {
+  // The low-stock filter persists in the URL now, so without this it would
+  // leak into the next test's initial fetch.
+  urlState.reset();
   fetchInventory.mockReset();
   fetchMovements.mockReset();
   adjustStock.mockReset();

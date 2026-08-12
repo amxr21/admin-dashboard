@@ -23,10 +23,11 @@ vi.mock('@/i18n/navigation', () => ({
 
 const fetchSettings = vi.hoisted(() => vi.fn());
 const saveSettings = vi.hoisted(() => vi.fn());
+const revertSetting = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/settings-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/settings-api')>();
-  return { ...actual, fetchSettings, saveSettings };
+  return { ...actual, fetchSettings, saveSettings, revertSetting };
 });
 
 function makeSettings(overrides: Partial<Setting>[] = []): Setting[] {
@@ -84,6 +85,7 @@ function makeSettings(overrides: Partial<Setting>[] = []): Setting[] {
 beforeEach(() => {
   fetchSettings.mockReset();
   saveSettings.mockReset();
+  revertSetting.mockReset();
 });
 
 describe('rendering a control per declared type', () => {
@@ -179,5 +181,212 @@ describe('saving only what changed', () => {
     await waitFor(() => {
       expect(saveSettings).toHaveBeenCalledWith({ 'store.name': 'Ammar Supplies' });
     });
+  });
+});
+
+/**
+ * B3.1 — `isDefault`/`updatedAt` were already in every API response; the
+ * frontend just never rendered them. These pin the one behaviour that would
+ * be actively wrong if it regressed: revert only targets the SAVED value,
+ * never a pending local edit — the two are different actions and must not
+ * collapse into one button that means different things depending on state.
+ */
+describe('modified marker and revert', () => {
+  it('shows no modified badge for a setting still at its default', async () => {
+    fetchSettings.mockResolvedValue(makeSettings());
+    render(<SettingsForm />);
+
+    await screen.findByLabelText(/store name/i);
+    expect(screen.queryByText(/modified/i)).not.toBeInTheDocument();
+  });
+
+  it('shows a modified badge and a revert control for a changed setting', async () => {
+    fetchSettings.mockResolvedValue(
+      makeSettings([
+        { key: 'store.name', value: 'Ammar Supplies', isDefault: false, updatedAt: '2026-08-01T00:00:00.000Z' } as Setting,
+      ]),
+    );
+    render(<SettingsForm />);
+
+    await screen.findByLabelText(/^store name$/i);
+    expect(screen.getByText(/modified/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /revert store name to its default/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('disables revert while there is an unsaved local edit on that same field', async () => {
+    fetchSettings.mockResolvedValue(
+      makeSettings([{ key: 'store.name', value: 'Ammar Supplies', isDefault: false } as Setting]),
+    );
+    const user = userEvent.setup();
+    render(<SettingsForm />);
+
+    const nameInput = await screen.findByLabelText(/^store name$/i);
+    await user.type(nameInput, 'X');
+
+    expect(
+      screen.getByRole('button', { name: /revert store name to its default/i }),
+    ).toBeDisabled();
+  });
+
+  it('calls revertSetting for exactly the clicked key and applies the response', async () => {
+    fetchSettings.mockResolvedValue(
+      makeSettings([{ key: 'store.name', value: 'Ammar Supplies', isDefault: false } as Setting]),
+    );
+    revertSetting.mockResolvedValue(makeSettings()); // back to every default
+    const user = userEvent.setup();
+
+    render(<SettingsForm />);
+    await screen.findByLabelText(/^store name$/i);
+
+    await user.click(screen.getByRole('button', { name: /revert store name to its default/i }));
+
+    await waitFor(() => expect(revertSetting).toHaveBeenCalledWith('store.name'));
+    // The field actually shows the reverted (empty, per the base fixture)
+    // value afterwards, not just a resolved promise nobody applied.
+    await waitFor(() => expect(screen.getByLabelText(/^store name$/i)).toHaveValue(''));
+  });
+
+  it('does not offer revert on a field that has never been changed', async () => {
+    fetchSettings.mockResolvedValue(makeSettings());
+    render(<SettingsForm />);
+
+    await screen.findByLabelText(/store name/i);
+    expect(
+      screen.queryByRole('button', { name: /revert store name to its default/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * B3.8 — settings search. Every group stays visible; a query narrows which
+ * FIELDS render inside it, and a group with no matches renders nothing
+ * (rather than an empty section header nobody asked for).
+ */
+describe('search', () => {
+  it('filters fields by label, leaving non-matching fields out', async () => {
+    fetchSettings.mockResolvedValue(makeSettings());
+    render(<SettingsForm />);
+
+    await screen.findByLabelText(/store name/i);
+    await userEvent.type(screen.getByLabelText(/search settings/i), 'currency');
+
+    expect(screen.getByLabelText(/^currency$/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^store name$/i)).not.toBeInTheDocument();
+  });
+
+  it('also matches on the setting key, not just the visible label', async () => {
+    fetchSettings.mockResolvedValue(makeSettings());
+    render(<SettingsForm />);
+
+    await screen.findByLabelText(/store name/i);
+    await userEvent.type(screen.getByLabelText(/search settings/i), 'lowstockthreshold');
+
+    expect(screen.getByLabelText(/low stock threshold/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^store name$/i)).not.toBeInTheDocument();
+  });
+
+  it('shows an empty state when nothing matches, rather than a blank page', async () => {
+    fetchSettings.mockResolvedValue(makeSettings());
+    render(<SettingsForm />);
+
+    await screen.findByLabelText(/store name/i);
+    await userEvent.type(screen.getByLabelText(/search settings/i), 'nonexistent-xyz');
+
+    expect(await screen.findByText(/no settings match/i)).toBeInTheDocument();
+  });
+
+  it('shows every field again once the query is cleared', async () => {
+    fetchSettings.mockResolvedValue(makeSettings());
+    render(<SettingsForm />);
+
+    await screen.findByLabelText(/store name/i);
+    const search = screen.getByLabelText(/search settings/i);
+    await userEvent.type(search, 'currency');
+    await userEvent.clear(search);
+
+    expect(screen.getByLabelText(/^store name$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^currency$/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * B3.8 — per-section last-modified + audit link. Each group shows the most
+ * recent `updatedAt` across its own fields (not a global one, and not the
+ * most recently modified field in a DIFFERENT group), plus a deep link into
+ * the audit trail.
+ */
+describe('per-section last-modified and audit link', () => {
+  it('shows the most recent updatedAt across a group\'s own fields', async () => {
+    fetchSettings.mockResolvedValue(
+      makeSettings([
+        {
+          key: 'store.name',
+          value: 'Ammar Supplies',
+          isDefault: false,
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        } as Setting,
+        {
+          key: 'store.currency',
+          value: 'USD',
+          isDefault: false,
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        } as Setting,
+      ]),
+    );
+    render(<SettingsForm />);
+
+    await screen.findByLabelText(/^store name$/i);
+
+    // "Brand" group (store.* prefix) should reflect the LATER of its two
+    // changed fields' timestamps, not the earlier one.
+    const brandSection = screen.getByRole('region', { name: /brand/i });
+    expect(within(brandSection).getByText(/last changed/i)).toBeInTheDocument();
+  });
+
+  it('shows "never changed" for a group where nothing has ever been modified', async () => {
+    fetchSettings.mockResolvedValue(makeSettings());
+    render(<SettingsForm />);
+
+    await screen.findByLabelText(/store name/i);
+
+    const brandSection = screen.getByRole('region', { name: /brand/i });
+    expect(within(brandSection).getByText(/never changed/i)).toBeInTheDocument();
+  });
+
+  it('links each section to the audit trail scoped to settings', async () => {
+    fetchSettings.mockResolvedValue(makeSettings());
+    render(<SettingsForm />);
+
+    await screen.findByLabelText(/store name/i);
+
+    const links = screen.getAllByRole('link', { name: /view audit history/i });
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link).toHaveAttribute('href', '/admin/audit?entity=settings');
+    }
+  });
+});
+
+describe('business-specific nav labels group', () => {
+  it('groups labels.nav.* fields under their own "Labels" section', async () => {
+    fetchSettings.mockResolvedValue([
+      ...makeSettings(),
+      {
+        key: 'labels.nav.staff',
+        label: 'Staff page name',
+        type: 'string',
+        value: '',
+        isDefault: true,
+        updatedAt: null,
+      } as Setting,
+    ]);
+    render(<SettingsForm />);
+
+    await screen.findByLabelText(/store name/i);
+
+    const labelsSection = screen.getByRole('region', { name: /labels/i });
+    expect(within(labelsSection).getByLabelText(/staff page name/i)).toBeInTheDocument();
   });
 });

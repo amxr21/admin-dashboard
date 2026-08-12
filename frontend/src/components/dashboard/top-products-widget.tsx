@@ -1,8 +1,9 @@
 'use client';
 
-import { useFormatter, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 
 import { Skeleton } from '@/components/ui/skeleton';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import type { TopProducts } from '@/lib/reports-api';
 
 /**
@@ -18,7 +19,7 @@ interface TopProductsWidgetProps {
 
 export function TopProductsWidget({ data, isLoading = false }: TopProductsWidgetProps) {
   const t = useTranslations('reports');
-  const formatter = useFormatter();
+  const formatCurrency = useCurrencyFormat();
 
   return (
     <section className="bg-card rounded-lg border p-4" aria-label={t('topProducts')}>
@@ -46,7 +47,7 @@ export function TopProductsWidget({ data, isLoading = false }: TopProductsWidget
                 )}
               </span>
               <span className="shrink-0 font-medium tabular-nums">
-                {formatter.number(Number(product.revenue), 'currency')}
+                {formatCurrency(Number(product.revenue))}
               </span>
             </li>
           ))}

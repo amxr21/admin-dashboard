@@ -4,6 +4,8 @@ import { createElement, type ReactNode } from 'react';
 
 import { render, screen } from '@/test/render';
 import { AppShell } from '../app-shell';
+import { Breadcrumb, BreadcrumbProvider } from '../breadcrumb';
+import { PageTitle, PageTitleProvider } from '../page-title';
 
 /**
  * "View as" is cosmetic ONLY — these tests exist to pin exactly that. It must
@@ -162,6 +164,65 @@ describe('the current page is gated too, not just the sidebar', () => {
   });
 });
 
+describe('a real 403, not just a hidden sidebar link (C4.5)', () => {
+  it('blocks a page the actual signed-in role cannot reach', () => {
+    // /admin/staff maps to `staff`, which SUPPORT does not hold — no preview
+    // involved here at all, this is the real, permanent role.
+    pathname = '/admin/staff';
+
+    render(
+      <AppShell user={{ ...baseUser, role: 'SUPPORT' }}>
+        <p>real staff page content</p>
+      </AppShell>,
+    );
+
+    expect(screen.queryByText('real staff page content')).not.toBeInTheDocument();
+    expect(screen.getByText(/you don.t have access/i)).toBeInTheDocument();
+    // Names the area, so it reads as more than "no" — see the file's own
+    // reasoning for not naming a person who could grant it.
+    expect(screen.getByText(/staff/i)).toBeInTheDocument();
+  });
+
+  it('offers a real way out, not just an explanation', () => {
+    pathname = '/admin/staff';
+
+    render(
+      <AppShell user={{ ...baseUser, role: 'SUPPORT' }}>
+        <p>real staff page content</p>
+      </AppShell>,
+    );
+
+    expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute(
+      'href',
+      '/admin',
+    );
+  });
+
+  it('does not block a page the real role CAN reach', () => {
+    pathname = '/admin/orders';
+
+    render(
+      <AppShell user={{ ...baseUser, role: 'SUPPORT' }}>
+        <p>real orders page content</p>
+      </AppShell>,
+    );
+
+    expect(screen.getByText('real orders page content')).toBeInTheDocument();
+  });
+
+  it('never fires for an OWNER, who can reach every area', () => {
+    pathname = '/admin/staff';
+
+    render(
+      <AppShell user={{ ...baseUser, role: 'OWNER' }}>
+        <p>real staff page content</p>
+      </AppShell>,
+    );
+
+    expect(screen.getByText('real staff page content')).toBeInTheDocument();
+  });
+});
+
 describe('a stale preview never survives to a different, lower-privileged user', () => {
   it('ignores a leftover sessionStorage value when the real role cannot preview', () => {
     sessionStorage.setItem('admin-dashboard:view-as-role', 'DEMO');
@@ -175,5 +236,52 @@ describe('a stale preview never survives to a different, lower-privileged user',
     // SUPPORT's own real sidebar, not DEMO's — the stale value is inert.
     expect(screen.getByRole('link', { name: /orders/i })).toBeInTheDocument();
     expect(screen.queryByText(/previewing as/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('breadcrumb vs page title in the top bar (C4.4)', () => {
+  it('renders a registered breadcrumb trail', () => {
+    render(
+      <BreadcrumbProvider>
+        <Breadcrumb segments={[{ label: 'Orders', href: '/admin/orders' }, { label: 'ORD-1024' }]} />
+        <AppShell user={{ ...baseUser, role: 'OWNER' }}>
+          <p>page content</p>
+        </AppShell>
+      </BreadcrumbProvider>,
+    );
+
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toBeInTheDocument();
+    expect(screen.getByText('ORD-1024')).toBeInTheDocument();
+  });
+
+  it('falls back to the plain page title when no breadcrumb is registered', () => {
+    render(
+      <PageTitleProvider>
+        <PageTitle title="Dashboard" />
+        <AppShell user={{ ...baseUser, role: 'OWNER' }}>
+          <p>page content</p>
+        </AppShell>
+      </PageTitleProvider>,
+    );
+
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument();
+  });
+
+  it('prefers the breadcrumb when a page registers both', () => {
+    render(
+      <BreadcrumbProvider>
+        <PageTitleProvider>
+          <Breadcrumb segments={[{ label: 'Orders', href: '/admin/orders' }, { label: 'ORD-1024' }]} />
+          <PageTitle title="Should not show" />
+          <AppShell user={{ ...baseUser, role: 'OWNER' }}>
+            <p>page content</p>
+          </AppShell>
+        </PageTitleProvider>
+      </BreadcrumbProvider>,
+    );
+
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toBeInTheDocument();
+    expect(screen.queryByText('Should not show')).not.toBeInTheDocument();
   });
 });

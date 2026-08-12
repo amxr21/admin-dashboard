@@ -5,10 +5,12 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { ArrowLeft, ArrowRight, Printer } from 'lucide-react';
 
+import { Breadcrumb } from '@/components/shell/breadcrumb';
 import { ErrorScreen } from '@/components/errors/error-screen';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { fetchOrder, type OrderDetail } from '@/lib/orders-api';
 
@@ -29,8 +31,10 @@ import { fetchOrder, type OrderDetail } from '@/lib/orders-api';
 export function OrderInvoice({ id }: { id: string }) {
   const t = useTranslations('orders.invoice');
   const tOrders = useTranslations('orders');
+  const tNav = useTranslations('nav');
   const tErrors = useTranslations('errorPages.notFound');
   const formatter = useFormatter();
+  const formatCurrency = useCurrencyFormat();
   const translateError = useTranslatedApiError();
   const {
     storeName,
@@ -40,7 +44,9 @@ export function OrderInvoice({ id }: { id: string }) {
     storeSupportPhone,
     storeTaxId,
     logoUrl,
+    navLabels,
   } = useAppSettings();
+  const ordersLabel = navLabels.orders ?? tNav('orders');
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -73,11 +79,17 @@ export function OrderInvoice({ id }: { id: string }) {
     );
   }
 
-  const money = (value: string | null) =>
-    value === null ? '—' : formatter.number(Number(value), 'currency');
+  const money = (value: string | null) => (value === null ? '—' : formatCurrency(Number(value)));
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      <Breadcrumb
+        segments={[
+          { label: ordersLabel, href: '/admin/orders' },
+          { label: order.orderNumber, href: `/admin/orders/${order.id}` },
+          { label: t('title') },
+        ]}
+      />
       {/* Controls are screen-only — a printed page with a "Print" button on it
           is the classic tell that nobody tried printing it. */}
       <div className="flex items-center justify-between print:hidden">
@@ -189,6 +201,30 @@ export function OrderInvoice({ id }: { id: string }) {
             ))}
           </tbody>
           <tfoot>
+            {/* Subtotal/tax are null on orders placed before this was tracked
+                — that's a real "never recorded" gap, not a confirmed zero, so
+                the breakdown rows are skipped entirely rather than showing a
+                fabricated 0.00. The grand Total always renders either way. */}
+            {order.subtotal !== null ? (
+              <tr>
+                <td colSpan={3} className="pt-3 text-end text-muted-foreground">
+                  {t('subtotal')}
+                </td>
+                <td className="pt-3 text-end tabular-nums text-muted-foreground">
+                  {money(order.subtotal)}
+                </td>
+              </tr>
+            ) : null}
+            {order.taxAmount !== null ? (
+              <tr>
+                <td colSpan={3} className="pt-1 text-end text-muted-foreground">
+                  {t('tax')}
+                </td>
+                <td className="pt-1 text-end tabular-nums text-muted-foreground">
+                  {money(order.taxAmount)}
+                </td>
+              </tr>
+            ) : null}
             <tr>
               <td colSpan={3} className="pt-3 text-end font-medium">
                 {tOrders('items.total')}

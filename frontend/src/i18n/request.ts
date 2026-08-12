@@ -1,6 +1,7 @@
 import { getRequestConfig } from 'next-intl/server';
 import { hasLocale } from 'next-intl';
 
+import { FORMATS } from './formats';
 import { routing } from './routing';
 
 /**
@@ -31,30 +32,7 @@ export default getRequestConfig(async ({ requestLocale }) => {
      */
     timeZone: 'UTC',
 
-    formats: {
-      dateTime: {
-        short: { day: '2-digit', month: '2-digit', year: 'numeric' },
-        long: { day: 'numeric', month: 'long', year: 'numeric' },
-      },
-      number: {
-        /**
-         * Western Arabic numerals (0-9) in BOTH locales.
-         *
-         * This is the modern Gulf/UAE web convention — u.ae and ICP both use
-         * them — and it keeps order numbers, SKUs and IDs copy-pasteable
-         * between languages. Eastern Arabic-Indic numerals (٠-٩) would be
-         * correct for a conservative Saudi institutional context; they are a
-         * deliberate choice, not a default.
-         *
-         * The rule that matters: never MIX the two.
-         */
-        currency: {
-          style: 'currency',
-          currency: 'AED',
-          numberingSystem: 'latn',
-        },
-        decimal: { numberingSystem: 'latn' },
-      },
-    },
+    // One shared definition, imported by the test provider too.
+    formats: FORMATS,
   };
 });

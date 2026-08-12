@@ -73,6 +73,10 @@ courierRouter.get('/courier/me/assignments', ...guard, async (req, res) => {
 const statusBody = z
   .object({
     status: z.nativeEnum(DeliveryStatus),
+    // Only meaningful (and required, enforced service-side) when status is
+    // FAILED_ATTEMPT — optional here so every other transition's body shape
+    // stays unchanged.
+    failureReason: z.string().trim().min(1).max(255).optional(),
   })
   .strict();
 
@@ -87,7 +91,14 @@ courierRouter.patch('/courier/assignments/:id/status', ...guard, async (req, res
   const courier = requireCourier(req);
   const id = String(req.params.id);
 
-  const assignment = await updateAssignmentStatus(id, courier.id, parsed.data.status);
+  const assignment = await updateAssignmentStatus(
+    id,
+    courier.id,
+    courier.name,
+    parsed.data.status,
+    req,
+    parsed.data.failureReason,
+  );
 
   req.log.info({
     event: 'courier.assignment.status_updated',

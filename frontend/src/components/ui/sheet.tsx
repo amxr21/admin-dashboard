@@ -99,14 +99,19 @@ function SheetContent({
             ? // Centering via translate is direction-agnostic (unlike a slide-in
               // translateX, which is NOT — see the RTL note above), so this is
               // safe to do with a physical transform in both directions.
-              'top-1/2 left-1/2 max-h-[85vh] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border p-4'
+              // `w-[calc(100%-2rem)]` keeps a gutter on small screens so the
+              // dialog never runs edge to edge; `max-w-lg` caps it on large
+              // ones. `min-h-0` lets a consumer's own flex child scroll instead
+              // of overflowing past the 85vh cap — without it a nested
+              // `flex-1` region refuses to shrink below its content height.
+              'top-1/2 left-1/2 max-h-[85vh] min-h-0 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border p-4'
             : cn(
                 // Block axis never flips with direction, so plain physical
                 // top/bottom is correct here — there is no "inset-block-*"
                 // Tailwind utility (that name doesn't exist; Tailwind's own
                 // logical utilities are `start-*`/`end-*`, mirroring `ps-*`/
                 // `pe-*`), and it silently generated no CSS at all.
-                'top-0 bottom-0 h-full w-3/4 max-w-sm border-e p-4',
+                'top-0 bottom-0 h-full min-h-0 w-3/4 max-w-sm border-e p-4',
                 // Anchored logically via Tailwind's real `start-*`/`end-*`
                 // inset utilities — mirrors automatically, no transform.
                 side === 'start' ? 'start-0' : 'end-0 border-s border-e-0',

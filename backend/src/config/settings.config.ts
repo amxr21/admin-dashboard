@@ -162,6 +162,19 @@ export const SETTINGS = {
     label: 'Tax / VAT registration number',
     description: 'Printed on invoices alongside the address, if your jurisdiction requires it.',
   },
+  'store.taxRate': {
+    type: 'number',
+    default: 0,
+    area: 'settings',
+    min: 0,
+    max: 100,
+    label: 'Tax / VAT rate (%)',
+    // 0 is a real, valid choice (no tax applies / not yet registered) — never
+    // treated as "unset". A single flat rate for the whole store, same
+    // single-jurisdiction assumption store.taxId already makes.
+    description:
+      'Applied to every order subtotal on the invoice. Set to 0 if you do not charge tax.',
+  },
 
   // ─── Security ───────────────────────────────────────────────────────
   'security.sessionTimeoutMinutes': {
@@ -182,6 +195,35 @@ export const SETTINGS = {
     max: 128,
     label: 'Minimum password length',
     description: 'Enforced when an admin sets or resets a staff password, and on self-service reset.',
+  },
+  'staff.defaultInviteRole': {
+    type: 'enum',
+    default: 'SUPPORT',
+    area: 'settings',
+    // DEVELOPER excluded deliberately — it is the one role nobody should be
+    // able to pre-select their way into by leaving a dropdown untouched.
+    options: ['OWNER', 'MANAGER', 'FULFILLMENT', 'SUPPORT', 'DEMO'],
+    label: 'Default invite role',
+    description:
+      'Pre-selected when starting a new staff invite. A courtesy default only — canAssignRole is still enforced server-side regardless of what this is set to.',
+  },
+  'security.ipAllowlist': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 4000,
+    label: 'IP allowlist',
+    description:
+      'Comma-separated IPs or CIDR ranges (e.g. "203.0.113.0/24, 198.51.100.9"). Empty = disabled, the default and the only safe starting state. OWNER and DEVELOPER always bypass this check, even when their own IP is not listed — otherwise a wrong range locks out the only people who could fix it.',
+  },
+  'security.require2faForRoles': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 200,
+    label: 'Require 2FA for roles',
+    description:
+      'Comma-separated role names (e.g. "OWNER, MANAGER"). Staff in a listed role who have not enabled 2FA can still sign in and use everything EXCEPT write actions until they do — never a hard lockout. Empty = disabled, the default.',
   },
 
   // ─── Theme ──────────────────────────────────────────────────────────
@@ -304,6 +346,64 @@ export const SETTINGS = {
     max: 100,
     label: 'Rows per table page',
     description: 'Applies to every list in the dashboard.',
+  },
+
+  // ─── Labels ─────────────────────────────────────────────────────────
+  // Overrides the sidebar label and page heading for a fixed set of
+  // hand-written nav items — "Staff" -> "Baristas" for a cafe, "Delivery" ->
+  // "Runs", etc. Empty string (the default) means "use the built-in
+  // English/Arabic label" — this is display-only, never rewriting the
+  // underlying resource/area name (`staff`, `orders`, ...), which stays the
+  // stable identifier every permission check and API route keys off.
+  // Dashboard, Settings and Audit are deliberately not included — generic
+  // enough across businesses that relabeling them buys little.
+  'labels.nav.staff': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 40,
+    label: 'Staff page name',
+    description: 'Replaces "Staff" in the sidebar and page heading, e.g. "Baristas".',
+  },
+  'labels.nav.orders': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 40,
+    label: 'Orders page name',
+    description: 'Replaces "Orders" in the sidebar and page heading, e.g. "Tickets".',
+  },
+  'labels.nav.delivery': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 40,
+    label: 'Delivery page name',
+    description: 'Replaces "Delivery" in the sidebar and page heading, e.g. "Runs".',
+  },
+  'labels.nav.inventory': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 40,
+    label: 'Inventory page name',
+    description: 'Replaces "Inventory" in the sidebar and page heading.',
+  },
+  'labels.nav.returns': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 40,
+    label: 'Returns page name',
+    description: 'Replaces "Returns" in the sidebar and page heading.',
+  },
+  'labels.nav.reports': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 40,
+    label: 'Reports page name',
+    description: 'Replaces "Reports" in the sidebar and page heading.',
   },
 } as const satisfies Record<string, SettingDefinition>;
 

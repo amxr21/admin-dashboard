@@ -27,7 +27,18 @@
   `CANCELED`/`RETURNED`), only legal transitions are offered in the UI. Invoice/print view.
 - **Where**: `backend/src/services/orders.service.ts` (if present) / `orders.config.ts` for the
   transition table, `frontend/src/components/orders/`.
-- **Notes**: `total` is denormalised on purpose — never recomputed from live product prices.
+- **Notes**: `total` is denormalised on purpose — never recomputed from live product prices, and
+  keeps its existing meaning (grand total, tax included) even after the 2026-08-11 addition below.
+- **2026-08-11**: invoice tax/subtotal breakdown. New `subtotal`/`taxAmount` columns on `Order`
+  (nullable — `NULL` means "never recorded," a real gap distinct from a confirmed `0`), driven by
+  a new `store.taxRate` setting (order-level flat rate; 0 is a valid "no tax" choice, not
+  "unset"). `total` was deliberately NOT redefined as pre-tax — every existing Reports/Dashboard
+  revenue calculation already reads `.total` as the full amount, and changing its meaning would
+  have silently under-reported revenue everywhere without touching those files. The invoice
+  renders Subtotal/Tax/Total only when recorded; a pre-migration order still shows the single
+  Total row it always did. No live checkout/order-creation flow exists yet (only
+  `prisma/demo-seed.ts` and tests create orders), so the calculation lives in the demo seeder for
+  now — a real checkout flow will need to call the same math when it's built.
 
 ### Inventory
 - **Status**: shipped
@@ -36,10 +47,29 @@
 - **Where**: `backend/src/services/resource.service.ts` inventory routes, `StockMovement` model.
 
 ### Delivery (admin side)
-- **Status**: shipped (admin UI + backend). Courier portal (D2) is the one open piece.
+- **Status**: shipped (admin UI + backend). Courier portal also shipped — see below.
 - **What**: Courier roster, access-code issue/reissue/revoke (one-time reveal, HMAC-SHA256 at
   rest, never plaintext), order assignment/reassignment.
-- **Notes**: courier login portal (a second, separate auth surface) is not built yet.
+- **Notes**: **2026-08-07 correction** — this file previously claimed the courier login portal
+  "is not built yet". It IS built and complete (`frontend/src/app/[locale]/courier/` +
+  `courier/login/`), consuming every endpoint in `courier.route.ts`, with i18n, RTL, theme,
+  skeletons, error+retry, empty state, rate-limit handling and sign-out. Also **fixed 2026-08-07**:
+  `assign-courier-control.tsx` posted only `{orderId, driverId}`, discarding the `address`/`city`/
+  `note` the backend accepts — every assignment was created with a null address that the courier
+  portal then rendered blank. `Order` has no address column, so the assign form is the ONLY
+  capture point for it. **`PATCH /assignments/:id` exists** (address/city/note correction without
+  reassigning) — an earlier version of this file listed it as still missing; it was not.
+- **2026-08-11**: failed-attempt path. New `FAILED_ATTEMPT` `DeliveryStatus` value — deliberately
+  re-triable, not terminal: `COURIER_TRANSITIONS` now allows
+  `OUT_FOR_DELIVERY → FAILED_ATTEMPT → OUT_FOR_DELIVERY`, so the same job goes back out rather than
+  requiring a new assignment. New `attemptCount` (increments on each failure) and `failureReason`
+  (required from the courier when reporting one) on `DeliveryAssignment`; both reset to
+  0/`null` on reassignment to a new courier — a new courier starts clean, the prior failures stay
+  visible in `AuditLog`. Courier portal has a "Report failed attempt" dialog; the admin
+  order-detail page shows the attempt count and last reason.
+- **Still missing**: no delivery board anywhere (only a courier roster — an admin cannot see
+  today's deliveries or a failed queue without opening orders one by one), no courier performance
+  metrics.
 
 ### Reports
 - **Status**: shipped
@@ -89,6 +119,33 @@
   personal/localStorage sidebar-collapse toggle (not a registry entry — collapse state is
   per-browser, not org-wide).
 
+### Business-specific nav labels
+- **Status**: shipped 2026-08-11
+- **What**: An owner can rename a fixed set of 6 nav items to fit their business — "Staff" as
+  "Baristas" for a cafe, "Delivery" as "Runs", etc. Renames the sidebar entry, the page's own
+  heading, and every breadcrumb/permissions-matrix row that names that area. Display-only: the
+  underlying area/resource identifier (`staff`, `orders`, ...) never changes, so no permission
+  check, API route, or audit-log action name is affected.
+- **Where**: `backend/src/config/settings.config.ts` (`labels.nav.*`, 6 new string settings —
+  `staff`/`orders`/`delivery`/`inventory`/`returns`/`reports`; Dashboard/Settings/Audit
+  deliberately excluded as too generic to be worth relabeling), `frontend/src/components/
+  providers/settings-provider.tsx` (`navLabels` map), `frontend/src/components/shell/
+  nav-label-heading.tsx` (new), `frontend/src/components/shell/sidebar-nav.tsx`.
+- **Notes**: reuses the EXISTING `Setting` allowlist — no new table, no relaxation of the "every
+  setting is individually declared" rule (a single JSON-map-shaped setting was considered and
+  rejected to keep that rule intact). Empty string is the declared default and means "use the
+  built-in translated label," never a real value. The 6 target pages (`orders`, `inventory`,
+  `delivery`, `staff`, `returns`, `reports`) are all Server Components, which cannot read the
+  client-side settings context directly — `NavLabelHeading` is a small client component the page
+  passes its already-translated default title into, deciding only whether to show that or the
+  override, so the pages themselves stay server-rendered. Breadcrumbs on `order-detail.tsx`,
+  `order-invoice.tsx`, and `courier-detail.tsx` read the same override (previously called
+  `tNav('orders')`/`tNav('delivery')` directly, which would have silently disagreed with a
+  relabeled sidebar/heading). `permissions-matrix.tsx`'s area-name column also reads it, for the
+  same reason. This is the narrow slice of the long-parked "Onboarding wizard (per-field
+  rename/show-hide)" idea (see ROADMAP.md §M2) — field-level rename inside a resource is still
+  fully parked; this only covers the 6 top-level nav entries.
+
 ### Returns / RMA
 - **Status**: shipped this session, uncommitted
 - **What**: Request a return from the order detail page, approve (refund/store-credit/replacement,
@@ -102,16 +159,41 @@
 - **Notes**: new `returns` area, granted to MANAGER/FULFILLMENT/SUPPORT/DEMO/OWNER/DEVELOPER. Fixed
   a real pre-existing drift while building this: frontend `config/areas.ts` had `DEMO: [ALL]` while
   the backend excluded `staff` from DEMO's grant — frontend corrected to match.
+- **2026-08-11**: reason taxonomy + required rejection reason. New optional `ReturnCategory` enum
+  (DAMAGED/WRONG_ITEM/NOT_AS_DESCRIBED/NO_LONGER_NEEDED/ARRIVED_LATE/OTHER) — alongside the
+  existing free-text `reason`, not replacing it, so a requester can still describe the actual
+  problem in their own words while the category unlocks reason analytics later. Rejecting a
+  return now requires a `rejectionReason` — that action previously took zero input at all; the
+  reject button reveals a required-reason field before confirming, the same two-step shape Approve
+  already used (a resolution has to be chosen first). `ReturnStatus` itself is UNCHANGED — still
+  REQUESTED/APPROVED/REJECTED only; the spec's fuller ~8-state lifecycle (label sent → in transit
+  → received → inspected → resolved) is a separate, larger, not-yet-started piece of work.
 
 ### Password reset (admin-issued)
-- **Status**: shipped this session, uncommitted
+- **Status**: shipped end-to-end as of 2026-08-07 (backend since 2026-07-31, frontend 2026-08-07)
 - **What**: An admin issues a single-use, 30-minute token (`POST /staff/:id/reset-token`); the
   locked-out user redeems it themselves (`POST /auth/reset-password`) to set a new password without
   the admin ever learning it.
-- **Where**: `backend/src/services/password-reset.service.ts`, `backend/src/routes/v1/auth.route.ts`.
+- **Where**: `backend/src/services/password-reset.service.ts`, `backend/src/routes/v1/auth.route.ts`,
+  `frontend/src/lib/auth-api.ts`, `frontend/src/components/auth/reset-password-form.tsx`,
+  `frontend/src/app/[locale]/reset-password/`, `frontend/src/components/staff/reset-token-panel.tsx`.
 - **Notes**: HMAC-SHA256 at rest (same shape as courier access codes), atomic claim via
   `updateMany` in the WHERE clause — closes a TOCTOU double-redeem race found during security
   review. Revokes all sessions (`tokenVersion` bump) on redemption.
+- **2026-08-07 correction**: this entry previously read "shipped", but the feature was
+  **backend-only** — a full-repo grep for `reset-password|resetPassword|reset-token|forgot` in
+  `frontend/src` returned zero real matches. There was no button to issue a token and no page to
+  redeem one, so a locked-out admin had no UI path back in and the `accessEnded` 403 branch on the
+  login form dead-ended. Both halves built 2026-08-07: a `Ticket` row action on the staff table
+  revealing the token once (`ResetTokenPanel`, mirroring `AccessCodePanel`'s one-time-reveal
+  contract), and a public `/reset-password` page linked from `/login`.
+- **Deliberate design note**: the reset form imposes NO client-side password length floor.
+  `security.minPasswordLength` is configurable and lives behind an authenticated endpoint that this
+  page — by definition used by someone who cannot sign in — cannot read. The server is the sole
+  authority and its 400 is surfaced verbatim. `staff-password-panel.tsx` and `staff-sheet.tsx`
+  (both authenticated surfaces, unlike the reset form) read the LIVE `minPasswordLength` from
+  `useAppSettings()` rather than a hardcoded number — checked 2026-08-11 while archiving stale
+  docs, this was previously flagged as an open bug (hardcoded `MIN_LENGTH = 12`) but is fixed.
 
 ### Audit trail
 - **Status**: shipped, backend AND frontend viewer
@@ -234,7 +316,39 @@ written; refund amount over the recorded line-item total → 400.
 **Failure modes**: unknown/used/expired token all return the SAME generic error — telling them
 apart is an enumeration oracle.
 
+## Conventions
+
+### Drawer vs. page (C4.7)
+Not a blanket rule — judged per-surface, per the 2026-08-03 standing note. The two poles already
+in the codebase:
+- **A full page** (`orders/[id]`, `returns/` detail): the record is the DESTINATION — it has its
+  own URL worth bookmarking/sharing/refreshing, carries enough content that a fixed-width drawer
+  would cramp it (invoice, status timeline, line items), and is often the target of a deep link
+  from elsewhere (audit trail, notifications).
+- **A Sheet** (every generic resource create/edit via `resource-form.tsx`, staff/courier panels):
+  the action is a brief DETOUR from a list the user is coming right back to — no standalone URL,
+  content is a short field set, and staying on the list underneath (visible at the Sheet's edge)
+  is itself useful context.
+When adding a new mutable surface, ask which pole it's closer to rather than copying whichever
+pattern happens to be nearby. A surface that's genuinely ambiguous (long content, but reached only
+from one list and never linked to directly) is where "judge per-surface" actually earns its
+keep — don't resolve the ambiguity by picking whichever is less code to wire up.
+
 ## Current work
+- **`MASTER_TODO.md` is the master task list — read it, not this file, for what's open.** Three
+  schema-gated items shipped 2026-08-11 (courier failed-attempt path, invoice tax/subtotal,
+  return-reason taxonomy) plus the business-specific nav-label-renaming feature — see their own
+  Feature entries above and the 2026-08-11 Changelog entry for the full writeup. Same session:
+  audited every planning doc in the repo — `TODO.md` (the older ordered backlog) was fully
+  absorbed and **deleted** (its P0 tier had already gone entirely stale — polling, `markAllRead`,
+  and an invalid-nesting fix all already existed in the code — and its handful of still-open
+  items were folded directly into `MASTER_TODO.md`'s Track B/A); `archive/GAPS.md`,
+  `archive/SPEC_GAP.md`, `archive/TODO_SPEC.md` were archived as superseded/orphaned duplicates.
+  Schema-gated work still open — see `MASTER_TODO.md`'s Track D §S7 (S7.1 Address model, S7.3
+  payment/transaction model, S7.4 split status axis, S7.5 Location model, S7.6 Category tree,
+  S7.8 fuller ReturnStatus lifecycle, S7.9 tags — none started). Non-schema work lives in
+  `MASTER_TODO.md`'s Tracks A (2 items left) and E (the recovered Settings/Sidebar redesign
+  checklist).
 - **dev → main G-GATE** (separate track from the Design Fix Checklist below — see ROADMAP.md
   §G-GATE): this session (2026-08-04) confirmed 2 of 4 remaining items are operational facts only
   the user can answer, not things inferable from the repo. **Render redeploy status: unknown** —
@@ -300,10 +414,40 @@ apart is an enumeration oracle.
   - The backend dev server must be run via `pnpm dev` (tsx watch), never `pnpm start` (runs the
     last COMPILED build, which silently goes stale the moment a route is added — this caused a
     real "Settings page 404s" incident on 2026-08-01).
+  - **New 2026-08-11 rule**: never run a frontend production `next build` while a `pnpm dev`
+    frontend server is live in the same `frontend/.next` directory — the two processes write
+    incompatible artifact shapes into the same cache, and the dev server starts throwing
+    `Cannot find module './vendor-chunks/...'` / React Client Manifest errors that look like a
+    code regression but are pure build-cache corruption. This is how a real incident happened
+    2026-08-11 right after a `next build` verification step in the same session as a live `pnpm
+    dev`. Fix: stop the dev server, `rm -rf frontend/.next`, restart `pnpm dev`. Before running
+    `next build` as a verification step, check whether a dev server is already running first.
   - Full detailed roadmap, security log (S1–S10) and parity-audit-against-template (§M) live in
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-08-11** — Three schema-gated fixes from the ordered TODO backlog, each with its own
+  migration, run one at a time (never in parallel — migrations touch the same shared local dev
+  DB): (1) courier failed-delivery path — `FAILED_ATTEMPT` status, re-triable not terminal,
+  `attemptCount`/`failureReason` on `DeliveryAssignment`, reset on reassignment; (2) invoice
+  tax/subtotal breakdown — new `store.taxRate` setting, `subtotal`/`taxAmount` on `Order`,
+  `total`'s existing grand-total meaning deliberately preserved so Reports/Dashboard needed zero
+  changes; (3) return reason taxonomy — optional `ReturnCategory` enum alongside the existing
+  free-text reason (not replacing it), rejecting a return now requires a reason (previously took
+  none). All three: full backend + frontend suites green, `tsc`/`eslint` clean on both sides.
+  Also shipped same session: business-specific nav-label renaming (see § above) — reuses the
+  existing `Setting` allowlist, no new table, unblocks part of the long-parked "Onboarding
+  wizard" idea in ROADMAP.md §M2. Verified both dev servers start clean from a wiped `.next`
+  cache with no stale-build errors. **Recurring issue surfaced, not resolved**: the local
+  `_prisma_migrations` tracking table disappeared three separate times mid-session (real schema
+  tables and data were untouched each time — confirmed via direct query — so nothing was lost,
+  just re-baselined via `prisma migrate resolve --applied`). Root cause not found: MySQL server
+  uptime was 11 days (no restart), no script in this repo drops that table, and it recurred even
+  with zero dev servers running. Also found and killed two duplicate `pnpm dev` backend processes
+  that had been running simultaneously since the prior afternoon, holding a lock on the Prisma
+  query-engine DLL — a real contributor to at least the EPERM symptom, possibly not the whole
+  story on the missing-table symptom. Worth the user's own investigation (container/volume,
+  backup script, DB GUI tool) since it's outside what this session could observe.
 - **2026-08-04** — dev → main G-GATE session: found transactional email (§ above) already shipped
   on `dev` from a prior session (`a5ef3a1`), CLAUDE.md was stale on that. Re-wired `e2e.yml` for
   Option A (persistent dev backend via `RENDER_DEV_BACKEND_URL`, dropping the Render-preview-wait

@@ -4,6 +4,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { LoginForm } from '@/components/auth/login-form';
 import { LocaleSwitcher } from '@/components/locale-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { Link } from '@/i18n/navigation';
 import { Reveal } from '@/components/motion/reveal';
 
 export default async function LoginPage({
@@ -37,6 +38,17 @@ export default async function LoginPage({
               <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
             </div>
             <LoginForm />
+
+            {/* The 403 "access ended" branch tells people to contact an owner;
+                this is where they go once that owner hands them a token. */}
+            <p className="text-muted-foreground mt-4 text-center text-sm">
+              <Link
+                href="/reset-password"
+                className="hover:text-foreground underline underline-offset-4"
+              >
+                {t('haveResetToken')}
+              </Link>
+            </p>
           </div>
         </Reveal>
       </div>

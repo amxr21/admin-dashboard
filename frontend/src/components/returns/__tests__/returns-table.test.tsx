@@ -17,9 +17,23 @@ import type { ReturnDetail, ReturnListRow } from '@/lib/returns-api';
  * read-only, never a form that could re-fire the same action twice.
  */
 
+// Completes the module surface — the table's filters live in the URL, so it
+// calls `useRouter`/`usePathname` too. Inert stubs are enough here: nothing in
+// this file asserts on filtering, so the navigation never needs to round-trip.
 vi.mock('@/i18n/navigation', () => ({
   Link: ({ href, children, ...props }: Record<string, unknown>) =>
     createElement('a', { href, ...props }, children as ReactNode),
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  usePathname: () => '/admin/returns',
+  redirect: vi.fn(),
+  getPathname: ({ href }: { href: string }) => href,
 }));
 
 // ReturnDetailSheet reads the actor's role to decide whether to show the
@@ -50,6 +64,7 @@ function makeRow(overrides: Partial<ReturnListRow> = {}): ReturnListRow {
     rmaNumber: 'RMA-ABCD1234',
     status: 'REQUESTED',
     resolution: 'NONE',
+    category: null,
     createdAt: '2026-07-20T00:00:00.000Z',
     order: { id: 'o1', orderNumber: 'ORD-1024' },
     customer: { id: 'c1', name: 'Ali' },
@@ -63,10 +78,12 @@ function makeDetail(overrides: Partial<ReturnDetail> = {}): ReturnDetail {
     id: 'r1',
     rmaNumber: 'RMA-ABCD1234',
     reason: 'Arrived damaged',
+    category: null,
     status: 'REQUESTED',
     resolution: 'NONE',
     refundAmount: null,
     restocked: false,
+    rejectionReason: null,
     createdAt: '2026-07-20T00:00:00.000Z',
     order: { id: 'o1', orderNumber: 'ORD-1024', status: 'DELIVERED' },
     customer: { id: 'c1', name: 'Ali', email: 'ali@example.com' },
@@ -208,7 +225,7 @@ describe('approving', () => {
 });
 
 describe('rejecting', () => {
-  it('rejects without requiring a resolution', async () => {
+  it('rejects without requiring a resolution, but does require a reason', async () => {
     resolveList([makeRow()]);
     fetchReturn.mockResolvedValue(makeDetail());
     rejectReturn.mockResolvedValue(makeDetail({ status: 'REJECTED' }));
@@ -219,11 +236,43 @@ describe('rejecting', () => {
     const dialog = await screen.findByRole('dialog');
     await within(dialog).findByText('Arrived damaged');
 
-    await user.click(within(dialog).getByRole('button', { name: /reject/i }));
+    // Clicking Reject reveals a required reason field rather than firing
+    // immediately — it used to take no input at all.
+    await user.click(within(dialog).getByRole('button', { name: /^reject$/i }));
+
+    const confirmButton = within(dialog).getByRole('button', { name: /confirm rejection/i });
+    expect(confirmButton).toBeDisabled();
+
+    await user.type(
+      within(dialog).getByLabelText(/why is this being rejected/i),
+      'Outside the return window',
+    );
+    expect(confirmButton).toBeEnabled();
+    await user.click(confirmButton);
 
     await waitFor(() => {
-      expect(rejectReturn).toHaveBeenCalledWith('r1');
+      expect(rejectReturn).toHaveBeenCalledWith('r1', 'Outside the return window');
     });
+  });
+
+  it('cancelling the reason field returns to the approve/reject choice', async () => {
+    resolveList([makeRow()]);
+    fetchReturn.mockResolvedValue(makeDetail());
+    const user = userEvent.setup();
+
+    render(<ReturnsTable />);
+    await user.click(await screen.findByText('RMA-ABCD1234'));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('Arrived damaged');
+
+    await user.click(within(dialog).getByRole('button', { name: /^reject$/i }));
+    expect(within(dialog).getByLabelText(/why is this being rejected/i)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /^cancel$/i }));
+
+    expect(within(dialog).getByRole('button', { name: /^reject$/i })).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText(/why is this being rejected/i)).not.toBeInTheDocument();
+    expect(rejectReturn).not.toHaveBeenCalled();
   });
 });
 
@@ -243,5 +292,23 @@ describe('an already-decided return', () => {
     expect(within(dialog).getAllByText(/50\.00/).length).toBeGreaterThanOrEqual(1);
     expect(within(dialog).queryByRole('button', { name: /approve/i })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: /reject/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the rejection reason instead of a resolution on a REJECTED return', async () => {
+    resolveList([makeRow({ status: 'REJECTED' })]);
+    fetchReturn.mockResolvedValue(
+      makeDetail({ status: 'REJECTED', rejectionReason: 'Outside the return window' }),
+    );
+    const user = userEvent.setup();
+
+    render(<ReturnsTable />);
+    await user.click(await screen.findByText('RMA-ABCD1234'));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('Arrived damaged');
+
+    expect(within(dialog).getByText('Outside the return window')).toBeInTheDocument();
+    // A rejected return never had a resolution decided — that block must not
+    // render alongside the rejection reason.
+    expect(within(dialog).queryByText('Resolution')).not.toBeInTheDocument();
   });
 });

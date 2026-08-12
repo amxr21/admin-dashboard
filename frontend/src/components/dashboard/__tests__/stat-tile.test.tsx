@@ -1,4 +1,5 @@
 import { createElement, type ReactNode } from 'react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { render, screen } from '@/test/render';
@@ -177,6 +178,50 @@ describe('drill-down link', () => {
   });
 });
 
+describe('metric definition tooltip', () => {
+  it('renders no info trigger when definitionKey is omitted', () => {
+    render(<StatTile labelKey="totalOrders" value={10} />);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('renders an accessible info trigger naming the metric', () => {
+    render(
+      <StatTile labelKey="totalOrders" value={10} definitionKey="definitions.totalOrders" />,
+    );
+    expect(screen.getByRole('button', { name: /orders/i })).toBeInTheDocument();
+  });
+
+  it('shows the definition text on the trigger as a tooltip', async () => {
+    const user = userEvent.setup();
+    render(
+      <StatTile labelKey="totalOrders" value={10} definitionKey="definitions.totalOrders" />,
+    );
+    await user.hover(screen.getByRole('button'));
+    expect(
+      await screen.findByText(/count of all orders placed in the selected period/i),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the definition trigger independently clickable on a linked tile', () => {
+    // The tile's own <Link> covers the whole card (stretched-link pattern) —
+    // this proves the info button is a SEPARATE element, not nested inside
+    // that anchor, which would be invalid HTML and would navigate on click
+    // instead of opening the tooltip.
+    render(
+      <StatTile
+        labelKey="totalOrders"
+        value={10}
+        definitionKey="definitions.totalOrders"
+        href="/admin/orders"
+      />,
+    );
+    const link = screen.getByRole('link');
+    const button = screen.getByRole('button');
+    expect(link).not.toContainElement(button);
+    expect(link).toHaveAttribute('href', '/admin/orders');
+  });
+});
+
 describe('localisation', () => {
   it('renders Arabic labels', () => {
     render(<StatTile labelKey="totalRevenue" value={100} />, { locale: 'ar' });
@@ -187,5 +232,51 @@ describe('localisation', () => {
     // The app-wide rule: Western digits in BOTH locales, never mixed.
     render(<StatTile labelKey="totalOrders" value={1284} />, { locale: 'ar' });
     expect(screen.getByText('1,284')).toBeInTheDocument();
+  });
+});
+
+describe('sparkline slot (C1.3)', () => {
+  it('reserves the same height whether or not this tile has sparkline data', () => {
+    // Most tiles never pass `sparklineData` (see the prop's own doc comment)
+    // — the reserved-but-empty slot is what keeps a strip mixing sparkline
+    // and non-sparkline tiles from going ragged, so its ABSENCE must still
+    // occupy space, not collapse to nothing.
+    const without = render(<StatTile labelKey="totalOrders" value={10} />);
+    const withData = render(
+      <StatTile
+        labelKey="totalRevenue"
+        value={10}
+        sparklineData={[
+          { date: '2026-07-01', value: 1 },
+          { date: '2026-07-02', value: 2 },
+        ]}
+      />,
+    );
+
+    const withoutSlot = without.container.querySelector('.mt-2.h-8');
+    const withSlot = withData.container.querySelector('.mt-2.h-8');
+    expect(withoutSlot).toBeInTheDocument();
+    expect(withSlot).toBeInTheDocument();
+  });
+
+  it('renders a chart inside the slot when sparklineData is given', () => {
+    const { container } = render(
+      <StatTile
+        labelKey="totalRevenue"
+        value={10}
+        sparklineData={[
+          { date: '2026-07-01', value: 1 },
+          { date: '2026-07-02', value: 2 },
+        ]}
+      />,
+    );
+
+    expect(container.querySelector('.recharts-responsive-container')).toBeInTheDocument();
+  });
+
+  it('renders no chart when sparklineData is omitted', () => {
+    const { container } = render(<StatTile labelKey="totalOrders" value={10} />);
+
+    expect(container.querySelector('.recharts-responsive-container')).not.toBeInTheDocument();
   });
 });

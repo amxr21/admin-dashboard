@@ -1,4 +1,5 @@
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
+import type { Request } from 'express';
 import {
   DeliveryStaffStatus,
   DeliveryStatus,
@@ -9,6 +10,7 @@ import {
 import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
 import { AppError } from '../errors/AppError.js';
+import { audit, diff } from './audit.service.js';
 
 /**
  * Couriers and their assignments.
@@ -212,15 +214,23 @@ export async function createCourier(input: CourierInput) {
   return { ...courier, createdAt: courier.createdAt.toISOString(), hasAccessCode: false };
 }
 
-export async function updateCourier(id: string, input: Partial<CourierInput>) {
-  const exists = await prisma.deliveryStaff.findUnique({ where: { id }, select: { id: true } });
-  if (!exists) throw AppError.notFound('Courier not found');
+export async function updateCourier(id: string, input: Partial<CourierInput>, req: Request) {
+  const before = await prisma.deliveryStaff.findUnique({
+    where: { id },
+    select: { name: true, email: true, phone: true, zone: true, region: true, country: true, status: true },
+  });
+  if (!before) throw AppError.notFound('Courier not found');
 
   const courier = await prisma.deliveryStaff.update({
     where: { id },
     data: input,
     select: { ...COURIER_FIELDS, accessCodeHash: true },
   });
+
+  const changes = diff(before, input);
+  if (Object.keys(changes).length > 0) {
+    audit(req, { action: 'courier.updated', entity: 'couriers', entityId: id, changes });
+  }
 
   const { accessCodeHash, ...rest } = courier;
 
@@ -355,8 +365,13 @@ export async function assignOrder(input: AssignInput) {
       ...(input.address === undefined ? {} : { address: input.address }),
       ...(input.city === undefined ? {} : { city: input.city }),
       ...(input.note === undefined ? {} : { note: input.note }),
-      // Reassigning restarts the delivery: the new courier has not picked it up.
+      // Reassigning restarts the delivery: the new courier has not picked it
+      // up, and has not failed any attempt yet either — a new courier
+      // starting on attempt "3" would be blamed for the last one's failures.
+      // The failure is still visible in AuditLog for anyone who needs it.
       status: DeliveryStatus.ASSIGNED,
+      attemptCount: 0,
+      failureReason: null,
     },
     select: {
       id: true,
@@ -364,6 +379,61 @@ export async function assignOrder(input: AssignInput) {
       address: true,
       city: true,
       note: true,
+      attemptCount: true,
+      failureReason: true,
+      driver: { select: { id: true, name: true, phone: true } },
+      order: { select: { id: true, orderNumber: true, status: true } },
+    },
+  });
+
+  return assignment;
+}
+
+export interface UpdateAssignmentInput {
+  address?: string | undefined;
+  city?: string | undefined;
+  note?: string | undefined;
+}
+
+/**
+ * Corrects the delivery address/city/note WITHOUT reassigning — B4.1. Before
+ * this, the only way to fix a wrong address was `assignOrder`'s upsert,
+ * which also resets `status` back to ASSIGNED (correct for a real
+ * reassignment, wrong for "same courier, I mistyped the street"). A courier
+ * who already picked the order up should not be reset to ASSIGNED just
+ * because staff fixed a typo.
+ *
+ * Terminal deliveries (DELIVERED) are refused for the same reason
+ * `unassignOrder` refuses to delete one — editing the record of a completed
+ * delivery erases what actually happened.
+ */
+export async function updateAssignment(assignmentId: string, input: UpdateAssignmentInput) {
+  const existing = await prisma.deliveryAssignment.findUnique({
+    where: { id: assignmentId },
+    select: { id: true, status: true },
+  });
+
+  if (!existing) throw AppError.notFound('Assignment not found');
+
+  if (existing.status === DeliveryStatus.DELIVERED) {
+    throw AppError.badRequest('This delivery is already complete', { field: 'status' });
+  }
+
+  const assignment = await prisma.deliveryAssignment.update({
+    where: { id: assignmentId },
+    data: {
+      ...(input.address === undefined ? {} : { address: input.address }),
+      ...(input.city === undefined ? {} : { city: input.city }),
+      ...(input.note === undefined ? {} : { note: input.note }),
+    },
+    select: {
+      id: true,
+      status: true,
+      address: true,
+      city: true,
+      note: true,
+      attemptCount: true,
+      failureReason: true,
       driver: { select: { id: true, name: true, phone: true } },
       order: { select: { id: true, orderNumber: true, status: true } },
     },
@@ -387,7 +457,15 @@ export async function assignOrder(input: AssignInput) {
 const COURIER_TRANSITIONS: Readonly<Partial<Record<DeliveryStatus, readonly DeliveryStatus[]>>> = {
   [DeliveryStatus.ASSIGNED]: [DeliveryStatus.PICKED_UP],
   [DeliveryStatus.PICKED_UP]: [DeliveryStatus.OUT_FOR_DELIVERY, DeliveryStatus.HANDED_OVER],
-  [DeliveryStatus.OUT_FOR_DELIVERY]: [DeliveryStatus.DELIVERED, DeliveryStatus.HANDED_OVER],
+  [DeliveryStatus.OUT_FOR_DELIVERY]: [
+    DeliveryStatus.DELIVERED,
+    DeliveryStatus.HANDED_OVER,
+    DeliveryStatus.FAILED_ATTEMPT,
+  ],
+  // Re-triable, not terminal: the same job goes back OUT_FOR_DELIVERY for
+  // another attempt. `attemptCount` (bumped on the way IN to this status)
+  // is what tells staff "this is the 3rd attempt" without a separate log.
+  [DeliveryStatus.FAILED_ATTEMPT]: [DeliveryStatus.OUT_FOR_DELIVERY, DeliveryStatus.HANDED_OVER],
 };
 
 /** Fields a courier needs to actually make the delivery, and nothing else —
@@ -408,6 +486,8 @@ export async function listOwnAssignments(courierId: string) {
       total: true,
       paymentMethod: true,
       note: true,
+      attemptCount: true,
+      failureReason: true,
       createdAt: true,
       order: { select: { id: true, orderNumber: true } },
     },
@@ -429,11 +509,14 @@ export async function listOwnAssignments(courierId: string) {
 export async function updateAssignmentStatus(
   assignmentId: string,
   courierId: string,
+  courierName: string,
   nextStatus: DeliveryStatus,
+  req: Request,
+  failureReason?: string,
 ) {
   const assignment = await prisma.deliveryAssignment.findUnique({
     where: { id: assignmentId },
-    select: { id: true, driverId: true, status: true },
+    select: { id: true, driverId: true, status: true, orderId: true },
   });
 
   if (!assignment || assignment.driverId !== courierId) {
@@ -449,15 +532,50 @@ export async function updateAssignmentStatus(
     );
   }
 
-  return prisma.deliveryAssignment.update({
+  // A reason is how staff tell attempt 1 from attempt 3 apart later — make
+  // it required at the point of failure rather than an optional field
+  // couriers can skip under pressure.
+  if (nextStatus === DeliveryStatus.FAILED_ATTEMPT && !failureReason?.trim()) {
+    throw AppError.badRequest('A reason is required to report a failed attempt', {
+      field: 'failureReason',
+    });
+  }
+
+  const updated = await prisma.deliveryAssignment.update({
     where: { id: assignmentId },
-    data: { status: nextStatus },
+    data: {
+      status: nextStatus,
+      ...(nextStatus === DeliveryStatus.FAILED_ATTEMPT
+        ? { attemptCount: { increment: 1 }, failureReason: failureReason!.trim() }
+        : {}),
+    },
     select: {
       id: true,
       status: true,
+      attemptCount: true,
+      failureReason: true,
       order: { select: { id: true, orderNumber: true } },
     },
   });
+
+  // A courier is not a `User` and has no email — `courierName` fills the
+  // "who a reviewer recognises" role `actorEmail` normally plays for staff.
+  // This is the ONLY history of an assignment's status trail (C5.4):
+  // DeliveryAssignment stores current status only, no separate log table.
+  audit(req, {
+    action: 'delivery.assignment.status_changed',
+    entity: 'orders',
+    entityId: assignment.orderId,
+    changes: {
+      deliveryStatus: { from: assignment.status, to: nextStatus },
+      ...(nextStatus === DeliveryStatus.FAILED_ATTEMPT
+        ? { failureReason: { from: null, to: updated.failureReason } }
+        : {}),
+    },
+    actor: { id: courierId, email: courierName, role: 'COURIER' },
+  });
+
+  return updated;
 }
 
 export async function unassignOrder(assignmentId: string) {

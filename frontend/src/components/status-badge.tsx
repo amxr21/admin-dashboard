@@ -52,6 +52,9 @@ const TONES = {
     OUT_FOR_DELIVERY: 'info',
     DELIVERED: 'success',
     HANDED_OVER: 'success',
+    // Re-triable, not a terminal error, but still a failure at a glance —
+    // distinct from the in-progress 'info' tones above.
+    FAILED_ATTEMPT: 'destructive',
   },
   deliveryStaffStatus: {
     ACTIVE: 'success',
@@ -68,6 +71,25 @@ const TONES = {
     REFUND: 'info',
     STORE_CREDIT: 'secondary',
     REPLACEMENT: 'secondary',
+  },
+  // Informational grouping only — unlike order/return STATUS, no category
+  // here means "problem" or "success"; one neutral tone for all six avoids
+  // implying DAMAGED is worse than NO_LONGER_NEEDED.
+  returnCategory: {
+    DAMAGED: 'muted',
+    WRONG_ITEM: 'muted',
+    NOT_AS_DESCRIBED: 'muted',
+    NO_LONGER_NEEDED: 'muted',
+    ARRIVED_LATE: 'muted',
+    OTHER: 'muted',
+  },
+  auditOutcome: {
+    // Muted, not success: an ordinary recorded change is the baseline, and
+    // colouring every row green would drown the handful that matter.
+    SUCCESS: 'muted',
+    // The one value a security reviewer is scanning for.
+    DENIED: 'destructive',
+    ERROR: 'warning',
   },
   roles: {
     DEVELOPER: 'info',

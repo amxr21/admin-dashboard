@@ -32,13 +32,14 @@ interface StaffPasswordPanelProps {
   onDone: (message: string | null) => void;
 }
 
-/** Mirrors the server's floor. It rejects anything shorter regardless. */
-const MIN_LENGTH = 12;
-
 export function StaffPasswordPanel({ member, onDone }: StaffPasswordPanelProps) {
   const t = useTranslations('staff');
   const translateError = useTranslatedApiError();
-  const { editPanelMode } = useAppSettings();
+  // The LIVE floor, not a hardcoded 12. `security.minPasswordLength` is
+  // configurable (8–128) and the server enforces it via
+  // `assertPasswordMeetsPolicy`; a local constant drifted the moment an owner
+  // raised it, enabling Save for a password the server then rejected.
+  const { editPanelMode, minPasswordLength: MIN_LENGTH } = useAppSettings();
 
   const [password, setPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -101,7 +102,7 @@ export function StaffPasswordPanel({ member, onDone }: StaffPasswordPanelProps) 
             id="staff-password-hint"
             className={tooShort ? 'text-destructive text-sm' : 'text-muted-foreground text-sm'}
           >
-            {t('form.passwordHint')}
+            {t('form.passwordHint', { min: MIN_LENGTH })}
           </p>
         </div>
 

@@ -105,6 +105,50 @@ describe('which fields appear', () => {
   });
 });
 
+describe('variants/gallery on create — no dead end', () => {
+  // Previously these buttons were simply ABSENT during create, with nothing
+  // explaining why "Manage variants" that works on an existing product is
+  // nowhere to be found on a new one.
+  it('shows the buttons on a fresh create form, disabled, with a reason', async () => {
+    renderForm();
+
+    const variantsButton = await screen.findByRole('button', { name: 'Manage variants' });
+    const galleryButton = screen.getByRole('button', { name: 'Manage gallery' });
+
+    expect(variantsButton).toBeDisabled();
+    expect(galleryButton).toBeDisabled();
+    expect(screen.getByText(/save this product first/i)).toBeInTheDocument();
+  });
+
+  it('enables both buttons once editing an existing product, with no hint text', async () => {
+    renderForm(existing);
+
+    const variantsButton = await screen.findByRole('button', { name: 'Manage variants' });
+    const galleryButton = screen.getByRole('button', { name: 'Manage gallery' });
+
+    expect(variantsButton).toBeEnabled();
+    expect(galleryButton).toBeEnabled();
+    expect(screen.queryByText(/save this product first/i)).not.toBeInTheDocument();
+  });
+
+  it('does not render the variants/gallery section at all for a non-product resource', async () => {
+    const discountSchema: ResourceSchema = { ...schema, resource: 'discounts' };
+    render(
+      <ResourceForm
+        schema={discountSchema}
+        row={null}
+        open
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    await screen.findByLabelText(/name/i);
+    expect(screen.queryByRole('button', { name: 'Manage variants' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Manage gallery' })).not.toBeInTheDocument();
+  });
+});
+
 describe('money never becomes a number', () => {
   it('sends the amount as a string', async () => {
     createRow.mockResolvedValue({ id: 'new' });
@@ -274,9 +318,23 @@ describe('optional selections can be cleared', () => {
 });
 
 describe('required fields', () => {
-  it('blocks submission and names the offending field', async () => {
+  it('does not offer Save at all on a completely untouched create form', async () => {
+    // Save is gated on isDirty (StickyFormBar) — nothing to save yet, so the
+    // button is disabled rather than clickable-then-rejected. A stronger
+    // guarantee than a post-click error message: there's no click that could
+    // reach the empty-form case at all.
     renderForm();
 
+    expect(await screen.findByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(createRow).not.toHaveBeenCalled();
+  });
+
+  it('blocks submission and names the offending field once a required field is touched and left empty', async () => {
+    renderForm();
+
+    // Touch price (making the form dirty, enabling Save) without ever
+    // filling in the still-required name field.
+    await userEvent.type(screen.getByLabelText(/price/i), '9.99');
     await userEvent.click(await screen.findByRole('button', { name: 'Save' }));
 
     expect(await screen.findAllByText(/required/i)).not.toHaveLength(0);
@@ -288,6 +346,7 @@ describe('required fields', () => {
     // "still wrong", which sends them looking for a second mistake.
     renderForm();
 
+    await userEvent.type(screen.getByLabelText(/price/i), '9.99');
     await userEvent.click(await screen.findByRole('button', { name: 'Save' }));
     expect(await screen.findAllByText(/required/i)).not.toHaveLength(0);
 
@@ -317,14 +376,13 @@ describe('editing sends a minimal patch', () => {
     expect(payload).toEqual({ name: 'Stone Planter' });
   });
 
-  it('closes without calling the API when nothing changed', async () => {
-    // The engine rejects an empty PATCH with "Provide at least one field",
-    // so an untouched form must not send one.
-    const { onOpenChange } = renderForm(existing);
+  it('never offers a clickable Save when nothing has changed', async () => {
+    // Stronger than a post-click no-op: Save is disabled outright while
+    // !isDirty (StickyFormBar), so there is no click that could reach the
+    // engine's "Provide at least one field" rejection for an untouched edit.
+    renderForm(existing);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(await screen.findByRole('button', { name: 'Save' })).toBeDisabled();
     expect(updateRow).not.toHaveBeenCalled();
   });
 });
@@ -382,6 +440,112 @@ describe('unsaved changes', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+});
+
+describe('the dirty-state signal appears BEFORE Save, not just after', () => {
+  // Standing 2026-08-03 note: a field change must surface a dirty-state
+  // signal before Save is clicked — not only discovered via a toast or a
+  // discard-confirmation dialog after the fact.
+  it('shows no unsaved-changes text on an untouched form', async () => {
+    renderForm();
+
+    await screen.findByRole('button', { name: 'Save' });
+    expect(screen.queryByText(/unsaved/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the unsaved-changes signal the moment a field is edited, before any click', async () => {
+    renderForm();
+
+    await userEvent.type(await screen.findByLabelText(/name/i), 'Vase');
+
+    expect(await screen.findByText(/unsaved/i)).toBeInTheDocument();
+    // Confirms it appeared from typing alone — Save was never clicked.
+    expect(createRow).not.toHaveBeenCalled();
+  });
+
+  it('enables Save only once the form is dirty', async () => {
+    renderForm();
+
+    expect(await screen.findByRole('button', { name: 'Save' })).toBeDisabled();
+
+    await userEvent.type(screen.getByLabelText(/name/i), 'Vase');
+
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+  });
+});
+
+describe('unsaved-changes guard on tab close / reload', () => {
+  function fireBeforeUnload(): Event {
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event;
+  }
+
+  it('warns before the browser discards a dirty, still-open form', async () => {
+    renderForm();
+
+    await userEvent.type(await screen.findByLabelText(/name/i), 'Vase');
+
+    expect(fireBeforeUnload().defaultPrevented).toBe(true);
+  });
+
+  it('does not warn on an untouched form', async () => {
+    renderForm();
+    await screen.findByLabelText(/name/i);
+
+    expect(fireBeforeUnload().defaultPrevented).toBe(false);
+  });
+});
+
+describe('inline validation on blur', () => {
+  it('flags a malformed value the instant the field loses focus, before Save is ever clicked', async () => {
+    renderForm();
+
+    await userEvent.type(await screen.findByLabelText(/price/i), '19.999');
+    await userEvent.tab();
+
+    expect(await screen.findByText(/two decimal places/i)).toBeInTheDocument();
+    expect(createRow).not.toHaveBeenCalled();
+  });
+
+  it('clears the blur-time error as soon as the field is corrected, without waiting for another blur', async () => {
+    renderForm();
+
+    const price = await screen.findByLabelText(/price/i);
+    await userEvent.type(price, '19.999');
+    await userEvent.tab();
+    expect(await screen.findByText(/two decimal places/i)).toBeInTheDocument();
+
+    await userEvent.clear(price);
+    await userEvent.type(price, '19.99');
+
+    await waitFor(() => {
+      expect(screen.queryByText(/two decimal places/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it('does NOT flag a required field left blank on blur — only submit does', async () => {
+    // Tabbing through a fresh create form's untouched fields (focus then
+    // blur, never typing) must not light every required field red before
+    // the user has done anything wrong — see the comment in
+    // resource-form.tsx's onBlur handler for why this is deliberate.
+    renderForm();
+
+    await userEvent.click(await screen.findByLabelText(/name/i));
+    await userEvent.tab();
+
+    expect(screen.queryByText(/required/i)).not.toBeInTheDocument();
+  });
+
+  it('does not require a Save attempt first — blur alone is enough to surface the message', async () => {
+    renderForm();
+
+    // Never clicked Save at all in this test.
+    await userEvent.type(await screen.findByLabelText(/price/i), 'not-a-price');
+    await userEvent.tab();
+
+    expect(await screen.findByText(/two decimal places/i)).toBeInTheDocument();
   });
 });
 
@@ -492,5 +656,161 @@ describe('localisation', () => {
     renderForm(null, 'ar');
 
     expect(await screen.findByRole('button', { name: 'حفظ' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * Margin is DERIVED from the price and cost already on the form, never stored.
+ *
+ * The cases that matter are the ones where a naive implementation shows a
+ * confident, wrong number: a half-typed field, a zero price (÷0 → "∞%"), or a
+ * resource that has a price but no cost at all.
+ */
+describe('margin summary', () => {
+  const costed: ResourceSchema = {
+    ...schema,
+    fields: [
+      ...schema.fields,
+      { name: 'cost', label: 'Cost', type: 'money' as const },
+    ],
+  };
+
+  function renderCosted(row: Record<string, unknown> | null) {
+    return render(
+      <ResourceForm
+        schema={costed}
+        row={row}
+        open
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+  }
+
+  it('shows profit and margin from the stored price and cost', async () => {
+    renderCosted({ id: '1', name: 'Lamp', price: '100.00', cost: '40.00' });
+
+    expect(await screen.findByText('Profit')).toBeInTheDocument();
+    // 100 − 40 = 60, and 60/100 = 60%. Matched exactly rather than with a
+    // loose /60/, which also hits the "60.00" inside the price input.
+    expect(screen.getByText('AED 60.00')).toBeInTheDocument();
+    expect(screen.getByText('60%')).toBeInTheDocument();
+  });
+
+  it('recomputes as the price is edited', async () => {
+    renderCosted({ id: '1', name: 'Lamp', price: '100.00', cost: '40.00' });
+
+    const price = await screen.findByLabelText(/price/i);
+    await userEvent.clear(price);
+    await userEvent.type(price, '80');
+
+    // 80 − 40 = 40, and 40/80 = 50%.
+    await waitFor(() => expect(screen.getByText('50%')).toBeInTheDocument());
+  });
+
+  it('marks a negative margin as destructive rather than hiding it', async () => {
+    // Selling below cost is exactly the case worth surfacing.
+    renderCosted({ id: '1', name: 'Lamp', price: '40.00', cost: '100.00' });
+
+    const margin = await screen.findByText('-150%');
+    expect(margin).toHaveClass('text-destructive');
+  });
+
+  it('renders nothing while a field is empty', async () => {
+    renderCosted({ id: '1', name: 'Lamp', price: '100.00', cost: '' });
+
+    await screen.findByLabelText(/price/i);
+    expect(screen.queryByText('Profit')).not.toBeInTheDocument();
+  });
+
+  it('renders nothing when the price is zero rather than dividing by it', async () => {
+    renderCosted({ id: '1', name: 'Lamp', price: '0.00', cost: '10.00' });
+
+    await screen.findByLabelText(/price/i);
+    expect(screen.queryByText('Profit')).not.toBeInTheDocument();
+  });
+
+  it('stays hidden for a resource that declares no cost field', async () => {
+    // The base schema has `price` but no `cost` — margin is undefined for it,
+    // so the panel must not appear at all.
+    renderForm({ id: '1', name: 'Lamp', price: '100.00' });
+
+    await screen.findByLabelText(/price/i);
+    expect(screen.queryByText('Profit')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A5.7 — a config-declared `changeWarning` on a field (slug, in practice).
+ * The property that matters: it must fire ONLY when a real existing value is
+ * being changed to something different — never on create (nothing to have
+ * changed from) and never on first-time entry into a field that was blank.
+ */
+describe('field change warning', () => {
+  const withSlug: ResourceSchema = {
+    ...schema,
+    fields: [
+      ...schema.fields,
+      {
+        name: 'slug',
+        label: 'Slug',
+        type: 'text' as const,
+        changeWarning: 'Changing the slug records a redirect from the old one.',
+      },
+    ],
+  };
+
+  function renderSlugForm(row: Record<string, unknown> | null) {
+    return render(
+      <ResourceForm schema={withSlug} row={row} open onOpenChange={vi.fn()} onSaved={vi.fn()} />,
+    );
+  }
+
+  it('says nothing while the value is unchanged', async () => {
+    renderSlugForm({ ...existing, slug: 'ceramic-planter' });
+
+    await screen.findByLabelText(/slug/i);
+    expect(screen.queryByText(/records a redirect/i)).not.toBeInTheDocument();
+  });
+
+  it('appears once an existing slug is edited to something else', async () => {
+    renderSlugForm({ ...existing, slug: 'ceramic-planter' });
+
+    const slug = await screen.findByLabelText(/slug/i);
+    await userEvent.clear(slug);
+    await userEvent.type(slug, 'ceramic-planter-v2');
+
+    expect(await screen.findByText(/records a redirect/i)).toBeInTheDocument();
+  });
+
+  it('does not appear for first-time entry into a previously blank slug', async () => {
+    renderSlugForm({ ...existing, slug: '' });
+
+    const slug = await screen.findByLabelText(/slug/i);
+    await userEvent.type(slug, 'ceramic-planter');
+
+    expect(screen.queryByText(/records a redirect/i)).not.toBeInTheDocument();
+  });
+
+  it('never appears on create — there is nothing to have changed from', async () => {
+    renderSlugForm(null);
+
+    const slug = await screen.findByLabelText(/slug/i);
+    await userEvent.type(slug, 'brand-new-product');
+
+    expect(screen.queryByText(/records a redirect/i)).not.toBeInTheDocument();
+  });
+
+  it('clears again if the value is edited back to the original', async () => {
+    renderSlugForm({ ...existing, slug: 'ceramic-planter' });
+
+    const slug = await screen.findByLabelText(/slug/i);
+    await userEvent.clear(slug);
+    await userEvent.type(slug, 'changed');
+    expect(await screen.findByText(/records a redirect/i)).toBeInTheDocument();
+
+    await userEvent.clear(slug);
+    await userEvent.type(slug, 'ceramic-planter');
+    await waitFor(() => expect(screen.queryByText(/records a redirect/i)).not.toBeInTheDocument());
   });
 });

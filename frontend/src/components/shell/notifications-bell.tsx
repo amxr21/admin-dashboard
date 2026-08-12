@@ -33,6 +33,14 @@ import { markAllNotificationsRead } from '@/lib/notifications-api';
 /** Above this the exact number stops being useful and the badge gets wide. */
 const MAX_BADGE = 99;
 const PREVIEW_COUNT = 5;
+/**
+ * B5.1/B5.2 — the count used to be fetched once on mount and never again, so
+ * it went stale the moment a notification arrived, or the moment the FULL
+ * list page (a separate component/route) marked something read. Polling plus
+ * a focus-revalidate covers both without wiring cross-component state for a
+ * badge counter.
+ */
+const POLL_INTERVAL_MS = 30_000;
 
 export function NotificationsBell() {
   const t = useTranslations('notificationsBell');
@@ -55,6 +63,21 @@ export function NotificationsBell() {
 
   useEffect(() => {
     refreshCount();
+
+    const interval = setInterval(refreshCount, POLL_INTERVAL_MS);
+    // Coming back to the tab is the highest-value moment to refresh — it's
+    // exactly when a stale count is most likely (time passed, notifications
+    // may have arrived, or the user marked things read on another tab/page).
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') refreshCount();
+    }
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
 
   useEffect(() => {

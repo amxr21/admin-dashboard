@@ -7,6 +7,7 @@ import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { signToken } from '../services/auth.service.js';
 import { settingKeys } from '../config/settings.config.js';
+import { waitFor } from './helpers/wait-for.js';
 
 /**
  * Application settings.
@@ -130,6 +131,129 @@ describe('writing is separately gated', () => {
   });
 });
 
+/**
+ * B3.8 — "per-section last-modified + audit link" needs something to LINK
+ * TO. Before this, `PATCH /settings` only wrote a `req.log.info` line —
+ * nothing reached the audit trail, so a settings page audit link would have
+ * pointed at an always-empty filtered view.
+ */
+describe('settings writes reach the audit trail', () => {
+  it('logs a real field diff on PATCH, not just the key name', async () => {
+    await save({ 'store.name': `${RUN} audited name` });
+
+    const entry = await waitFor(async () => {
+      const found = await prisma.auditLog.findFirst({
+        where: { action: 'settings.updated', entity: 'settings' },
+        orderBy: { createdAt: 'desc' },
+      });
+      const changes = found?.changes as Record<string, { to: unknown }> | null;
+      return changes?.['store.name']?.to === `${RUN} audited name` ? found : null;
+    });
+
+    const changes = entry?.changes as Record<string, { from: unknown; to: unknown }> | null;
+    expect(changes?.['store.name']?.to).toBe(`${RUN} audited name`);
+  });
+
+  it('logs the PREVIOUS value as "from", not just the new one', async () => {
+    await save({ 'store.name': `${RUN} first` });
+    await save({ 'store.name': `${RUN} second` });
+
+    const entry = await waitFor(async () => {
+      const found = await prisma.auditLog.findFirst({
+        where: { action: 'settings.updated', entity: 'settings' },
+        orderBy: { createdAt: 'desc' },
+      });
+      const changes = found?.changes as Record<string, { to: unknown }> | null;
+      return changes?.['store.name']?.to === `${RUN} second` ? found : null;
+    });
+
+    const changes = entry?.changes as Record<string, { from: unknown; to: unknown }> | null;
+    expect(changes?.['store.name']).toEqual({ from: `${RUN} first`, to: `${RUN} second` });
+  });
+
+  it('logs a revert (DELETE) with the declared default as "to"', async () => {
+    await save({ 'store.name': `${RUN} before revert` });
+    await request(app).delete('/api/v1/settings/store.name').set(auth(ownerToken));
+
+    const entry = await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { action: 'settings.reverted', entity: 'settings' },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+
+    const changes = entry?.changes as Record<string, { from: unknown; to: unknown }> | null;
+    expect(changes?.['store.name']).toEqual({ from: `${RUN} before revert`, to: '' });
+  });
+
+  it('does NOT log a revert that was already a no-op (nothing stored to revert)', async () => {
+    const before = await prisma.auditLog.count({ where: { action: 'settings.reverted' } });
+
+    await request(app).delete('/api/v1/settings/store.tagline').set(auth(ownerToken));
+
+    // Asserting an absence has nothing to poll for — a short fixed wait is
+    // the correct tool here (unlike the writes above), since there is no
+    // "landed" state to detect.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const after = await prisma.auditLog.count({ where: { action: 'settings.reverted' } });
+    expect(after).toBe(before);
+  });
+});
+
+/**
+ * B3.1 — "revert to default" is DELETE, not a special PATCH value. Deleting
+ * the stored row is what makes `readAll`'s existing "missing row → declared
+ * default" rule take over again — the same rule a fresh install relies on.
+ */
+describe('reverting a setting to its default', () => {
+  it('deletes the row and the declared default becomes live again', async () => {
+    await save({ 'store.name': 'Ammar Supplies' });
+
+    const revertRes = await request(app)
+      .delete('/api/v1/settings/store.name')
+      .set(auth(ownerToken));
+    expect(revertRes.status).toBe(200);
+
+    const name = get('store.name', revertRes.body as SettingsBody);
+    expect(name?.isDefault).toBe(true);
+
+    // The row is genuinely gone, not just reset in place — confirmed against
+    // the table directly, not only through the API's own shaping.
+    const row = await prisma.setting.findUnique({ where: { key: 'store.name' } });
+    expect(row).toBeNull();
+  });
+
+  it('is a no-op, not an error, when the setting was already at its default', async () => {
+    const res = await request(app)
+      .delete('/api/v1/settings/store.currency')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+  });
+
+  it('is gated on the settings area, same as writing', async () => {
+    const res = await request(app)
+      .delete('/api/v1/settings/store.name')
+      .set(auth(supportToken));
+
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects an unknown key BY NAME, same as the allowlist on write', async () => {
+    const res = await request(app)
+      .delete('/api/v1/settings/store.doesNotExist')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(400);
+  });
+
+  it('requires a session', async () => {
+    const res = await request(app).delete('/api/v1/settings/store.name');
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('the registry is an allowlist', () => {
   it('refuses an unknown key BY NAME', async () => {
     // Silently ignoring it would look like a save that worked.
@@ -190,8 +314,24 @@ describe('values are validated against their declared type', () => {
     expect((await save({ 'inventory.lowStockThreshold': 12 })).status).toBe(200);
   });
 
+  it('enforces numeric bounds on the tax rate, and accepts 0 as a real choice', async () => {
+    expect((await save({ 'store.taxRate': -1 })).status).toBe(400);
+    expect((await save({ 'store.taxRate': 101 })).status).toBe(400);
+    // 0 means "no tax" — a valid, common value, not treated as unset.
+    expect((await save({ 'store.taxRate': 0 })).status).toBe(200);
+    expect((await save({ 'store.taxRate': 5 })).status).toBe(200);
+  });
+
   it('enforces string length', async () => {
     expect((await save({ 'store.name': 'x'.repeat(121) })).status).toBe(400);
+  });
+
+  it('accepts a nav label override, and an empty string as "not overridden"', async () => {
+    expect((await save({ 'labels.nav.staff': 'Baristas' })).status).toBe(200);
+    // Empty is the declared default, meaning "use the built-in label" — not
+    // an error, and not the same as omitting the key.
+    expect((await save({ 'labels.nav.staff': '' })).status).toBe(200);
+    expect((await save({ 'labels.nav.staff': 'x'.repeat(41) })).status).toBe(400);
   });
 
   it('rejects an empty payload', async () => {
@@ -277,6 +417,39 @@ describe('the new registry entries this session added', () => {
     expect((await save({ 'dashboard.tablePageSize': 1 })).status).toBe(400);
     expect((await save({ 'dashboard.tablePageSize': 500 })).status).toBe(400);
     expect((await save({ 'dashboard.tablePageSize': 50 })).status).toBe(200);
+  });
+});
+
+describe('business-specific nav labels', () => {
+  it('all six declare themselves with an empty default (no override)', async () => {
+    const res = await request(app).get('/api/v1/settings').set(auth(ownerToken));
+    const body = res.body as SettingsBody;
+
+    const keys = [
+      'labels.nav.staff',
+      'labels.nav.orders',
+      'labels.nav.delivery',
+      'labels.nav.inventory',
+      'labels.nav.returns',
+      'labels.nav.reports',
+    ];
+
+    for (const key of keys) {
+      const setting = get(key, body);
+      expect(setting, `${key} is missing from GET /settings`).toBeTruthy();
+      expect(setting?.isDefault).toBe(true);
+      expect(setting?.value).toBe('');
+    }
+  });
+
+  it('round-trips a real override', async () => {
+    await save({ 'labels.nav.staff': 'Baristas' });
+
+    const res = await request(app).get('/api/v1/settings').set(auth(ownerToken));
+    const setting = get('labels.nav.staff', res.body as SettingsBody);
+
+    expect(setting?.value).toBe('Baristas');
+    expect(setting?.isDefault).toBe(false);
   });
 });
 

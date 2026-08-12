@@ -349,6 +349,83 @@ describe('assignments', () => {
   });
 });
 
+/**
+ * B4.1 — a wrong delivery address could previously only be fixed by
+ * reassigning (`POST /assignments`), which also resets `status` back to
+ * ASSIGNED even though the same courier keeps the job. This route is the
+ * one place address/city/note can be corrected without that side effect.
+ */
+describe('PATCH /assignments/:id', () => {
+  async function makeAssignment(driverId?: string) {
+    const orderId = await makeOrder();
+    const created = await request(app)
+      .post('/api/v1/assignments')
+      .set(auth(ownerToken))
+      .send({ orderId, driverId: driverId ?? (await makeCourier()), address: 'Original St' });
+    return (created.body as AssignBody).data.assignment.id;
+  }
+
+  it('corrects the address without touching status or driver', async () => {
+    const driverId = await makeCourier();
+    const id = await makeAssignment(driverId);
+
+    await prisma.deliveryAssignment.update({
+      where: { id },
+      data: { status: DeliveryStatus.PICKED_UP },
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/assignments/${id}`)
+      .set(auth(ownerToken))
+      .send({ address: 'Corrected St' });
+
+    expect(res.status).toBe(200);
+    const row = await prisma.deliveryAssignment.findUniqueOrThrow({ where: { id } });
+    expect(row.address).toBe('Corrected St');
+    // The whole point: status must NOT have reset to ASSIGNED.
+    expect(row.status).toBe(DeliveryStatus.PICKED_UP);
+    expect(row.driverId).toBe(driverId);
+  });
+
+  it('rejects an empty body', async () => {
+    const id = await makeAssignment();
+    const res = await request(app).patch(`/api/v1/assignments/${id}`).set(auth(ownerToken)).send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('404s an unknown assignment', async () => {
+    const res = await request(app)
+      .patch('/api/v1/assignments/nope')
+      .set(auth(ownerToken))
+      .send({ address: 'x' });
+    expect(res.status).toBe(404);
+  });
+
+  it('refuses to edit a completed delivery', async () => {
+    const id = await makeAssignment();
+    await prisma.deliveryAssignment.update({
+      where: { id },
+      data: { status: DeliveryStatus.DELIVERED },
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/assignments/${id}`)
+      .set(auth(ownerToken))
+      .send({ address: 'Too late St' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('denies a role without the delivery area', async () => {
+    const id = await makeAssignment();
+    const res = await request(app)
+      .patch(`/api/v1/assignments/${id}`)
+      .set(auth(supportToken))
+      .send({ address: 'x' });
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("the gap group B documented, now closed", () => {
   it('stops the courier when the order is cancelled', async () => {
     /**
@@ -396,5 +473,49 @@ describe('courier records', () => {
     expect(
       (await request(app).get('/api/v1/couriers/nope').set(auth(ownerToken))).status,
     ).toBe(404);
+  });
+});
+
+describe('updating a courier writes an audit row (C5.3)', () => {
+  it('records a field-level diff for a real change', async () => {
+    const id = await makeCourier();
+
+    const res = await request(app)
+      .patch(`/api/v1/couriers/${id}`)
+      .set(auth(ownerToken))
+      .send({ zone: 'Marina' });
+
+    expect(res.status).toBe(200);
+
+    let entry: { changes: unknown; entity: string; entityId: string | null } | null = null;
+    for (let attempt = 0; attempt < 10 && !entry; attempt += 1) {
+      entry = await prisma.auditLog.findFirst({
+        where: { action: 'courier.updated', entityId: id },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!entry) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    expect(entry).not.toBeNull();
+    expect(entry?.entity).toBe('couriers');
+    expect((entry?.changes as { zone?: { from: unknown; to: unknown } } | null)?.zone).toEqual({
+      from: null,
+      to: 'Marina',
+    });
+  });
+
+  it('writes nothing when the request changes nothing', async () => {
+    const id = await makeCourier();
+    // Prime the field so the second write below is a true no-op, not a
+    // first-time set from null.
+    await request(app).patch(`/api/v1/couriers/${id}`).set(auth(ownerToken)).send({ zone: 'Marina' });
+
+    await request(app).patch(`/api/v1/couriers/${id}`).set(auth(ownerToken)).send({ zone: 'Marina' });
+
+    const entries = await prisma.auditLog.findMany({
+      where: { action: 'courier.updated', entityId: id },
+    });
+    // Exactly one — from the priming write, not two.
+    expect(entries).toHaveLength(1);
   });
 });

@@ -55,6 +55,16 @@ type Value = string | boolean | number;
 interface SettingsContextValue {
   isLoading: boolean;
   tablePageSize: number;
+  /** The live `security.minPasswordLength`. Exposed so password forms inside
+   *  the admin shell stop hardcoding a floor that drifts the moment an owner
+   *  changes the setting — the server enforces it via
+   *  `assertPasswordMeetsPolicy` regardless, so a stale local copy only ever
+   *  makes the UI wrong (enabling Save for a password the server rejects). */
+  minPasswordLength: number;
+  /** The live `staff.defaultInviteRole` — pre-selects the invite form's role
+   *  picker. A courtesy default only; `canAssignRole` is still enforced
+   *  server-side regardless of what this is set to. */
+  defaultInviteRole: string;
   editPanelMode: 'drawer' | 'modal';
   /** Store-wide visual treatment for the sidebar. Collapse/expand is a
    *  SEPARATE, personal per-browser preference — see useSidebarCollapse. */
@@ -68,6 +78,17 @@ interface SettingsContextValue {
   storeSupportEmail: string;
   storeSupportPhone: string;
   storeTaxId: string;
+  /** The live `store.currency` — an ISO 4217 code (AED/SAR/USD/EUR/GBP).
+   *  Formatting only, per the setting's own description: it changes how a
+   *  price DISPLAYS, never what it converts to or is stored as. Consumed by
+   *  `useCurrencyFormat` rather than read directly at most call sites. */
+  storeCurrency: string;
+  /** Business-specific overrides for a fixed set of nav item labels — "Staff"
+   *  -> "Baristas" for a cafe, etc. Keyed by the same `labelKey` used in
+   *  `NAVIGATION` (config/navigation.ts), e.g. `navLabels.staff`. Empty or
+   *  missing means "use the built-in translated label" — display-only, the
+   *  underlying area/resource name never changes. */
+  navLabels: Record<string, string>;
   /** Re-fetches the registry and re-applies every derived side effect. Call
    *  after a settings save so the change is visible without a page reload. */
   refresh: () => Promise<void>;
@@ -92,10 +113,18 @@ const BRAND_DEFAULTS = {
 const DEFAULT_VALUE: SettingsContextValue = {
   isLoading: true,
   tablePageSize: 20,
+  // Mirrors `settings.config.ts`'s declared default, used only until the real
+  // registry loads.
+  minPasswordLength: 12,
+  defaultInviteRole: 'SUPPORT',
   editPanelMode: 'drawer',
   sidebarMode: 'sticky',
   logoUrl: '',
+  // Mirrors `settings.config.ts`'s declared default, used only until the
+  // real registry loads.
+  storeCurrency: 'AED',
   ...BRAND_DEFAULTS,
+  navLabels: {},
   refresh: async () => {},
   previewSetting: () => {},
   clearPreview: () => {},
@@ -152,10 +181,35 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const pageSize = Number(effective['dashboard.tablePageSize'] ?? 20);
+  const minPassword = Number(effective['security.minPasswordLength'] ?? 12);
+
+  // A THREE-letter check, not a hardcoded AED/SAR/USD/EUR/GBP allowlist — the
+  // server (`settings.config.ts`) is the one place that enum is declared;
+  // copying it here would be a second copy to keep in sync for no real
+  // protection (`Intl.NumberFormat` already throws on a truly invalid ISO
+  // code, and this setting is display-only regardless — see its own
+  // description). This only guards against a malformed/missing value
+  // reaching the formatter, not against an unlisted-but-valid currency.
+  const rawCurrency = effective['store.currency'];
+  const storeCurrency =
+    typeof rawCurrency === 'string' && /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : 'AED';
+
+  // One `labels.nav.<key>` setting per relabelable nav item — see
+  // settings.config.ts's own "Labels" section for the full list and why an
+  // empty string means "not overridden" rather than a real label.
+  const NAV_LABEL_KEYS = ['staff', 'orders', 'delivery', 'inventory', 'returns', 'reports'];
+  const navLabels = Object.fromEntries(
+    NAV_LABEL_KEYS.map((key) => [key, String(effective[`labels.nav.${key}`] ?? '')]).filter(
+      ([, label]) => label !== '',
+    ),
+  );
 
   const value: SettingsContextValue = {
     isLoading,
     tablePageSize: Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20,
+    minPasswordLength:
+      Number.isFinite(minPassword) && minPassword > 0 ? minPassword : 12,
+    defaultInviteRole: String(effective['staff.defaultInviteRole'] ?? 'SUPPORT'),
     editPanelMode: effective['ui.editPanelMode'] === 'modal' ? 'modal' : 'drawer',
     sidebarMode: effective['ui.sidebarMode'] === 'floating' ? 'floating' : 'sticky',
     logoUrl: String(effective['store.logoUrl'] ?? ''),
@@ -165,6 +219,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     storeSupportEmail: String(effective['store.supportEmail'] ?? ''),
     storeSupportPhone: String(effective['store.supportPhone'] ?? ''),
     storeTaxId: String(effective['store.taxId'] ?? ''),
+    storeCurrency,
+    navLabels,
     refresh: load,
     previewSetting,
     clearPreview,

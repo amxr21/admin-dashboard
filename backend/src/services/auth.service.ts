@@ -6,6 +6,11 @@ import { env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { getSettingValue } from './settings.service.js';
+import { createSession, type SessionContext } from './session.service.js';
+// Namespaced: this file's own `verifyLoginCode` (the login-flow step) and
+// two-factor.service.ts's `verifyLoginCode` (the raw code check) are
+// different levels of the same operation — importing named would shadow one.
+import * as twoFactor from './two-factor.service.js';
 
 /**
  * Authentication logic. Kept out of the route so it is testable without HTTP
@@ -24,6 +29,16 @@ export interface TokenPayload {
    * Deploying must not sign everyone out — see getAuthenticatedUser.
    */
   tv?: number;
+  /**
+   * Session id, for PER-SESSION revocation (Session model, session.service.ts).
+   *
+   * Optional for the same rollout reason as `tv`: a token minted before this
+   * shipped carries no `sid`, and it must keep working rather than logging
+   * everyone out on deploy — `getAuthenticatedUser` only checks it when
+   * present. Such a token simply cannot be individually revoked from the
+   * sessions list; the bulk `tokenVersion` path still reaches it.
+   */
+  sid?: string;
 }
 
 /** A user as the API is allowed to return it. */
@@ -60,9 +75,15 @@ export function toSafeUser(user: User): SafeUser {
 export function signToken(
   user: Pick<User, 'id' | 'role' | 'tokenVersion'>,
   expiresIn: string = env.JWT_EXPIRES_IN,
+  sessionId?: string,
 ): string {
   return jwt.sign(
-    { sub: user.id, role: user.role, tv: user.tokenVersion } satisfies TokenPayload,
+    {
+      sub: user.id,
+      role: user.role,
+      tv: user.tokenVersion,
+      ...(sessionId ? { sid: sessionId } : {}),
+    } satisfies TokenPayload,
     env.JWT_SECRET,
     { expiresIn } as jwt.SignOptions,
   );
@@ -85,6 +106,21 @@ export function verifyToken(token: string): TokenPayload {
       throw AppError.unauthorized('Invalid or expired session');
     }
 
+    /**
+     * A pending-2FA token (`type: 'pending-2fa'`, see `signPending2faToken`)
+     * MUST be refused here. It carries the same `sub` a real session token
+     * does and is signed with the same `JWT_SECRET`, so without this check
+     * it would decode successfully, `decoded.role` would just be `undefined`
+     * cast to `StaffRole`, and `getAuthenticatedUser` would happily load the
+     * real user and grant a full session — meaning the ~2-minute window
+     * between "password correct" and "2FA code entered" would be a full
+     * bypass of the second factor. Caught by two-factor.test.ts, not
+     * assumed safe from the design alone.
+     */
+    if ('type' in decoded && decoded.type !== undefined) {
+      throw AppError.unauthorized('Invalid or expired session');
+    }
+
     return {
       sub: decoded.sub,
       role: decoded.role as StaffRole,
@@ -99,6 +135,7 @@ export function verifyToken(token: string): TokenPayload {
        * Narrowed to a number so a forged `tv: "0"` cannot compare loosely.
        */
       ...(typeof decoded.tv === 'number' ? { tv: decoded.tv } : {}),
+      ...(typeof decoded.sid === 'string' ? { sid: decoded.sid } : {}),
     };
   } catch (err) {
     if (err instanceof AppError) throw err;
@@ -134,8 +171,67 @@ async function registerFailedAttempt(user: User): Promise<void> {
 }
 
 export interface LoginResult {
+  twoFactorRequired?: false;
   token: string;
   user: SafeUser;
+}
+
+/**
+ * Returned instead of `LoginResult` when the account has 2FA enabled. The
+ * password already checked out — that is what `pendingToken` proves — but
+ * NO session exists yet, `lastLoginAt` has NOT been updated, and the
+ * lockout counter reset has NOT happened. Those all wait for
+ * `verifyLoginCode` to actually succeed; a correct password plus an
+ * abandoned 2FA prompt must look, from every other system's perspective,
+ * exactly like a login that never happened.
+ */
+export interface TwoFactorRequiredResult {
+  twoFactorRequired: true;
+  /** Short-lived, single-purpose JWT. Carries no `role`, `tv`, or `sid` —
+   * nothing `authenticate` could mistake for a real session even if its own
+   * type check were ever bypassed by a bug. */
+  pendingToken: string;
+}
+
+const PENDING_2FA_TOKEN_TYPE = 'pending-2fa';
+const PENDING_2FA_TTL = '2m';
+
+interface Pending2faPayload {
+  sub: string;
+  type: typeof PENDING_2FA_TOKEN_TYPE;
+}
+
+function signPending2faToken(userId: string): string {
+  return jwt.sign(
+    { sub: userId, type: PENDING_2FA_TOKEN_TYPE } satisfies Pending2faPayload,
+    env.JWT_SECRET,
+    { expiresIn: PENDING_2FA_TTL } as jwt.SignOptions,
+  );
+}
+
+/**
+ * Verify a pending-2FA token specifically. Deliberately NOT a code path
+ * `verifyToken` shares — a real session token and a pending-2FA token must
+ * never be interchangeable, so this rejects anything without the exact
+ * `type` marker rather than trying to make one function handle both shapes.
+ */
+function verifyPending2faToken(token: string): string {
+  try {
+    const decoded = jwt.verify(token, env.JWT_SECRET);
+
+    if (
+      typeof decoded === 'string' ||
+      decoded.type !== PENDING_2FA_TOKEN_TYPE ||
+      typeof decoded.sub !== 'string'
+    ) {
+      throw AppError.unauthorized('This code has expired. Sign in again.');
+    }
+
+    return decoded.sub;
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    throw AppError.unauthorized('This code has expired. Sign in again.');
+  }
 }
 
 /**
@@ -149,7 +245,11 @@ export interface LoginResult {
  * user needs to know why they cannot get in, and by that point the attacker has
  * already been stopped.
  */
-export async function login(email: string, password: string): Promise<LoginResult> {
+export async function login(
+  email: string,
+  password: string,
+  sessionContext: SessionContext = {},
+): Promise<LoginResult | TwoFactorRequiredResult> {
   const user = await prisma.user.findUnique({ where: { email } });
 
   if (!user) {
@@ -185,6 +285,18 @@ export async function login(email: string, password: string): Promise<LoginResul
     throw AppError.forbidden('This account’s access period has ended');
   }
 
+  /**
+   * STOP HERE for a 2FA account. Nothing below this point may run yet:
+   * `lastLoginAt`/lockout-reset and session creation both have to wait for
+   * `verifyLoginCode` to actually succeed, or an attacker with a stolen
+   * password (but no phone) could tell from `lastLoginAt` alone that the
+   * password worked — and a real session would exist for a login that, from
+   * every other system's perspective, must look like it never happened.
+   */
+  if (user.twoFactorEnabled) {
+    return { twoFactorRequired: true, pendingToken: signPending2faToken(user.id) };
+  }
+
   const updated = await prisma.user.update({
     where: { id: user.id },
     // Successful login clears the lockout state — otherwise a user who failed
@@ -196,8 +308,53 @@ export async function login(email: string, password: string): Promise<LoginResul
   // the very next login, not wait for a process restart.
   const sessionTimeoutMinutes = await getSettingValue('security.sessionTimeoutMinutes');
 
+  const session = await createSession(user.id, sessionContext);
+
   return {
-    token: signToken(updated, `${String(sessionTimeoutMinutes)}m`),
+    token: signToken(updated, `${String(sessionTimeoutMinutes)}m`, session.id),
+    user: toSafeUser(updated),
+  };
+}
+
+/**
+ * Second step of a 2FA login: exchange the pending token plus a real code
+ * (TOTP or backup) for an actual session. This is the ONLY place
+ * `lastLoginAt`/lockout-reset/session-creation happen for a 2FA account —
+ * mirroring exactly what the non-2FA branch of `login()` does at its tail,
+ * so a 2FA account and a non-2FA account end up in an identical state after
+ * a successful sign-in.
+ */
+export async function verifyLoginCode(
+  pendingToken: string,
+  code: string,
+  sessionContext: SessionContext = {},
+): Promise<LoginResult> {
+  const userId = verifyPending2faToken(pendingToken);
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+
+  // Re-checked, not assumed from the pending token: the account could have
+  // been deactivated or had 2FA disabled by an admin in the ~2 minutes since
+  // the password step.
+  if (!user || !user.isActive || !user.twoFactorEnabled) {
+    throw AppError.unauthorized('This code has expired. Sign in again.');
+  }
+
+  const isValid = await twoFactor.verifyLoginCode(user.id, code);
+  if (!isValid) {
+    throw AppError.badRequest('That code is incorrect', { field: 'code' });
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null },
+  });
+
+  const sessionTimeoutMinutes = await getSettingValue('security.sessionTimeoutMinutes');
+  const session = await createSession(user.id, sessionContext);
+
+  return {
+    token: signToken(updated, `${String(sessionTimeoutMinutes)}m`, session.id),
     user: toSafeUser(updated),
   };
 }
@@ -213,6 +370,7 @@ export async function login(email: string, password: string): Promise<LoginResul
 export async function getAuthenticatedUser(
   userId: string,
   tokenVersion?: number,
+  sessionId?: string,
 ): Promise<SafeUser> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
 
@@ -237,6 +395,29 @@ export async function getAuthenticatedUser(
     throw AppError.unauthorized('Invalid or expired session');
   }
 
+  /**
+   * PER-SESSION revocation. Only checked when the token actually carries a
+   * session id — same graceful-rollout shape as `tv` above: a token minted
+   * before Sessions existed has no `sid` and is accepted on this check alone
+   * (it is still fully covered by the `tokenVersion` check above).
+   *
+   * The query is intentionally separate from `session.service.ts`'s own
+   * `isSessionLive` rather than imported — importing it here would make
+   * `auth.service.ts` depend on `session.service.ts`, which already depends
+   * on nothing auth-specific; keeping the dependency one-directional avoids a
+   * cycle risk for a single WHERE clause's worth of savings.
+   */
+  if (sessionId !== undefined) {
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { userId: true, revokedAt: true },
+    });
+
+    if (!session || session.userId !== userId || session.revokedAt !== null) {
+      throw AppError.unauthorized('Invalid or expired session');
+    }
+  }
+
   return toSafeUser(user);
 }
 
@@ -248,8 +429,17 @@ export async function getAuthenticatedUser(
  * the person asked for — "I reset their password" has to mean they are out.
  */
 export async function revokeSessions(userId: string): Promise<void> {
-  await prisma.user.update({
-    where: { id: userId },
-    data: { tokenVersion: { increment: 1 } },
-  });
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: { tokenVersion: { increment: 1 } },
+    }),
+    // Keeps `session.service.ts`'s list truthful: without this, a password
+    // change elsewhere leaves every session row looking live even though
+    // every token pointing at them is now dead on the `tokenVersion` check.
+    prisma.session.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    }),
+  ]);
 }

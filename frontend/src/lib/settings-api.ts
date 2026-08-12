@@ -49,6 +49,21 @@ export async function saveSettings(
   return body.settings;
 }
 
+/**
+ * Reverts one setting to its declared default by deleting the stored row —
+ * not a special value sent through `saveSettings`. See the backend route's
+ * own doc comment for why this is DELETE rather than "PATCH with the default
+ * value": the API never sends the default separately from the live value,
+ * so the form has no default to send back even if it wanted to.
+ */
+export async function revertSetting(key: string): Promise<Setting[]> {
+  const body = await apiFetch<{ settings: Setting[] }>(
+    `/settings/${encodeURIComponent(key)}`,
+    { method: 'DELETE' },
+  );
+  return body.settings;
+}
+
 /** Per-key messages from a 400, keyed exactly as the settings are. */
 export function fieldErrorsFrom(details: unknown): Record<string, string> {
   if (details && typeof details === 'object' && 'fields' in details) {

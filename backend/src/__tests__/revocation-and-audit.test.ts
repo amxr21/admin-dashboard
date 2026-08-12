@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { StaffRole } from '@prisma/client';
@@ -6,6 +7,7 @@ import { StaffRole } from '@prisma/client';
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { signToken } from '../services/auth.service.js';
+import { waitFor } from './helpers/wait-for.js';
 
 /**
  * Token revocation and the audit trail — the two items that gate dev → main.
@@ -178,15 +180,13 @@ describe('the audit trail', () => {
       changes: { passwordHash: 'super-secret-hash', name: { from: 'A', to: 'B' } },
     });
 
-    // Fire-and-forget by design, so give the write a moment to land.
-    await new Promise((resolve) => setTimeout(resolve, 400));
-
-    const entry = await prisma.auditLog.findFirst({
-      where: { actorId: ownerId, action: 'staff.password.reset' },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    expect(entry).not.toBeNull();
+    // Fire-and-forget by design — poll rather than race the write.
+    const entry = await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { actorId: ownerId, action: 'staff.password.reset' },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
 
     const changes = JSON.stringify(entry?.changes);
     expect(changes).not.toContain('super-secret-hash');
@@ -259,5 +259,196 @@ describe('the audit trail', () => {
     expect(Array.isArray(body.data)).toBe(true);
     // Written earlier in this suite (the redaction test, entity: 'user').
     expect(body.data).toContain('user');
+  });
+});
+
+/**
+ * Denied attempts, and the request context attached to every entry.
+ *
+ * The gap this closes: a trail of successes cannot show someone probing the
+ * staff endpoints, because nothing they did succeeded and so nothing was
+ * written. These assert the refusal itself lands in the table.
+ */
+describe('denied attempts and request context', () => {
+  it('records a 403 area denial as a DENIED entry, not a gap', async () => {
+    const support = await makeUser(StaffRole.SUPPORT, 'auditdenied');
+
+    const denied = await request(app)
+      .get('/api/v1/audit')
+      .set(auth(support.token))
+      .set('User-Agent', 'probe/1.0');
+
+    expect(denied.status).toBe(403);
+
+    // The write is fire-and-forget by design, so it may land just after the
+    // response. Poll rather than racing it.
+    const entry = await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { actorId: support.id, action: 'authz.area.denied' },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+
+    expect(entry?.outcome).toBe('DENIED');
+    expect(entry?.entity).toBe('authz');
+    expect(entry?.entityId).toBe('staff');
+    // Request context — the "who and from where" half of a security review.
+    expect(entry?.userAgent).toBe('probe/1.0');
+    expect(entry?.requestId).toBeTruthy();
+    expect(entry?.ip).toBeTruthy();
+  });
+
+  it('filters to denials only, and successes default to SUCCESS', async () => {
+    const res = await request(app)
+      .get('/api/v1/audit')
+      .query({ outcome: 'DENIED' })
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    const body = res.body as { data: { entries: { outcome: string }[] } };
+    expect(body.data.entries.length).toBeGreaterThan(0);
+    expect(body.data.entries.every((e) => e.outcome === 'DENIED')).toBe(true);
+
+    // An ordinary write recorded earlier in this suite must not be mislabelled.
+    const success = await request(app)
+      .get('/api/v1/audit')
+      .query({ outcome: 'SUCCESS' })
+      .set(auth(ownerToken));
+
+    const successBody = success.body as { data: { entries: { outcome: string }[] } };
+    expect(successBody.data.entries.every((e) => e.outcome === 'SUCCESS')).toBe(true);
+  });
+
+  it('rejects an unknown outcome rather than silently ignoring the filter', async () => {
+    const res = await request(app)
+      .get('/api/v1/audit')
+      .query({ outcome: 'MAYBE' })
+      .set(auth(ownerToken));
+
+    // Silently dropping an unparseable filter would show a reviewer every
+    // entry while they believe they are looking at a narrowed set.
+    expect(res.status).toBe(400);
+  });
+
+  it('lists distinct actions for the action filter', async () => {
+    const res = await request(app).get('/api/v1/audit/actions').set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    const body = res.body as { data: string[] };
+    expect(body.data).toContain('authz.area.denied');
+  });
+});
+
+/**
+ * Cursor pagination.
+ *
+ * The bug this exists to prevent is invisible in offset mode until the table is
+ * being written to WHILE it is read: a new row shifts every later row down one,
+ * so offset page 2 re-shows a row from page 1 and skips one entirely. These
+ * tests write between pages on purpose — that interleaving IS the test.
+ */
+describe('audit cursor pagination', () => {
+  const ENTITY = `audit-cursor-${RUN}`;
+  const created: string[] = [];
+
+  async function seed(n: number) {
+    for (let i = 0; i < n; i += 1) {
+      const row = await prisma.auditLog.create({
+        data: {
+          action: `test.cursor.${i}`,
+          entity: ENTITY,
+          entityId: String(i),
+          actorId: ownerId,
+          // Distinct, ordered timestamps — id breaks any remaining tie.
+          createdAt: new Date(Date.UTC(2021, 0, 1, 0, 0, i)),
+        },
+      });
+      created.push(row.id);
+    }
+  }
+
+  beforeAll(async () => {
+    await seed(5);
+  });
+
+  afterAll(async () => {
+    await prisma.auditLog.deleteMany({ where: { entity: ENTITY } });
+  });
+
+  function page(query: Record<string, string | number>) {
+    return request(app)
+      .get('/api/v1/audit')
+      .query({ entity: ENTITY, ...query })
+      .set(auth(ownerToken));
+  }
+
+  it('walks the whole trail without repeating or skipping a row', async () => {
+    const seen: string[] = [];
+    let cursor: string | null | undefined;
+    let guard = 0;
+
+    do {
+      const res = await page({ pageSize: 2, ...(cursor ? { cursor } : {}) });
+      expect(res.status).toBe(200);
+
+      const body = res.body as {
+        data: { entries: { id: string }[]; nextCursor: string | null; total?: number };
+      };
+
+      // Cursor mode deliberately does not count an unbounded table.
+      if (cursor) expect(body.data.total).toBeUndefined();
+
+      seen.push(...body.data.entries.map((e) => e.id));
+      cursor = body.data.nextCursor;
+      guard += 1;
+    } while (cursor && guard < 10);
+
+    expect(cursor).toBeNull();
+    // Newest first, and every seeded row exactly once.
+    expect(seen).toEqual([...created].reverse());
+    expect(new Set(seen).size).toBe(seen.length);
+  });
+
+  it('does not skip or duplicate when rows are written mid-walk', async () => {
+    const first = await page({ pageSize: 2 });
+    const firstBody = first.body as {
+      data: { entries: { id: string }[]; nextCursor: string | null };
+    };
+    const firstIds = firstBody.data.entries.map((e) => e.id);
+
+    // A newer entry lands between the two reads. Under offset paging this
+    // pushes everything down one and page 2 re-shows the last row of page 1.
+    const intruder = await prisma.auditLog.create({
+      data: {
+        action: 'test.cursor.intruder',
+        entity: ENTITY,
+        actorId: ownerId,
+        createdAt: new Date(Date.UTC(2021, 0, 2)),
+      },
+    });
+    created.push(intruder.id);
+
+    const second = await page({ pageSize: 2, cursor: firstBody.data.nextCursor ?? '' });
+    const secondBody = second.body as { data: { entries: { id: string }[] } };
+    const secondIds = secondBody.data.entries.map((e) => e.id);
+
+    expect(secondIds.some((id) => firstIds.includes(id))).toBe(false);
+    // The newer row sorts above the cursor, so it is correctly not in page 2.
+    expect(secondIds).not.toContain(intruder.id);
+  });
+
+  it('still serves the dashboard widget its offset page', async () => {
+    // dashboard-overview.tsx calls exactly this. It must keep working.
+    const res = await page({ page: 1, pageSize: 6 });
+
+    expect(res.status).toBe(200);
+    const body = res.body as {
+      data: { entries: unknown[]; total: number; page: number; totalPages: number };
+    };
+
+    expect(body.data.page).toBe(1);
+    expect(typeof body.data.total).toBe('number');
+    expect(typeof body.data.totalPages).toBe('number');
+    expect(body.data.entries.length).toBeLessThanOrEqual(6);
   });
 });

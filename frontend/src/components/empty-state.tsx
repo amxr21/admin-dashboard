@@ -27,7 +27,14 @@ interface EmptyStateProps {
   /** Omit for a resource nobody can create here (e.g. read-only or
    *  externally-sourced data) — the empty state then just explains, with no
    *  next step to offer. */
-  action?: { label: string; onClick: () => void };
+  action?: {
+    label: string;
+    onClick: () => void;
+    /** Defaults to `Plus`, which suits "create the first one". A filtered
+     *  empty state offers "clear filters" instead, where a plus would be
+     *  actively misleading about what the button does. */
+    icon?: LucideIcon;
+  };
   className?: string;
 }
 
@@ -82,16 +89,21 @@ export function EmptyState({ icon: Icon = Inbox, title, description, action, cla
       ) : null}
 
       {action ? (
-        <Button
-          data-empty-state-reveal
-          variant="outline"
-          size="sm"
-          onClick={action.onClick}
-          className="mt-1"
-        >
-          <Plus aria-hidden />
-          {action.label}
-        </Button>
+        (() => {
+          const ActionIcon = action.icon ?? Plus;
+          return (
+            <Button
+              data-empty-state-reveal
+              variant="outline"
+              size="sm"
+              onClick={action.onClick}
+              className="mt-1"
+            >
+              <ActionIcon aria-hidden />
+              {action.label}
+            </Button>
+          );
+        })()
       ) : null}
     </div>
   );

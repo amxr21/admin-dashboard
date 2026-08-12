@@ -303,8 +303,34 @@ html[lang='ar'] {
     @apply border-border outline-ring/50;
   }
 
+  /*
+   * ─── THE HEIGHT CHAIN ───────────────────────────────────────────────
+   * `height: 100%` on a child only resolves if its parent has a DEFINITE
+   * height — otherwise it computes to `auto` and silently does nothing.
+   * PageTransition's own `h-full` is exactly that case: it sits directly
+   * inside <body>, so without these two rules it grows to its content's
+   * natural height instead of being clamped to the viewport.
+   *
+   * That mattered because AppShell is `h-dvh` and PageTransition animates
+   * it with a `y` offset on every route change — a viewport-tall child
+   * nudged down inside an auto-height parent makes the document taller
+   * than the viewport, producing a second, document-level scrollbar that
+   * scrolls into empty space below the page. See page-transition.tsx.
+   *
+   * Deliberately NOT `overflow: hidden` here. The signed-out pages (/login,
+   * /reset-password, /courier/login) are `min-h-dvh` and legitimately grow
+   * past the viewport on a short window or with a validation error expanded
+   * — clipping them at <body> would trap that content with no way to reach
+   * it. Scroll containment belongs to the admin shell alone, which already
+   * declares it via `h-dvh overflow-hidden`.
+   */
+  html {
+    height: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
+    height: 100%;
   }
 
   /*

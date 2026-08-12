@@ -187,55 +187,56 @@ export function NotificationsList() {
 
             return (
               <li key={id}>
-                <button
-                  type="button"
-                  onClick={() => void openNotification(row)}
-                  className="bg-card hover:bg-muted/50 flex w-full items-start gap-3 rounded-lg border p-4 text-start transition-colors"
-                >
-                  <span
-                    aria-hidden
-                    className={
-                      isUnread
-                        ? 'bg-primary mt-1.5 size-2 shrink-0 rounded-full'
-                        : 'mt-1.5 size-2 shrink-0 rounded-full bg-transparent'
-                    }
-                  />
+                {/*
+                  B5.3 — this was a `<button>` with a `<span role="button">`
+                  dismiss control nested inside it: invalid HTML (interactive
+                  content inside interactive content) and unreachable by
+                  keyboard as a real button. Now a plain container with two
+                  SIBLING real buttons — open (flex-1) and dismiss — so both
+                  are natively focusable/activatable and neither is nested in
+                  the other.
+                */}
+                <div className="bg-card hover:bg-muted/50 flex w-full items-start gap-3 rounded-lg border p-4 transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => void openNotification(row)}
+                    className="flex min-w-0 flex-1 items-start gap-3 text-start"
+                  >
+                    <span
+                      aria-hidden
+                      className={
+                        isUnread
+                          ? 'bg-primary mt-1.5 size-2 shrink-0 rounded-full'
+                          : 'mt-1.5 size-2 shrink-0 rounded-full bg-transparent'
+                      }
+                    />
 
-                  <div className="min-w-0 flex-1 space-y-0.5">
-                    <p className={isUnread ? 'font-semibold' : 'font-medium'}>
-                      {String(row.title ?? '')}
-                    </p>
-                    {row.body ? (
-                      <p className="text-muted-foreground truncate text-sm">
-                        {String(row.body)}
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <p className={isUnread ? 'font-semibold' : 'font-medium'}>
+                        {String(row.title ?? '')}
                       </p>
-                    ) : null}
-                    {createdAt ? (
-                      <p className="text-muted-foreground text-xs">
-                        {formatter.dateTime(createdAt, 'short')}
-                      </p>
-                    ) : null}
-                  </div>
+                      {row.body ? (
+                        <p className="text-muted-foreground truncate text-sm">
+                          {String(row.body)}
+                        </p>
+                      ) : null}
+                      {createdAt ? (
+                        <p className="text-muted-foreground text-xs">
+                          {formatter.dateTime(createdAt, 'short')}
+                        </p>
+                      ) : null}
+                    </div>
+                  </button>
 
-                  <span
-                    role="button"
-                    tabIndex={0}
+                  <button
+                    type="button"
                     aria-label={t('dismiss', { title: String(row.title ?? '') })}
                     className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 rounded-md p-1.5"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setPendingDeleteId(id);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return;
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setPendingDeleteId(id);
-                    }}
+                    onClick={() => setPendingDeleteId(id)}
                   >
                     <X className="size-4" aria-hidden />
-                  </span>
-                </button>
+                  </button>
+                </div>
               </li>
             );
           })}
@@ -275,7 +276,7 @@ export function NotificationsList() {
         <SheetContent
           side="end"
           variant={editPanelMode}
-          className="w-full max-w-md overflow-y-auto"
+          className="max-w-md overflow-y-auto"
           title={openRow ? String(openRow.title ?? '') : t('detailTitle')}
         >
           {openRow ? (

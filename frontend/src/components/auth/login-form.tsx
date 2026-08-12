@@ -31,13 +31,19 @@ import { ApiError } from '@/lib/api';
 export function LoginForm() {
   const t = useTranslations('auth');
   const tStates = useTranslations('states.error');
-  const { signIn } = useAuth();
+  const { signIn, verifyTwoFactor } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Non-null once the password step succeeds on a 2FA account. Its presence
+  // is what switches the form into the second-step view below — there is no
+  // separate boolean to keep in sync with it.
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const [code, setCode] = useState('');
 
   function messageFor(caught: unknown): string {
     if (!(caught instanceof ApiError)) {
@@ -71,7 +77,15 @@ export function LoginForm() {
     setIsSubmitting(true);
 
     try {
-      await signIn(email, password);
+      const result = await signIn(email, password);
+
+      if (result.status === 'TWO_FACTOR_REQUIRED') {
+        // NOT a completed sign-in — no navigation, no session exists yet.
+        // Switch to the second-step view and stop here.
+        setPendingToken(result.pendingToken);
+        return;
+      }
+
       // replace, not push — Back must not return to a login form the user has
       // already passed.
       router.replace('/admin');
@@ -83,6 +97,91 @@ export function LoginForm() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function handleVerifyCode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!pendingToken) return; // unreachable — the form only renders with one
+
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      await verifyTwoFactor(pendingToken, code);
+      router.replace('/admin');
+    } catch (caught) {
+      // A wrong code is a 400, not one of the login-step statuses (401/423/
+      // 429) — messageFor's default branch reads as "server error", which is
+      // wrong here. This step has exactly one failure mode worth naming.
+      setError(
+        caught instanceof ApiError && caught.status === 400
+          ? t('invalidCode')
+          : messageFor(caught),
+      );
+      setCode('');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (pendingToken) {
+    return (
+      <form onSubmit={(event) => void handleVerifyCode(event)} className="space-y-4" noValidate>
+        {error ? (
+          <div
+            role="alert"
+            className="bg-destructive/10 text-destructive border-destructive/20 rounded-md border px-3 py-2 text-sm"
+          >
+            {error}
+          </div>
+        ) : null}
+
+        <div className="space-y-2">
+          <Label htmlFor="two-factor-code">{t('twoFactorCode')}</Label>
+          <p className="text-muted-foreground text-sm">{t('twoFactorCodeHint')}</p>
+          <Input
+            id="two-factor-code"
+            name="code"
+            // Not type=number — a backup code is alphanumeric with a dash,
+            // and a spinner control on a 6-digit TOTP code is pure noise.
+            inputMode="text"
+            autoComplete="one-time-code"
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+            autoFocus
+            required
+            disabled={isSubmitting}
+            aria-invalid={error !== null}
+            className="force-ltr"
+          />
+        </div>
+
+        <Button type="submit" className="w-full" disabled={isSubmitting || !code.trim()}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+              {t('signingIn')}
+            </>
+          ) : (
+            t('verifyCode')
+          )}
+        </Button>
+
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full"
+          disabled={isSubmitting}
+          onClick={() => {
+            setPendingToken(null);
+            setCode('');
+            setError(null);
+          }}
+        >
+          {t('backToLogin')}
+        </Button>
+      </form>
+    );
   }
 
   return (

@@ -2,10 +2,16 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { useSearchParams } from 'next/navigation';
+import { useUrlState } from '@/hooks/useUrlState';
 import { History, Search, SlidersHorizontal } from 'lucide-react';
 
+import { CopyableId } from '@/components/copyable-id';
 import { DataTable, type Column } from '@/components/data-table';
+import { FilterChips, type AppliedFilter } from '@/components/filter-chips';
+import { TablePagination } from '@/components/table-pagination';
+import { DensityToggle } from '@/components/density-toggle';
+import { getGlobalDensity } from '@/lib/apply-appearance';
+import { useTableDensity } from '@/hooks/useTableDensity';
 import { MovementLogSheet } from '@/components/inventory/movement-log-sheet';
 import { StockAdjustSheet } from '@/components/inventory/stock-adjust-sheet';
 import { Button } from '@/components/ui/button';
@@ -30,23 +36,43 @@ import {
  * the badge and the filter can never disagree with each other or with the API.
  */
 
+/** Defaults are omitted from the URL, so an unfiltered list has a clean one. */
+const URL_DEFAULTS = { page: '1', search: '', lowStock: '', pageSize: '' };
+
 export function InventoryTable() {
   const t = useTranslations('inventory');
   const tTable = useTranslations('table');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
   const { tablePageSize } = useAppSettings();
-  const searchParams = useSearchParams();
+
+  /** Per-table density override — see resource-table.tsx / useTableDensity.ts. */
+  const { override: densityOverride, setOverride: setDensityOverride } =
+    useTableDensity('inventory');
 
   const [result, setResult] = useState<InventoryListResult | null>(null);
-  const [page, setPage] = useState(1);
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
-  // Seeded from `?lowStock=true` — the dashboard's "View low stock" quick
-  // action deep-links here, same lazy-initializer pattern Audit uses for its
-  // own `?entity=`/`?entityId=` deep link.
-  const [lowOnly, setLowOnly] = useState(() => searchParams.get('lowStock') === 'true');
   const [isLoading, setIsLoading] = useState(true);
+
+  /**
+   * Page, search and the low-stock toggle live in the URL.
+   *
+   * `?lowStock=true` (the dashboard's "View low stock" quick action) was
+   * previously read once into `useState` and never written back, so toggling
+   * the filter left the URL claiming the opposite of what was on screen.
+   */
+  const { values, setValues } = useUrlState(URL_DEFAULTS);
+
+  const page = Math.max(1, Number(values.page) || 1);
+
+  /** Overrides `dashboard.tablePageSize` for this view only — see resource-table.tsx. */
+  const urlPageSize = Number(values.pageSize);
+  const effectivePageSize =
+    Number.isFinite(urlPageSize) && urlPageSize > 0 ? urlPageSize : tablePageSize;
+  const search = values.search ?? '';
+  const lowOnly = values.lowStock === 'true';
+
+  // Holds raw keystrokes; only the debounced value reaches the URL.
+  const [searchInput, setSearchInput] = useState(search);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -61,7 +87,7 @@ export function InventoryTable() {
       setResult(
         await fetchInventory({
           page,
-          pageSize: tablePageSize,
+          pageSize: effectivePageSize,
           ...(search ? { search } : {}),
           ...(lowOnly ? { lowStock: true } : {}),
         }),
@@ -72,21 +98,53 @@ export function InventoryTable() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, search, lowOnly, tablePageSize, translateError]);
+  }, [page, search, lowOnly, effectivePageSize, translateError]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // Debounced so typing doesn't fire a request per keystroke.
+  /**
+   * Debounced so typing doesn't fire a request — or a navigation — per
+   * keystroke. Search and page go in ONE write, so a new query can't leave
+   * the user stranded on a page number from the previous one.
+   */
   useEffect(() => {
+    const trimmed = searchInput.trim();
+    if (trimmed === search) return;
+
     const timer = setTimeout(() => {
-      setSearch(searchInput.trim());
-      setPage(1);
+      setValues({ search: trimmed, page: null });
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchInput]);
+  }, [searchInput, search, setValues]);
+
+  /** Built from the same values the query uses, so a chip can never claim a
+   *  filter that isn't actually applied. */
+  const appliedFilters: AppliedFilter[] = [
+    ...(search
+      ? [
+          {
+            id: 'search',
+            label: `${t('search.label')}: ${search}`,
+            onRemove: () => {
+              setSearchInput('');
+              setValues({ search: null, page: null });
+            },
+          },
+        ]
+      : []),
+    ...(lowOnly
+      ? [
+          {
+            id: 'lowStock',
+            label: t('filters.lowOnly'),
+            onRemove: () => setValues({ lowStock: null, page: null }),
+          },
+        ]
+      : []),
+  ];
 
   const columns: readonly Column<InventoryRow>[] = [
     {
@@ -96,8 +154,9 @@ export function InventoryTable() {
         <div className="min-w-0">
           <p className="truncate font-medium">{row.name}</p>
           {row.sku ? (
-            // force-ltr: a SKU is a code and must not reorder in Arabic.
-            <p className="text-muted-foreground force-ltr truncate text-xs">{row.sku}</p>
+            // A SKU is the value most often pasted into a supplier email or a
+            // stock count sheet.
+            <CopyableId value={row.sku} className="text-muted-foreground" />
           ) : null}
         </div>
       ),
@@ -188,8 +247,7 @@ export function InventoryTable() {
           variant={lowOnly ? 'default' : 'outline'}
           aria-pressed={lowOnly}
           onClick={() => {
-            setLowOnly((current) => !current);
-            setPage(1);
+            setValues({ lowStock: lowOnly ? null : 'true', page: null });
           }}
         >
           {t('filters.lowOnly')}
@@ -203,6 +261,21 @@ export function InventoryTable() {
         </p>
       ) : null}
 
+      <div className="flex items-center justify-between gap-3">
+        <FilterChips
+          filters={appliedFilters}
+          onClearAll={() => {
+            setSearchInput('');
+            setValues({ search: null, lowStock: null, page: null });
+          }}
+        />
+        <DensityToggle
+          value={densityOverride ?? getGlobalDensity()}
+          onChange={setDensityOverride}
+          className="ms-auto shrink-0"
+        />
+      </div>
+
       <DataTable
         data={result?.products ?? []}
         columns={columns}
@@ -210,40 +283,23 @@ export function InventoryTable() {
         isLoading={isLoading}
         error={error}
         onRetry={() => void load()}
+        density={densityOverride ?? undefined}
         emptyMessage={
           lowOnly ? t('emptyLow') : search ? tTable('noResults') : t('empty')
         }
       />
 
-      {result && result.totalPages > 1 ? (
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-muted-foreground text-sm tabular-nums">
-            {t('total', { count: result.total })}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1 || isLoading}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-            >
-              {t('pagination.previous')}
-            </Button>
-            <span className="text-sm tabular-nums">
-              {tTable('pageOf', { page, total: result.totalPages })}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= result.totalPages || isLoading}
-              onClick={() =>
-                setPage((current) => Math.min(result.totalPages, current + 1))
-              }
-            >
-              {t('pagination.next')}
-            </Button>
-          </div>
-        </div>
+      {result ? (
+        <TablePagination
+          page={page}
+          totalPages={result.totalPages}
+          total={result.total}
+          pageSize={effectivePageSize}
+          isLoading={isLoading}
+          onPageChange={(next) => setValues({ page: String(next) })}
+          onPageSizeChange={(next) => setValues({ pageSize: String(next), page: null })}
+          totalLabel={t('total', { count: result.total })}
+        />
       ) : null}
 
       <StockAdjustSheet

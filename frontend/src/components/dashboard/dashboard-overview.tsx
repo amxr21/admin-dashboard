@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { ArrowLeft, ArrowRight, PackagePlus, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, PackagePlus, RefreshCw, TicketPlus } from 'lucide-react';
 
 import { FulfillmentHealthWidget } from '@/components/dashboard/fulfillment-health-widget';
+import { NeedsAttentionWidget } from '@/components/dashboard/needs-attention-widget';
 import { OrderValueWidget } from '@/components/dashboard/order-value-widget';
 import { RecentActivityWidget } from '@/components/dashboard/recent-activity-widget';
 import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-chart';
@@ -30,17 +31,20 @@ import {
   defaultRange,
   deltaPercent,
   fetchFulfillmentHealth,
+  fetchNeedsAttention,
   fetchOrderValueDistribution,
   fetchOverview,
   fetchReturnsSummary,
   fetchRevenue,
   fetchStatusBreakdown,
   fetchTopProducts,
+  fillOrdersGaps,
   fillRevenueGaps,
   previousPeriod,
   samePeriodLastYear,
   type DateRange,
   type FulfillmentHealth,
+  type NeedsAttention,
   type OrderValueDistribution,
   type Overview,
   type ReturnsSummary,
@@ -82,9 +86,14 @@ export function DashboardOverview() {
   const [previousOverview, setPreviousOverview] = useState<Overview | null>(null);
   const [points, setPoints] = useState<RevenuePoint[]>([]);
   const [comparisonPoints, setComparisonPoints] = useState<RevenuePoint[] | null>(null);
+  // C1.3 — the same already-fetched revenue series carries an `orders` count
+  // per bucket; gap-filled the same way for the Orders tile's sparkline, no
+  // second request.
+  const [ordersPoints, setOrdersPoints] = useState<{ date: string; orders: number | null }[]>([]);
   const [topProducts, setTopProducts] = useState<TopProducts | null>(null);
   const [statusBreakdown, setStatusBreakdown] = useState<StatusBreakdown | null>(null);
   const [fulfillment, setFulfillment] = useState<FulfillmentHealth | null>(null);
+  const [needsAttention, setNeedsAttention] = useState<NeedsAttention | null>(null);
   const [returns, setReturns] = useState<ReturnsSummary | null>(null);
   const [orderValue, setOrderValue] = useState<OrderValueDistribution | null>(null);
   const [recentActivity, setRecentActivity] = useState<AuditEntry[] | null>(null);
@@ -114,6 +123,7 @@ export function DashboardOverview() {
         loadedTop,
         loadedBreakdown,
         loadedFulfillment,
+        loadedNeedsAttention,
         loadedReturns,
         loadedOrderValue,
         loadedActivity,
@@ -127,6 +137,9 @@ export function DashboardOverview() {
         fetchTopProducts(range, 5),
         fetchStatusBreakdown(range),
         fetchFulfillmentHealth(range),
+        // No range argument — deliberately live state, see the widget's own
+        // doc comment.
+        fetchNeedsAttention(),
         fetchReturnsSummary(range),
         fetchOrderValueDistribution(range),
         fetchAudit({ page: 1, pageSize: 6 }),
@@ -135,6 +148,7 @@ export function DashboardOverview() {
       setOverview(loadedOverview);
       setPreviousOverview(loadedPreviousOverview);
       setPoints(fillRevenueGaps(series.points, range, 'day'));
+      setOrdersPoints(fillOrdersGaps(series.points, range, 'day'));
       setComparisonPoints(
         comparisonRange && comparisonSeries
           ? fillRevenueGaps(comparisonSeries.points, comparisonRange, 'day')
@@ -143,6 +157,7 @@ export function DashboardOverview() {
       setTopProducts(loadedTop);
       setStatusBreakdown(loadedBreakdown);
       setFulfillment(loadedFulfillment);
+      setNeedsAttention(loadedNeedsAttention);
       setReturns(loadedReturns);
       setOrderValue(loadedOrderValue);
       setRecentActivity(loadedActivity.entries);
@@ -173,6 +188,10 @@ export function DashboardOverview() {
     overview && previousOverview
       ? deltaPercent(overview.canceledOrders, previousOverview.canceledOrders)
       : undefined;
+  const unitsSoldDelta =
+    overview && previousOverview
+      ? deltaPercent(overview.unitsSold, previousOverview.unitsSold)
+      : undefined;
 
   // Names WHICH period a delta compares against — must track `comparison`,
   // never hardcode "previous period" while potentially showing a
@@ -194,10 +213,17 @@ export function DashboardOverview() {
           top bar (Phase 2). Date range is a single preset trigger (was two
           bare inputs + Reset), a comparison selector drives every delta's
           label, "Updated ⟨date⟩ ⟨time⟩" IS the refresh control (the separate
-          button folded into it), and the only real action — Add product —
-          is the primary button at the reading-end. The old ghost-button row
-          (View low stock / Audit trail / Order history) stays removed: all
-          three duplicated the sidebar. */}
+          button folded into it). The old ghost-button row (View low stock /
+          Audit trail / Order history) stays removed: all three duplicated
+          the sidebar.
+          Quick actions are the two that actually exist: Add product
+          (primary) and Create discount (secondary). "Create order" is
+          deliberately NOT here — there is no order-creation path anywhere in
+          this app (no `POST /orders`, no admin form; orders are
+          storefront-originated only, see CLAUDE.md). Both link to the
+          resource's list page rather than opening its create Sheet directly
+          — `resource-table.tsx` owns that Sheet's open state and has no
+          URL-addressable way to request it pre-opened. */}
       <Reveal>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -230,6 +256,12 @@ export function DashboardOverview() {
                     time: formatter.dateTime(lastUpdated, { timeStyle: 'short' }),
                   })
                 : t('refresh')}
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/r/discounts">
+                <TicketPlus className="size-4" aria-hidden />
+                {t('quickActions.createDiscount')}
+              </Link>
             </Button>
             <Button asChild size="sm">
               <Link href="/admin/r/products">
@@ -269,34 +301,70 @@ export function DashboardOverview() {
             happens to share its column count." */}
         <section className="contents" aria-label={t('title')}>
           {isLoading || !overview ? (
-            Array.from({ length: 4 }, (_, index) => (
-              <Skeleton key={index} className="col-span-12 h-28 w-full sm:col-span-6 lg:col-span-3" />
+            // C1.2: 6 tiles now, not 4 — the spec's KPI row width, refund
+            // rate and fulfilment SLA are the two still missing (need new
+            // reports-service aggregates, tracked separately, not silently
+            // dropped).
+            Array.from({ length: 6 }, (_, index) => (
+              <Skeleton key={index} className="col-span-12 h-36 w-full sm:col-span-6 lg:col-span-2" />
             ))
           ) : (
             <>
-              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-3">
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-2">
                 <StatTile
                   labelKey="totalRevenue"
+                  definitionKey="definitions.totalRevenue"
                   value={Number(overview.revenue)}
                   format="currency"
                   deltaPercent={revenueDelta}
                   comparisonLabel={comparisonLabel}
                   icon="revenue"
+                  sparklineData={points.map((point) => ({ date: point.date, value: point.revenue }))}
                 />
               </Reveal>
-              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-3" delay={0.03}>
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-2" delay={0.03}>
                 <StatTile
                   labelKey="totalOrders"
+                  definitionKey="definitions.totalOrders"
                   value={overview.orders}
                   deltaPercent={ordersDelta}
                   comparisonLabel={comparisonLabel}
                   icon="orders"
                   href="/admin/orders"
+                  sparklineData={ordersPoints.map((point) => ({ date: point.date, value: point.orders }))}
                 />
               </Reveal>
-              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-3" delay={0.06}>
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-2" delay={0.06}>
+                <StatTile
+                  labelKey="averageOrderValue"
+                  definitionKey="definitions.averageOrderValue"
+                  value={Number(overview.averageOrderValue)}
+                  format="currency"
+                  icon="average"
+                  // Excludes cancelled orders (see the definition tooltip) —
+                  // a period-over-period delta for AOV isn't wired here
+                  // since neither this file nor `previousOverview` had one
+                  // before this session and computing it well needs the
+                  // same "0 paid orders → undefined, not NaN" guard the
+                  // backend already applies — left for a follow-up rather
+                  // than approximated.
+                  noDeltaReason={t('noComparison')}
+                />
+              </Reveal>
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-2" delay={0.09}>
+                <StatTile
+                  labelKey="unitsSold"
+                  definitionKey="definitions.unitsSold"
+                  value={overview.unitsSold}
+                  deltaPercent={unitsSoldDelta}
+                  comparisonLabel={comparisonLabel}
+                  icon="units"
+                />
+              </Reveal>
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-2" delay={0.12}>
                 <StatTile
                   labelKey="canceledOrders"
+                  definitionKey="definitions.canceledOrders"
                   value={overview.canceledOrders}
                   deltaPercent={canceledDelta}
                   comparisonLabel={comparisonLabel}
@@ -307,16 +375,16 @@ export function DashboardOverview() {
                   href="/admin/orders?status=CANCELED"
                 />
               </Reveal>
-              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-3" delay={0.09}>
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-2" delay={0.15}>
                 {/* No deltaPercent here on purpose: low-stock is a live
                     snapshot (`stock <= threshold` right now), not scoped to
                     the selected date range on the backend — a period-over-
                     period comparison would just repeat the same number and
                     imply a trend that isn't real. The delta SLOT still
-                    renders (noDeltaReason), consistent with the other three
-                    tiles. */}
+                    renders (noDeltaReason), consistent with the other tiles. */}
                 <StatTile
                   labelKey="lowStockProducts"
+                  definitionKey="definitions.lowStockProducts"
                   value={overview.lowStockProducts}
                   icon="inventory"
                   noDeltaReason={t('liveSnapshot')}
@@ -335,7 +403,17 @@ export function DashboardOverview() {
             comparisonLabel={comparisonSeriesLabel}
             isLoading={isLoading}
             error={error}
+            drillDownEnabled
           />
+        </Reveal>
+
+        {/* C1.5 — the umbrella "what needs a human today" queue, ahead of
+            Fulfillment health (one narrower slice of the same question:
+            orders stuck past their SLA). Live state, not scoped to the
+            range/comparison controls above — see the widget's own doc
+            comment for why. */}
+        <Reveal className="col-span-12">
+          <NeedsAttentionWidget data={needsAttention} isLoading={isLoading} />
         </Reveal>
 
         <Reveal className="col-span-12 sm:col-span-6">
@@ -362,7 +440,7 @@ export function DashboardOverview() {
         <Reveal className="col-span-12">
           <div className="flex justify-end">
             <Link
-              href="/admin/reports"
+              href="/admin/reports/overview"
               className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
             >
               {t('viewReports')}

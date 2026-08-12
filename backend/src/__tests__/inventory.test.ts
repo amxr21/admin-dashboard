@@ -7,6 +7,7 @@ import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { signToken } from '../services/auth.service.js';
 import { DEFAULT_LOW_STOCK_THRESHOLD } from '../services/inventory.service.js';
+import { waitFor } from './helpers/wait-for.js';
 
 /**
  * Inventory.
@@ -99,9 +100,22 @@ function saveSetting(body: Record<string, unknown>) {
   return request(app).patch('/api/v1/settings').set(auth(ownerToken)).send(body);
 }
 
-/** notify() is fire-and-forget — give its write a moment to land. */
-function waitForNotify() {
-  return new Promise((resolve) => setTimeout(resolve, 400));
+/**
+ * notify() is fire-and-forget. For an assertion expecting a notification
+ * TO exist, poll for it (`waitForNotifyCount`) instead of guessing a delay.
+ * For an assertion expecting one NOT to exist, there is nothing to poll for
+ * — fall back to a fixed wait long enough to be confident nothing lands
+ * later (`waitForNoNotify`).
+ */
+function waitForNotifyCount(where: Record<string, unknown>, expected: number) {
+  return waitFor(async () => {
+    const count = await prisma.notification.count({ where });
+    return count === expected ? count : null;
+  });
+}
+
+function waitForNoNotify() {
+  return new Promise((resolve) => setTimeout(resolve, 1500));
 }
 
 beforeAll(async () => {
@@ -296,6 +310,38 @@ describe('the log is append-only', () => {
     expect(body.movements[0]?.reason).toBe('CORRECTION');
   });
 
+  it('resolves the actor into a display name (B4.3)', async () => {
+    const id = await makeProduct(0);
+    await adjust(id, { delta: 5, reason: 'RECEIVED' });
+
+    const res = await request(app).get(`/api/v1/inventory/${id}/movements`).set(auth(ownerToken));
+
+    const body = res.body as { data: { movements: { actorId: string; actorName: string | null }[] } };
+    expect(body.data.movements[0]?.actorId).toBe(ownerId);
+    // The fixture user is created with `name: role`, i.e. "OWNER" here — not
+    // the email, proving the name (not just a non-null email fallback) won.
+    expect(body.data.movements[0]?.actorName).toBe('OWNER');
+  });
+
+  it('falls back to null actorName rather than throwing when the actor no longer exists', async () => {
+    const id = await makeProduct(0);
+    await adjust(id, { delta: 5, reason: 'RECEIVED' });
+
+    const movement = await prisma.stockMovement.findFirstOrThrow({ where: { productId: id } });
+    // Simulates a deleted staff account — actorId is a plain id, not an FK,
+    // specifically so the row survives this.
+    await prisma.stockMovement.update({
+      where: { id: movement.id },
+      data: { actorId: 'no-such-user-id' },
+    });
+
+    const res = await request(app).get(`/api/v1/inventory/${id}/movements`).set(auth(ownerToken));
+
+    const body = res.body as { data: { movements: { actorName: string | null }[] } };
+    expect(res.status).toBe(200);
+    expect(body.data.movements[0]?.actorName).toBeNull();
+  });
+
   it('exposes no route to edit or delete a movement', async () => {
     const id = await makeProduct(0);
     await adjust(id, { delta: 5, reason: 'RECEIVED' });
@@ -408,32 +454,21 @@ describe('crossing into low stock notifies staff', () => {
     const id = await makeProduct(20);
     const product = await prisma.product.findUniqueOrThrow({ where: { id } });
 
+    const where = { type: 'inventory.low-stock', title: product.name };
+
     // 20 -> 15: still above 10, no crossing yet.
     await adjust(id, { delta: -5, reason: 'SOLD' });
-    await waitForNotify();
-    expect(
-      await prisma.notification.count({
-        where: { type: 'inventory.low-stock', title: product.name },
-      }),
-    ).toBe(0);
+    await waitForNoNotify();
+    expect(await prisma.notification.count({ where })).toBe(0);
 
     // 15 -> 8: crosses the threshold.
     await adjust(id, { delta: -7, reason: 'SOLD' });
-    await waitForNotify();
-    expect(
-      await prisma.notification.count({
-        where: { type: 'inventory.low-stock', title: product.name },
-      }),
-    ).toBe(1);
+    expect(await waitForNotifyCount(where, 1)).toBe(1);
 
     // 8 -> 5: still low, but not a NEW crossing — must not renotify.
     await adjust(id, { delta: -3, reason: 'SOLD' });
-    await waitForNotify();
-    expect(
-      await prisma.notification.count({
-        where: { type: 'inventory.low-stock', title: product.name },
-      }),
-    ).toBe(1);
+    await waitForNoNotify();
+    expect(await prisma.notification.count({ where })).toBe(1);
   });
 
   it('does not fire when notifications.lowStockAlerts is off', async () => {
@@ -442,7 +477,7 @@ describe('crossing into low stock notifies staff', () => {
     const product = await prisma.product.findUniqueOrThrow({ where: { id } });
 
     await adjust(id, { delta: -15, reason: 'SOLD' });
-    await waitForNotify();
+    await waitForNoNotify();
 
     expect(
       await prisma.notification.count({

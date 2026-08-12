@@ -2,12 +2,27 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Bell, Mail, Palette, Settings2, Shield, SlidersHorizontal, Store, type LucideIcon } from 'lucide-react';
+import {
+  Bell,
+  Mail,
+  Palette,
+  Search,
+  Settings2,
+  Shield,
+  SlidersHorizontal,
+  Store,
+  Tag,
+  type LucideIcon,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
+import { Undo2 } from 'lucide-react';
+
 import { ErrorScreen } from '@/components/errors/error-screen';
+import { Link } from '@/i18n/navigation';
 import { ImageUploadField } from '@/components/image-upload-field';
 import { useAppSettings } from '@/components/providers/settings-provider';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -21,12 +36,15 @@ import {
 } from '@/components/ui/select';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Timestamp } from '@/components/timestamp';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
   fetchSettings,
   fieldErrorsFrom,
+  revertSetting,
   saveSettings,
   type Setting,
 } from '@/lib/settings-api';
@@ -86,7 +104,15 @@ export const SETTINGS_GROUPS = [
   {
     id: 'security',
     icon: Shield,
-    match: (key: string) => key.startsWith('security.'),
+    // `staff.*` folded in here rather than given its own single-item group —
+    // "default invite role" is a staff/access policy exactly like session
+    // timeout and the password floor next to it, not a distinct category.
+    match: (key: string) => key.startsWith('security.') || key.startsWith('staff.'),
+  },
+  {
+    id: 'labels',
+    icon: Tag,
+    match: (key: string) => key.startsWith('labels.'),
   },
 ] as const;
 
@@ -145,6 +171,14 @@ export function SettingsForm() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  /** Filters the WHOLE form by label/description/key — every group stays
+   *  visible, groups with no match just render nothing, so a query never
+   *  makes the page's own structure jump around. */
+  const [searchQuery, setSearchQuery] = useState('');
+  /** The key currently being reverted, or null. A single slot rather than a
+   * Set — the button that triggered it is disabled while its own request is
+   * in flight, and no UI here lets two reverts start at once. */
+  const [revertingKey, setRevertingKey] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -248,6 +282,32 @@ export function SettingsForm() {
     }
   }
 
+  /**
+   * Reverts ONE setting to its declared default. Only offered when that
+   * field has no unsaved local edit — reverting a value the form hasn't
+   * saved yet is what the existing "discard"/re-typing already does, and
+   * conflating the two would make one button mean different things
+   * depending on unrelated state.
+   */
+  async function revert(key: string) {
+    setRevertingKey(key);
+    setError(null);
+
+    try {
+      const updated = await revertSetting(key);
+      setSettings(updated);
+      setValues(Object.fromEntries(updated.map((s) => [s.key, s.value])));
+      const reverted = updated.find((s) => s.key === key);
+      if (reverted) previewSetting(key, reverted.value);
+      toast.success(t('reverted'));
+      void refreshAppSettings();
+    } catch (caught) {
+      toast.error(translateError(caught));
+    } finally {
+      setRevertingKey(null);
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -270,6 +330,26 @@ export function SettingsForm() {
 
   const isDirty = Object.keys(changes()).length > 0;
 
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const matchesQuery = (setting: Setting) =>
+    normalizedQuery.length === 0 ||
+    setting.label.toLowerCase().includes(normalizedQuery) ||
+    (setting.description?.toLowerCase().includes(normalizedQuery) ?? false) ||
+    setting.key.toLowerCase().includes(normalizedQuery);
+
+  const filteredSettings = settings.filter(matchesQuery);
+  const groups = groupByPrefix(filteredSettings);
+
+  /** The most recent `updatedAt` across a group's fields, or null when
+   *  nothing in the group has ever been changed from its default. */
+  function lastModifiedFor(items: Setting[]): string | null {
+    const timestamps = items
+      .map((item) => item.updatedAt)
+      .filter((value): value is string => value !== null)
+      .sort();
+    return timestamps.at(-1) ?? null;
+  }
+
   return (
     <div className="space-y-6">
       {error ? (
@@ -281,44 +361,102 @@ export function SettingsForm() {
         </p>
       ) : null}
 
-      <div className="space-y-10">
-        {groupByPrefix(settings).map((group, index) => (
-          <section
-            key={group.id}
-            aria-labelledby={`settings-group-${group.id}`}
-            className={cn('space-y-4', index > 0 && 'border-t pt-8')}
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <group.icon className="text-primary size-5" aria-hidden="true" />
-                <h2
-                  id={`settings-group-${group.id}`}
-                  className="text-lg font-semibold tracking-tight"
-                >
-                  {t(`groups.${group.id}.title`)}
-                </h2>
-              </div>
-              <p className="text-muted-foreground text-sm">
-                {t(`groups.${group.id}.description`)}
-              </p>
-            </div>
+      <div className="space-y-2">
+        <Label htmlFor="settings-search" className="sr-only">
+          {t('search')}
+        </Label>
+        <div className="relative max-w-sm">
+          <Search
+            className="text-muted-foreground pointer-events-none absolute top-1/2 start-3 size-4 -translate-y-1/2"
+            aria-hidden="true"
+          />
+          <Input
+            id="settings-search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder={t('searchPlaceholder')}
+            className="ps-9"
+          />
+        </div>
+      </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {group.items.map((setting) => (
-                <SettingField
-                  key={setting.key}
-                  setting={setting}
-                  value={values[setting.key] ?? setting.value}
-                  error={fieldErrors[setting.key]}
-                  onChange={(value) => set(setting.key, value)}
-                  // Address is the one field genuinely long-form enough to
-                  // want the full row rather than half of it.
-                  fullWidth={setting.key === 'store.address'}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
+      {normalizedQuery.length > 0 && groups.length === 0 ? (
+        <p className="text-muted-foreground text-sm">{t('searchEmpty')}</p>
+      ) : null}
+
+      <div className="space-y-10">
+        {groups.map((group, index) => {
+          const lastModified = lastModifiedFor(group.items);
+
+          return (
+            <section
+              key={group.id}
+              aria-labelledby={`settings-group-${group.id}`}
+              className={cn('space-y-4', index > 0 && 'border-t pt-8')}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <group.icon className="text-primary size-5" aria-hidden="true" />
+                    <h2
+                      id={`settings-group-${group.id}`}
+                      className="text-lg font-semibold tracking-tight"
+                    >
+                      {t(`groups.${group.id}.title`)}
+                    </h2>
+                  </div>
+                  <p className="text-muted-foreground text-sm">
+                    {t(`groups.${group.id}.description`)}
+                  </p>
+                </div>
+
+                {/* "other" has no real audited entity of its own to scope a
+                    link to — every OTHER group maps 1:1 onto the same
+                    `entity: 'settings'` audit action, so the link is
+                    identical across groups; only the "last changed"
+                    timestamp differs per group. */}
+                {group.id !== 'other' ? (
+                  <div className="text-muted-foreground shrink-0 text-xs">
+                    {lastModified ? (
+                      <span className="flex items-center gap-1">
+                        {t('lastChangedInSection')} <Timestamp value={lastModified} />
+                      </span>
+                    ) : (
+                      <span>{t('neverChangedInSection')}</span>
+                    )}
+                    <Link
+                      href="/admin/audit?entity=settings"
+                      className="text-primary block hover:underline"
+                    >
+                      {t('viewAuditHistory')}
+                    </Link>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {group.items.map((setting) => (
+                  <SettingField
+                    key={setting.key}
+                    setting={setting}
+                    value={values[setting.key] ?? setting.value}
+                    error={fieldErrors[setting.key]}
+                    onChange={(value) => set(setting.key, value)}
+                    // Address is the one field genuinely long-form enough to
+                    // want the full row rather than half of it.
+                    fullWidth={setting.key === 'store.address'}
+                    // Revert is only meaningful against the SAVED value — an
+                    // unsaved local edit already has "discard" (re-type, or
+                    // navigate away) covered by the existing dirty-state flow.
+                    isFieldDirty={values[setting.key] !== setting.value}
+                    onRevert={() => void revert(setting.key)}
+                    isReverting={revertingKey === setting.key}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
 
       <div className="flex items-center gap-3 border-t pt-4">
@@ -351,13 +489,29 @@ interface SettingFieldProps {
   onChange: (value: Value) => void;
   /** Spans both grid columns instead of sharing a row with its neighbor. */
   fullWidth?: boolean;
+  /** True when the form holds an unsaved edit for this key — see the
+   * revert-button gating note at the call site. */
+  isFieldDirty: boolean;
+  onRevert: () => void;
+  isReverting: boolean;
 }
 
 /** One control, chosen by the type the SERVER declared. */
-function SettingField({ setting, value, error, onChange, fullWidth }: SettingFieldProps) {
-  // Only the language namespace is needed here — every other label and
+function SettingField({
+  setting,
+  value,
+  error,
+  onChange,
+  fullWidth,
+  isFieldDirty,
+  onRevert,
+  isReverting,
+}: SettingFieldProps) {
+  // `language` and `roles` are needed here — every other label and
   // description comes from the server's registry, already human-readable.
   const tLanguage = useTranslations('language');
+  const tRoles = useTranslations('roles');
+  const t = useTranslations('settings');
   const id = `setting-${setting.key}`;
   const errorId = `${id}-error`;
 
@@ -418,7 +572,9 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
                       codes, etc). */}
                   {setting.key === 'ui.defaultLocale' && tLanguage.has(option)
                     ? tLanguage(option)
-                    : option}
+                    : setting.key === 'staff.defaultInviteRole' && tRoles.has(option)
+                      ? tRoles(option)
+                      : option}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -521,13 +677,54 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
         fullWidth && 'col-span-full',
       )}
     >
-      {setting.type === 'boolean' ? null : (
-        // `id` on the label lets the segmented control (a radiogroup, which
-        // can't be the target of htmlFor) name itself via aria-labelledby.
-        <Label id={`${id}-label`} htmlFor={id}>
-          {setting.label}
-        </Label>
-      )}
+      <div className="flex items-start justify-between gap-2">
+        {setting.type === 'boolean' ? null : (
+          // `id` on the label lets the segmented control (a radiogroup, which
+          // can't be the target of htmlFor) name itself via aria-labelledby.
+          <Label id={`${id}-label`} htmlFor={id}>
+            {setting.label}
+          </Label>
+        )}
+
+        {!setting.isDefault ? (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="secondary" className="cursor-default text-[10px]">
+                  {t('modified')}
+                </Badge>
+              </TooltipTrigger>
+              {setting.updatedAt ? (
+                <TooltipContent>
+                  {t('lastChanged')} <Timestamp value={setting.updatedAt} />
+                </TooltipContent>
+              ) : null}
+            </Tooltip>
+
+            {/* Disabled while there is an unsaved local edit — see the
+                call site's note on why revert only targets the SAVED
+                value, never a pending, un-submitted one. */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  disabled={isFieldDirty || isReverting}
+                  aria-label={t('revertToDefault', { label: setting.label })}
+                  onClick={onRevert}
+                >
+                  <Undo2 aria-hidden className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isFieldDirty ? t('revertBlockedByUnsavedEdit') : t('revertToDefault', { label: setting.label })}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        ) : null}
+      </div>
 
       {control()}
 

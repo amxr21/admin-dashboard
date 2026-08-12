@@ -144,7 +144,7 @@ export function StockAdjustSheet({
       <SheetContent
         side="end"
         variant={editPanelMode}
-        className="w-full max-w-md overflow-y-auto"
+        className="max-w-md overflow-y-auto"
         title={t('title', { name: product.name })}
       >
         <div className="space-y-5">

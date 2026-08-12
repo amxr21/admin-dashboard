@@ -1,4 +1,60 @@
+import { createElement, type ReactNode } from 'react';
+import { vi } from 'vitest';
+
 import '@testing-library/jest-dom/vitest';
+
+/**
+ * Default stub for the locale-aware navigation primitives.
+ *
+ * Fifteen test files each hand-rolled a PARTIAL mock of this module —
+ * typically `Link` alone. That works right up until a component starts using
+ * another primitive from it, at which point every one of those files fails
+ * with "No `useRouter` export is defined on the mock", naming the mock rather
+ * than the change that caused it. Adding URL-backed table state broke 18
+ * tests across the suite that way, none of which were testing navigation.
+ *
+ * Declaring the whole surface once, here, means a component adopting
+ * `useRouter` or `usePathname` doesn't break unrelated suites. A test that
+ * cares about navigation still overrides this with its own `vi.mock`, which
+ * takes precedence over a setup-file default.
+ */
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ href, children, ...props }: Record<string, unknown>) =>
+    createElement('a', { href, ...props }, children as ReactNode),
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  usePathname: () => '/',
+  redirect: vi.fn(),
+  getPathname: ({ href }: { href: string }) => href,
+}));
+
+/**
+ * Default stub for `next/navigation`.
+ *
+ * next-intl's navigation module resolves this in a way Vitest cannot follow,
+ * and `useSearchParams` is now read by any list page holding its state in the
+ * URL. Defaults to an empty query string — the same view as opening the page
+ * with no filters applied. A test that needs real params overrides this
+ * locally.
+ */
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  usePathname: () => '/',
+}));
 
 /**
  * jsdom does not implement `window.matchMedia`.

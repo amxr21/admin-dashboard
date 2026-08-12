@@ -4,6 +4,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import type { ReturnsSummary } from '@/lib/reports-api';
 
 /**
@@ -22,6 +23,7 @@ export function ReturnsSummaryWidget({ data, isLoading = false }: ReturnsSummary
   const t = useTranslations('dashboard.returns');
   const tStatus = useTranslations('states');
   const formatter = useFormatter();
+  const formatCurrency = useCurrencyFormat();
 
   return (
     <section className="bg-card rounded-lg border p-4" aria-label={t('title')}>
@@ -50,7 +52,7 @@ export function ReturnsSummaryWidget({ data, isLoading = false }: ReturnsSummary
             <div className="space-y-0.5">
               <dt className="text-muted-foreground text-xs">{t('refundValue')}</dt>
               <dd className="text-sm font-medium tabular-nums">
-                {formatter.number(Number(data.refundValue), 'currency')}
+                {formatCurrency(Number(data.refundValue))}
               </dd>
             </div>
             <div className="space-y-0.5">

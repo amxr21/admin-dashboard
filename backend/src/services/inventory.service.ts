@@ -132,10 +132,27 @@ export async function listMovements(
     prisma.stockMovement.count({ where: { productId } }),
   ]);
 
+  /**
+   * `actorId` is a plain id, not a relation (see the schema comment — the
+   * trail must survive the staff member being deleted, same reasoning as
+   * `OrderStatusHistory.changedById`). Names are resolved here, batched, at
+   * READ time rather than snapshotted at write time the way the audit
+   * trail's `actorEmail`/`actorRole` are: this is a display convenience, not
+   * evidence, so "Unknown" for a deleted account is an acceptable trade
+   * against a schema change B4.3 doesn't otherwise need.
+   */
+  const actorIds = [...new Set(movements.map((m) => m.actorId).filter((id): id is string => id !== null))];
+  const actors =
+    actorIds.length > 0
+      ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true } })
+      : [];
+  const actorNames = new Map(actors.map((actor) => [actor.id, actor.name ?? actor.email]));
+
   return {
     product,
     movements: movements.map((movement) => ({
       ...movement,
+      actorName: movement.actorId ? (actorNames.get(movement.actorId) ?? null) : null,
       createdAt: movement.createdAt.toISOString(),
     })),
     total,

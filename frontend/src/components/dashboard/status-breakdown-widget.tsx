@@ -11,8 +11,10 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
+import { Link } from '@/i18n/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/status-badge';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import type { StatusBreakdown } from '@/lib/reports-api';
 
 /**
@@ -48,7 +50,9 @@ interface StatusBreakdownWidgetProps {
 export function StatusBreakdownWidget({ data, isLoading = false }: StatusBreakdownWidgetProps) {
   const t = useTranslations('reports');
   const tStates = useTranslations('states');
+  const tOrderStatus = useTranslations('orderStatus');
   const formatter = useFormatter();
+  const formatCurrency = useCurrencyFormat();
 
   return (
     <section className="bg-card rounded-lg border p-4" aria-label={t('statusBreakdown')}>
@@ -68,16 +72,33 @@ export function StatusBreakdownWidget({ data, isLoading = false }: StatusBreakdo
               | undefined;
 
             return (
-              <li key={row.status} className="flex flex-col items-center gap-1.5 text-center">
-                <span className="flex items-center gap-1.5">
-                  {Icon ? (
-                    <Icon className="text-muted-foreground size-4 shrink-0" aria-hidden />
-                  ) : null}
-                  <span className="text-sm font-semibold tabular-nums">
-                    {formatter.number(row.orders)}
+              <li key={row.status}>
+                {/* The whole cell is the drill-down — a count with nowhere to
+                    go is a dead end, same reasoning as StatTile's own href. */}
+                <Link
+                  href={`/admin/orders?status=${row.status}`}
+                  aria-label={t('viewOrdersWithStatus', {
+                    status: tOrderStatus.has(row.status) ? tOrderStatus(row.status) : row.status,
+                  })}
+                  className="hover:bg-muted focus-visible:ring-ring flex flex-col items-center gap-1.5 rounded-md p-1.5 text-center transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                >
+                  <span className="flex items-center gap-1.5">
+                    {Icon ? (
+                      <Icon className="text-muted-foreground size-4 shrink-0" aria-hidden />
+                    ) : null}
+                    <span className="text-sm font-semibold tabular-nums">
+                      {formatter.number(row.orders)}
+                    </span>
                   </span>
-                </span>
-                <StatusBadge kind="orderStatus" value={row.status} />
+                  <StatusBadge kind="orderStatus" value={row.status} />
+                  {/* Revenue per status — returned by the endpoint and typed,
+                      but previously never rendered anywhere (C2.1). Shown
+                      small, under the badge: the count is the headline
+                      figure for THIS widget, the total is context. */}
+                  <span className="text-muted-foreground text-xs tabular-nums">
+                    {formatCurrency(Number(row.total))}
+                  </span>
+                </Link>
               </li>
             );
           })}

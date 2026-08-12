@@ -9,6 +9,7 @@ import {
   deleteImage,
   listImages,
   reorderImages,
+  setImageAlt,
 } from '../../services/product-images.service.js';
 
 /**
@@ -21,15 +22,28 @@ export const productImagesRouter = Router();
 
 const guard = [authenticate, requireArea('products')] as const;
 
+// Alt text is capped well short of the column's 255 — a description that
+// long stops being alt text and starts being a caption; screen readers read
+// it in full on every encounter, so length has a real cost to the person
+// it's meant to help.
+const altSchema = z.string().trim().max(160).nullable();
+
 const addBody = z
   .object({
     url: z.string().trim().url('Enter a valid URL').max(512),
+    alt: altSchema.optional(),
   })
   .strict();
 
 const reorderBody = z
   .object({
     ids: z.array(z.string().trim().min(1)).min(1),
+  })
+  .strict();
+
+const altBody = z
+  .object({
+    alt: altSchema,
   })
   .strict();
 
@@ -41,8 +55,21 @@ productImagesRouter.post('/products/:productId/images', ...guard, async (req, re
   const parsed = addBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
 
-  const image = await addImage(String(req.params.productId), parsed.data.url, req);
+  const image = await addImage(
+    String(req.params.productId),
+    parsed.data.url,
+    parsed.data.alt ?? null,
+    req,
+  );
   res.status(201).json({ data: { image } });
+});
+
+productImagesRouter.patch('/images/:id', ...guard, async (req, res) => {
+  const parsed = altBody.safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+
+  const image = await setImageAlt(String(req.params.id), parsed.data.alt, req);
+  res.json({ data: { image } });
 });
 
 productImagesRouter.put('/products/:productId/images/order', ...guard, async (req, res) => {

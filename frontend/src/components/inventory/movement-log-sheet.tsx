@@ -2,21 +2,36 @@
 
 import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
+import { CheckCircle2, ChevronLeft, ChevronRight, TriangleAlert } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
-import { fetchMovements, type MovementListResult } from '@/lib/inventory-api';
+import {
+  fetchMovements,
+  fetchReconcile,
+  type MovementListResult,
+  type ReconcileResult,
+} from '@/lib/inventory-api';
 
 /**
  * Why this product's stock is what it is.
  *
  * Newest first, because the recent change is what someone is checking. Each
- * entry shows the signed delta, the reason and the note — the three things
- * that turn "47" from a number into an explanation.
+ * entry shows the signed delta, the reason, the note, and WHO (B4.3) — the
+ * four things that turn "47" from a number into an explanation.
+ *
+ * ─── RECONCILE (B4.2) ──────────────────────────────────────────────────
+ * `GET /inventory/:productId/reconcile` existed with zero frontend
+ * references — built specifically so a stock/log mismatch is diagnosable
+ * from here rather than by someone querying the database directly. Fetched
+ * once per open, not polled: this is a rarely-true discrepancy, not a
+ * live-changing value.
  */
+
+const PAGE_SIZE = 20;
 
 interface MovementLogSheetProps {
   productId: string | null;
@@ -36,8 +51,18 @@ export function MovementLogSheet({
   const { editPanelMode } = useAppSettings();
 
   const [result, setResult] = useState<MovementListResult | null>(null);
+  const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [reconcile, setReconcile] = useState<ReconcileResult | null>(null);
+
+  // Reset to page 1 whenever the sheet opens for a (possibly different)
+  // product — otherwise reopening on another product could silently request
+  // a page past the end of its own, shorter history.
+  useEffect(() => {
+    if (open) setPage(1);
+  }, [open, productId]);
 
   useEffect(() => {
     if (!open || !productId) return;
@@ -46,7 +71,7 @@ export function MovementLogSheet({
     setIsLoading(true);
     setError(null);
 
-    fetchMovements(productId, { pageSize: 50 })
+    fetchMovements(productId, { page, pageSize: PAGE_SIZE })
       .then((loaded) => {
         if (!cancelled) setResult(loaded);
       })
@@ -60,14 +85,37 @@ export function MovementLogSheet({
     return () => {
       cancelled = true;
     };
-  }, [open, productId, translateError]);
+  }, [open, productId, page, translateError]);
+
+  // Fetched once per open — a rarely-true discrepancy, not a value worth
+  // polling — and deliberately best-effort: a failed reconcile check must
+  // not block the log itself from showing.
+  useEffect(() => {
+    if (!open || !productId) {
+      setReconcile(null);
+      return;
+    }
+
+    let cancelled = false;
+    fetchReconcile(productId)
+      .then((loaded) => {
+        if (!cancelled) setReconcile(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setReconcile(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, productId]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="end"
         variant={editPanelMode}
-        className="w-full max-w-md overflow-y-auto"
+        className="max-w-md overflow-y-auto"
         title={t('title')}
       >
         <div className="space-y-4">
@@ -80,6 +128,23 @@ export function MovementLogSheet({
               </p>
             ) : null}
           </div>
+
+          {reconcile && !reconcile.agrees ? (
+            <div className="border-destructive/40 bg-destructive/10 flex items-start gap-2 rounded-md border p-3 text-sm">
+              <TriangleAlert className="text-destructive mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <p>
+                {t('reconcileMismatch', {
+                  stock: formatter.number(reconcile.stock),
+                  fromMovements: formatter.number(reconcile.fromMovements),
+                })}
+              </p>
+            </div>
+          ) : reconcile && reconcile.agrees ? (
+            <div className="text-muted-foreground flex items-center gap-2 text-xs">
+              <CheckCircle2 className="text-success size-3.5 shrink-0" aria-hidden="true" />
+              {t('reconcileAgrees')}
+            </div>
+          ) : null}
 
           {isLoading ? (
             <div className="space-y-2">
@@ -127,25 +192,46 @@ export function MovementLogSheet({
                     {movement.note ? (
                       <p className="text-muted-foreground text-sm">{movement.note}</p>
                     ) : null}
-                    <time
-                      className="text-muted-foreground text-xs"
-                      dateTime={movement.createdAt}
-                    >
-                      {formatter.dateTime(new Date(movement.createdAt), 'long')}
-                    </time>
+                    <p className="text-muted-foreground text-xs">
+                      <time dateTime={movement.createdAt}>
+                        {formatter.dateTime(new Date(movement.createdAt), 'long')}
+                      </time>
+                      {movement.actorName ? (
+                        <span> · {t('by', { name: movement.actorName })}</span>
+                      ) : null}
+                    </p>
                   </div>
                 </li>
               ))}
             </ol>
           ) : null}
 
-          {result && result.total > result.movements.length ? (
-            <p className="text-muted-foreground text-sm">
-              {t('truncated', {
-                shown: formatter.number(result.movements.length),
-                total: formatter.number(result.total),
-              })}
-            </p>
+          {result && result.totalPages > 1 ? (
+            <div className="flex items-center justify-between gap-2 border-t pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isLoading || page <= 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                <ChevronLeft aria-hidden="true" />
+                {t('previousPage')}
+              </Button>
+              <p className="text-muted-foreground text-xs">
+                {t('pageOf', { page: result.page, totalPages: result.totalPages })}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isLoading || page >= result.totalPages}
+                onClick={() => setPage((current) => Math.min(result.totalPages, current + 1))}
+              >
+                {t('nextPage')}
+                <ChevronRight aria-hidden="true" />
+              </Button>
+            </div>
           ) : null}
         </div>
       </SheetContent>

@@ -13,10 +13,14 @@ import { ApiError } from '@/lib/api';
  */
 
 const signIn = vi.fn();
+const verifyTwoFactor = vi.fn();
 const replace = vi.fn();
 
 vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ signIn: (...args: unknown[]) => signIn(...args) }),
+  useAuth: () => ({
+    signIn: (...args: unknown[]) => signIn(...args),
+    verifyTwoFactor: (...args: unknown[]) => verifyTwoFactor(...args),
+  }),
 }));
 
 vi.mock('@/i18n/navigation', () => ({
@@ -37,7 +41,7 @@ async function submit(email = 'a@b.com', password = 'secret123') {
 
 describe('successful sign-in', () => {
   it('signs in and navigates to the dashboard', async () => {
-    signIn.mockResolvedValue(undefined);
+    signIn.mockResolvedValue({ status: 'SIGNED_IN' });
     render(<LoginForm />);
 
     await submit('admin@example.com', 'correct-password');
@@ -45,6 +49,66 @@ describe('successful sign-in', () => {
     expect(signIn).toHaveBeenCalledWith('admin@example.com', 'correct-password');
     // replace, not push — Back must not return to a passed login form.
     expect(replace).toHaveBeenCalledWith('/admin');
+  });
+});
+
+describe('two-factor step', () => {
+  it('does NOT navigate when the password step reports 2FA is required', async () => {
+    signIn.mockResolvedValue({ status: 'TWO_FACTOR_REQUIRED', pendingToken: 'pending-abc' });
+    render(<LoginForm />);
+
+    await submit('2fa@example.com', 'correct-password');
+
+    // The password checked out but the sign-in is not complete — navigating
+    // now would land on the dashboard with no real session behind it.
+    expect(replace).not.toHaveBeenCalled();
+    expect(await screen.findByLabelText(/verification code/i)).toBeInTheDocument();
+  });
+
+  it('submits the pending token and code together, then navigates on success', async () => {
+    signIn.mockResolvedValue({ status: 'TWO_FACTOR_REQUIRED', pendingToken: 'pending-xyz' });
+    verifyTwoFactor.mockResolvedValue(undefined);
+    render(<LoginForm />);
+
+    await submit('2fa@example.com', 'correct-password');
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/verification code/i), '123456');
+    await user.click(screen.getByRole('button', { name: /verify/i }));
+
+    expect(verifyTwoFactor).toHaveBeenCalledWith('pending-xyz', '123456');
+    expect(replace).toHaveBeenCalledWith('/admin');
+  });
+
+  it('reports a wrong code without leaving the code-entry step', async () => {
+    signIn.mockResolvedValue({ status: 'TWO_FACTOR_REQUIRED', pendingToken: 'pending-1' });
+    verifyTwoFactor.mockRejectedValue(new ApiError(400, 'BAD_REQUEST', 'That code is incorrect'));
+    render(<LoginForm />);
+
+    await submit();
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/verification code/i), '000000');
+    await user.click(screen.getByRole('button', { name: /verify/i }));
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    // Still on the code step, not bounced back to email/password.
+    expect(screen.getByLabelText(/verification code/i)).toBeInTheDocument();
+  });
+
+  it('"back to sign in" returns to the password step, not the dashboard', async () => {
+    signIn.mockResolvedValue({ status: 'TWO_FACTOR_REQUIRED', pendingToken: 'pending-2' });
+    render(<LoginForm />);
+
+    await submit();
+    await screen.findByLabelText(/verification code/i);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /back to sign in/i }));
+
+    expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
   });
 });
 
