@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { createElement, type ReactNode } from 'react';
 
@@ -51,6 +51,30 @@ vi.mock('@/components/providers/schema-provider', () => ({
     ],
   }),
 }));
+
+/**
+ * The returns-awaiting-approval badge (C4.1) polls a real endpoint via
+ * `useNavCounts` — mocked here the same way `notifications-bell.test.tsx`
+ * mocks its own count fetch, so these pre-existing tests stay isolated from
+ * network calls and from the badge's own async state entirely. The badge's
+ * OWN behaviour is pinned separately below.
+ */
+const fetchReturns = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/returns-api', () => ({ fetchReturns }));
+
+/** Only the override-rendering tests below need a non-empty `navLabels` —
+ *  every other test in this file relies on the real provider's default
+ *  (empty object), which is why this mock isn't applied at module scope. */
+const navLabels = vi.hoisted(() => ({ current: {} as Record<string, string> }));
+vi.mock('@/components/providers/settings-provider', () => ({
+  useAppSettings: () => ({ navLabels: navLabels.current }),
+}));
+
+beforeEach(() => {
+  fetchReturns.mockReset();
+  fetchReturns.mockResolvedValue({ returns: [], total: 0, page: 1, pageSize: 1, totalPages: 0 });
+  navLabels.current = {};
+});
 
 describe('permission-driven navigation', () => {
   it('shows every area to an owner', () => {
@@ -251,6 +275,42 @@ describe('schema-driven entries', () => {
   });
 });
 
+describe('nav count badge', () => {
+  it('shows the returns-awaiting-approval count on the Returns link', async () => {
+    fetchReturns.mockResolvedValueOnce({ returns: [], total: 4, page: 1, pageSize: 1, totalPages: 4 });
+    render(<SidebarNav role="OWNER" />);
+
+    const link = await screen.findByRole('link', { name: /returns.*4/i });
+    expect(link).toBeInTheDocument();
+  });
+
+  it('renders no badge when nothing is awaiting approval', async () => {
+    fetchReturns.mockResolvedValueOnce({ returns: [], total: 0, page: 1, pageSize: 1, totalPages: 0 });
+    render(<SidebarNav role="OWNER" />);
+
+    // Give the effect a tick to resolve before asserting the negative.
+    await waitFor(() => expect(fetchReturns).toHaveBeenCalled());
+    expect(screen.getByRole('link', { name: /^returns$/i })).toBeInTheDocument();
+  });
+
+  it('requests only the REQUESTED status, not every return', async () => {
+    render(<SidebarNav role="OWNER" />);
+
+    await waitFor(() => expect(fetchReturns).toHaveBeenCalled());
+    expect(fetchReturns).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'REQUESTED' }),
+    );
+  });
+
+  it('degrades to no badge, not a broken page, when the count fetch fails', async () => {
+    fetchReturns.mockRejectedValueOnce(new Error('network error'));
+    render(<SidebarNav role="OWNER" />);
+
+    await waitFor(() => expect(fetchReturns).toHaveBeenCalled());
+    expect(screen.getByRole('link', { name: /^returns$/i })).toBeInTheDocument();
+  });
+});
+
 describe('groups from both sources are merged, not duplicated', () => {
   /**
    * NAVIGATION owns Delivery under `people`; the schema owns Customers and
@@ -294,5 +354,21 @@ describe('groups from both sources are merged, not duplicated', () => {
       'href',
       '/admin',
     );
+  });
+});
+
+describe('business-specific nav labels', () => {
+  it('renders the built-in label when nothing is overridden', () => {
+    render(<SidebarNav role="OWNER" />);
+
+    expect(screen.getByRole('link', { name: /^staff$/i })).toBeInTheDocument();
+  });
+
+  it('renders the override in place of the built-in label', () => {
+    navLabels.current = { staff: 'Baristas' };
+    render(<SidebarNav role="OWNER" />);
+
+    expect(screen.getByRole('link', { name: /baristas/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^staff$/i })).not.toBeInTheDocument();
   });
 });

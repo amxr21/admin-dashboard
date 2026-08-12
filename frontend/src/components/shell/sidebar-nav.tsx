@@ -1,6 +1,6 @@
 'use client';
 
-import { useLocale, useTranslations } from 'next-intl';
+import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 
@@ -17,9 +17,23 @@ import {
   type NavItem,
 } from '@/config/navigation';
 import { canAccessArea, type Area, type StaffRole } from '@/config/areas';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { useResourceSchema } from '@/components/providers/schema-provider';
+import { useNavCounts } from '@/hooks/useNavCounts';
 import { getDirection } from '@/i18n/routing';
 import { cn } from '@/lib/utils';
+
+/**
+ * Which nav item each live count belongs to, by href. A map rather than a
+ * field on `NavItem` in config/navigation.ts — that config is a list of
+ * stable destinations (see its own doc comment); wiring a live count into it
+ * would mix "where can I go" with "does this need attention right now" in
+ * the one file that's supposed to only answer the first question.
+ */
+function countForHref(href: string, counts: ReturnType<typeof useNavCounts>): number | null {
+  if (href === '/admin/returns') return counts.returns;
+  return null;
+}
 
 /**
  * The navigation list. Shared by the desktop sidebar and the mobile drawer so
@@ -48,6 +62,7 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
   // reads `document` and would render 'ltr' on the server then flip after
   // hydration on an Arabic page — a real mismatch, not just a flash).
   const isRtl = getDirection(useLocale()) === 'rtl';
+  const navCounts = useNavCounts(role);
 
   /**
    * Schema-driven entries, merged with the hand-written ones.
@@ -151,6 +166,7 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
                     item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href)
                   }
                   onNavigate={onNavigate}
+                  count={countForHref(item.href, navCounts)}
                 />
               ))}
             </ul>
@@ -200,17 +216,36 @@ interface NavLinkItemProps {
   isRtl: boolean;
   isActive: boolean;
   onNavigate?: () => void;
+  /** A live "needs attention" count — e.g. returns awaiting approval — or
+   *  `null` for an item with no count, an unknown count, or a role that
+   *  can't see one. See `useNavCounts`. Never shown as `0`: "nothing needs
+   *  attention" earns no badge at all, same as the notification bell. */
+  count?: number | null;
 }
 
-function NavLinkItem({ item, collapsed, isRtl, isActive, onNavigate }: NavLinkItemProps) {
+/** Matches NotificationsBell's own cutoff — see MAX_BADGE there. */
+const MAX_BADGE = 99;
+
+function NavLinkItem({ item, collapsed, isRtl, isActive, onNavigate, count }: NavLinkItemProps) {
   const t = useTranslations('nav');
+  const { navLabels } = useAppSettings();
+  const formatter = useFormatter();
   const [open, setOpen] = useState(false);
 
-  // Falls back to the raw key so a resource added to admin.config.ts before
-  // its translation still shows a usable name instead of throwing.
-  const label = t.has(item.labelKey) ? t(item.labelKey) : item.labelKey;
+  // A business-specific override (Settings -> "Staff page name" etc.) wins
+  // over the built-in translation; falls back to the raw key so a resource
+  // added to admin.config.ts before its translation still shows a usable
+  // name instead of throwing.
+  const label = navLabels[item.labelKey] ?? (t.has(item.labelKey) ? t(item.labelKey) : item.labelKey);
   const descriptionKey = `descriptions.${item.labelKey}`;
   const description = t.has(descriptionKey) ? t(descriptionKey) : undefined;
+
+  const hasCount = typeof count === 'number' && count > 0;
+  const formattedCount = hasCount
+    ? count > MAX_BADGE
+      ? `${formatter.number(MAX_BADGE)}+`
+      : formatter.number(count)
+    : null;
 
   return (
     <li>
@@ -225,7 +260,7 @@ function NavLinkItem({ item, collapsed, isRtl, isActive, onNavigate }: NavLinkIt
             // only for sighted users.
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+              'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
               collapsed && 'justify-center px-2',
               isActive
                 ? 'bg-primary/10 text-primary font-medium'
@@ -234,7 +269,33 @@ function NavLinkItem({ item, collapsed, isRtl, isActive, onNavigate }: NavLinkIt
           >
             {/* Nav glyphs are objects, not arrows — no mirroring. */}
             <item.icon className="size-4 shrink-0" aria-hidden />
-            <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
+            <span className={cn('flex-1 truncate', collapsed && 'sr-only')}>{label}</span>
+            {/* Screen-reader-only in BOTH rail states — the visible badges
+                below carry the number for sighted users (aria-hidden, so
+                they don't get announced a second time); this is what makes
+                the count actually reach a screen reader user at all. */}
+            {hasCount ? <span className="sr-only"> ({formattedCount})</span> : null}
+            {hasCount ? (
+              collapsed ? (
+                // The label is sr-only in the rail, so the badge is the only
+                // visual cue left — pinned to the icon's corner rather than
+                // sitting inline (there is no inline space in an icon-only
+                // row).
+                <span
+                  aria-hidden
+                  className="bg-primary text-primary-foreground absolute top-0.5 end-1.5 flex min-w-3.5 items-center justify-center rounded-full px-1 text-[9px] leading-3.5 font-medium tabular-nums"
+                >
+                  {formattedCount}
+                </span>
+              ) : (
+                <span
+                  aria-hidden
+                  className="bg-primary/10 text-primary flex min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-xs font-medium tabular-nums"
+                >
+                  {formattedCount}
+                </span>
+              )
+            ) : null}
           </Link>
         </HoverCardTrigger>
 
