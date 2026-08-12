@@ -1728,6 +1728,26 @@
     "DENIED": "مرفوض",
     "ERROR": "خطأ"
   },
+  "commandPalette": {
+    "title": "لوحة الأوامر",
+    "placeholder": "ابحث في الصفحات، الطلبات، العملاء، المنتجات، أو نفّذ إجراءً…",
+    "hint": "اكتب للبحث، أو اختر إجراءً أدناه.",
+    "noResults": "لا توجد نتائج مطابقة",
+    "groups": {
+      "pages": "الصفحات",
+      "orders": "الطلبات",
+      "customers": "العملاء",
+      "products": "المنتجات",
+      "actions": "الإجراءات"
+    },
+    "actions": {
+      "addProduct": "إضافة منتج",
+      "createDiscount": "إنشاء خصم",
+      "switchToDark": "التبديل إلى الوضع الداكن",
+      "switchToLight": "التبديل إلى الوضع الفاتح",
+      "signOut": "تسجيل الخروج"
+    }
+  },
   "returnCategory": {
     "DAMAGED": "تالف",
     "WRONG_ITEM": "منتج خاطئ",
