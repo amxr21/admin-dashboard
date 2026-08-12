@@ -105,18 +105,6 @@ enum ReturnStatus {
   REJECTED
 }
 
-/// Alongside the free-text `reason`, never replacing it — a requester can
-/// still describe the actual problem in their own words, while the category
-/// makes reason analytics possible.
-enum ReturnCategory {
-  DAMAGED
-  WRONG_ITEM
-  NOT_AS_DESCRIBED
-  NO_LONGER_NEEDED
-  ARRIVED_LATE
-  OTHER
-}
-
 /// What happens for the customer once a return is approved. NONE is not a
 /// real outcome — it exists so a freshly REQUESTED return has a value at all,
 /// the same reason Order.paymentMethod is optional rather than required.
