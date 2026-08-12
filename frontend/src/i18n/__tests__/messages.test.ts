@@ -76,6 +76,11 @@ describe('Arabic is actually translated', () => {
       // A timezone abbreviation, not prose — used as-is in Arabic technical
       // UI, same reasoning as "iPhone"/"WhatsApp"/"Excel" above.
       'table.utc',
+      // File-format acronyms and an email-address example — same reasoning
+      // again: Arabic technical UI writes these as-is.
+      'reports.exportFormats.csv',
+      'reports.exportFormats.pdf',
+      'reports.scheduled.form.recipientsPlaceholder',
     ]);
 
     const untranslated = enKeys.filter(
