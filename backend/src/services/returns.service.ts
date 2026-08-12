@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { Prisma, ReturnResolution, ReturnStatus } from '@prisma/client';
+import { Prisma, ReturnCategory, ReturnResolution, ReturnStatus } from '@prisma/client';
 import type { Request } from 'express';
 
 import { prisma } from '../db/prisma.js';
@@ -83,6 +83,7 @@ export async function listReturns(params: ReturnListParams) {
         rmaNumber: true,
         status: true,
         resolution: true,
+        category: true,
         createdAt: true,
         order: { select: { id: true, orderNumber: true } },
         customer: { select: { id: true, name: true } },
@@ -98,6 +99,7 @@ export async function listReturns(params: ReturnListParams) {
       rmaNumber: row.rmaNumber,
       status: row.status,
       resolution: row.resolution,
+      category: row.category,
       createdAt: row.createdAt.toISOString(),
       order: row.order,
       customer: row.customer,
@@ -117,10 +119,12 @@ async function serialiseReturn(id: string) {
       id: true,
       rmaNumber: true,
       reason: true,
+      category: true,
       status: true,
       resolution: true,
       refundAmount: true,
       restocked: true,
+      rejectionReason: true,
       createdAt: true,
       order: { select: { id: true, orderNumber: true, status: true } },
       customer: { select: { id: true, name: true, email: true } },
@@ -147,10 +151,12 @@ async function serialiseReturn(id: string) {
     id: row.id,
     rmaNumber: row.rmaNumber,
     reason: row.reason,
+    category: row.category,
     status: row.status,
     resolution: row.resolution,
     refundAmount: money(row.refundAmount),
     restocked: row.restocked,
+    rejectionReason: row.rejectionReason,
     createdAt: row.createdAt.toISOString(),
     order: row.order,
     customer: row.customer,
@@ -174,6 +180,7 @@ export async function getReturn(id: string) {
 export interface CreateReturnInput {
   orderId: string;
   reason: string;
+  category?: ReturnCategory;
   items: { orderItemId: string; quantity: number }[];
 }
 
@@ -255,6 +262,7 @@ export async function createReturn(input: CreateReturnInput) {
       data: {
         rmaNumber: generateRmaNumber(),
         reason: input.reason,
+        category: input.category,
         orderId: input.orderId,
         customerId: order.customerId,
         items: {
@@ -427,7 +435,7 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
   return serialiseReturn(id);
 }
 
-export async function rejectReturn(id: string, req: Request) {
+export async function rejectReturn(id: string, rejectionReason: string, req: Request) {
   await prisma.$transaction(async (tx) => {
     const existing = await tx.return.findUnique({
       where: { id },
@@ -443,14 +451,20 @@ export async function rejectReturn(id: string, req: Request) {
       );
     }
 
-    await tx.return.update({ where: { id }, data: { status: ReturnStatus.REJECTED } });
+    await tx.return.update({
+      where: { id },
+      data: { status: ReturnStatus.REJECTED, rejectionReason },
+    });
   });
 
   audit(req, {
     action: 'return.rejected',
     entity: 'return',
     entityId: id,
-    changes: { status: { from: 'REQUESTED', to: 'REJECTED' } },
+    changes: {
+      status: { from: 'REQUESTED', to: 'REJECTED' },
+      rejectionReason: { from: null, to: rejectionReason },
+    },
   });
 
   return serialiseReturn(id);

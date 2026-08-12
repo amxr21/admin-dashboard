@@ -72,6 +72,17 @@ const TONES = {
     STORE_CREDIT: 'secondary',
     REPLACEMENT: 'secondary',
   },
+  // Informational grouping only — unlike order/return STATUS, no category
+  // here means "problem" or "success"; one neutral tone for all six avoids
+  // implying DAMAGED is worse than NO_LONGER_NEEDED.
+  returnCategory: {
+    DAMAGED: 'muted',
+    WRONG_ITEM: 'muted',
+    NOT_AS_DESCRIBED: 'muted',
+    NO_LONGER_NEEDED: 'muted',
+    ARRIVED_LATE: 'muted',
+    OTHER: 'muted',
+  },
   auditOutcome: {
     // Muted, not success: an ordinary recorded change is the baseline, and
     // colouring every row green would drown the handful that matter.

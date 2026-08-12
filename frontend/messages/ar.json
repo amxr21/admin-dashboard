@@ -1693,6 +1693,11 @@
       "refundAmountLabel": "مبلغ الاسترداد (حتى {max})",
       "restock": "إعادة العناصر المرتجعة إلى المخزون",
       "reject": "رفض",
+      "confirmReject": "تأكيد الرفض",
+      "cancel": "إلغاء",
+      "rejectionReasonLabel": "لماذا يُرفض هذا الطلب؟",
+      "rejectionReasonPlaceholder": "اشرح سبب القرار — قد يطّلع مقدّم الطلب على هذا.",
+      "rejectionReason": "سبب الرفض",
       "approve": "قبول",
       "saving": "جارٍ الحفظ…",
       "approved": "تم قبول {rma}.",
@@ -1706,6 +1711,8 @@
       "quantityFor": "الكمية لـ {item}",
       "reason": "السبب",
       "reasonPlaceholder": "لماذا يُعاد هذا المنتج؟",
+      "category": "الفئة",
+      "categoryPlaceholder": "اختر فئة (اختياري)",
       "cancel": "إلغاء",
       "submit": "طلب الإرجاع",
       "saving": "جارٍ الإرسال…",
@@ -1720,5 +1727,13 @@
     "SUCCESS": "ناجح",
     "DENIED": "مرفوض",
     "ERROR": "خطأ"
+  },
+  "returnCategory": {
+    "DAMAGED": "تالف",
+    "WRONG_ITEM": "منتج خاطئ",
+    "NOT_AS_DESCRIBED": "لا يطابق الوصف",
+    "NO_LONGER_NEEDED": "لم يعد مطلوبًا",
+    "ARRIVED_LATE": "وصل متأخرًا",
+    "OTHER": "أخرى"
   }
 }
