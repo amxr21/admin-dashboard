@@ -157,6 +157,8 @@ export async function getOrder(id: string) {
           status: true,
           address: true,
           city: true,
+          attemptCount: true,
+          failureReason: true,
           driver: { select: { id: true, name: true, phone: true } },
         },
       },

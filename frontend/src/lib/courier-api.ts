@@ -70,7 +70,8 @@ export type DeliveryStatus =
   | 'DELIVERED'
   | 'HANDED_OVER'
   | 'CANCELED'
-  | 'RETURNED';
+  | 'RETURNED'
+  | 'FAILED_ATTEMPT';
 
 export interface CourierAssignment {
   id: string;
@@ -83,6 +84,10 @@ export interface CourierAssignment {
   total: string | null;
   paymentMethod: string | null;
   note: string | null;
+  /** How many delivery attempts have failed so far for this assignment. */
+  attemptCount: number;
+  /** The courier's own words for why the most recent attempt failed. */
+  failureReason: string | null;
   createdAt: string;
   order: { id: string; orderNumber: string };
 }
@@ -97,10 +102,11 @@ export async function fetchMyAssignments(): Promise<CourierAssignment[]> {
 export async function updateAssignmentStatus(
   id: string,
   status: DeliveryStatus,
+  failureReason?: string,
 ): Promise<CourierAssignment> {
   const result = await courierFetch<{ assignment: CourierAssignment }>(
     `/courier/assignments/${id}/status`,
-    { method: 'PATCH', body: JSON.stringify({ status }) },
+    { method: 'PATCH', body: JSON.stringify({ status, ...(failureReason ? { failureReason } : {}) }) },
   );
   return result.assignment;
 }

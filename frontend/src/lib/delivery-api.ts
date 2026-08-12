@@ -76,6 +76,31 @@ export interface CourierInput {
   status?: CourierStatus;
 }
 
+export interface CourierAssignmentSummary {
+  id: string;
+  status: string;
+  address: string | null;
+  city: string | null;
+  createdAt: string;
+  order: { id: string; orderNumber: string; status: string };
+}
+
+export interface CourierDetail extends Courier {
+  /** Newest first, capped at 20 server-side — the roster's own "recent
+   *  activity" view, not the courier's full lifetime history. */
+  assignments: CourierAssignmentSummary[];
+}
+
+/**
+ * One courier, with their recent assignment history — B4.5. `GET
+ * /couriers/:id` existed with zero frontend references; this is that
+ * missing detail view's data source.
+ */
+export async function fetchCourier(id: string): Promise<CourierDetail> {
+  const body = await apiFetch<{ courier: CourierDetail }>(`/couriers/${id}`);
+  return body.courier;
+}
+
 export async function createCourier(input: CourierInput): Promise<Courier> {
   const body = await apiFetch<{ courier: Courier }>('/couriers', {
     method: 'POST',
@@ -116,6 +141,10 @@ export interface Assignment {
   status: string;
   address: string | null;
   city: string | null;
+  /** How many delivery attempts have failed so far. Resets to 0 on reassignment. */
+  attemptCount: number;
+  /** The courier's own words for why the most recent attempt failed. */
+  failureReason: string | null;
   driver: { id: string; name: string; phone: string | null } | null;
 }
 
@@ -144,4 +173,27 @@ export async function assignCourier(input: AssignCourierInput): Promise<Assignme
 
 export async function unassignCourier(assignmentId: string): Promise<void> {
   await apiFetch<undefined>(`/assignments/${assignmentId}`, { method: 'DELETE' });
+}
+
+export interface UpdateAssignmentInput {
+  address?: string;
+  city?: string;
+  note?: string;
+}
+
+/**
+ * Corrects address/city/note WITHOUT reassigning (B4.1) — `assignCourier`'s
+ * upsert also resets `status` back to ASSIGNED, which is wrong for "same
+ * courier, fix a typo." This is the only call that can touch those three
+ * fields without that side effect.
+ */
+export async function updateAssignment(
+  assignmentId: string,
+  input: UpdateAssignmentInput,
+): Promise<Assignment> {
+  const body = await apiFetch<{ assignment: Assignment }>(`/assignments/${assignmentId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+  return body.assignment;
 }

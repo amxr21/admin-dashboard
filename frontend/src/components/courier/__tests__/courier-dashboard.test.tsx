@@ -46,6 +46,8 @@ function makeAssignment(overrides: Partial<CourierAssignment> = {}): CourierAssi
     total: '59.98',
     paymentMethod: 'cod',
     note: null,
+    attemptCount: 0,
+    failureReason: null,
     createdAt: '2026-07-01T10:00:00.000Z',
     order: { id: 'o1', orderNumber: 'ORD-1024' },
     ...overrides,
@@ -141,6 +143,61 @@ describe('advancing a status', () => {
     });
     // The card re-renders with PICKED_UP's own next actions.
     expect(await screen.findByRole('button', { name: /mark out for delivery/i })).toBeInTheDocument();
+  });
+});
+
+describe('the completed tab (B4.6)', () => {
+  it('hides terminal assignments on the Active tab but counts them correctly', async () => {
+    fetchMyAssignments.mockResolvedValue([
+      makeAssignment({ id: 'a1', status: 'ASSIGNED' }),
+      makeAssignment({ id: 'a2', status: 'DELIVERED', order: { id: 'o2', orderNumber: 'ORD-2' } }),
+    ]);
+
+    render(<CourierDashboard />);
+
+    await screen.findByText('ORD-1024');
+    expect(screen.queryByText('ORD-2')).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /active \(1\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /completed \(1\)/i })).toBeInTheDocument();
+  });
+
+  it('shows terminal assignments only after switching to the Completed tab', async () => {
+    fetchMyAssignments.mockResolvedValue([
+      makeAssignment({ id: 'a1', status: 'ASSIGNED' }),
+      makeAssignment({ id: 'a2', status: 'DELIVERED', order: { id: 'o2', orderNumber: 'ORD-2' } }),
+    ]);
+
+    render(<CourierDashboard />);
+    await screen.findByText('ORD-1024');
+
+    await userEvent.click(screen.getByRole('radio', { name: /completed/i }));
+
+    expect(await screen.findByText('ORD-2')).toBeInTheDocument();
+    expect(screen.queryByText('ORD-1024')).not.toBeInTheDocument();
+  });
+
+  it('offers no action buttons for a completed assignment', async () => {
+    fetchMyAssignments.mockResolvedValue([
+      makeAssignment({ id: 'a1', status: 'DELIVERED' }),
+    ]);
+
+    render(<CourierDashboard />);
+    await userEvent.click(await screen.findByRole('radio', { name: /completed/i }));
+
+    await screen.findByText('ORD-1024');
+    expect(screen.queryByRole('button', { name: /mark/i })).not.toBeInTheDocument();
+  });
+
+  it('shows a distinct empty state on the Completed tab when there is no history', async () => {
+    fetchMyAssignments.mockResolvedValue([makeAssignment({ id: 'a1', status: 'ASSIGNED' })]);
+
+    render(<CourierDashboard />);
+    await screen.findByText('ORD-1024');
+
+    await userEvent.click(screen.getByRole('radio', { name: /completed/i }));
+
+    expect(await screen.findByText(/no completed deliveries yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no deliveries assigned to you/i)).not.toBeInTheDocument();
   });
 });
 

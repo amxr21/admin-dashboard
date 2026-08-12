@@ -76,6 +76,10 @@ export interface OrderDetail {
     status: string;
     address: string | null;
     city: string | null;
+    /** Failed delivery attempts so far. Never reset by a retry. */
+    attemptCount: number;
+    /** Most recent courier-reported failure reason; full history is in AuditLog. */
+    failureReason: string | null;
     driver: { id: string; name: string; phone: string | null } | null;
   } | null;
   /**

@@ -225,4 +225,147 @@ describe('PATCH /courier/assignments/:id/status', () => {
 
     expect(res.status).toBe(404);
   });
+
+  it("writes an audit row against the ORDER, naming the courier by name (C5.4)", async () => {
+    const courier = await makeCourierWithCode();
+    const orderId = await makeOrder();
+    const assigned = await assignOrder(orderId, courier.id);
+    const assignmentId = (assigned.body as { data: { assignment: { id: string } } }).data.assignment
+      .id;
+
+    const signIn = await request(app).post('/api/v1/courier/auth').send({ code: courier.code });
+    const token = (signIn.body as AuthBody).data.token;
+
+    await request(app)
+      .patch(`/api/v1/courier/assignments/${assignmentId}/status`)
+      .set(auth(token))
+      .send({ status: 'PICKED_UP' });
+
+    let entry: { changes: unknown; actorEmail: string | null } | null = null;
+    for (let attempt = 0; attempt < 10 && !entry; attempt += 1) {
+      entry = await prisma.auditLog.findFirst({
+        where: { action: 'delivery.assignment.status_changed', entityId: orderId },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!entry) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    const courierRow = await prisma.deliveryStaff.findUnique({ where: { id: courier.id } });
+
+    expect(entry).not.toBeNull();
+    // A courier has no email — its name fills that role instead.
+    expect(entry?.actorEmail).toBe(courierRow?.name);
+    expect(
+      (entry?.changes as { deliveryStatus?: { from: string; to: string } } | null)?.deliveryStatus,
+    ).toEqual({ from: 'ASSIGNED', to: 'PICKED_UP' });
+  });
+});
+
+describe('reporting a failed delivery attempt', () => {
+  async function courierOutForDelivery() {
+    const courier = await makeCourierWithCode();
+    const orderId = await makeOrder();
+    const assigned = await assignOrder(orderId, courier.id);
+    const assignmentId = (assigned.body as { data: { assignment: { id: string } } }).data.assignment
+      .id;
+
+    const signIn = await request(app).post('/api/v1/courier/auth').send({ code: courier.code });
+    const token = (signIn.body as AuthBody).data.token;
+
+    await request(app)
+      .patch(`/api/v1/courier/assignments/${assignmentId}/status`)
+      .set(auth(token))
+      .send({ status: 'PICKED_UP' });
+    await request(app)
+      .patch(`/api/v1/courier/assignments/${assignmentId}/status`)
+      .set(auth(token))
+      .send({ status: 'OUT_FOR_DELIVERY' });
+
+    return { assignmentId, token };
+  }
+
+  it('is re-triable: FAILED_ATTEMPT can go back to OUT_FOR_DELIVERY, not just forward', async () => {
+    const { assignmentId, token } = await courierOutForDelivery();
+
+    const failed = await request(app)
+      .patch(`/api/v1/courier/assignments/${assignmentId}/status`)
+      .set(auth(token))
+      .send({ status: 'FAILED_ATTEMPT', failureReason: 'Customer not home' });
+
+    expect(failed.status).toBe(200);
+    expect((failed.body as StatusBody).data.assignment.status).toBe('FAILED_ATTEMPT');
+
+    const retried = await request(app)
+      .patch(`/api/v1/courier/assignments/${assignmentId}/status`)
+      .set(auth(token))
+      .send({ status: 'OUT_FOR_DELIVERY' });
+
+    expect(retried.status).toBe(200);
+    expect((retried.body as StatusBody).data.assignment.status).toBe('OUT_FOR_DELIVERY');
+  });
+
+  it('requires a reason — cannot report a failure silently', async () => {
+    const { assignmentId, token } = await courierOutForDelivery();
+
+    const res = await request(app)
+      .patch(`/api/v1/courier/assignments/${assignmentId}/status`)
+      .set(auth(token))
+      .send({ status: 'FAILED_ATTEMPT' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a whitespace-only reason the same as a missing one', async () => {
+    const { assignmentId, token } = await courierOutForDelivery();
+
+    const res = await request(app)
+      .patch(`/api/v1/courier/assignments/${assignmentId}/status`)
+      .set(auth(token))
+      .send({ status: 'FAILED_ATTEMPT', failureReason: '   ' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('increments attemptCount on each failure and keeps the latest reason', async () => {
+    const { assignmentId, token } = await courierOutForDelivery();
+
+    await request(app)
+      .patch(`/api/v1/courier/assignments/${assignmentId}/status`)
+      .set(auth(token))
+      .send({ status: 'FAILED_ATTEMPT', failureReason: 'Customer not home' });
+    await request(app)
+      .patch(`/api/v1/courier/assignments/${assignmentId}/status`)
+      .set(auth(token))
+      .send({ status: 'OUT_FOR_DELIVERY' });
+    const second = await request(app)
+      .patch(`/api/v1/courier/assignments/${assignmentId}/status`)
+      .set(auth(token))
+      .send({ status: 'FAILED_ATTEMPT', failureReason: 'Refused delivery' });
+
+    expect(second.status).toBe(200);
+    const row = await prisma.deliveryAssignment.findUnique({ where: { id: assignmentId } });
+    expect(row?.attemptCount).toBe(2);
+    expect(row?.failureReason).toBe('Refused delivery');
+  });
+
+  it('resets attemptCount and failureReason when the order is reassigned to a new courier', async () => {
+    const { assignmentId, token } = await courierOutForDelivery();
+    await request(app)
+      .patch(`/api/v1/courier/assignments/${assignmentId}/status`)
+      .set(auth(token))
+      .send({ status: 'FAILED_ATTEMPT', failureReason: 'Customer not home' });
+
+    const before = await prisma.deliveryAssignment.findUnique({ where: { id: assignmentId } });
+    expect(before?.attemptCount).toBe(1);
+
+    const newCourier = await makeCourierWithCode();
+    const orderId = before!.orderId;
+    const reassigned = await assignOrder(orderId, newCourier.id);
+
+    expect(reassigned.status).toBe(201);
+    const after = await prisma.deliveryAssignment.findUnique({ where: { id: assignmentId } });
+    expect(after?.attemptCount).toBe(0);
+    expect(after?.failureReason).toBeNull();
+    expect(after?.status).toBe('ASSIGNED');
+  });
 });

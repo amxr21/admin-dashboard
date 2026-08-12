@@ -140,6 +140,12 @@ enum DeliveryStatus {
   /// orders.config.ts rather than papered over; these close it.
   CANCELED
   RETURNED
+  /// A courier attempted delivery and could not complete it (customer not
+  /// home, refused, wrong address, ...). Deliberately NOT terminal: the same
+  /// job is retried from here — see `COURIER_TRANSITIONS` in
+  /// couriers.service.ts. `DeliveryAssignment.attemptCount` and
+  /// `.failureReason` carry the detail this status alone can't.
+  FAILED_ATTEMPT
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -765,6 +771,19 @@ model DeliveryAssignment {
   paymentMethod String?        @map("payment_method") @db.VarChar(48)
   status        DeliveryStatus @default(ASSIGNED)
   note          String?        @db.VarChar(255)
+
+  /// How many delivery attempts have failed so far. Incremented only by a
+  /// courier reporting FAILED_ATTEMPT, never reset by a retry — "third
+  /// attempt" must stay knowable after the job cycles back to
+  /// OUT_FOR_DELIVERY, the same reason a StockMovement correction doesn't
+  /// erase the mistake it corrects.
+  attemptCount Int @default(0) @map("attempt_count")
+  /// Free text from the courier, e.g. "customer not home", "refused at
+  /// door". Set on FAILED_ATTEMPT, left as-is on a successful retry — a
+  /// staff member reviewing a 3rd attempt wants to see what the 1st and 2nd
+  /// said too, not just the latest, but this column only ever holds the
+  /// most recent one; the full history lives in AuditLog.
+  failureReason String? @map("failure_reason") @db.VarChar(255)
 
   /// One assignment per order.
   orderId String @unique @map("order_id")

@@ -85,13 +85,23 @@
       "signOut": "Sign out",
       "loadFailed": "Couldn't load your deliveries.",
       "empty": "No deliveries assigned to you right now.",
-      "collect": "Collect"
+      "collect": "Collect",
+      "emptyCompleted": "No completed deliveries yet.",
+      "reportFailureCancel": "Cancel",
+      "reportFailureDescription": "What happened? This is shown to staff so they can decide whether to retry or reassign.",
+      "reportFailurePlaceholder": "e.g. customer not home, refused delivery, wrong address",
+      "reportFailureSubmitting": "Reporting…",
+      "reportFailureTitle": "Report failed attempt",
+      "viewActive": "Active ({count})",
+      "viewCompleted": "Completed ({count})",
+      "viewLabel": "Deliveries"
     },
     "deliveryStatusAction": {
       "PICKED_UP": "Mark picked up",
       "OUT_FOR_DELIVERY": "Mark out for delivery",
       "DELIVERED": "Mark delivered",
-      "HANDED_OVER": "Mark handed over"
+      "HANDED_OVER": "Mark handed over",
+      "FAILED_ATTEMPT": "Report failed attempt"
     }
   },
   "nav": {
@@ -177,7 +187,8 @@
     "PICKED_UP": "Picked up",
     "OUT_FOR_DELIVERY": "Out for delivery",
     "DELIVERED": "Delivered",
-    "HANDED_OVER": "Handed over"
+    "HANDED_OVER": "Handed over",
+    "FAILED_ATTEMPT": "Failed attempt"
   },
   "returnStatus": {
     "REQUESTED": "Requested",
@@ -541,7 +552,14 @@
       "assigning": "Assigning…",
       "reassign": "Reassign",
       "unassign": "Unassign",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "addressHint": "The courier only sees the address recorded here.",
+      "addressLabel": "Delivery address",
+      "addressPlaceholder": "Street, building, apartment",
+      "cityLabel": "City",
+      "cityPlaceholder": "City",
+      "noteLabel": "Note for the courier",
+      "notePlaceholder": "Optional, e.g. call on arrival"
     },
     "payment": {
       "title": "Payment",
