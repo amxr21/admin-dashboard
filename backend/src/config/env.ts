@@ -119,6 +119,33 @@ const envSchema = z.object({
       'PASSWORD_RESET_SECRET must be at least 32 characters — generate with `openssl rand -base64 32`',
     ),
 
+  // Encrypts the TOTP secret at rest (AES-256-GCM, two-factor.service.ts).
+  // MUST be reversible, unlike every other *_SECRET above — verifying a live
+  // 6-digit code means recomputing it from the same secret the app issued,
+  // which an HMAC (one-way) cannot do. Rotating this locks every enrolled
+  // account out of 2FA until they re-enrol, so treat it like JWT_SECRET, not
+  // like PASSWORD_RESET_SECRET (whose outstanding tokens are meant to be
+  // short-lived and cheap to reissue).
+  // Generate with: openssl rand -hex 32 (needs to be exactly 32 BYTES once
+  // decoded — hex, not base64, so the length is unambiguous).
+  TWO_FACTOR_SECRET: z
+    .string()
+    .regex(
+      /^[0-9a-f]{64}$/i,
+      'TWO_FACTOR_SECRET must be 64 hex characters (32 bytes) — generate with `openssl rand -hex 32`',
+    ),
+
+  // HMAC key for API keys (api-key.service.ts). One-way, like
+  // DELIVERY_CODE_SECRET/PASSWORD_RESET_SECRET — the server only ever
+  // COMPARES a presented key, never needs it back. Deliberately its OWN
+  // secret rather than reusing TWO_FACTOR_SECRET for a second purpose:
+  // rotating 2FA's key would otherwise silently invalidate every issued API
+  // key too, an unexpected coupling between two unrelated features.
+  // Generate with: openssl rand -base64 32
+  API_KEY_SECRET: z
+    .string()
+    .min(32, 'API_KEY_SECRET must be at least 32 characters — generate with `openssl rand -base64 32`'),
+
   // ─── Brute-force protection ──────────────────────────────────────
   // Failed attempts before an account locks. Counted per-account, so a
   // distributed attack on one email still trips it.

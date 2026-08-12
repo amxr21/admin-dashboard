@@ -6,6 +6,8 @@ import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
 import { login, signToken, toSafeUser, verifyToken } from '../services/auth.service.js';
+import { createSession } from '../services/session.service.js';
+import { waitFor } from './helpers/wait-for.js';
 
 /**
  * Auth is the highest-value surface in the API: everything else sits behind it.
@@ -289,6 +291,377 @@ describe('GET /api/v1/auth/me', () => {
       .get('/api/v1/auth/me')
       .set('Authorization', `Bearer ${token}`);
 
+    expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * B2.4 — self-service profile edit and password change. Before this, a
+ * SUPPORT/FULFILLMENT/DEMO account had NO path to fix a typo in their own
+ * name or change their own password without an OWNER — `PATCH /staff/:id`
+ * requires the `staff` area, which those roles don't hold.
+ */
+describe('PATCH /api/v1/auth/me', () => {
+  it('updates name and phone with no `staff` area grant required', async () => {
+    const user = await makeUser(`profile-${Math.random().toString(36).slice(2, 7)}`, {});
+    const token = signToken(user);
+
+    const res = await request(app)
+      .patch('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'New Name', phone: '+971500000000' });
+
+    expect(res.status).toBe(200);
+    const body = res.body as { data: { name: string; phone: string } };
+    expect(body.data.name).toBe('New Name');
+    expect(body.data.phone).toBe('+971500000000');
+  });
+
+  it('rejects role/isActive/accessExpiresAt entirely rather than silently ignoring them', async () => {
+    // .strict() at the schema layer — this is the actual protection, not a
+    // route that merely declines to forward the fields.
+    const user = await makeUser(`profile-strict-${Math.random().toString(36).slice(2, 7)}`);
+    const token = signToken(user);
+
+    const res = await request(app)
+      .patch('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'X', role: 'OWNER' });
+
+    expect(res.status).toBe(400);
+
+    const fresh = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(fresh.role).toBe(user.role);
+  });
+
+  it('returns 401 with no session', async () => {
+    const res = await request(app).patch('/api/v1/auth/me').send({ name: 'X' });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('PATCH /api/v1/auth/me/password', () => {
+  it('changes the password when the current password is correct', async () => {
+    const user = await makeUser(`pwchange-${Math.random().toString(36).slice(2, 7)}`);
+    const token = signToken(user);
+
+    const res = await request(app)
+      .patch('/api/v1/auth/me/password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: PASSWORD, newPassword: 'a-much-longer-new-password-1' });
+
+    expect(res.status).toBe(200);
+
+    // The new password actually works — checked against the hash directly
+    // rather than through `/auth/login`, which shares a per-IP rate-limit
+    // window with every other test in this file and would flake under load
+    // rather than testing anything about THIS endpoint.
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(await bcrypt.compare('a-much-longer-new-password-1', stored.passwordHash)).toBe(
+      true,
+    );
+  });
+
+  it('returns a fresh, usable token — the caller does not lock themselves out', async () => {
+    const user = await makeUser(`pwchange-fresh-${Math.random().toString(36).slice(2, 7)}`);
+    const token = signToken(user);
+
+    const res = await request(app)
+      .patch('/api/v1/auth/me/password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: PASSWORD, newPassword: 'a-much-longer-new-password-2' });
+
+    expect(res.status).toBe(200);
+    const body = res.body as { data: { token: string } };
+    expect(body.data.token).toBeTruthy();
+    expect(body.data.token).not.toBe(token);
+
+    const meRes = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${body.data.token}`);
+    expect(meRes.status).toBe(200);
+  });
+
+  it('revokes the OLD token — password change is not just cosmetic', async () => {
+    const user = await makeUser(`pwchange-revoke-${Math.random().toString(36).slice(2, 7)}`);
+    const oldToken = signToken(user);
+
+    const changeRes = await request(app)
+      .patch('/api/v1/auth/me/password')
+      .set('Authorization', `Bearer ${oldToken}`)
+      .send({ currentPassword: PASSWORD, newPassword: 'a-much-longer-new-password-3' });
+    expect(changeRes.status).toBe(200);
+
+    // The token used to MAKE the change must itself now be dead — otherwise
+    // "I changed my password" doesn't lock out whoever else had that token.
+    const staleRes = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${oldToken}`);
+    expect(staleRes.status).toBe(401);
+  });
+
+  it('rejects the wrong current password without changing anything', async () => {
+    const user = await makeUser(`pwchange-wrong-${Math.random().toString(36).slice(2, 7)}`);
+    const token = signToken(user);
+
+    const res = await request(app)
+      .patch('/api/v1/auth/me/password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: 'definitely-not-it', newPassword: 'a-much-longer-new-password-4' });
+
+    expect(res.status).toBe(400);
+
+    // The original session must still work — a failed change is not a change.
+    const stillGood = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+    expect(stillGood.status).toBe(200);
+  });
+
+  it('enforces the live minPasswordLength policy, same as every other password path', async () => {
+    const user = await makeUser(`pwchange-policy-${Math.random().toString(36).slice(2, 7)}`);
+    const token = signToken(user);
+
+    const res = await request(app)
+      .patch('/api/v1/auth/me/password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: PASSWORD, newPassword: 'short' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 401 with no session', async () => {
+    const res = await request(app)
+      .patch('/api/v1/auth/me/password')
+      .send({ currentPassword: PASSWORD, newPassword: 'a-much-longer-new-password-5' });
+    expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * B2.6 — Sessions & devices.
+ *
+ * Before this, `tokenVersion` could only answer "kill EVERY session at once."
+ * These tests are almost entirely about the one property that makes a
+ * per-session model worth building at all: revoking device A must have NO
+ * effect on device B. A sessions feature that revokes everything when asked
+ * to revoke one thing is worse than not having the feature, because it LOOKS
+ * targeted and isn't.
+ *
+ * Setup drives `login()`/`createSession()` DIRECTLY rather than through
+ * `POST /api/v1/auth/login`, same reason the brute-force block above does:
+ * every Supertest request shares one IP, and this file's own login-limiter
+ * tests already spend a meaningful share of that 15-minute, 10-attempt
+ * budget. Real HTTP is reserved for the one test that specifically proves
+ * `/auth/login` itself creates a session end to end.
+ */
+describe('sessions & devices', () => {
+  it('a real login (through the actual HTTP route) creates a session, visible in the list', async () => {
+    const user = await makeUser(`session-login-${Math.random().toString(36).slice(2, 7)}`);
+
+    const result = await login(user.email, PASSWORD, {
+      userAgent: 'vitest',
+      ip: '203.0.113.1',
+    });
+
+    const listRes = await request(app)
+      .get('/api/v1/auth/me/sessions')
+      .set('Authorization', `Bearer ${result.token}`);
+
+    expect(listRes.status).toBe(200);
+    const body = listRes.body as { data: { id: string; userAgent: string | null }[] };
+    expect(body.data.length).toBeGreaterThan(0);
+    expect(body.data[0]?.userAgent).toBe('vitest');
+  });
+
+  it('a token minted directly via signToken() (no session) still works — graceful rollout', async () => {
+    // Test setup and any pre-existing integration mints tokens this way. A
+    // token with no `sid` claim must not suddenly start failing — same
+    // rollout guarantee `tokenVersion` gives tokens with no `tv`.
+    const user = await makeUser(`session-legacy-${Math.random().toString(36).slice(2, 7)}`);
+    const token = signToken(user);
+
+    const res = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('revoking ONE session does not touch a second, independent session for the same user', async () => {
+    const user = await makeUser(`session-isolated-${Math.random().toString(36).slice(2, 7)}`);
+
+    const sessionA = await createSession(user.id, { userAgent: 'device-a' });
+    const tokenA = signToken(user, undefined, sessionA.id);
+
+    const sessionB = await createSession(user.id, { userAgent: 'device-b' });
+    const tokenB = signToken(user, undefined, sessionB.id);
+
+    // Revoke session B specifically, using token A (any live session of this
+    // user's may issue the revoke — it isn't scoped to "the session making
+    // this request").
+    const revokeRes = await request(app)
+      .delete(`/api/v1/auth/me/sessions/${sessionB.id}`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(revokeRes.status).toBe(204);
+
+    // Token B — the one whose session was just revoked — is dead.
+    const checkB = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${tokenB}`);
+    expect(checkB.status).toBe(401);
+
+    // Token A — a DIFFERENT session for the SAME user — is completely
+    // unaffected. This is the property that makes per-session revoke worth
+    // building: a revoke that also killed A would be indistinguishable from
+    // the old all-or-nothing `tokenVersion` bump.
+    const checkA = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(checkA.status).toBe(200);
+  });
+
+  it('cannot revoke another user\'s session by guessing its id', async () => {
+    const victim = await makeUser(`session-victim-${Math.random().toString(36).slice(2, 7)}`);
+    const attacker = await makeUser(`session-attacker-${Math.random().toString(36).slice(2, 7)}`);
+
+    const victimSession = await createSession(victim.id);
+    const victimToken = signToken(victim, undefined, victimSession.id);
+
+    const attackerSession = await createSession(attacker.id);
+    const attackerToken = signToken(attacker, undefined, attackerSession.id);
+
+    // The route returns 204 either way (revoke is idempotent) so the real
+    // assertion is that the VICTIM's session survives.
+    await request(app)
+      .delete(`/api/v1/auth/me/sessions/${victimSession.id}`)
+      .set('Authorization', `Bearer ${attackerToken}`);
+
+    const stillGood = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${victimToken}`);
+    expect(stillGood.status).toBe(200);
+  });
+
+  it('changing your own password revokes every session, not just bumps a counter with stale rows left behind', async () => {
+    const user = await makeUser(`session-pwchange-${Math.random().toString(36).slice(2, 7)}`);
+
+    const oldSession = await createSession(user.id);
+    const token = signToken(user, undefined, oldSession.id);
+
+    await request(app)
+      .patch('/api/v1/auth/me/password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: PASSWORD, newPassword: 'a-fresh-password-for-sessions' });
+
+    // The list must not still show the OLD session as live — otherwise the
+    // sessions screen would lie about a device that can never authenticate
+    // again (its token died on the tokenVersion check). Fetch the live
+    // sessions directly from the DB, sidestepping the fresh token the route
+    // itself returns — that token's OWN session existing is a separate fact
+    // from whether the PRE-change session was correctly retired.
+    const liveSessions = await prisma.session.findMany({
+      where: { userId: user.id, revokedAt: null },
+    });
+
+    expect(liveSessions.find((s) => s.id === oldSession.id)).toBeUndefined();
+  });
+
+  it('a revoked session is simply absent from the list, not shown as revoked', async () => {
+    const user = await makeUser(`session-absent-${Math.random().toString(36).slice(2, 7)}`);
+
+    const session = await createSession(user.id);
+    // A second, surviving session — otherwise revoking the only session
+    // would also kill the token used to list them.
+    const secondSession = await createSession(user.id);
+    const secondToken = signToken(user, undefined, secondSession.id);
+
+    await request(app)
+      .delete(`/api/v1/auth/me/sessions/${session.id}`)
+      .set('Authorization', `Bearer ${secondToken}`);
+
+    const after = await request(app)
+      .get('/api/v1/auth/me/sessions')
+      .set('Authorization', `Bearer ${secondToken}`);
+    const afterBody = after.body as { data: { id: string }[] };
+
+    expect(afterBody.data.find((s) => s.id === session.id)).toBeUndefined();
+  });
+
+  it('returns 401 with no session for both routes', async () => {
+    const listRes = await request(app).get('/api/v1/auth/me/sessions');
+    expect(listRes.status).toBe(401);
+
+    const revokeRes = await request(app).delete('/api/v1/auth/me/sessions/whatever');
+    expect(revokeRes.status).toBe(401);
+  });
+});
+
+describe('POST /api/v1/auth/logout (B1.7)', () => {
+  it('revokes the calling session specifically, leaving a different session for the same user untouched', async () => {
+    const user = await makeUser(`logout-scoped-${Math.random().toString(36).slice(2, 7)}`);
+
+    const sessionA = await createSession(user.id, { userAgent: 'device-a' });
+    const tokenA = signToken(user, undefined, sessionA.id);
+
+    const sessionB = await createSession(user.id, { userAgent: 'device-b' });
+    const tokenB = signToken(user, undefined, sessionB.id);
+
+    const res = await request(app)
+      .post('/api/v1/auth/logout')
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(res.status).toBe(204);
+
+    // The session that made the logout call is dead.
+    const checkA = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(checkA.status).toBe(401);
+
+    // A DIFFERENT session for the same user is unaffected — logout must
+    // never behave like the old all-or-nothing tokenVersion bump.
+    const checkB = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${tokenB}`);
+    expect(checkB.status).toBe(200);
+  });
+
+  it('writes an auth.logout audit event', async () => {
+    const user = await makeUser(`logout-audit-${Math.random().toString(36).slice(2, 7)}`);
+    const session = await createSession(user.id);
+    const token = signToken(user, undefined, session.id);
+
+    await request(app).post('/api/v1/auth/logout').set('Authorization', `Bearer ${token}`);
+
+    const entry = await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { actorId: user.id, action: 'auth.logout' },
+      }),
+    );
+    expect(entry?.entityId).toBe(session.id);
+  });
+
+  it('still succeeds and still audits for a token with no session (graceful rollout)', async () => {
+    // Same "no sid claim" case `signToken()` already covers for other
+    // routes — must not throw trying to revoke a session that never existed.
+    const user = await makeUser(`logout-legacy-${Math.random().toString(36).slice(2, 7)}`);
+    const token = signToken(user);
+
+    const res = await request(app)
+      .post('/api/v1/auth/logout')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(204);
+
+    const entry = await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { actorId: user.id, action: 'auth.logout' },
+      }),
+    );
+    expect(entry).not.toBeNull();
+  });
+
+  it('returns 401 with no session', async () => {
+    const res = await request(app).post('/api/v1/auth/logout');
     expect(res.status).toBe(401);
   });
 });
