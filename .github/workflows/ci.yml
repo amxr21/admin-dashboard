@@ -120,10 +120,31 @@ jobs:
         run: pnpm --filter ./frontend build
 
   # ─── Backend ─────────────────────────────────────────────────────
+  # Many feature branches were split from one shared checkpoint commit and
+  # independently touch the same regions of routes/v1/index.ts and
+  # schema.prisma that a sibling branch already merged into dev. A 3-way
+  # merge doesn't recognize those as the same change — it silently drops a
+  # router registration (PR #105) or duplicates an enum block (PR #106).
+  # Both are real repo-content bugs, not flaky CI, and this job catches them
+  # in seconds instead of 3+ minutes into Build/Lint/Typecheck/Tests all
+  # failing for the same root cause with no line number pointing at it.
+  backend-merge-integrity:
+    name: Backend · Merge integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter ./backend check:merge
+
   backend-lint:
     name: Backend · Lint
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    needs: backend-merge-integrity
     steps:
       - uses: actions/checkout@v7
       # No `version:` here on purpose — pnpm/action-setup@v6 refuses to run if
@@ -143,6 +164,7 @@ jobs:
     name: Backend · Typecheck
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    needs: backend-merge-integrity
     steps:
       - uses: actions/checkout@v7
       # No `version:` here on purpose — pnpm/action-setup@v6 refuses to run if
@@ -160,6 +182,7 @@ jobs:
     name: Backend · Tests (unit + integration)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: backend-merge-integrity
 
     # A real MySQL for integration tests. Throwaway — created and destroyed with
     # the job, so tests can migrate and truncate freely.
@@ -250,6 +273,7 @@ jobs:
     name: Backend · Build
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    needs: backend-merge-integrity
     steps:
       - uses: actions/checkout@v7
       # No `version:` here on purpose — pnpm/action-setup@v6 refuses to run if
@@ -274,6 +298,7 @@ jobs:
       - frontend-typecheck
       - frontend-test
       - frontend-build
+      - backend-merge-integrity
       - backend-lint
       - backend-typecheck
       - backend-test
