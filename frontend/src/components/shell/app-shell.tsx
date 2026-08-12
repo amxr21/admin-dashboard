@@ -5,6 +5,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 import { ThemeToggle } from '@/components/theme-toggle';
+import { BreadcrumbHost, useBreadcrumbSegments } from '@/components/shell/breadcrumb';
+import { CommandPalette } from '@/components/shell/command-palette';
 import { DiagnosticsBar } from '@/components/shell/diagnostics-bar';
 import { GlobalSearch } from '@/components/shell/global-search';
 import { NotificationsBell } from '@/components/shell/notifications-bell';
@@ -15,6 +17,7 @@ import { UserMenu } from '@/components/shell/user-menu';
 import { ViewAsSwitcher } from '@/components/shell/view-as-switcher';
 import { ViewAsBanner } from '@/components/shell/view-as-banner';
 import { ViewAsBlocked } from '@/components/shell/view-as-blocked';
+import { Forbidden } from '@/components/shell/forbidden';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -65,6 +68,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   const { resources } = useResourceSchema();
   const { logoUrl, sidebarMode, storeName } = useAppSettings();
   const pageTitle = usePageTitle();
+  const breadcrumbSegments = useBreadcrumbSegments();
   // Collapse/expand is a personal per-browser preference, separate from
   // `sidebarMode` (store-wide sticky-vs-floating) above — see the hook.
   const { collapsed, toggle: toggleCollapsed } = useSidebarCollapse();
@@ -95,6 +99,15 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
     isPreviewing && currentArea !== undefined && previewedRole !== null
       ? !canAccessArea(previewedRole, currentArea)
       : false;
+  // The REAL role, never `effectiveRole` — a preview must not mask a genuine
+  // block. If the actual signed-in user can't reach this area (stale
+  // bookmark, a role downgrade since their last visit), that is true
+  // regardless of what they're currently previewing. Only checked when NOT
+  // previewing an even-more-restrictive role: `blockedByPreview` above is
+  // the more specific, more informative message for that case, and showing
+  // both would be redundant.
+  const blockedByRealRole =
+    !isPreviewing && currentArea !== undefined ? !canAccessArea(user.role, currentArea) : false;
 
   /**
    * Shared between the desktop rail and the mobile drawer, but the two never
@@ -226,12 +239,16 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
             </SheetContent>
           </Sheet>
 
-          {/* Inline-start region: the current page's title (opt-in via
-              `<PageTitle>`, see that file for why it's opt-in rather than
-              route-derived), then search. `truncate` + `min-w-0` so a long
-              title can't push search and the reading-end controls off the
-              header on a narrow viewport. */}
-          {pageTitle ? (
+          {/* Inline-start region: a breadcrumb trail (opt-in via
+              `<Breadcrumb>`, C4.4 — a detail page reached by drilling down
+              from a list) takes precedence over the plain page title
+              (opt-in via `<PageTitle>`) when a page happens to register
+              both, since the trail is strictly more informative. `truncate`
+              + `min-w-0` so either can't push search and the reading-end
+              controls off the header on a narrow viewport. */}
+          {breadcrumbSegments ? (
+            <BreadcrumbHost segments={breadcrumbSegments} />
+          ) : pageTitle ? (
             <h1 className="min-w-0 truncate text-base font-semibold tracking-tight">
               {pageTitle}
             </h1>
@@ -309,11 +326,25 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
         <main className="min-w-0 flex-1 overflow-y-auto p-4 lg:p-6">
           {blockedByPreview && previewedRole ? (
             <ViewAsBlocked role={previewedRole} />
+          ) : blockedByRealRole && currentArea ? (
+            <Forbidden area={currentArea} />
           ) : (
             children
           )}
         </main>
       </div>
+
+      {/* Portal-rendered (see ui/dialog.tsx) — position in the tree doesn't
+          matter, but it needs the real role/onSignOut this component
+          already resolved above (effectiveRole during a preview must not
+          leak into the palette's own results either). */}
+      <CommandPalette
+        role={effectiveRole}
+        onSignOut={() => {
+          setPreviewedRole(null);
+          onSignOut?.();
+        }}
+      />
     </div>
   );
 }

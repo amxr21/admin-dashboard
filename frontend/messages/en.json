@@ -1796,6 +1796,26 @@
     "DENIED": "Denied",
     "ERROR": "Error"
   },
+  "commandPalette": {
+    "title": "Command palette",
+    "placeholder": "Search pages, orders, customers, products, or run an action…",
+    "hint": "Type to search, or choose an action below.",
+    "noResults": "No matches",
+    "groups": {
+      "pages": "Pages",
+      "orders": "Orders",
+      "customers": "Customers",
+      "products": "Products",
+      "actions": "Actions"
+    },
+    "actions": {
+      "addProduct": "Add product",
+      "createDiscount": "Create discount",
+      "switchToDark": "Switch to dark mode",
+      "switchToLight": "Switch to light mode",
+      "signOut": "Sign out"
+    }
+  },
   "returnCategory": {
     "DAMAGED": "Damaged",
     "WRONG_ITEM": "Wrong item",
