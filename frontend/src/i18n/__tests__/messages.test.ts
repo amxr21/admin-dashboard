@@ -76,6 +76,13 @@ describe('Arabic is actually translated', () => {
       // A timezone abbreviation, not prose — used as-is in Arabic technical
       // UI, same reasoning as "iPhone"/"WhatsApp"/"Excel" above.
       'table.utc',
+      // Type-to-confirm phrases. These are the literal string a user has to
+      // retype to arm a destructive action — translating them would mean the
+      // phrase shown and the phrase compared could drift apart, and the
+      // safeguard would silently stop working in one locale.
+      'settings.dangerZone.deactivate.confirmPhrase',
+      'settings.dangerZone.deleteTestData.confirmPhrase',
+      'settings.dangerZone.transferOwnership.confirmPhrase',
     ]);
 
     const untranslated = enKeys.filter(

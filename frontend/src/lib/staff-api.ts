@@ -109,6 +109,12 @@ export interface UpdateStaffInput {
   phone?: string;
   role?: StaffRole;
   isActive?: boolean;
+  /**
+   * ISO datetime, or `null` to clear it. Silently gates login — see
+   * `auth.service.ts` — so leaving it off `UpdateStaffInput` was a real gap:
+   * the field was accepted and returned by the API with no way to set it.
+   */
+  accessExpiresAt?: string | null;
 }
 
 export async function updateStaff(
@@ -144,4 +150,72 @@ export async function setStaffPassword(
     body: JSON.stringify({ password }),
   });
   return body.staff;
+}
+
+export interface ResetTokenResult {
+  staff: { id: string; email: string };
+  /** Plaintext, returned exactly once — the server stores only an HMAC. */
+  token: string;
+  expiresAt: string;
+}
+
+/**
+ * Issue a one-time reset token for someone else.
+ *
+ * The alternative to `setStaffPassword`: the admin never learns the new
+ * password, because they only hand over a token the locked-out person redeems
+ * themselves at `/reset-password`. Nothing stores the plaintext, so this
+ * response is the only time it exists in readable form — the caller MUST show
+ * it before discarding it (see `ResetTokenPanel`).
+ */
+export async function issueStaffResetToken(id: string): Promise<ResetTokenResult> {
+  return apiFetch<ResetTokenResult>(`/staff/${id}/reset-token`, {
+    method: 'POST',
+  });
+}
+
+export interface InviteStaffInput {
+  email: string;
+  name?: string;
+  phone?: string;
+  role: StaffRole;
+  accessExpiresAt?: string;
+}
+
+/**
+ * Create a staff account with no password anyone knows, and get back a
+ * one-time token — same shape as `ResetTokenResult`, reused directly by
+ * `ResetTokenPanel` rather than a near-duplicate "invite panel". The primary
+ * action the spec names for this page; `createStaff` above (an admin typing
+ * a password on someone else's behalf) was previously the ONLY way in.
+ */
+export async function inviteStaff(input: InviteStaffInput): Promise<ResetTokenResult> {
+  return apiFetch<ResetTokenResult>('/staff/invite', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export interface TransferOwnershipResult {
+  newOwner: StaffMember;
+  self: StaffMember;
+}
+
+/**
+ * Danger zone (B3.4). Promotes `targetId` to OWNER and steps the caller down
+ * to MANAGER, atomically — the one deliberate exception to "nobody changes
+ * their own role" (see `staff.service.ts`'s `transferOwnership` doc comment).
+ * Requires the caller's current password, same proof-of-presence rule as
+ * `changeOwnPassword`. Both accounts' sessions are revoked server-side, so
+ * the caller's own token is dead the moment this resolves — the caller must
+ * sign in again as their new role.
+ */
+export async function transferOwnership(
+  targetId: string,
+  currentPassword: string,
+): Promise<TransferOwnershipResult> {
+  return apiFetch<TransferOwnershipResult>(`/staff/${targetId}/transfer-ownership`, {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword }),
+  });
 }

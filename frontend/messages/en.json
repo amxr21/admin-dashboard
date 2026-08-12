@@ -917,6 +917,59 @@
         "cancel": "Cancel",
         "action": "Revoke"
       }
+    },
+    "dangerZone": {
+      "title": "Danger zone",
+      "description": "Irreversible actions. Each one requires typing a confirmation phrase.",
+      "deactivate": {
+        "title": "Deactivate store",
+        "description": "Blocks writes for everyone except owners and developers.",
+        "descriptionOn": "The store is currently deactivated. Only owners and developers can make changes.",
+        "turnOn": "Deactivate",
+        "turnOff": "Reactivate store",
+        "activated": "Store deactivated.",
+        "deactivated": "Store reactivated.",
+        "confirmPhrase": "DEACTIVATE",
+        "confirm": {
+          "title": "Deactivate the store?",
+          "description": "Every staff member except owners and developers will be blocked from making changes until this is turned back off.",
+          "typePhrase": "Type {phrase} to confirm",
+          "cancel": "Cancel",
+          "action": "Deactivate"
+        }
+      },
+      "transferOwnership": {
+        "title": "Transfer ownership",
+        "description": "Promote another staff member to owner and step yourself down to manager.",
+        "action": "Transfer ownership",
+        "targetLabel": "New owner",
+        "targetPlaceholder": "Choose a staff member",
+        "passwordLabel": "Your current password",
+        "transferred": "Ownership transferred. Signing you out.",
+        "confirmPhrase": "TRANSFER",
+        "confirm": {
+          "title": "Transfer ownership?",
+          "description": "You will immediately become a manager and lose owner access. This cannot be undone by yourself — only the new owner could transfer it back.",
+          "typePhrase": "Type {phrase} to confirm",
+          "cancel": "Cancel",
+          "action": "Transfer ownership"
+        }
+      },
+      "deleteTestData": {
+        "title": "Delete test data",
+        "description": "Permanently removes every demo-seeded row. Real data is never touched.",
+        "action": "Delete test data",
+        "deleted": "Removed {count} demo rows.",
+        "confirmPhrase": "DELETE",
+        "confirm": {
+          "title": "Delete all test data?",
+          "counting": "Counting demo rows…",
+          "description": "This will permanently remove {count} demo-tagged rows. Nothing without the demo tag is ever touched. This cannot be undone.",
+          "typePhrase": "Type {phrase} to confirm",
+          "cancel": "Cancel",
+          "action": "Delete"
+        }
+      }
     }
   },
   "audit": {
