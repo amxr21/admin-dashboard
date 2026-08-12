@@ -1,8 +1,9 @@
 # admin-dashboard — End-to-end tests
 #
-# Runs Playwright against live preview URLs from Vercel (FE) and Render (BE).
-# Kept separate from ci.yml because it's slow (~5-10 min) and depends on preview
-# deploys being ready first.
+# Runs Playwright against a live Vercel preview URL (FE) and a persistent dev
+# Render backend (BE, via RENDER_DEV_BACKEND_URL). Kept separate from ci.yml
+# because it's slow (~5-10 min) and depends on the frontend preview deploy
+# being ready first.
 #
 # CURRENTLY MANUAL-ONLY — see the note on the `on:` trigger below for why, and
 # what to do to turn it back on. Once re-enabled it should run on PRs into
@@ -13,25 +14,24 @@
 
 name: E2E
 
-# DISABLED until a real backend preview URL exists.
+# DISABLED until RENDER_DEV_BACKEND_URL points at a backend with a real,
+# reachable database.
 #
-# The Render service for this project was created MANUALLY, not via Blueprint
-# (Blueprint requires a paid plan) — and manual services get no per-PR preview
-# environments. So the "Wait for Render preview" step below has nothing real to
-# wait for, fails after its timeout, and marks every PR into `main` as UNSTABLE
-# even when all required checks pass.
+# Went with option A below: a persistent dev Render service already exists,
+# but as of 2026-08-04 its database is local-only, so a run against it would
+# fail every test without proving anything. Re-enable the `pull_request`
+# trigger once that DB is sorted — the workflow itself is otherwise ready.
 #
-# A permanently-red check trains everyone to ignore red checks, which is worse
-# than having no check. So this runs on-demand only for now.
-#
-# TO RE-ENABLE, pick one:
-#   A. Point it at a persistent dev backend — replace the Render step with
-#      `echo "url=${{ secrets.RENDER_DEV_BACKEND_URL }}" >> "$GITHUB_OUTPUT"`
-#      and add that repo secret. Simplest, works today.
-#   B. Move Render to a Blueprint (paid) and poll their API for the real
-#      per-PR preview URL.
-# Then restore the `pull_request:` trigger below and add `Playwright` as a
-# required check on main-protection.
+# Previously blocked on a different problem (Render service created MANUALLY,
+# not via Blueprint, so no per-PR preview URLs existed) — resolved by using a
+# single persistent dev backend instead of a preview-per-PR model:
+#   A. Point it at a persistent dev backend — DONE. Uses
+#      `secrets.RENDER_DEV_BACKEND_URL` directly as the backend URL, no
+#      Render-preview-wait step needed.
+#   B. (not chosen) Move Render to a Blueprint (paid) and poll their API for
+#      the real per-PR preview URL.
+# Once the dev DB is fixed, restore the `pull_request:` trigger below and add
+# `Playwright` as a required check on main-protection.
 on:
   workflow_dispatch: {}
   # pull_request:
@@ -42,13 +42,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  wait-for-previews:
-    name: Wait for Vercel + Render previews
+  wait-for-frontend-preview:
+    name: Wait for Vercel preview
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
       frontend_url: ${{ steps.vercel.outputs.url }}
-      backend_url: ${{ steps.render.outputs.url }}
     steps:
       - name: Wait for Vercel preview
         id: vercel
@@ -57,17 +56,11 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           max_timeout: 600
 
-      - name: Wait for Render preview
-        id: render
-        run: |
-          echo "TODO: implement Render preview readiness check once Render is connected"
-          echo "url=https://admin-dashboard-backend-preview-${{ github.event.number }}.onrender.com" >> "$GITHUB_OUTPUT"
-
   playwright:
     name: Playwright
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: wait-for-previews
+    needs: wait-for-frontend-preview
     steps:
       - uses: actions/checkout@v7
       # No `version:` — see the comment in ci.yml. package.json's
@@ -85,8 +78,8 @@ jobs:
       - name: Run Playwright
         working-directory: frontend
         env:
-          BASE_URL: ${{ needs.wait-for-previews.outputs.frontend_url }}
-          API_URL: ${{ needs.wait-for-previews.outputs.backend_url }}/api/v1
+          BASE_URL: ${{ needs.wait-for-frontend-preview.outputs.frontend_url }}
+          API_URL: ${{ secrets.RENDER_DEV_BACKEND_URL }}/api/v1
         run: pnpm e2e
 
       - name: Upload traces on failure

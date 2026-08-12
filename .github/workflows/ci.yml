@@ -231,6 +231,12 @@ jobs:
           # Same reasoning again: valid (32+ chars), not secret. CI issues and
           # redeems password reset tokens inside a single run.
           PASSWORD_RESET_SECRET: ci-test-password-reset-secret-not-used-outside-ci
+          # Must be exactly 64 hex chars (TWO_FACTOR_SECRET's own regex is
+          # stricter than the others' "min 32 chars" — see env.ts for why).
+          # The repeated "c1" pattern is deliberately not random, so nobody
+          # mistakes it for a real key that leaked into version control.
+          TWO_FACTOR_SECRET: c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1
+          API_KEY_SECRET: ci-test-api-key-secret-not-used-outside-ci
         run: pnpm test:coverage
 
       - uses: actions/upload-artifact@v7

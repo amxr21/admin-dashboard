@@ -340,3 +340,89 @@ export async function issueStaffPasswordResetToken(actor: Actor, id: string) {
     expiresAt: expiresAt.toISOString(),
   };
 }
+
+export interface UpdateOwnProfileInput {
+  name?: string | undefined;
+  phone?: string | undefined;
+}
+
+/**
+ * A staff member editing their own name/phone.
+ *
+ * Deliberately NOT `updateStaff` with `id === actor.id` — that function's
+ * `isSelf` branches exist to REFUSE self-edits of role/isActive/expiry, and
+ * this path must not accept those fields at all, not merely refuse to apply
+ * them. A narrower input type is the actual protection; the route layer
+ * choosing not to send the other fields is not.
+ */
+export async function updateOwnProfile(actor: Actor, input: UpdateOwnProfileInput) {
+  const user = await prisma.user.update({
+    where: { id: actor.id },
+    data: {
+      ...(input.name === undefined ? {} : { name: input.name }),
+      ...(input.phone === undefined ? {} : { phone: input.phone }),
+    },
+    select: STAFF_FIELDS,
+  });
+
+  return serialise(user);
+}
+
+/**
+ * A staff member changing their own password.
+ *
+ * The one rule every OTHER password path in this file is exempt from: the
+ * caller must prove they still know the CURRENT password. `resetStaffPassword`
+ * and the admin-issued reset token both exist precisely because an admin can
+ * act without that proof — this is the path where nothing else vouches for
+ * the caller beyond an already-issued session token, so re-checking the
+ * password is the only thing standing between "I left my laptop unlocked" and
+ * a silent credential change.
+ *
+ * Revokes every session, same as every other password change in this file —
+ * including the one making this request. The caller gets a FRESH token back
+ * in the response so their own change does not immediately log them out; an
+ * admin resetting someone ELSE's password has no equivalent need, which is
+ * why `resetStaffPassword` doesn't return one.
+ */
+export async function changeOwnPassword(
+  actor: Actor,
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ passwordHash: string; tokenVersion: number }> {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: actor.id },
+    select: { passwordHash: true },
+  });
+
+  const matches = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!matches) {
+    throw AppError.badRequest('Current password is incorrect', {
+      field: 'currentPassword',
+    });
+  }
+
+  const [updated] = await prisma.$transaction([
+    prisma.user.update({
+      where: { id: actor.id },
+      data: {
+        passwordHash: await bcrypt.hash(newPassword, 10),
+        tokenVersion: { increment: 1 },
+      },
+      select: { passwordHash: true, tokenVersion: true },
+    }),
+    /**
+     * Keeps `session.service.ts`'s list truthful. Without this, every
+     * pre-existing `Session` row (including the one this very request is
+     * using) stays `revokedAt: null` even though its token just went dead on
+     * the `tokenVersion` check above — the sessions list would show a device
+     * as "live" that can never authenticate again.
+     */
+    prisma.session.updateMany({
+      where: { userId: actor.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    }),
+  ]);
+
+  return updated;
+}

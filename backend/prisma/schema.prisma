@@ -192,11 +192,137 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  passwordResetTokens PasswordResetToken[]
+  /// ─── Two-factor authentication (TOTP) ─────────────────────────────
+  /// AES-256-GCM ciphertext of the TOTP secret, keyed by `TWO_FACTOR_SECRET`
+  /// — MUST be reversible (unlike every other secret in this schema), since
+  /// verifying a live 6-digit code means recomputing it from the same secret
+  /// the authenticator app was given. See two-factor.service.ts.
+  twoFactorSecret  String? @map("two_factor_secret") @db.VarChar(255)
+  /// True only once the OWNER has confirmed a real code during setup — a
+  /// secret can exist (mid-setup) without 2FA actually being required yet.
+  /// Login only demands a code when THIS is true, never merely when a
+  /// secret is present.
+  twoFactorEnabled Boolean @default(false) @map("two_factor_enabled")
+
+  passwordResetTokens  PasswordResetToken[]
+  sessions             Session[]
+  twoFactorBackupCodes TwoFactorBackupCode[]
+  apiKeys              ApiKey[]
 
   @@index([role])
   @@index([createdAt])
   @@map("users")
+}
+
+/// One row per issued token — what "Sessions & devices" reads, and what a
+/// per-session revoke sets `revokedAt` on.
+///
+/// ─── WHY THIS DIDN'T EXIST BEFORE `tokenVersion` ─────────────────────
+/// `tokenVersion` answers "is ANY token this user holds still valid" with one
+/// integer, checked without a second query on every request — cheap, and
+/// enough for "this laptop was stolen, kill everything." It cannot answer "is
+/// THIS ONE token, from the login three days ago on this phone, still
+/// valid" — that needs a row per login to point at.
+///
+/// ─── WHY BOTH MECHANISMS STAY, RATHER THAN ONE REPLACING THE OTHER ───
+/// A full sign-out-everywhere (password change, deactivation) is still one
+/// `tokenVersion` bump — correct, and cheaper than updating every session row
+/// individually, especially for an account with a long login history. Revoking
+/// ONE session is a single `Session.revokedAt` write. `authenticate` checks
+/// both: a token is only good if its version still matches the user's live
+/// counter AND (when the token carries a session id) that session hasn't been
+/// individually revoked.
+model Session {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Free text from the User-Agent header, truncated at write time. Attacker-
+  /// controlled and only ever DISPLAYED, never parsed for a security decision.
+  userAgent String? @map("user_agent") @db.VarChar(255)
+  /// Same honesty rule as the audit log's `ip` column: null when there is no
+  /// trustworthy answer (see `trust proxy` in app.ts), never a guess.
+  ip        String? @db.VarChar(64)
+
+  createdAt  DateTime  @default(now()) @map("created_at")
+  /// Updated opportunistically (see session.service.ts) — NOT on every single
+  /// request, which would turn "list my sessions" into a write-heavy endpoint
+  /// for something whose precision to the second nobody needs.
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at")
+  /// Null while live. Set once, on purpose or via the bulk sign-out-everywhere
+  /// path — never cleared, so a revoked session cannot be reactivated by
+  /// unsetting a flag.
+  revokedAt  DateTime? @map("revoked_at")
+
+  @@index([userId, revokedAt])
+  @@map("sessions")
+}
+
+/// One-time recovery codes for 2FA — the escape hatch for "I lost my phone."
+/// Ten are generated at enrolment, shown to the user exactly once, and each
+/// is consumed the first time it is used. HMAC-hashed like a courier access
+/// code or password-reset token, never the HMAC of a PASSWORD — this table
+/// only ever needs comparison, never recovery, so a one-way hash is correct
+/// here (unlike `User.twoFactorSecret`, which must be reversible).
+model TwoFactorBackupCode {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  codeHash String @unique @map("code_hash")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  /// Null while unused. Consumed codes are kept, not deleted — deleting one
+  /// would silently drop the count below ten with no record of why, and
+  /// "how many of my ten codes are left" is a real question the account
+  /// panel answers by counting rows where this is null.
+  usedAt    DateTime? @map("used_at")
+
+  @@index([userId])
+  @@map("two_factor_backup_codes")
+}
+
+/// An API key for external integrations — B3.2's "Integrations & API" section.
+///
+/// ─── WHY IT HAS NO SCOPE LIST OF ITS OWN ──────────────────────────────
+/// The obvious design gives each key its own permission set, independent of
+/// who created it. This app already has exactly one permission model —
+/// `Area`, checked by `canAccessArea(role, area)` — and a second, parallel one
+/// for keys would mean every route gains a SECOND authorization path to keep
+/// in sync with the first, which is how a permission check quietly drifts out
+/// of one of the two. Instead a key inherits its OWNER's role-based grants
+/// exactly, the same way a browser session does. `revokedAt` still lets that
+/// key be cut off independently of the owner's own session.
+///
+/// ─── WHY THE HASH, NOT THE KEY, IS STORED ─────────────────────────────
+/// Same reasoning as a courier access code or password-reset token: this
+/// table only ever needs comparison, never recovery, so a one-way HMAC is
+/// correct and the plaintext is shown to the creator exactly once.
+model ApiKey {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Human label ("CI pipeline", "Inventory sync script") — the only way to
+  /// tell keys apart once the plaintext is gone forever.
+  name String @db.VarChar(120)
+
+  /// Keyed HMAC-SHA256, indexed for a one-read lookup on every authenticated
+  /// request that uses a key instead of a session token.
+  keyHash    String @unique @map("key_hash")
+  /// First and last 4 characters of the plaintext, e.g. "adk_a1b2…9x8y" —
+  /// shown in the list so an admin can recognise which key is which without
+  /// the plaintext ever being stored or re-derivable from this alone.
+  keyPreview String @map("key_preview") @db.VarChar(32)
+
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  /// Null while live. Revoking creates no gap in the audit trail the way a
+  /// delete would — the row (and who created it) stays visible in history.
+  revokedAt  DateTime? @map("revoked_at")
+
+  @@index([userId, revokedAt])
+  @@map("api_keys")
 }
 
 /// An admin-issued, single-use credential that lets a locked-out staff member
@@ -763,13 +889,39 @@ model AuditLog {
   /// the record itself. Values are redacted for sensitive fields.
   changes Json?
 
+  /// Whether the attempt succeeded. A trail of successes only answers "what
+  /// changed"; a security reviewer also needs "what did someone TRY to do and
+  /// get refused", which is the shape an attack has before it works.
+  outcome AuditOutcome @default(SUCCESS)
+
   /// Correlates with the request logs, so an entry can be traced end to end.
   requestId String? @map("request_id") @db.VarChar(64)
+
+  /// Where the request came from. Nullable: behind a proxy that does not set
+  /// a forwarding header there is no honest answer, and a fabricated one is
+  /// worse than a gap in evidence.
+  ip String? @db.VarChar(64)
+
+  /// Truncated at write time — a user-agent is attacker-controlled free text.
+  userAgent String? @map("user_agent") @db.VarChar(255)
 
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([entity, entityId])
   @@index([actorId, createdAt])
   @@index([createdAt])
+  /// Denied attempts are the security-review query, and they are rare relative
+  /// to successes — without this the one filter that matters most scans hardest.
+  @@index([outcome, createdAt])
+  @@index([requestId])
   @@map("audit_log")
+}
+
+/// Deliberately not a boolean: "denied" (refused by a permission rule) and
+/// "error" (the operation was allowed and then broke) are different events, and
+/// collapsing them loses the distinction a reviewer is looking for.
+enum AuditOutcome {
+  SUCCESS
+  DENIED
+  ERROR
 }

@@ -195,7 +195,8 @@
     "products": "{count, plural, =0 {No products} one {# product} other {# products}}",
     "customers": "{count, plural, =0 {No customers} one {# customer} other {# customers}}",
     "selected": "{count, plural, =0 {None selected} one {# selected} other {# selected}}",
-    "itemsInStock": "{count, plural, =0 {Out of stock} one {# in stock} other {# in stock}}"
+    "itemsInStock": "{count, plural, =0 {Out of stock} one {# in stock} other {# in stock}}",
+    "results": "{count, plural, =0 {No results} one {# result} other {# results}}"
   },
   "table": {
     "selectAll": "Select all rows",
@@ -207,7 +208,28 @@
     "noResults": "No results match your filters.",
     "export": "Export",
     "exportCsv": "Export as CSV",
-    "bulkActions": "Bulk actions"
+    "bulkActions": "Bulk actions",
+    "clearSelection": "Clear selection",
+    "copyValue": "Copy {value}",
+    "copied": "Copied {value}",
+    "previous": "Previous",
+    "next": "Next",
+    "moreActions": "More actions",
+    "utc": "UTC",
+    "density": {
+      "comfortable": "Comfortable",
+      "compact": "Compact"
+    },
+    "columns": {
+      "label": "Columns",
+      "reset": "Show all columns"
+    },
+    "selectAllMatching": {
+      "prompt": "All {count} rows on this page are selected.",
+      "action": "Select all {count} matching rows",
+      "loading": "Selecting…",
+      "tooMany": "Too many rows match this filter to select at once (over {max}). Narrow the filter and try again."
+    }
   },
   "dashboard": {
     "title": "Dashboard",
@@ -804,6 +826,79 @@
         "title": "Other",
         "description": "Everything else."
       }
+    },
+    "twoFactor": {
+      "title": "Two-factor authentication",
+      "description": "Require a code from an authenticator app, in addition to your password, when signing in.",
+      "enabled": "Enabled",
+      "disabled": "Not enabled",
+      "backupCodesRemaining": "{count, plural, =0 {No backup codes left} one {# backup code left} other {# backup codes left}}",
+      "enable": "Enable",
+      "disable": "Disable",
+      "setupTitle": "Set up two-factor authentication",
+      "setupDescription": "Scan this code with an authenticator app (Google Authenticator, 1Password, Authy, …), then enter the 6-digit code it shows to confirm.",
+      "qrCodeAlt": "QR code for two-factor authentication setup",
+      "cantScan": "Can’t scan? Enter this code manually:",
+      "enterCode": "Code",
+      "verifyAndEnable": "Verify and enable",
+      "verifying": "Verifying…",
+      "cancel": "Cancel",
+      "backupCodesTitle": "Your backup codes",
+      "backupCodesShownOnce": "Shown once. Save these somewhere safe — each works only once, and they are the only way in if you lose your authenticator device.",
+      "copyBackupCodes": "Copy codes",
+      "copied": "Copied",
+      "done": "Done",
+      "disableTitle": "Disable two-factor authentication?",
+      "disableDescription": "You will need your current authenticator code to confirm. This removes your backup codes too.",
+      "disabling": "Disabling…",
+      "confirmDisable": "Disable"
+    },
+    "sessions": {
+      "title": "Sessions & devices",
+      "description": "Every device currently signed in as you. Sign out one without touching any other.",
+      "retry": "Retry",
+      "unknownDevice": "Unknown device",
+      "lastActivePrefix": "Active",
+      "empty": "No active sessions.",
+      "signOut": "Sign out",
+      "revoked": "That device was signed out.",
+      "alreadyGone": "That device was already signed out.",
+      "confirm": {
+        "title": "Sign out this device?",
+        "description": "This device will need to sign in again. Every other device stays signed in.",
+        "cancel": "Cancel",
+        "action": "Sign out"
+      }
+    },
+    "apiKeys": {
+      "title": "API keys",
+      "description": "Keys for scripts and integrations. A key can do exactly what your account can do — nothing more.",
+      "create": "Create key",
+      "creating": "Creating…",
+      "retry": "Retry",
+      "empty": "No API keys yet.",
+      "neverUsed": "Never used",
+      "lastUsedPrefix": "Last used",
+      "revoke": "Revoke",
+      "revoked": "That key was revoked.",
+      "alreadyGone": "That key was already revoked.",
+      "createTitle": "Create an API key",
+      "createDescription": "This key will be able to do anything your own account can do. Give it a name that says what it’s for.",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. Inventory sync script",
+      "cancel": "Cancel",
+      "revealTitle": "Your new API key",
+      "shownOnce": "Shown once. Save it somewhere safe — it cannot be viewed again, only revoked and replaced.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "copyHint": "Copy this key before closing.",
+      "done": "Done",
+      "confirm": {
+        "title": "Revoke {name}?",
+        "description": "Anything using this key will stop working immediately. This cannot be undone.",
+        "cancel": "Cancel",
+        "action": "Revoke"
+      }
     }
   },
   "audit": {
@@ -814,7 +909,9 @@
       "actor": "Who",
       "action": "Action",
       "entity": "Record",
-      "changes": "Changes"
+      "changes": "Changes",
+      "outcome": "Outcome",
+      "source": "Source"
     },
     "systemActor": "System",
     "noChanges": "No field changes recorded",
@@ -824,7 +921,12 @@
       "from": "From",
       "to": "To",
       "all": "All",
-      "clear": "Clear filters"
+      "clear": "Clear filters",
+      "action": "Action",
+      "outcome": "Outcome",
+      "entityId": "Record ID",
+      "entityIdPlaceholder": "Exact record ID",
+      "requestId": "Request ID"
     },
     "empty": "No matching audit entries.",
     "total": "{count, plural, =0 {No entries} one {# entry} other {# entries}}",
@@ -832,7 +934,22 @@
       "previous": "Previous",
       "next": "Next"
     },
-    "viewHistory": "View history"
+    "viewHistory": "View history",
+    "readOnlyTitle": "This log is append-only",
+    "readOnlyBody": "Entries are written by the system and can never be edited or deleted from here — that is what makes them evidence. Nothing on this page can change a record.",
+    "retentionUnknown": "Entries are kept indefinitely; no automatic deletion is configured.",
+    "outcomeDenied": "Denied",
+    "outcomeSuccess": "Success",
+    "outcomeError": "Error",
+    "deniedNotice": "A refused attempt. Nothing was changed.",
+    "context": "Request details",
+    "copyRequestId": "Copy request ID",
+    "sameRequest": "Show everything from this request",
+    "exportCsv": "Export CSV",
+    "exporting": "Preparing export…",
+    "exportEmpty": "Nothing to export for these filters.",
+    "loadMore": "Load more",
+    "endOfLog": "End of the log."
   },
   "staff": {
     "title": "Staff",
@@ -1060,5 +1177,14 @@
       "saving": "Submitting…",
       "done": "{rma} requested."
     }
+  },
+  "lastUpdated": {
+    "updatedByAt": "Updated by {who} <time></time>",
+    "updatedAtUnknownActor": "Updated <time></time>"
+  },
+  "auditOutcome": {
+    "SUCCESS": "Success",
+    "DENIED": "Denied",
+    "ERROR": "Error"
   }
 }

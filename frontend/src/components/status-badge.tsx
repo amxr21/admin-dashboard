@@ -69,6 +69,14 @@ const TONES = {
     STORE_CREDIT: 'secondary',
     REPLACEMENT: 'secondary',
   },
+  auditOutcome: {
+    // Muted, not success: an ordinary recorded change is the baseline, and
+    // colouring every row green would drown the handful that matter.
+    SUCCESS: 'muted',
+    // The one value a security reviewer is scanning for.
+    DENIED: 'destructive',
+    ERROR: 'warning',
+  },
   roles: {
     DEVELOPER: 'info',
     OWNER: 'default',
