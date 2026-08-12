@@ -777,7 +777,7 @@ model DeliveryAssignment {
   /// attempt" must stay knowable after the job cycles back to
   /// OUT_FOR_DELIVERY, the same reason a StockMovement correction doesn't
   /// erase the mistake it corrects.
-  attemptCount Int @default(0) @map("attempt_count")
+  attemptCount  Int     @default(0) @map("attempt_count")
   /// Free text from the courier, e.g. "customer not home", "refused at
   /// door". Set on FAILED_ATTEMPT, left as-is on a successful retry — a
   /// staff member reviewing a 3rd attempt wants to see what the 1st and 2nd
@@ -925,3 +925,75 @@ enum AuditOutcome {
   DENIED
   ERROR
 }
+
+enum PolicyType {
+  RETURN
+  PRIVACY
+  TERMS
+  SHIPPING
+}
+
+/// One row per (type, locale) — the CURRENTLY PUBLISHED text, denormalised
+/// out of `PolicyVersion` for a fast read with no "which version is live"
+/// join. Writing here always goes through `publishPolicyVersion()`, never a
+/// direct update — see policies.service.ts.
+model Policy {
+  id String @id @default(cuid())
+
+  type   PolicyType
+  /// Plain string, not the frontend's `Locale` type — this table has no
+  /// dependency on the frontend package, and validating against `en`/`ar` is
+  /// the service's job (mirrors how `Order.status` etc. are validated at the
+  /// service layer against the same enum Prisma also encodes).
+  locale String     @db.VarChar(8)
+
+  publishedVersionId String        @unique @map("published_version_id")
+  publishedVersion   PolicyVersion @relation("PublishedVersion", fields: [publishedVersionId], references: [id])
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([type, locale])
+  @@map("policy")
+}
+
+/// Append-only history — every save creates a NEW row, never edits one in
+/// place, same discipline as `StockMovement`/`AuditLog`. `Policy.publishedVersionId`
+/// points at whichever row is currently live; every other version for that
+/// (type, locale) stays queryable for "what did this say on March 3rd" and
+/// for reverting without re-typing lost text.
+model PolicyVersion {
+  id String @id @default(cuid())
+
+  type   PolicyType
+  locale String     @db.VarChar(8)
+
+  /// Monotonic per (type, locale), assigned by the service — not an
+  /// autoincrement column, so it can be computed inside the same transaction
+  /// that also decides whether this version becomes published.
+  version Int
+
+  /// Legal prose. Free-form text (Markdown rendered client-side), not HTML —
+  /// storing raw HTML from an admin textarea would be a stored-XSS vector the
+  /// moment it's rendered on a public-facing page.
+  content String @db.Text
+
+  /// Plain id, not a relation — same reasoning as `OrderStatusHistory.changedById`:
+  /// the history must survive the author's staff account being deactivated.
+  createdById String? @map("created_by_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// The reverse side of `Policy.publishedVersionId` — at most one `Policy`
+  /// row can point here, but most versions are OLD and have none.
+  publishedAs Policy? @relation("PublishedVersion")
+
+  @@unique([type, locale, version])
+  @@index([type, locale, createdAt])
+  @@map("policy_version")
+}
+
+/// A recurring send of one report to a recipient list (C3.2). Not a saved
+/// FILTER — the report key + a fixed range length (last 7/30/90 days,
+/// computed relative to send time) is what's saved; there is no "saved
+/// custom from/to" concept, since a fixed date range would go stale the
+/// moment it was reused a week later.

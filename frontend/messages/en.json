@@ -917,6 +917,35 @@
         "cancel": "Cancel",
         "action": "Revoke"
       }
+    },
+    "policies": {
+      "title": "Policies",
+      "description": "Return, privacy, terms, and shipping policy text — per locale, versioned.",
+      "types": {
+        "RETURN": "Return policy",
+        "PRIVACY": "Privacy policy",
+        "TERMS": "Terms of service",
+        "SHIPPING": "Shipping policy"
+      },
+      "version": "v{version}",
+      "unpublished": "Not published",
+      "retry": "Retry",
+      "history": "History",
+      "historyEmpty": "No versions yet.",
+      "current": "Current",
+      "revert": "Revert",
+      "contentPlaceholder": "Write the policy text…",
+      "publish": "Publish",
+      "publishing": "Publishing…",
+      "published": "Policy published.",
+      "reverted": "Reverted to v{version}.",
+      "cancel": "Cancel",
+      "confirmRevert": {
+        "title": "Revert to v{version}?",
+        "description": "This publishes that version's text as a new version. The current text stays in history and can be restored the same way.",
+        "cancel": "Cancel",
+        "action": "Revert"
+      }
     }
   },
   "audit": {
