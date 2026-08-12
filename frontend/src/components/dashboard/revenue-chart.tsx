@@ -14,9 +14,11 @@ import {
 } from 'recharts';
 
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRouter } from '@/i18n/navigation';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { getDocumentDirection } from '@/lib/direction';
-import { bucketEnd, type Granularity } from '@/lib/reports-api';
+import { bucketEnd, drillDownHref, type Granularity } from '@/lib/reports-api';
 import { cn } from '@/lib/utils';
 
 /**
@@ -86,6 +88,14 @@ interface RevenueChartProps {
   comparisonLabel?: string;
   isLoading?: boolean;
   error?: string | null;
+  /**
+   * C1.6 — clicking a point drills into the orders placed in exactly that
+   * bucket. Opt-in (omit to keep a point inert): the dashboard and Reports
+   * both render this chart, and a bare "click a chart point" affordance with
+   * no visual cue would be a mystery interaction if every consumer had it
+   * whether or not clicking actually did anything.
+   */
+  drillDownEnabled?: boolean;
 }
 
 interface ChartDatum {
@@ -129,10 +139,78 @@ interface ChartTooltipProps {
   active?: boolean;
   payload?: readonly { payload?: ChartDatum }[];
   comparisonLabel?: string;
+  /** Adds the "click to view orders" hint (C1.6) — the tooltip is the one
+   *  place this affordance can be discovered without already knowing it's
+   *  there, since the cursor-pointer change alone is easy to miss. */
+  drillDownEnabled?: boolean;
 }
 
-function ChartTooltip({ active, payload, comparisonLabel }: ChartTooltipProps) {
+/**
+ * States what each stroke means, so the meaning isn't locked behind a hover.
+ *
+ * Only ever renders entries for series that actually exist on this render —
+ * the comparison swatch appears exclusively when `comparisonData` is passed,
+ * the provisional swatch only when the chart actually has a trailing
+ * incomplete bucket to explain. A legend item for a line that isn't drawn
+ * would be worse than none: it invites hunting for a stroke that was never
+ * there.
+ *
+ * Deliberately NOT rendered for the single-line case — that's still the
+ * heading-names-the-series shortcut this file already used, and adding a
+ * one-item legend under a heading that already says "Revenue over time"
+ * would be pure redundancy.
+ */
+function ChartLegend({
+  hasComparison,
+  hasProvisional,
+  comparisonLabel,
+}: {
+  hasComparison: boolean;
+  hasProvisional: boolean;
+  comparisonLabel?: string;
+}) {
+  const t = useTranslations('dashboard');
+
+  if (!hasComparison && !hasProvisional) return null;
+
+  return (
+    <div className="text-muted-foreground mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-0.5 w-4 shrink-0" style={{ backgroundColor: 'var(--chart-1)' }} />
+        {t('revenue')}
+      </span>
+
+      {hasProvisional ? (
+        <span className="inline-flex items-center gap-1.5">
+          <DashedSwatch color="var(--chart-1)" />
+          {t('revenueChart.inProgress')}
+        </span>
+      ) : null}
+
+      {hasComparison ? (
+        <span className="inline-flex items-center gap-1.5">
+          <DashedSwatch color="var(--muted-foreground)" />
+          {comparisonLabel ?? t('comparison.previousPeriod')}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** A tiny dashed line sample, matching the SVG strokes exactly — an actual
+ *  dashed stroke, not a CSS border approximation, so the swatch never drifts
+ *  from what the chart itself draws. */
+function DashedSwatch({ color }: { color: string }) {
+  return (
+    <svg width="16" height="2" className="shrink-0" aria-hidden>
+      <line x1="0" y1="1" x2="16" y2="1" stroke={color} strokeWidth="1.5" strokeDasharray="4 4" />
+    </svg>
+  );
+}
+
+function ChartTooltip({ active, payload, comparisonLabel, drillDownEnabled }: ChartTooltipProps) {
   const formatter = useFormatter();
+  const formatCurrency = useCurrencyFormat();
   const t = useTranslations('dashboard');
 
   const datum = payload?.[0]?.payload;
@@ -160,7 +238,7 @@ function ChartTooltip({ active, payload, comparisonLabel }: ChartTooltipProps) {
       </p>
       <p className="font-medium tabular-nums">
         {t('revenue')}:{' '}
-        {datum.revenue === null ? '—' : formatter.number(datum.revenue, 'currency')}
+        {datum.revenue === null ? '—' : formatCurrency(datum.revenue)}
       </p>
 
       {hasComparison ? (
@@ -175,7 +253,7 @@ function ChartTooltip({ active, payload, comparisonLabel }: ChartTooltipProps) {
             :{' '}
             {datum.comparisonRevenue === null || datum.comparisonRevenue === undefined
               ? '—'
-              : formatter.number(datum.comparisonRevenue, 'currency')}
+              : formatCurrency(datum.comparisonRevenue)}
           </p>
           {delta !== undefined ? (
             <p
@@ -197,6 +275,12 @@ function ChartTooltip({ active, payload, comparisonLabel }: ChartTooltipProps) {
           ) : null}
         </>
       ) : null}
+
+      {drillDownEnabled ? (
+        <p className="text-muted-foreground border-border/60 mt-1.5 border-t pt-1.5 text-xs">
+          {t('revenueChart.clickToViewOrders')}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -208,11 +292,14 @@ export function RevenueChart({
   comparisonLabel,
   isLoading = false,
   error = null,
+  drillDownEnabled = false,
 }: RevenueChartProps) {
   const t = useTranslations('dashboard');
   const formatter = useFormatter();
+  const formatCurrency = useCurrencyFormat();
   const locale = useLocale();
   const reducedMotion = useReducedMotion();
+  const router = useRouter();
 
   const isRtl = getDocumentDirection() === 'rtl';
 
@@ -247,6 +334,7 @@ export function RevenueChart({
   }, [data, comparisonData, granularity]);
 
   const hasAnyData = chartData.some((d) => d.revenue !== null || d.revenueTrailing !== null);
+  const hasProvisional = chartData.some((d) => d.isProvisional);
   const tickIndices = useMemo(() => computeTickIndices(chartData.length), [chartData.length]);
   const tickTimestamps = tickIndices.map((i) => chartData[i]!.timestamp);
 
@@ -275,7 +363,7 @@ export function RevenueChart({
             <p className="text-3xl font-semibold tabular-nums">
               {only.revenue === null && only.revenueTrailing === null
                 ? '—'
-                : formatter.number((only.revenue ?? only.revenueTrailing)!, 'currency')}
+                : formatCurrency((only.revenue ?? only.revenueTrailing)!)}
             </p>
             <p className="text-muted-foreground text-sm">
               {formatter.dateTime(new Date(only.date), 'long')}
@@ -290,7 +378,11 @@ export function RevenueChart({
   return (
     <div className="bg-card rounded-lg border p-4">
       {/* The heading names the series, which is why no legend is needed for a
-          single line. */}
+          single line — ChartLegend itself stays silent in that case. Once a
+          comparison overlay or an in-progress tail is on screen, "the
+          heading names the series" stops being true (there are up to three
+          strokes now), so the legend picks up exactly the entries the
+          heading no longer covers alone. */}
       <h2 className="mb-4 text-sm font-medium">{t('revenueOverTime')}</h2>
 
       {error ? (
@@ -302,11 +394,33 @@ export function RevenueChart({
           {t('revenueChart.noData')}
         </p>
       ) : (
-        <ResponsiveContainer width="100%" height={256}>
+        <>
+          <ChartLegend
+            hasComparison={Boolean(comparisonData)}
+            hasProvisional={hasProvisional}
+            comparisonLabel={comparisonLabel}
+          />
+          <ResponsiveContainer width="100%" height={256}>
           <LineChart
             data={chartData}
             margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
             accessibilityLayer
+            className={drillDownEnabled ? 'cursor-pointer' : undefined}
+            onClick={
+              drillDownEnabled
+                ? (state) => {
+                    // Recharts 3 dropped `activePayload` from the click
+                    // event; `activeIndex` is the position into the same
+                    // `chartData` array this component built, so looking the
+                    // point up there is the direct replacement.
+                    const index = typeof state?.activeIndex === 'number' ? state.activeIndex : undefined;
+                    const clicked = index === undefined ? undefined : chartData[index];
+                    if (!clicked) return;
+
+                    router.push(drillDownHref(clicked.date, granularity));
+                  }
+                : undefined
+            }
           >
             {/* Recessive grid: horizontal only. Vertical lines add clutter
                 without helping read a trend. */}
@@ -363,7 +477,9 @@ export function RevenueChart({
             />
 
             <Tooltip
-              content={<ChartTooltip comparisonLabel={comparisonLabel} />}
+              content={
+                <ChartTooltip comparisonLabel={comparisonLabel} drillDownEnabled={drillDownEnabled} />
+              }
               cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
             />
 
@@ -413,6 +529,7 @@ export function RevenueChart({
             />
           </LineChart>
         </ResponsiveContainer>
+        </>
       )}
     </div>
   );

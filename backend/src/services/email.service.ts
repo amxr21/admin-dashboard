@@ -87,3 +87,78 @@ export async function sendAlertEmail(subject: string, body: string): Promise<voi
     });
   }
 }
+
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+}
+
+/**
+ * Sends to an arbitrary recipient list — C3.2's scheduled reports, the first
+ * caller that needs more than the one fixed `store.supportEmail` address
+ * `sendAlertEmail` hardcodes. Kept as a SEPARATE function rather than adding
+ * a `to?` override there: `sendAlertEmail`'s callers (`notify.service.ts`,
+ * inventory/return alerts) are all genuinely "notify the store", and giving
+ * that function a variable audience would make it too easy for a future
+ * caller to accidentally mail an external address using the internal-alert
+ * code path.
+ *
+ * Same "never throws, checked not assumed" contract as `sendAlertEmail`:
+ * SMTP configured, `email.enabled` on, `fromAddress` set — any one missing
+ * is "not configured", not an error. An empty recipient list is also a
+ * no-op, not a send-to-nobody error, since the caller (a schedule with a
+ * cleared recipients field) has already decided nothing should go out.
+ */
+export async function sendEmailToRecipients(
+  recipients: readonly string[],
+  subject: string,
+  body: string,
+  attachments: readonly EmailAttachment[] = [],
+): Promise<boolean> {
+  if (recipients.length === 0) {
+    logger.debug({ event: 'email.recipients.skipped', reason: 'no_recipients' });
+    return false;
+  }
+
+  const client = getTransporter();
+
+  if (!client) {
+    logger.debug({ event: 'email.recipients.skipped', reason: 'smtp_not_configured' });
+    return false;
+  }
+
+  const [enabled, fromAddress] = await Promise.all([
+    getSettingValue('email.enabled'),
+    getSettingValue('email.fromAddress'),
+  ]);
+
+  if (!enabled || !fromAddress) {
+    logger.debug({ event: 'email.recipients.skipped', reason: 'not_enabled_or_incomplete' });
+    return false;
+  }
+
+  try {
+    await client.sendMail({
+      from: fromAddress,
+      to: recipients.join(', '),
+      subject,
+      text: body,
+      attachments: attachments.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        contentType: a.contentType,
+      })),
+    });
+
+    logger.info({ event: 'email.recipients.sent', subject, recipientCount: recipients.length });
+    return true;
+  } catch (error) {
+    logger.error({
+      event: 'email.recipients.failed',
+      subject,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}

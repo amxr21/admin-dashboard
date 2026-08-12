@@ -1,6 +1,7 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { PageTitle } from '@/components/shell/page-title';
+import { PoliciesPanel } from '@/components/settings/policies-panel';
 import { PersonalSettingsPanel } from '@/components/settings/personal-settings-panel';
 import { SettingsForm } from '@/components/settings/settings-form';
 
@@ -39,6 +40,7 @@ export default async function SettingsPage({
           separated by the page's own vertical rhythm (space-y-10). */}
       <PersonalSettingsPanel />
       <SettingsForm />
+      <PoliciesPanel />
     </div>
   );
 }
