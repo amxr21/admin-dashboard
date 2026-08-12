@@ -19,10 +19,21 @@ const createVariant = vi.hoisted(() => vi.fn());
 const updateVariant = vi.hoisted(() => vi.fn());
 const deleteVariant = vi.hoisted(() => vi.fn());
 const adjustVariantStock = vi.hoisted(() => vi.fn());
+const fetchVariantMovements = vi.hoisted(() => vi.fn());
+const fetchVariantReconcile = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/variants-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/variants-api')>();
-  return { ...actual, fetchVariants, createVariant, updateVariant, deleteVariant, adjustVariantStock };
+  return {
+    ...actual,
+    fetchVariants,
+    createVariant,
+    updateVariant,
+    deleteVariant,
+    adjustVariantStock,
+    fetchVariantMovements,
+    fetchVariantReconcile,
+  };
 });
 
 function makeVariant(overrides: Partial<Variant> = {}): Variant {
@@ -58,6 +69,14 @@ beforeEach(() => {
   updateVariant.mockReset();
   deleteVariant.mockReset();
   adjustVariantStock.mockReset();
+  fetchVariantMovements.mockReset();
+  fetchVariantReconcile.mockReset();
+  fetchVariantReconcile.mockResolvedValue({
+    variantId: 'v1',
+    stock: 10,
+    fromMovements: 10,
+    agrees: true,
+  });
 });
 
 describe('listing', () => {
@@ -205,5 +224,27 @@ describe('adjusting stock inline', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Record' }));
 
     expect(await screen.findByText(/only 10 in stock/i)).toBeInTheDocument();
+  });
+});
+
+describe('viewing history', () => {
+  it('opens the movement log sheet scoped to the clicked variant', async () => {
+    fetchVariants.mockResolvedValue([makeVariant()]);
+    fetchVariantMovements.mockResolvedValue({
+      variant: { id: 'v1', name: 'Red / Large', sku: 'SKU-RL', stock: 10 },
+      movements: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    });
+    renderPanel();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'History' }));
+
+    await waitFor(() => {
+      expect(fetchVariantMovements).toHaveBeenCalledWith('v1', { page: 1, pageSize: 20 });
+    });
+    expect(await screen.findByText(/no movements recorded yet/i)).toBeInTheDocument();
   });
 });

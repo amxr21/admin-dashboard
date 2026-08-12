@@ -7,6 +7,7 @@ import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { signToken } from '../services/auth.service.js';
 import { ADMIN_RESOURCES, getResourceConfig, writableFields } from '../config/admin.config.js';
+import { waitFor } from './helpers/wait-for.js';
 
 /**
  * The generic resource engine.
@@ -431,7 +432,10 @@ describe('multi-relation fields (discount scoping)', () => {
       .patch(`/api/v1/r/discounts/${discountId}`)
       .set(auth(ownerToken))
       .send({ categories: [a, b] });
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    // A count comparison has no "landed" value to poll for — a longer fixed
+    // wait is the right tool here, unlike the positive existence checks
+    // elsewhere in this file.
+    await waitForNoWrite();
 
     const before = await prisma.auditLog.count({
       where: { entity: 'discounts', entityId: discountId },
@@ -441,7 +445,7 @@ describe('multi-relation fields (discount scoping)', () => {
       .patch(`/api/v1/r/discounts/${discountId}`)
       .set(auth(ownerToken))
       .send({ categories: [b, a] }); // same set, reversed order
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await waitForNoWrite();
 
     const after = await prisma.auditLog.count({
       where: { entity: 'discounts', entityId: discountId },
@@ -507,13 +511,191 @@ describe('config and code stay in sync', () => {
 });
 
 /**
- * `audit()` is fire-and-forget by design (see audit.service.ts), so the write
- * can still be in flight when the HTTP response returns. A short pause is the
- * same trade the revocation test file makes for the same reason.
+ * `audit()` is fire-and-forget by design (see audit.service.ts). For an
+ * assertion expecting a write to exist, poll with `waitFor` instead. This
+ * fixed, longer wait is only for the opposite case — proving something did
+ * NOT get written, which has no "landed" state to poll for.
  */
-function waitForAudit() {
-  return new Promise((resolve) => setTimeout(resolve, 400));
+function waitForNoWrite() {
+  return new Promise((resolve) => setTimeout(resolve, 1500));
 }
+
+/**
+ * A5.7 — SEO block. `afterUpdate`'s redirect recording is fire-and-forget
+ * (see resource-hooks.ts's own doc comment on why), so these poll rather
+ * than assume it landed by the time the HTTP response returns.
+ */
+describe('product slug + redirect recording (A5.7)', () => {
+  it('does NOT record a redirect the first time a slug is ever set', async () => {
+    const product = await prisma.product.create({
+      data: { name: `${RUN} firstslug`, price: '5.00' },
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/r/products/${product.id}`)
+      .set(auth(ownerToken))
+      .send({ slug: `${RUN}-first` });
+
+    expect(res.status).toBe(200);
+    await waitForNoWrite();
+    const redirects = await prisma.productRedirect.findMany({ where: { productId: product.id } });
+    expect(redirects).toHaveLength(0);
+
+    await prisma.product.delete({ where: { id: product.id } });
+  });
+
+  it('records the OLD slug when an existing slug is changed to a new one', async () => {
+    const product = await prisma.product.create({
+      data: { name: `${RUN} changedslug`, price: '5.00', slug: `${RUN}-old` },
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/r/products/${product.id}`)
+      .set(auth(ownerToken))
+      .send({ slug: `${RUN}-new` });
+
+    expect(res.status).toBe(200);
+    const redirect = await waitFor(() =>
+      prisma.productRedirect.findUnique({ where: { oldSlug: `${RUN}-old` } }),
+    );
+    expect(redirect?.productId).toBe(product.id);
+
+    const current = await prisma.product.findUnique({ where: { id: product.id } });
+    expect(current?.slug).toBe(`${RUN}-new`);
+
+    await prisma.productRedirect.deleteMany({ where: { productId: product.id } });
+    await prisma.product.delete({ where: { id: product.id } });
+  });
+
+  it('does not record a redirect when the update leaves the slug unchanged', async () => {
+    const product = await prisma.product.create({
+      data: { name: `${RUN} sameslug`, price: '5.00', slug: `${RUN}-stable` },
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/r/products/${product.id}`)
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} sameslug renamed` });
+
+    expect(res.status).toBe(200);
+    await waitForNoWrite();
+    const redirects = await prisma.productRedirect.findMany({ where: { productId: product.id } });
+    expect(redirects).toHaveLength(0);
+
+    await prisma.product.delete({ where: { id: product.id } });
+  });
+
+  it('cascades: deleting the product removes its redirect history too', async () => {
+    const product = await prisma.product.create({
+      data: { name: `${RUN} cascade`, price: '5.00', slug: `${RUN}-cascade-old` },
+    });
+    await request(app)
+      .patch(`/api/v1/r/products/${product.id}`)
+      .set(auth(ownerToken))
+      .send({ slug: `${RUN}-cascade-new` });
+    const redirect = await waitFor(() =>
+      prisma.productRedirect.findUnique({ where: { oldSlug: `${RUN}-cascade-old` } }),
+    );
+    expect(redirect).not.toBeNull();
+
+    // Never ordered, so this is a genuine delete, not the archive hook.
+    await prisma.product.delete({ where: { id: product.id } });
+
+    const survived = await prisma.productRedirect.findUnique({
+      where: { oldSlug: `${RUN}-cascade-old` },
+    });
+    expect(survived).toBeNull();
+  });
+
+  it('rejects a duplicate slug with a clean 409, same as any other unique field', async () => {
+    const taken = await prisma.product.create({
+      data: { name: `${RUN} slugtaken`, price: '5.00', slug: `${RUN}-taken` },
+    });
+    const other = await prisma.product.create({
+      data: { name: `${RUN} slugwants`, price: '5.00' },
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/r/products/${other.id}`)
+      .set(auth(ownerToken))
+      .send({ slug: `${RUN}-taken` });
+
+    expect(res.status).toBe(409);
+
+    await prisma.product.delete({ where: { id: taken.id } });
+    await prisma.product.delete({ where: { id: other.id } });
+  });
+
+  it('exposes slug/metaTitle/metaDescription in the schema for the generic form', async () => {
+    const res = await request(app).get('/api/v1/r/_schema').set(auth(ownerToken));
+
+    const products = (
+      res.body as { data: { resources: { resource: string; fields: { name: string }[] }[] } }
+    ).data.resources.find((r) => r.resource === 'products');
+    const fieldNames = products?.fields.map((f) => f.name) ?? [];
+
+    expect(fieldNames).toEqual(
+      expect.arrayContaining(['slug', 'metaTitle', 'metaDescription']),
+    );
+  });
+});
+
+describe('resource export (B3.3)', () => {
+  it('exports CSV with only the resource-declared columns as headers', async () => {
+    const category = await prisma.category.create({
+      data: { name: `${RUN} exportcat`, slug: `${RUN}-exportcat` },
+    });
+
+    const res = await request(app)
+      .get('/api/v1/r/categories/export')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.headers['content-disposition']).toContain('categories.csv');
+    expect(res.headers['x-export-truncated']).toBe('false');
+
+    const config = getResourceConfig('categories')!;
+    const expectedHeaders = config.fields
+      .filter((f) => f.type !== 'multiRelation')
+      .map((f) => f.label);
+    const [headerLine] = res.text.split('\r\n');
+    expect(headerLine.split(',')).toEqual(expectedHeaders);
+    expect(res.text).toContain(`${RUN} exportcat`);
+
+    await prisma.category.delete({ where: { id: category.id } });
+  });
+
+  it('404s an unconfigured resource the same as the list endpoint', async () => {
+    const res = await request(app).get('/api/v1/r/users/export').set(auth(ownerToken));
+    expect(res.status).toBe(404);
+  });
+
+  it('is gated by the resource permission area, same as the list endpoint', async () => {
+    // SUPPORT reaches customers but not discounts (see "per-resource
+    // authorisation" above) — same pair, same reasoning, export endpoint.
+    const res = await request(app).get('/api/v1/r/discounts/export').set(auth(supportToken));
+    expect(res.status).toBe(403);
+  });
+
+  it('logs the export to the audit trail as "<resource>.export"', async () => {
+    const category = await prisma.category.create({
+      data: { name: `${RUN} exportaudit`, slug: `${RUN}-exportaudit` },
+    });
+
+    await request(app).get('/api/v1/r/categories/export').set(auth(ownerToken));
+
+    const entry = await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { action: 'categories.export' },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+    expect(entry?.entity).toBe('categories');
+
+    await prisma.category.delete({ where: { id: category.id } });
+  });
+});
 
 describe('the audit trail records generic resource writes', () => {
   it('logs create, update, a skipped no-op, and delete', async () => {
@@ -528,12 +710,12 @@ describe('the audit trail records generic resource writes', () => {
 
     expect(created.status).toBe(201);
     const productId = (created.body as RowBody).data.row.id as string;
-    await waitForAudit();
 
-    const createEntry = await prisma.auditLog.findFirst({
-      where: { entity: 'products', entityId: productId, action: 'products.create' },
-    });
-    expect(createEntry).not.toBeNull();
+    const createEntry = await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { entity: 'products', entityId: productId, action: 'products.create' },
+      }),
+    );
     const createChanges = createEntry?.changes as Record<string, { from: unknown; to: unknown }>;
     expect(createChanges.name?.to).toBe(`${RUN} audit-create`);
 
@@ -543,12 +725,12 @@ describe('the audit trail records generic resource writes', () => {
       .send({ price: '15.00' });
 
     expect(updated.status).toBe(200);
-    await waitForAudit();
 
-    const updateEntry = await prisma.auditLog.findFirst({
-      where: { entity: 'products', entityId: productId, action: 'products.update' },
-    });
-    expect(updateEntry).not.toBeNull();
+    const updateEntry = await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { entity: 'products', entityId: productId, action: 'products.update' },
+      }),
+    );
     const updateChanges = updateEntry?.changes as Record<string, { from: unknown; to: unknown }>;
     expect(updateChanges.price?.to).toBe('15.00');
     // Only the field that actually changed is present — not a whole-row copy.
@@ -563,7 +745,7 @@ describe('the audit trail records generic resource writes', () => {
       .set(auth(ownerToken))
       .send({ price: '15.00' });
     expect(noop.status).toBe(200);
-    await waitForAudit();
+    await waitForNoWrite();
     const afterCount = await prisma.auditLog.count({
       where: { entity: 'products', entityId: productId, action: 'products.update' },
     });
@@ -575,12 +757,12 @@ describe('the audit trail records generic resource writes', () => {
       .set(auth(ownerToken));
     expect(deleted.status).toBe(200);
     expect((deleted.body as { data: { action: string } }).data.action).toBe('deleted');
-    await waitForAudit();
 
-    const deleteEntry = await prisma.auditLog.findFirst({
-      where: { entity: 'products', entityId: productId, action: 'products.delete' },
-    });
-    expect(deleteEntry).not.toBeNull();
+    const deleteEntry = await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { entity: 'products', entityId: productId, action: 'products.delete' },
+      }),
+    );
     // A delete is not a field diff — recording every column as "changed to
     // null" would be a full snapshot of the row wearing a diff's clothes.
     expect(deleteEntry?.changes).toBeNull();
@@ -612,12 +794,12 @@ describe('the audit trail records generic resource writes', () => {
 
     expect(res.status).toBe(200);
     expect((res.body as { data: { action: string } }).data.action).toBe('archived');
-    await waitForAudit();
 
-    const entry = await prisma.auditLog.findFirst({
-      where: { entity: 'products', entityId: product.id, action: 'products.archive' },
-    });
-    expect(entry).not.toBeNull();
+    const entry = await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { entity: 'products', entityId: product.id, action: 'products.archive' },
+      }),
+    );
     const changes = entry?.changes as Record<string, { from: unknown; to: unknown }>;
     expect(changes.status).toEqual({ from: 'ACTIVE', to: 'ARCHIVED' });
     // Only the status changed — the name and price are untouched by the hook.

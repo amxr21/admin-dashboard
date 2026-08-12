@@ -4,6 +4,8 @@ import { Check, ExternalLink, Minus } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
 
 import { StatusBadge, type StatusKind } from '@/components/status-badge';
+import { Timestamp } from '@/components/timestamp';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import type { FieldConfig, ResourceRow } from '@/lib/resource-api';
 
 /**
@@ -38,6 +40,7 @@ interface ResourceCellProps {
 
 export function ResourceCell({ field, row, resource }: ResourceCellProps) {
   const formatter = useFormatter();
+  const formatCurrency = useCurrencyFormat();
   const t = useTranslations('resource');
 
   const value = row[field.name];
@@ -59,11 +62,7 @@ export function ResourceCell({ field, row, resource }: ResourceCellProps) {
     case 'money':
       // Formatted FROM the decimal string. Number() here is display-only and
       // never written back — see lib/resource-api.ts.
-      return (
-        <span className="tabular-nums">
-          {formatter.number(Number(value), 'currency')}
-        </span>
-      );
+      return <span className="tabular-nums">{formatCurrency(Number(value))}</span>;
 
     case 'number':
       return <span className="tabular-nums">{formatter.number(Number(value))}</span>;
@@ -83,15 +82,22 @@ export function ResourceCell({ field, row, resource }: ResourceCellProps) {
         </span>
       );
 
-    case 'date':
-    case 'datetime': {
+    // `datetime` gets the relative-label + hover-absolute treatment — it's a
+    // moment in time (createdAt, an expiry), and "3 days ago" is the useful
+    // reading. `date` stays absolute-only: a calendar date field (say, a
+    // renewal date with no time-of-day) reads oddly as "in 3 months" when the
+    // field is really answering "which day", not "how long until".
+    case 'datetime':
+      return <Timestamp value={String(value)} />;
+
+    case 'date': {
       const date = new Date(String(value));
       if (Number.isNaN(date.getTime())) {
         return <span className="text-muted-foreground">—</span>;
       }
       return (
         <time dateTime={date.toISOString()} className="tabular-nums">
-          {formatter.dateTime(date, field.type === 'date' ? 'short' : 'short')}
+          {formatter.dateTime(date, 'short')}
         </time>
       );
     }

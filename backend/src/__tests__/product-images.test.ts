@@ -17,10 +17,10 @@ import { signToken } from '../services/auth.service.js';
 const app = createApp();
 
 interface ImageBody {
-  data: { image: { id: string; url: string; position: number } };
+  data: { image: { id: string; url: string; alt: string | null; position: number } };
 }
 interface ImagesListBody {
-  data: { images: { id: string; url: string; position: number }[] };
+  data: { images: { id: string; url: string; alt: string | null; position: number }[] };
 }
 
 const RUN = `imgtest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -129,6 +129,101 @@ describe('adding images', () => {
       .set(auth(ownerToken))
       .send({ url: 'https://cdn.example.com/a.png' });
     expect(res.status).toBe(404);
+  });
+
+  it('accepts alt text at creation', async () => {
+    const productId = await makeProduct();
+    const res = await request(app)
+      .post(`/api/v1/products/${productId}/images`)
+      .set(auth(ownerToken))
+      .send({ url: 'https://cdn.example.com/a.png', alt: 'A ceramic planter on a shelf' });
+
+    expect((res.body as ImageBody).data.image.alt).toBe('A ceramic planter on a shelf');
+  });
+
+  it('leaves alt text null when omitted, not an empty string', async () => {
+    // Null and "" are different states — see the schema comment on
+    // ProductImage.alt. Omitting the field entirely must produce the
+    // "nobody wrote it" state, not a silently-defaulted empty string.
+    const productId = await makeProduct();
+    const res = await request(app)
+      .post(`/api/v1/products/${productId}/images`)
+      .set(auth(ownerToken))
+      .send({ url: 'https://cdn.example.com/a.png' });
+
+    expect((res.body as ImageBody).data.image.alt).toBeNull();
+  });
+
+  it('rejects alt text past the length cap', async () => {
+    const productId = await makeProduct();
+    const res = await request(app)
+      .post(`/api/v1/products/${productId}/images`)
+      .set(auth(ownerToken))
+      .send({ url: 'https://cdn.example.com/a.png', alt: 'x'.repeat(161) });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('editing alt text', () => {
+  async function seedOne(productId: string) {
+    const res = await request(app)
+      .post(`/api/v1/products/${productId}/images`)
+      .set(auth(ownerToken))
+      .send({ url: 'https://cdn.example.com/a.png' });
+    return (res.body as ImageBody).data.image.id;
+  }
+
+  it('sets alt text on an existing image, leaving url and position untouched', async () => {
+    const productId = await makeProduct();
+    const imageId = await seedOne(productId);
+
+    const res = await request(app)
+      .patch(`/api/v1/images/${imageId}`)
+      .set(auth(ownerToken))
+      .send({ alt: 'A wicker basket, empty' });
+
+    expect(res.status).toBe(200);
+    expect((res.body as ImageBody).data.image.alt).toBe('A wicker basket, empty');
+
+    const stored = await prisma.productImage.findUnique({ where: { id: imageId } });
+    expect(stored?.url).toBe('https://cdn.example.com/a.png');
+    expect(stored?.position).toBe(0);
+  });
+
+  it('clears alt text back to null', async () => {
+    const productId = await makeProduct();
+    const imageId = await seedOne(productId);
+    await request(app)
+      .patch(`/api/v1/images/${imageId}`)
+      .set(auth(ownerToken))
+      .send({ alt: 'Temporary description' });
+
+    const res = await request(app)
+      .patch(`/api/v1/images/${imageId}`)
+      .set(auth(ownerToken))
+      .send({ alt: null });
+
+    expect((res.body as ImageBody).data.image.alt).toBeNull();
+  });
+
+  it('404s for an unknown image', async () => {
+    const res = await request(app)
+      .patch('/api/v1/images/does-not-exist')
+      .set(auth(ownerToken))
+      .send({ alt: 'Anything' });
+    expect(res.status).toBe(404);
+  });
+
+  it('denies a role without the products area', async () => {
+    const productId = await makeProduct();
+    const imageId = await seedOne(productId);
+
+    const res = await request(app)
+      .patch(`/api/v1/images/${imageId}`)
+      .set(auth(supportToken))
+      .send({ alt: 'Anything' });
+    expect(res.status).toBe(403);
   });
 });
 
