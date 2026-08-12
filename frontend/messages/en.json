@@ -917,6 +917,15 @@
         "cancel": "Cancel",
         "action": "Revoke"
       }
+    },
+    "localisation": {
+      "title": "Localisation",
+      "description": "Whether the English and Arabic interface text are fully in sync.",
+      "inSync": "All {count} keys are translated in both languages.",
+      "outOfSync": "{count, plural, one {# key is} other {# keys are}} out of sync between languages.",
+      "totalKeys": "{count} total interface text keys.",
+      "missingFromAr": "{count, plural, one {# key} other {# keys}} missing from Arabic",
+      "missingFromEn": "{count, plural, one {# key} other {# keys}} missing from English"
     }
   },
   "audit": {
