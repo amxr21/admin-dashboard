@@ -1071,13 +1071,467 @@
       "revenue": "Revenue",
       "orders": "Orders",
       "averageOrderValue": "Average order",
-      "newCustomers": "New customers"
+      "averageOrderValueDefinitionLabel": "What counts as average order value",
+      "averageOrderValueDefinition": "Revenue ÷ orders, excluding canceled orders. The Orders tile above counts every order including canceled ones, so the two intentionally use different denominators.",
+      "newCustomers": "New customers",
+      "canceledOrders": "Canceled",
+      "lowStockProducts": "Low stock"
     },
     "topProducts": "Best sellers",
+    "showTop": "Show top",
     "statusBreakdown": "Order outcomes",
+    "viewOrdersWithStatus": "View {status} orders",
     "noSales": "No sales in this period.",
     "deletedProduct": "Deleted product",
-    "exportCsv": "Export CSV"
+    "exportCsv": "Export CSV",
+    "export": "Export",
+    "exportFormats": {
+      "csv": "CSV",
+      "xlsx": "Excel (XLSX)",
+      "pdf": "PDF"
+    },
+    "catalogue": {
+      "title": "Reports",
+      "subtitle": "Every report, grouped by domain.",
+      "openExplorer": "Explore",
+      "manageSchedules": "Manage schedules",
+      "domains": {
+        "sales": "Sales",
+        "customers": "Customers",
+        "inventory": "Inventory",
+        "returns": "Returns",
+        "delivery": "Delivery",
+        "staff": "Staff",
+        "security": "Security"
+      }
+    },
+    "overview": {
+      "title": "Revenue overview",
+      "description": "Revenue, best sellers and order outcomes over a window you choose."
+    },
+    "staffActivity": {
+      "title": "Staff activity",
+      "description": "Who did what, and how often, in a chosen window.",
+      "subtitle": "Actions and denied attempts per staff member, read from the same audit trail as the full viewer at /admin/audit.",
+      "empty": "No activity in this period.",
+      "columns": {
+        "actor": "Staff member",
+        "role": "Role",
+        "actions": "Actions",
+        "denied": "Denied attempts"
+      }
+    },
+    "categoryBreakdown": {
+      "title": "Revenue by category",
+      "description": "Units and revenue per product category.",
+      "subtitle": "One flat level, not a hierarchy — category nesting isn't built yet.",
+      "empty": "No sales in this period.",
+      "columns": {
+        "category": "Category",
+        "units": "Units",
+        "revenue": "Revenue",
+        "percentOfTotal": "% of total"
+      }
+    },
+    "refundRateTrend": {
+      "title": "Refund rate trend",
+      "description": "Refunded value as a share of revenue, by month.",
+      "subtitle": "Is the refund rate getting better or worse — a trend, not a single snapshot.",
+      "empty": "No data in this period.",
+      "columns": {
+        "month": "Month",
+        "revenue": "Revenue",
+        "refunded": "Refunded",
+        "refundRate": "Refund rate"
+      }
+    },
+    "inventoryTurnover": {
+      "title": "Inventory turnover",
+      "description": "What's selling, and what's sitting on the shelf.",
+      "subtitle": "Units sold in the window against current stock, read from the stock movement ledger.",
+      "noDeadStock": "Nothing is sitting idle in this period.",
+      "tabs": {
+        "turnover": "Turnover",
+        "deadStock": "Dead stock ({count})"
+      },
+      "columns": {
+        "product": "Product",
+        "sku": "SKU",
+        "stock": "Stock",
+        "unitsSold": "Units sold"
+      }
+    },
+    "scheduled": {
+      "title": "Scheduled reports",
+      "subtitle": "A recurring send of one report to a recipient list.",
+      "add": "Add schedule",
+      "empty": {
+        "title": "No scheduled reports yet",
+        "description": "Add one to have a report emailed automatically on a recurring basis."
+      },
+      "columns": {
+        "report": "Report",
+        "frequency": "Frequency",
+        "recipients": "Recipients",
+        "lastRun": "Last run",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "active": "Active",
+      "inactive": "Inactive",
+      "neverRun": "Never run",
+      "deleted": "Schedule deleted.",
+      "sendNowAction": "Send {report} now",
+      "sendNowSuccess": "Sent.",
+      "sendNowFailed": "Not sent — {reason}",
+      "actions": {
+        "edit": "Edit the {report} schedule",
+        "activate": "Activate the {report} schedule",
+        "deactivate": "Deactivate the {report} schedule",
+        "delete": "Delete the {report} schedule"
+      },
+      "deleteConfirm": {
+        "title": "Delete this schedule?",
+        "description": "The {report} schedule will stop sending. This cannot be undone.",
+        "cancel": "Cancel",
+        "confirm": "Delete",
+        "deleting": "Deleting…"
+      },
+      "reportLabels": {
+        "overview": "Revenue overview",
+        "revenue": "Revenue over time",
+        "topProducts": "Best sellers",
+        "statusBreakdown": "Order outcomes",
+        "fulfillmentHealth": "Fulfillment health",
+        "returnsSummary": "Returns summary",
+        "orderValueDistribution": "Order value distribution",
+        "staffActivity": "Staff activity",
+        "categoryBreakdown": "Revenue by category",
+        "refundRateTrend": "Refund rate trend",
+        "inventoryTurnover": "Inventory turnover"
+      },
+      "form": {
+        "createTitle": "Add a scheduled report",
+        "editTitle": "Edit scheduled report",
+        "fields": {
+          "report": "Report",
+          "frequency": "Frequency",
+          "format": "Format",
+          "recipients": "Recipients"
+        },
+        "frequencies": {
+          "DAILY": "Daily",
+          "WEEKLY": "Weekly",
+          "MONTHLY": "Monthly"
+        },
+        "recipientsPlaceholder": "owner@example.com, accountant@example.com",
+        "recipientsHint": "Separate multiple addresses with a comma or a new line.",
+        "recipientsRequired": "At least one recipient is required.",
+        "cancel": "Cancel",
+        "save": "Save",
+        "saving": "Saving…",
+        "created": "Schedule for {report} created.",
+        "updated": "Schedule for {report} updated."
+      }
+    },
+    "explorer": {
+      "title": "Report explorer",
+      "subtitle": "Group revenue, units, orders and average order value by any dimension — the same order data every other report reads, from a different angle.",
+      "groupBy": "Group by",
+      "measure": "Measure",
+      "total": "Total",
+      "chartTruncated": "Showing the top {shown} of {total} rows in the chart. The table below lists all of them.",
+      "empty": {
+        "title": "No sales in this period",
+        "description": "Choose a different date range or dimension."
+      },
+      "dimensions": {
+        "day": "Day",
+        "week": "Week",
+        "month": "Month",
+        "status": "Order status",
+        "category": "Category",
+        "product": "Product",
+        "paymentMethod": "Payment method"
+      },
+      "measures": {
+        "revenue": "Revenue",
+        "units": "Units",
+        "orders": "Orders",
+        "averageOrderValue": "Average order value"
+      },
+      "columns": {
+        "revenue": "Revenue",
+        "units": "Units",
+        "orders": "Orders",
+        "averageOrderValue": "Average order value",
+        "percentOfTotal": "% of total"
+      }
+    },
+    "customerGeography": {
+      "title": "Customer geography",
+      "description": "Revenue and orders by customer city and country.",
+      "subtitle": "A guest order, or one whose customer was later deleted, falls under an explicit \"(unknown)\" bucket rather than being dropped.",
+      "empty": "No sales in this period.",
+      "columns": {
+        "city": "City",
+        "country": "Country",
+        "revenue": "Revenue",
+        "orders": "Orders"
+      }
+    },
+    "customerNewVsReturning": {
+      "title": "New vs. returning customers",
+      "description": "Revenue split by whether this was a customer's first order ever.",
+      "subtitle": "A guest order (no customer link) counts as new — it has no prior relationship to bank on, same as a genuine first-time customer.",
+      "new": "New customers",
+      "returning": "Returning customers",
+      "orders": "{count, plural, one {# order} other {# orders}}"
+    },
+    "customerLifetimeValue": {
+      "title": "Customer lifetime value",
+      "description": "Top customers by all-time revenue.",
+      "subtitle": "Not scoped to a date range — lifetime value is a running total by definition.",
+      "empty": "No customers with orders yet.",
+      "columns": {
+        "customer": "Customer",
+        "email": "Email",
+        "revenue": "Revenue",
+        "orders": "Orders",
+        "averageOrderValue": "Average order value"
+      }
+    },
+    "customerOrderFrequency": {
+      "title": "Customer order frequency",
+      "description": "How many orders each customer placed in the window.",
+      "subtitle": "Guest orders are excluded entirely — an order with no customer link has no \"this customer's Nth order\" to count.",
+      "repeatRate": "Repeat-purchase rate",
+      "totalCustomers": "{count, plural, one {# customer ordered} other {# customers ordered}} in this window",
+      "columns": {
+        "ordersPlaced": "Orders placed",
+        "customers": "Customers"
+      }
+    },
+    "guestVsRegistered": {
+      "title": "Guest vs. registered orders",
+      "description": "Orders with no customer link against orders from a registered customer.",
+      "subtitle": "A guest order and one from a later-deleted customer look identical after the fact — both fall under \"guest\".",
+      "guest": "Guest",
+      "registered": "Registered",
+      "orders": "{count, plural, one {# order} other {# orders}}"
+    },
+    "paymentMethodBreakdown": {
+      "title": "Payment method breakdown",
+      "description": "Revenue and orders by the recorded payment method.",
+      "subtitle": "Free text, not an enum — an order with nothing recorded falls under an explicit \"(not recorded)\" bucket.",
+      "empty": "No sales in this period.",
+      "columns": {
+        "method": "Payment method",
+        "revenue": "Revenue",
+        "orders": "Orders"
+      }
+    },
+    "productMargin": {
+      "title": "Product margin",
+      "description": "Revenue, cost of goods sold and gross margin per product.",
+      "subtitle": "Only for products with a recorded cost — a product with no cost is excluded, never shown with a fabricated 100% margin.",
+      "productsWithoutCost": "{count, plural, one {# other product sold in this window has no recorded cost, and is not shown here.} other {# other products sold in this window have no recorded cost, and are not shown here.}}",
+      "empty": "No products with a recorded cost sold in this period.",
+      "columns": {
+        "product": "Product",
+        "revenue": "Revenue",
+        "cogs": "COGS",
+        "margin": "Margin",
+        "marginPercent": "Margin %",
+        "units": "Units"
+      }
+    },
+    "productReviewSummary": {
+      "title": "Product review summary",
+      "description": "Average rating, review count and star distribution per product.",
+      "subtitle": "Approved reviews only — a pending or rejected review is not yet, or never, a verified opinion about the product.",
+      "empty": "No approved reviews in this period.",
+      "columns": {
+        "product": "Product",
+        "reviews": "Reviews",
+        "averageRating": "Average rating"
+      }
+    },
+    "reviewModerationThroughput": {
+      "title": "Review moderation throughput",
+      "description": "How many reviews were submitted, approved, rejected, or are still pending.",
+      "subtitle": "A pending review has no moderation timestamp yet, so it's counted but excluded from the average time to moderate.",
+      "submitted": "Submitted",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "pending": "Pending",
+      "averageHours": "Avg. hours to moderation"
+    },
+    "productsWithoutReviews": {
+      "title": "Products without reviews",
+      "description": "Active products that have never been reviewed.",
+      "subtitle": "Live catalogue state, not scoped to a date range — whether a product has ever been reviewed doesn't reset every period.",
+      "empty": {
+        "title": "Every active product has at least one review",
+        "description": "Nothing to show here right now."
+      },
+      "columns": {
+        "product": "Product",
+        "sku": "SKU"
+      }
+    },
+    "lowStockSnapshot": {
+      "title": "Low stock snapshot",
+      "description": "Every active product at or below the low-stock threshold.",
+      "subtitle": "Live catalogue state, not scoped to a date range.",
+      "threshold": "Threshold: {count, plural, one {# unit or fewer} other {# units or fewer}}",
+      "neverRestocked": "Never recorded as restocked",
+      "empty": {
+        "title": "Nothing is low on stock right now",
+        "description": "Every active product is above the configured threshold."
+      },
+      "columns": {
+        "product": "Product",
+        "sku": "SKU",
+        "stock": "Stock",
+        "daysSinceRestock": "Days since restock"
+      }
+    },
+    "stockAdjustmentReasons": {
+      "title": "Stock adjustment reasons",
+      "description": "Why stock moved — units and movement count by reason.",
+      "subtitle": "Net units are kept signed (received positive, damaged/lost negative), never flattened to an absolute value.",
+      "empty": "No stock movements in this period.",
+      "columns": {
+        "reason": "Reason",
+        "movements": "Movements",
+        "netUnits": "Net units"
+      }
+    },
+    "stockMovementReasons": {
+      "RECEIVED": "Received",
+      "SOLD": "Sold",
+      "DAMAGED": "Damaged",
+      "LOST": "Lost",
+      "RETURNED": "Returned",
+      "CORRECTION": "Correction"
+    },
+    "variantStockMovement": {
+      "title": "Variant stock movement",
+      "description": "Units sold and received per product variant.",
+      "subtitle": "Reads the variant's own stock movement ledger, not a re-derivation of the product-level one.",
+      "empty": "No variant stock movements in this period.",
+      "columns": {
+        "product": "Product",
+        "variant": "Variant",
+        "sku": "SKU",
+        "stock": "Current stock",
+        "sold": "Units sold",
+        "received": "Units received"
+      }
+    },
+    "returnResolutionBreakdown": {
+      "title": "Return resolution breakdown",
+      "description": "Counts and refunded value by resolution and by status.",
+      "subtitle": "Resolution is only ever set as part of the real approve-return procedure, not a stray editable field.",
+      "columns": {
+        "resolution": "Resolution",
+        "status": "Status",
+        "count": "Count",
+        "refundedValue": "Refunded value"
+      },
+      "resolutions": {
+        "REFUND": "Refund",
+        "STORE_CREDIT": "Store credit",
+        "REPLACEMENT": "Replacement",
+        "NONE": "None"
+      },
+      "statuses": {
+        "REQUESTED": "Requested",
+        "APPROVED": "Approved",
+        "REJECTED": "Rejected"
+      }
+    },
+    "returnReasons": {
+      "title": "Return reasons",
+      "description": "The reason text recorded on every return request.",
+      "subtitle": "A flat, readable export — no keyword-based categorisation, since the schema has no taxonomy to group reasons by.",
+      "empty": "No returns in this period.",
+      "columns": {
+        "rma": "RMA",
+        "status": "Status",
+        "reason": "Reason",
+        "requestedAt": "Requested at"
+      }
+    },
+    "courierPerformance": {
+      "title": "Courier performance",
+      "description": "Per-courier count of assignments by current status.",
+      "subtitle": "Reports how many jobs are in each state per courier right now — there is no per-leg timing history to report against.",
+      "empty": "No assignments in this period.",
+      "columns": {
+        "courier": "Courier",
+        "total": "Total",
+        "delivered": "Delivered",
+        "outForDelivery": "Out for delivery",
+        "canceled": "Canceled",
+        "returned": "Returned"
+      }
+    },
+    "deliveryZoneBreakdown": {
+      "title": "Delivery zone breakdown",
+      "description": "Assignment counts and collectible value by delivery zone.",
+      "subtitle": "Grouped by the courier's own zone/region, used as a proxy for delivery area.",
+      "proxyNote": "The assignment's own delivery area isn't recorded anywhere — this groups by the courier's own home zone/region instead.",
+      "empty": "No assignments in this period.",
+      "columns": {
+        "zone": "Zone",
+        "region": "Region",
+        "assignments": "Assignments",
+        "collectibleValue": "Collectible value"
+      }
+    },
+    "deliveryCycleTime": {
+      "title": "Delivery cycle time",
+      "description": "Average and median hours from assignment to delivery.",
+      "subtitle": "Restricted to currently-delivered assignments — the only case the last-updated timestamp can be trusted as the delivery moment.",
+      "deliveredCount": "Delivered",
+      "averageHours": "Average hours",
+      "medianHours": "Median hours"
+    },
+    "courierWorkloadSnapshot": {
+      "title": "Courier workload",
+      "description": "Live roster status and open assignment count per courier.",
+      "subtitle": "Live state, not scoped to a date range.",
+      "columns": {
+        "courier": "Courier",
+        "status": "Status",
+        "openAssignments": "Open assignments"
+      }
+    },
+    "auditOutcomeTrend": {
+      "title": "Audit outcome trend",
+      "description": "Count of audit events by outcome, by day.",
+      "subtitle": "\"Error\" is a declared outcome no code path currently sets — it reads as an honest zero rather than being omitted.",
+      "empty": "No audit activity in this period.",
+      "columns": {
+        "date": "Date",
+        "success": "Success",
+        "denied": "Denied",
+        "error": "Error"
+      }
+    },
+    "auditActivityByEntity": {
+      "title": "Audit activity by entity",
+      "description": "Which resources and actions are touched most often.",
+      "subtitle": "Both fields are populated on every single audit row — the most solidly-populated table in the schema.",
+      "empty": "No audit activity in this period.",
+      "columns": {
+        "entity": "Entity",
+        "action": "Action",
+        "count": "Count"
+      }
+    }
   },
   "imageUpload": {
     "upload": "Upload",

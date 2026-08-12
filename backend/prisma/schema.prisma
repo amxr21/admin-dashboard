@@ -777,7 +777,7 @@ model DeliveryAssignment {
   /// attempt" must stay knowable after the job cycles back to
   /// OUT_FOR_DELIVERY, the same reason a StockMovement correction doesn't
   /// erase the mistake it corrects.
-  attemptCount Int @default(0) @map("attempt_count")
+  attemptCount  Int     @default(0) @map("attempt_count")
   /// Free text from the courier, e.g. "customer not home", "refused at
   /// door". Set on FAILED_ATTEMPT, left as-is on a successful retry — a
   /// staff member reviewing a 3rd attempt wants to see what the 1st and 2nd
@@ -924,4 +924,52 @@ enum AuditOutcome {
   SUCCESS
   DENIED
   ERROR
+}
+
+enum ScheduleFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+/// CSV always works; XLSX/PDF depend on C3.4's export libraries being wired
+/// in — `reports.service.ts`'s scheduler send path is the single place that
+/// decision matters, not this row.
+enum ScheduleFormat {
+  CSV
+  XLSX
+  PDF
+}
+
+model ScheduledReport {
+  id String @id @default(cuid())
+
+  /// Matches a `ReportView` key on the frontend (`overview`, `revenue`,
+  /// `staff-activity`, ...) — plain string, not a Prisma enum, so a new
+  /// report type never needs a migration to become schedulable.
+  reportKey  String            @map("report_key") @db.VarChar(64)
+  frequency  ScheduleFrequency
+  format     ScheduleFormat    @default(CSV)
+  /// Plain email strings, not a relation to Customer/User — a recipient here
+  /// is very often someone with NO account in this system at all (an
+  /// external accountant, a franchise owner), same reasoning
+  /// `DeliveryAssignment.customerName`/`customerPhone` snapshot rather than
+  /// requiring a Customer row to exist.
+  recipients Json
+  isActive   Boolean           @default(true) @map("is_active")
+
+  /// Set by the scheduler after each attempt — lets the UI show "last sent"
+  /// honestly instead of implying every active schedule has actually fired.
+  lastRunAt     DateTime? @map("last_run_at")
+  lastRunStatus String?   @map("last_run_status") @db.VarChar(16)
+
+  /// Plain id, not a relation — same "the record must survive the staff
+  /// member being deleted" rule as every other actor reference in this file.
+  createdById String? @map("created_by_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive, frequency])
+  @@map("scheduled_reports")
 }
