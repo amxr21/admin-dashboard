@@ -42,6 +42,7 @@ v1Router.use(staffRouter);
 v1Router.use(settingsRouter);
 v1Router.use(diagnosticsRouter);
 v1Router.use(reportsRouter);
+v1Router.use(policiesRouter);
 v1Router.use(scheduledReportsRouter);
 v1Router.use(auditRouter);
 v1Router.use(notificationsRouter);
