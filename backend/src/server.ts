@@ -4,6 +4,7 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './logger.js';
 import { prisma } from './db/prisma.js';
+import { startScheduler } from './scheduler.js';
 
 /**
  * Process entry point. Owns the port and the lifecycle; app.ts owns the routes.
@@ -17,6 +18,8 @@ const server = app.listen(env.PORT, () => {
     port: env.PORT,
     nodeEnv: env.NODE_ENV,
   });
+
+  startScheduler();
 });
 
 /**

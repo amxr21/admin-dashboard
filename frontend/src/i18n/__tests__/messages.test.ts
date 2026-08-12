@@ -83,6 +83,11 @@ describe('Arabic is actually translated', () => {
       'settings.dangerZone.deactivate.confirmPhrase',
       'settings.dangerZone.deleteTestData.confirmPhrase',
       'settings.dangerZone.transferOwnership.confirmPhrase',
+      // File-format acronyms and an email-address example — same reasoning
+      // again: Arabic technical UI writes these as-is.
+      'reports.exportFormats.csv',
+      'reports.exportFormats.pdf',
+      'reports.scheduled.form.recipientsPlaceholder',
     ]);
 
     const untranslated = enKeys.filter(

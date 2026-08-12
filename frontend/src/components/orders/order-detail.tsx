@@ -1,12 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { Printer, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Printer, RotateCcw } from 'lucide-react';
 
 import { AssignCourierControl } from '@/components/orders/assign-courier-control';
+import { Breadcrumb } from '@/components/shell/breadcrumb';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { ErrorScreen } from '@/components/errors/error-screen';
+import { LastUpdatedNote } from '@/components/last-updated-note';
 import { OrderNotesSection } from '@/components/orders/order-notes-section';
 import { OrderStatusControl } from '@/components/orders/order-status-control';
 import { OrderStatusTimeline } from '@/components/orders/order-status-timeline';
@@ -22,9 +26,50 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { ApiError } from '@/lib/api';
-import { fetchOrder, type OrderDetail as Order } from '@/lib/orders-api';
+import { fetchAudit } from '@/lib/audit-api';
+import {
+  fetchOrder,
+  fetchOrderNeighbors,
+  type OrderDetail as Order,
+  type OrderListParams,
+  type OrderNeighbors,
+} from '@/lib/orders-api';
+
+/**
+ * The most recent of the order's status-history entries (a legal lifecycle
+ * move) and its most recent audit entry (currently only internal-notes
+ * edits — `changeOrderStatus` writes `OrderStatusHistory` instead of calling
+ * `audit()`, see orders.service.ts) — whichever actually happened last.
+ * Returns `null` when the order has never been touched beyond creation.
+ */
+function latestActivity(
+  order: Order,
+  latestAuditEntry: { createdAt: string; actorEmail: string | null } | null,
+): { when: string; who: string | null } | null {
+  const latestStatusEntry = order.statusHistory.at(-1) ?? null;
+
+  const candidates = [
+    latestStatusEntry
+      ? { when: latestStatusEntry.createdAt, who: latestStatusEntry.changedByName }
+      : null,
+    latestAuditEntry
+      ? { when: latestAuditEntry.createdAt, who: latestAuditEntry.actorEmail }
+      : null,
+  ].filter((c): c is { when: string; who: string | null } => c !== null);
+
+  if (candidates.length === 0) return null;
+
+  return candidates.reduce((latest, candidate) =>
+    new Date(candidate.when).getTime() > new Date(latest.when).getTime() ? candidate : latest,
+  );
+}
+
+/** The same 5 filter/sort keys `orders-table.tsx` writes to the URL when it
+ *  links into a row — anything else on the query string is ignored. */
+const NEIGHBOR_PARAM_KEYS = ['search', 'status', 'from', 'to', 'sort', 'dir'] as const;
 
 /**
  * One order: line items, customer, delivery and the status trail.
@@ -36,9 +81,14 @@ import { fetchOrder, type OrderDetail as Order } from '@/lib/orders-api';
 
 export function OrderDetail({ id }: { id: string }) {
   const t = useTranslations('orders');
+  const tNav = useTranslations('nav');
   const tErrors = useTranslations('errorPages.notFound');
   const formatter = useFormatter();
+  const formatCurrency = useCurrencyFormat();
   const translateError = useTranslatedApiError();
+  const searchParams = useSearchParams();
+  const { navLabels } = useAppSettings();
+  const ordersLabel = navLabels.orders ?? tNav('orders');
 
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,6 +96,23 @@ export function OrderDetail({ id }: { id: string }) {
   const [notFound, setNotFound] = useState(false);
   const [returnSheetOpen, setReturnSheetOpen] = useState(false);
   const [returnMessage, setReturnMessage] = useState<string | null>(null);
+  const [neighbors, setNeighbors] = useState<OrderNeighbors | null>(null);
+  const [latestAuditEntry, setLatestAuditEntry] = useState<{
+    createdAt: string;
+    actorEmail: string | null;
+  } | null>(null);
+
+  // Present only when the row was clicked from the orders table (it stamps
+  // these onto the link) — arriving here any other way (a bookmark, a deep
+  // link from the dashboard) means there's no "list this came from", so
+  // Prev/Next is correctly absent rather than guessing at one.
+  const listFilters: Omit<OrderListParams, 'page' | 'pageSize'> = {};
+  for (const key of NEIGHBOR_PARAM_KEYS) {
+    const value = searchParams.get(key);
+    if (value) (listFilters as Record<string, string>)[key] = value;
+  }
+  const hasListContext = Object.keys(listFilters).length > 0;
+  const listFiltersKey = JSON.stringify(listFilters);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +121,8 @@ export function OrderDetail({ id }: { id: string }) {
       setIsLoading(true);
       setError(null);
       setNotFound(false);
+      setNeighbors(null);
+      setLatestAuditEntry(null);
 
       try {
         const loaded = await fetchOrder(id);
@@ -70,6 +139,33 @@ export function OrderDetail({ id }: { id: string }) {
       } finally {
         if (!cancelled) setIsLoading(false);
       }
+
+      // Best-effort, independent of the main load — a neighbor lookup
+      // failing must never block the order itself from rendering.
+      if (hasListContext) {
+        fetchOrderNeighbors(id, listFilters)
+          .then((result) => {
+            if (!cancelled) setNeighbors(result);
+          })
+          .catch(() => {
+            /* Prev/Next simply doesn't render — see below. */
+          });
+      }
+
+      // Also best-effort (C5.3) — the newest entry for this order, if any.
+      // A failed lookup just means "Updated by" falls back to the status
+      // history alone rather than blocking the order from rendering.
+      fetchAudit({ entity: 'orders', entityId: id, pageSize: 1 })
+        .then((result) => {
+          if (cancelled) return;
+          const [newest] = result.entries;
+          if (newest) {
+            setLatestAuditEntry({ createdAt: newest.createdAt, actorEmail: newest.actorEmail });
+          }
+        })
+        .catch(() => {
+          /* Falls back to statusHistory alone — see latestActivity(). */
+        });
     }
 
     void load();
@@ -77,7 +173,8 @@ export function OrderDetail({ id }: { id: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id, translateError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- listFiltersKey stands in for listFilters/hasListContext, both rebuilt fresh from searchParams every render
+  }, [id, translateError, listFiltersKey]);
 
   if (isLoading) {
     return (
@@ -103,11 +200,48 @@ export function OrderDetail({ id }: { id: string }) {
     );
   }
 
-  const money = (value: string | null) =>
-    value === null ? '—' : formatter.number(Number(value), 'currency');
+  const money = (value: string | null) => (value === null ? '—' : formatCurrency(Number(value)));
+  const lastActivity = latestActivity(order, latestAuditEntry);
 
   return (
     <div className="space-y-6">
+      <Breadcrumb
+        segments={[
+          { label: ordersLabel, href: '/admin/orders' },
+          // `force-ltr` isn't available on a plain breadcrumb label string
+          // the way it is on the `<h1>` below — the order number is still
+          // Western-numeral/Latin-script regardless of locale, so this is a
+          // cosmetic gap in RTL only (the number itself is never mangled),
+          // not a functional one.
+          { label: order.orderNumber },
+        ]}
+      />
+
+      {hasListContext ? (
+        <div className="flex items-center justify-between gap-2 text-sm">
+          {neighbors?.prev ? (
+            <Button variant="ghost" size="sm" asChild>
+              <Link href={{ pathname: `/admin/orders/${neighbors.prev.id}`, query: listFilters }}>
+                <PrevArrow />
+                <span className="force-ltr">{neighbors.prev.orderNumber}</span>
+              </Link>
+            </Button>
+          ) : (
+            <span />
+          )}
+          {neighbors?.next ? (
+            <Button variant="ghost" size="sm" asChild>
+              <Link href={{ pathname: `/admin/orders/${neighbors.next.id}`, query: listFilters }}>
+                <span className="force-ltr">{neighbors.next.orderNumber}</span>
+                <NextArrow />
+              </Link>
+            </Button>
+          ) : (
+            <span />
+          )}
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-3 text-2xl font-semibold">
@@ -119,6 +253,15 @@ export function OrderDetail({ id }: { id: string }) {
               date: formatter.dateTime(new Date(order.placedAt), 'long'),
             })}
           </p>
+          {lastActivity ? (
+            <div className="mt-1">
+              <LastUpdatedNote
+                when={lastActivity.when}
+                who={lastActivity.who}
+                auditHref={`/admin/audit?entity=orders&entityId=${order.id}`}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2">
@@ -212,7 +355,7 @@ export function OrderDetail({ id }: { id: string }) {
 
           <section className="bg-card rounded-lg border p-4">
             <h2 className="mb-3 font-medium">{t('timeline.title')}</h2>
-            <OrderStatusTimeline entries={order.statusHistory} placedAt={order.placedAt} />
+            <OrderStatusTimeline orderId={order.id} placedAt={order.placedAt} />
           </section>
         </div>
 
@@ -262,6 +405,22 @@ export function OrderDetail({ id }: { id: string }) {
                     <StatusBadge kind="deliveryStatus" value={order.assignment.status} />
                   </dd>
                 </div>
+                {order.assignment.attemptCount > 0 ? (
+                  <>
+                    <div className="flex items-center justify-between gap-4">
+                      <dt className="text-muted-foreground">{t('delivery.attemptCount')}</dt>
+                      <dd className="text-destructive font-medium">
+                        {order.assignment.attemptCount}
+                      </dd>
+                    </div>
+                    {order.assignment.failureReason ? (
+                      <Field
+                        label={t('delivery.failureReason')}
+                        value={order.assignment.failureReason}
+                      />
+                    ) : null}
+                  </>
+                ) : null}
               </dl>
             ) : (
               <p className="text-muted-foreground text-sm">{t('delivery.unassigned')}</p>
@@ -296,6 +455,26 @@ export function OrderDetail({ id }: { id: string }) {
         }}
       />
     </div>
+  );
+}
+
+/** "Prev" points toward the reading start, mirroring `order-invoice.tsx`'s
+ *  `BackArrow` — a fixed ChevronLeft would point forward in Arabic. */
+function PrevArrow() {
+  return (
+    <>
+      <ChevronLeft className="rtl:hidden" aria-hidden />
+      <ChevronRight className="hidden rtl:block" aria-hidden />
+    </>
+  );
+}
+
+function NextArrow() {
+  return (
+    <>
+      <ChevronRight className="rtl:hidden" aria-hidden />
+      <ChevronLeft className="hidden rtl:block" aria-hidden />
+    </>
   );
 }
 

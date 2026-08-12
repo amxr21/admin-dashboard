@@ -162,6 +162,19 @@ export const SETTINGS = {
     label: 'Tax / VAT registration number',
     description: 'Printed on invoices alongside the address, if your jurisdiction requires it.',
   },
+  'store.taxRate': {
+    type: 'number',
+    default: 0,
+    area: 'settings',
+    min: 0,
+    max: 100,
+    label: 'Tax / VAT rate (%)',
+    // 0 is a real, valid choice (no tax applies / not yet registered) — never
+    // treated as "unset". A single flat rate for the whole store, same
+    // single-jurisdiction assumption store.taxId already makes.
+    description:
+      'Applied to every order subtotal on the invoice. Set to 0 if you do not charge tax.',
+  },
 
   // ─── Security ───────────────────────────────────────────────────────
   'security.sessionTimeoutMinutes': {
@@ -322,6 +335,66 @@ export const SETTINGS = {
     max: 100,
     label: 'Rows per table page',
     description: 'Applies to every list in the dashboard.',
+  },
+
+  // ─── Business-specific nav labels ──────────────────────────────────
+  // An owner can rename a fixed set of nav items to fit their business, e.g.
+  // "Staff" as "Baristas" for a cafe. Renames the sidebar entry, the page's
+  // own heading, and every breadcrumb/permissions-matrix row that names that
+  // area — but display-only: the underlying area/resource identifier
+  // (`staff`, `orders`, ...) never changes, so no permission check, API
+  // route, or audit-log action name is affected. Empty string is the
+  // declared default and means "use the built-in translated label," never a
+  // real value. Dashboard, Settings and Audit are deliberately not
+  // included — generic enough across businesses that relabeling them buys
+  // little.
+  'labels.nav.staff': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 40,
+    label: 'Staff page name',
+    description: 'Replaces "Staff" in the sidebar and page heading, e.g. "Baristas".',
+  },
+  'labels.nav.orders': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 40,
+    label: 'Orders page name',
+    description: 'Replaces "Orders" in the sidebar and page heading, e.g. "Tickets".',
+  },
+  'labels.nav.delivery': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 40,
+    label: 'Delivery page name',
+    description: 'Replaces "Delivery" in the sidebar and page heading, e.g. "Runs".',
+  },
+  'labels.nav.inventory': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 40,
+    label: 'Inventory page name',
+    description: 'Replaces "Inventory" in the sidebar and page heading.',
+  },
+  'labels.nav.returns': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 40,
+    label: 'Returns page name',
+    description: 'Replaces "Returns" in the sidebar and page heading.',
+  },
+  'labels.nav.reports': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 40,
+    label: 'Reports page name',
+    description: 'Replaces "Reports" in the sidebar and page heading.',
   },
 } as const satisfies Record<string, SettingDefinition>;
 
