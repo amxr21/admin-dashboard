@@ -1761,6 +1761,11 @@
       "refundAmountLabel": "Refund amount (up to {max})",
       "restock": "Put the returned items back in stock",
       "reject": "Reject",
+      "confirmReject": "Confirm rejection",
+      "cancel": "Cancel",
+      "rejectionReasonLabel": "Why is this being rejected?",
+      "rejectionReasonPlaceholder": "Explain the decision — the requester may see this.",
+      "rejectionReason": "Rejection reason",
       "approve": "Approve",
       "saving": "Saving…",
       "approved": "{rma} approved.",
@@ -1774,6 +1779,8 @@
       "quantityFor": "Quantity for {item}",
       "reason": "Reason",
       "reasonPlaceholder": "Why is this being returned?",
+      "category": "Category",
+      "categoryPlaceholder": "Choose a category (optional)",
       "cancel": "Cancel",
       "submit": "Request return",
       "saving": "Submitting…",
@@ -1788,5 +1795,13 @@
     "SUCCESS": "Success",
     "DENIED": "Denied",
     "ERROR": "Error"
+  },
+  "returnCategory": {
+    "DAMAGED": "Damaged",
+    "WRONG_ITEM": "Wrong item",
+    "NOT_AS_DESCRIBED": "Not as described",
+    "NO_LONGER_NEEDED": "No longer needed",
+    "ARRIVED_LATE": "Arrived late",
+    "OTHER": "Other"
   }
 }
