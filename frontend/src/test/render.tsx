@@ -3,6 +3,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactElement, ReactNode } from 'react';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { FORMATS } from '@/i18n/formats';
 import en from '../../messages/en.json';
 import ar from '../../messages/ar.json';
 
@@ -19,17 +20,10 @@ import ar from '../../messages/ar.json';
 
 const MESSAGES = { en, ar } as const;
 
-/** Kept in sync with src/i18n/request.ts — see the note on the provider. */
-const FORMATS = {
-  dateTime: {
-    short: { day: '2-digit', month: '2-digit', year: 'numeric' },
-    long: { day: 'numeric', month: 'long', year: 'numeric' },
-  },
-  number: {
-    currency: { style: 'currency', currency: 'AED', numberingSystem: 'latn' },
-    decimal: { numberingSystem: 'latn' },
-  },
-} as const;
+// Imported, NOT copied. This was a hand-maintained duplicate of the real
+// provider's formats with a "keep in sync" comment; it drifted the first time
+// a format was added, leaving tests rendering through next-intl's fallback
+// while the browser used the real one.
 
 type TestLocale = keyof typeof MESSAGES;
 
