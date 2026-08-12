@@ -950,6 +950,35 @@
         "cancel": "إلغاء",
         "action": "إبطال"
       }
+    },
+    "policies": {
+      "title": "السياسات",
+      "description": "نصوص سياسة الإرجاع والخصوصية والشروط والشحن — لكل لغة، مع سجل إصدارات.",
+      "types": {
+        "RETURN": "سياسة الإرجاع",
+        "PRIVACY": "سياسة الخصوصية",
+        "TERMS": "شروط الخدمة",
+        "SHIPPING": "سياسة الشحن"
+      },
+      "version": "الإصدار {version}",
+      "unpublished": "لم يُنشر بعد",
+      "retry": "إعادة المحاولة",
+      "history": "السجل",
+      "historyEmpty": "لا توجد إصدارات بعد.",
+      "current": "الحالي",
+      "revert": "استعادة",
+      "contentPlaceholder": "اكتب نص السياسة…",
+      "publish": "نشر",
+      "publishing": "جارٍ النشر…",
+      "published": "تم نشر السياسة.",
+      "reverted": "تمت الاستعادة إلى الإصدار {version}.",
+      "cancel": "إلغاء",
+      "confirmRevert": {
+        "title": "استعادة الإصدار {version}؟",
+        "description": "سيؤدي هذا إلى نشر نص ذلك الإصدار كإصدار جديد. يبقى النص الحالي في السجل ويمكن استعادته بنفس الطريقة.",
+        "cancel": "إلغاء",
+        "action": "استعادة"
+      }
     }
   },
   "audit": {
@@ -1664,6 +1693,11 @@
       "refundAmountLabel": "مبلغ الاسترداد (حتى {max})",
       "restock": "إعادة العناصر المرتجعة إلى المخزون",
       "reject": "رفض",
+      "confirmReject": "تأكيد الرفض",
+      "cancel": "إلغاء",
+      "rejectionReasonLabel": "لماذا يُرفض هذا الطلب؟",
+      "rejectionReasonPlaceholder": "اشرح سبب القرار — قد يطّلع مقدّم الطلب على هذا.",
+      "rejectionReason": "سبب الرفض",
       "approve": "قبول",
       "saving": "جارٍ الحفظ…",
       "approved": "تم قبول {rma}.",
@@ -1677,6 +1711,8 @@
       "quantityFor": "الكمية لـ {item}",
       "reason": "السبب",
       "reasonPlaceholder": "لماذا يُعاد هذا المنتج؟",
+      "category": "الفئة",
+      "categoryPlaceholder": "اختر فئة (اختياري)",
       "cancel": "إلغاء",
       "submit": "طلب الإرجاع",
       "saving": "جارٍ الإرسال…",
@@ -1711,5 +1747,13 @@
       "switchToLight": "التبديل إلى الوضع الفاتح",
       "signOut": "تسجيل الخروج"
     }
+  },
+  "returnCategory": {
+    "DAMAGED": "تالف",
+    "WRONG_ITEM": "منتج خاطئ",
+    "NOT_AS_DESCRIBED": "لا يطابق الوصف",
+    "NO_LONGER_NEEDED": "لم يعد مطلوبًا",
+    "ARRIVED_LATE": "وصل متأخرًا",
+    "OTHER": "أخرى"
   }
 }

@@ -950,6 +950,35 @@
         "cancel": "Cancel",
         "action": "Revoke"
       }
+    },
+    "policies": {
+      "title": "Policies",
+      "description": "Return, privacy, terms, and shipping policy text — per locale, versioned.",
+      "types": {
+        "RETURN": "Return policy",
+        "PRIVACY": "Privacy policy",
+        "TERMS": "Terms of service",
+        "SHIPPING": "Shipping policy"
+      },
+      "version": "v{version}",
+      "unpublished": "Not published",
+      "retry": "Retry",
+      "history": "History",
+      "historyEmpty": "No versions yet.",
+      "current": "Current",
+      "revert": "Revert",
+      "contentPlaceholder": "Write the policy text…",
+      "publish": "Publish",
+      "publishing": "Publishing…",
+      "published": "Policy published.",
+      "reverted": "Reverted to v{version}.",
+      "cancel": "Cancel",
+      "confirmRevert": {
+        "title": "Revert to v{version}?",
+        "description": "This publishes that version's text as a new version. The current text stays in history and can be restored the same way.",
+        "cancel": "Cancel",
+        "action": "Revert"
+      }
     }
   },
   "audit": {
@@ -1664,6 +1693,11 @@
       "refundAmountLabel": "Refund amount (up to {max})",
       "restock": "Put the returned items back in stock",
       "reject": "Reject",
+      "confirmReject": "Confirm rejection",
+      "cancel": "Cancel",
+      "rejectionReasonLabel": "Why is this being rejected?",
+      "rejectionReasonPlaceholder": "Explain the decision — the requester may see this.",
+      "rejectionReason": "Rejection reason",
       "approve": "Approve",
       "saving": "Saving…",
       "approved": "{rma} approved.",
@@ -1677,6 +1711,8 @@
       "quantityFor": "Quantity for {item}",
       "reason": "Reason",
       "reasonPlaceholder": "Why is this being returned?",
+      "category": "Category",
+      "categoryPlaceholder": "Choose a category (optional)",
       "cancel": "Cancel",
       "submit": "Request return",
       "saving": "Submitting…",
@@ -1711,5 +1747,13 @@
       "switchToLight": "Switch to light mode",
       "signOut": "Sign out"
     }
+  },
+  "returnCategory": {
+    "DAMAGED": "Damaged",
+    "WRONG_ITEM": "Wrong item",
+    "NOT_AS_DESCRIBED": "Not as described",
+    "NO_LONGER_NEEDED": "No longer needed",
+    "ARRIVED_LATE": "Arrived late",
+    "OTHER": "Other"
   }
 }
