@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Select,
@@ -23,6 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { canAccessArea, type StaffRole } from '@/config/areas';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useAuth } from '@/hooks/useAuth';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
@@ -61,6 +63,7 @@ export function ReturnDetailSheet({
   const t = useTranslations('returns.detail');
   const tAudit = useTranslations('audit');
   const formatter = useFormatter();
+  const formatCurrency = useCurrencyFormat();
   const translateError = useTranslatedApiError();
   const { user } = useAuth();
   const { editPanelMode } = useAppSettings();
@@ -75,6 +78,12 @@ export function ReturnDetailSheet({
   const [restock, setRestock] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  /** Reject is a two-step action: clicking Reject reveals a required-reason
+   *  field rather than firing immediately — the same reasoning approve
+   *  already follows (a resolution must be chosen first), applied to the
+   *  action that used to need no input at all. */
+  const [isRejecting, setIsRejecting] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
 
   useEffect(() => {
     if (!open || !returnId) return;
@@ -86,6 +95,8 @@ export function ReturnDetailSheet({
     setRefundAmount('');
     setRestock(true);
     setActionError(null);
+    setIsRejecting(false);
+    setRejectionReason('');
 
     fetchReturn(returnId)
       .then((loaded) => {
@@ -105,8 +116,7 @@ export function ReturnDetailSheet({
 
   if (!returnId) return null;
 
-  const money = (value: string | null) =>
-    value === null ? '—' : formatter.number(Number(value), 'currency');
+  const money = (value: string | null) => (value === null ? '—' : formatCurrency(Number(value)));
 
   const maxRefund = item
     ? item.items.reduce((sum, row) => sum + Number(row.lineTotal), 0)
@@ -138,13 +148,13 @@ export function ReturnDetailSheet({
   }
 
   async function submitReject() {
-    if (!item) return;
+    if (!item || !rejectionReason.trim()) return;
 
     setIsSaving(true);
     setActionError(null);
 
     try {
-      const updated = await rejectReturn(item.id);
+      const updated = await rejectReturn(item.id, rejectionReason.trim());
       onChanged(t('rejected', { rma: updated.rmaNumber }));
       onOpenChange(false);
     } catch (caught) {
@@ -217,6 +227,9 @@ export function ReturnDetailSheet({
             <div className="space-y-1">
               <p className="text-muted-foreground text-sm font-medium">{t('reason')}</p>
               <p className="text-sm">{item.reason}</p>
+              {item.category ? (
+                <StatusBadge kind="returnCategory" value={item.category} className="mt-1" />
+              ) : null}
             </div>
 
             <div className="space-y-2">
@@ -238,20 +251,29 @@ export function ReturnDetailSheet({
 
             {item.status !== 'REQUESTED' ? (
               <div className="bg-muted/50 space-y-2 rounded-md border p-3 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">{t('resolution')}</span>
-                  <StatusBadge kind="returnResolution" value={item.resolution} />
-                </div>
-                {item.refundAmount !== null ? (
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">{t('refundAmount')}</span>
-                    <span className="tabular-nums">{money(item.refundAmount)}</span>
+                {item.status === 'REJECTED' ? (
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground">{t('rejectionReason')}</span>
+                    <p>{item.rejectionReason}</p>
                   </div>
-                ) : null}
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">{t('restocked')}</span>
-                  <span>{item.restocked ? t('yes') : t('no')}</span>
-                </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">{t('resolution')}</span>
+                      <StatusBadge kind="returnResolution" value={item.resolution} />
+                    </div>
+                    {item.refundAmount !== null ? (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">{t('refundAmount')}</span>
+                        <span className="tabular-nums">{money(item.refundAmount)}</span>
+                      </div>
+                    ) : null}
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">{t('restocked')}</span>
+                      <span>{item.restocked ? t('yes') : t('no')}</span>
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <div className="space-y-4 border-t pt-4">
@@ -298,6 +320,21 @@ export function ReturnDetailSheet({
                   {t('restock')}
                 </label>
 
+                {isRejecting ? (
+                  <div className="space-y-2 border-t pt-4">
+                    <Label htmlFor="return-rejection-reason">{t('rejectionReasonLabel')}</Label>
+                    <Textarea
+                      id="return-rejection-reason"
+                      autoFocus
+                      value={rejectionReason}
+                      onChange={(event) => setRejectionReason(event.target.value)}
+                      rows={2}
+                      maxLength={500}
+                      placeholder={t('rejectionReasonPlaceholder')}
+                    />
+                  </div>
+                ) : null}
+
                 {actionError ? (
                   <p role="alert" className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">
                     {actionError}
@@ -305,15 +342,39 @@ export function ReturnDetailSheet({
                 ) : null}
 
                 <div className="flex justify-end gap-2 border-t pt-4">
-                  <Button variant="outline" disabled={isSaving} onClick={() => void submitReject()}>
-                    {isSaving ? t('saving') : t('reject')}
-                  </Button>
-                  <Button
-                    disabled={!resolution || !isValidRefund || isSaving}
-                    onClick={() => void submitApprove()}
-                  >
-                    {isSaving ? t('saving') : t('approve')}
-                  </Button>
+                  {isRejecting ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        disabled={isSaving}
+                        onClick={() => {
+                          setIsRejecting(false);
+                          setRejectionReason('');
+                        }}
+                      >
+                        {t('cancel')}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        disabled={!rejectionReason.trim() || isSaving}
+                        onClick={() => void submitReject()}
+                      >
+                        {isSaving ? t('saving') : t('confirmReject')}
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button variant="outline" disabled={isSaving} onClick={() => setIsRejecting(true)}>
+                        {t('reject')}
+                      </Button>
+                      <Button
+                        disabled={!resolution || !isValidRefund || isSaving}
+                        onClick={() => void submitApprove()}
+                      >
+                        {isSaving ? t('saving') : t('approve')}
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             )}
