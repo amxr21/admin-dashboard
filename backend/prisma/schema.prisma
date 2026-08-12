@@ -115,6 +115,21 @@ enum ReturnResolution {
   REPLACEMENT
 }
 
+/// A fixed bucket for "why is this being returned", alongside — not instead
+/// of — `Return.reason`'s free text. A dropdown alone would lose "arrived
+/// with a cracked lid" down to whichever bucket is closest; free text alone
+/// (the previous shape) cannot be grouped for a reason-analytics report
+/// (TODO_SPEC.md's stated ask). OTHER is the deliberate escape hatch — this
+/// list is not, and does not try to be, exhaustive.
+enum ReturnCategory {
+  DAMAGED
+  WRONG_ITEM
+  NOT_AS_DESCRIBED
+  NO_LONGER_NEEDED
+  ARRIVED_LATE
+  OTHER
+}
+
 enum DiscountType {
   PERCENT
   FIXED
@@ -140,6 +155,12 @@ enum DeliveryStatus {
   /// orders.config.ts rather than papered over; these close it.
   CANCELED
   RETURNED
+  /// A courier attempted delivery and could not complete it (customer not
+  /// home, refused, wrong address, ...). Deliberately NOT terminal: the same
+  /// job is retried from here — see `COURIER_TRANSITIONS` in
+  /// couriers.service.ts. `DeliveryAssignment.attemptCount` and
+  /// `.failureReason` carry the detail this status alone can't.
+  FAILED_ATTEMPT
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -186,11 +207,137 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  passwordResetTokens PasswordResetToken[]
+  /// ─── Two-factor authentication (TOTP) ─────────────────────────────
+  /// AES-256-GCM ciphertext of the TOTP secret, keyed by `TWO_FACTOR_SECRET`
+  /// — MUST be reversible (unlike every other secret in this schema), since
+  /// verifying a live 6-digit code means recomputing it from the same secret
+  /// the authenticator app was given. See two-factor.service.ts.
+  twoFactorSecret  String? @map("two_factor_secret") @db.VarChar(255)
+  /// True only once the OWNER has confirmed a real code during setup — a
+  /// secret can exist (mid-setup) without 2FA actually being required yet.
+  /// Login only demands a code when THIS is true, never merely when a
+  /// secret is present.
+  twoFactorEnabled Boolean @default(false) @map("two_factor_enabled")
+
+  passwordResetTokens  PasswordResetToken[]
+  sessions             Session[]
+  twoFactorBackupCodes TwoFactorBackupCode[]
+  apiKeys              ApiKey[]
 
   @@index([role])
   @@index([createdAt])
   @@map("users")
+}
+
+/// One row per issued token — what "Sessions & devices" reads, and what a
+/// per-session revoke sets `revokedAt` on.
+///
+/// ─── WHY THIS DIDN'T EXIST BEFORE `tokenVersion` ─────────────────────
+/// `tokenVersion` answers "is ANY token this user holds still valid" with one
+/// integer, checked without a second query on every request — cheap, and
+/// enough for "this laptop was stolen, kill everything." It cannot answer "is
+/// THIS ONE token, from the login three days ago on this phone, still
+/// valid" — that needs a row per login to point at.
+///
+/// ─── WHY BOTH MECHANISMS STAY, RATHER THAN ONE REPLACING THE OTHER ───
+/// A full sign-out-everywhere (password change, deactivation) is still one
+/// `tokenVersion` bump — correct, and cheaper than updating every session row
+/// individually, especially for an account with a long login history. Revoking
+/// ONE session is a single `Session.revokedAt` write. `authenticate` checks
+/// both: a token is only good if its version still matches the user's live
+/// counter AND (when the token carries a session id) that session hasn't been
+/// individually revoked.
+model Session {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Free text from the User-Agent header, truncated at write time. Attacker-
+  /// controlled and only ever DISPLAYED, never parsed for a security decision.
+  userAgent String? @map("user_agent") @db.VarChar(255)
+  /// Same honesty rule as the audit log's `ip` column: null when there is no
+  /// trustworthy answer (see `trust proxy` in app.ts), never a guess.
+  ip        String? @db.VarChar(64)
+
+  createdAt  DateTime  @default(now()) @map("created_at")
+  /// Updated opportunistically (see session.service.ts) — NOT on every single
+  /// request, which would turn "list my sessions" into a write-heavy endpoint
+  /// for something whose precision to the second nobody needs.
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at")
+  /// Null while live. Set once, on purpose or via the bulk sign-out-everywhere
+  /// path — never cleared, so a revoked session cannot be reactivated by
+  /// unsetting a flag.
+  revokedAt  DateTime? @map("revoked_at")
+
+  @@index([userId, revokedAt])
+  @@map("sessions")
+}
+
+/// One-time recovery codes for 2FA — the escape hatch for "I lost my phone."
+/// Ten are generated at enrolment, shown to the user exactly once, and each
+/// is consumed the first time it is used. HMAC-hashed like a courier access
+/// code or password-reset token, never the HMAC of a PASSWORD — this table
+/// only ever needs comparison, never recovery, so a one-way hash is correct
+/// here (unlike `User.twoFactorSecret`, which must be reversible).
+model TwoFactorBackupCode {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  codeHash String @unique @map("code_hash")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  /// Null while unused. Consumed codes are kept, not deleted — deleting one
+  /// would silently drop the count below ten with no record of why, and
+  /// "how many of my ten codes are left" is a real question the account
+  /// panel answers by counting rows where this is null.
+  usedAt    DateTime? @map("used_at")
+
+  @@index([userId])
+  @@map("two_factor_backup_codes")
+}
+
+/// An API key for external integrations — B3.2's "Integrations & API" section.
+///
+/// ─── WHY IT HAS NO SCOPE LIST OF ITS OWN ──────────────────────────────
+/// The obvious design gives each key its own permission set, independent of
+/// who created it. This app already has exactly one permission model —
+/// `Area`, checked by `canAccessArea(role, area)` — and a second, parallel one
+/// for keys would mean every route gains a SECOND authorization path to keep
+/// in sync with the first, which is how a permission check quietly drifts out
+/// of one of the two. Instead a key inherits its OWNER's role-based grants
+/// exactly, the same way a browser session does. `revokedAt` still lets that
+/// key be cut off independently of the owner's own session.
+///
+/// ─── WHY THE HASH, NOT THE KEY, IS STORED ─────────────────────────────
+/// Same reasoning as a courier access code or password-reset token: this
+/// table only ever needs comparison, never recovery, so a one-way HMAC is
+/// correct and the plaintext is shown to the creator exactly once.
+model ApiKey {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Human label ("CI pipeline", "Inventory sync script") — the only way to
+  /// tell keys apart once the plaintext is gone forever.
+  name String @db.VarChar(120)
+
+  /// Keyed HMAC-SHA256, indexed for a one-read lookup on every authenticated
+  /// request that uses a key instead of a session token.
+  keyHash    String @unique @map("key_hash")
+  /// First and last 4 characters of the plaintext, e.g. "adk_a1b2…9x8y" —
+  /// shown in the list so an admin can recognise which key is which without
+  /// the plaintext ever being stored or re-derivable from this alone.
+  keyPreview String @map("key_preview") @db.VarChar(32)
+
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  /// Null while live. Revoking creates no gap in the audit trail the way a
+  /// delete would — the row (and who created it) stays visible in history.
+  revokedAt  DateTime? @map("revoked_at")
+
+  @@index([userId, revokedAt])
+  @@map("api_keys")
 }
 
 /// An admin-issued, single-use credential that lets a locked-out staff member
@@ -276,6 +423,37 @@ model Product {
   status      ProductStatus @default(ACTIVE)
   stock       Int           @default(0)
 
+  /// EAN/UPC/GTIN — distinct from `sku` (that's this business's own catalogue
+  /// code; a barcode is the globally-scannable one printed on the unit).
+  barcode         String?  @unique @db.VarChar(64)
+  /// Kilograms. NULL means "not recorded", never 0 — same "unknown, not
+  /// free/weightless" discipline as `cost`, since a fabricated 0 would break
+  /// any future shipping-rate calculation silently.
+  weightKg        Decimal? @map("weight_kg") @db.Decimal(10, 3)
+  lengthCm        Decimal? @map("length_cm") @db.Decimal(10, 2)
+  widthCm         Decimal? @map("width_cm") @db.Decimal(10, 2)
+  heightCm        Decimal? @map("height_cm") @db.Decimal(10, 2)
+  /// Harmonized System code for customs declarations. Free text, not
+  /// validated against the real HS nomenclature — this app has no tariff
+  /// database to validate against.
+  hsCode          String?  @map("hs_code") @db.VarChar(20)
+  /// ISO 3166-1 alpha-2 (e.g. "AE", "CN"). Not enforced as an enum — the
+  /// admin config layer, not the schema, is this app's validation surface
+  /// for catalogue fields (see admin.config.ts's own header comment).
+  countryOfOrigin String?  @map("country_of_origin") @db.VarChar(2)
+
+  /// URL-safe identifier. NULL means "not set yet" — nothing in this app
+  /// resolves a product BY slug today (no public storefront exists), so
+  /// this is a recorded value for a future public site, not a live route
+  /// key. Optional and never auto-derived from `name` on write: silently
+  /// re-deriving it on every rename is exactly what `redirects` exists to
+  /// avoid needing.
+  slug            String? @unique @db.VarChar(220)
+  /// Falls back to `name` wherever meta title is rendered — NULL is "use
+  /// the default", not "no title".
+  metaTitle       String? @map("meta_title") @db.VarChar(160)
+  metaDescription String? @map("meta_description") @db.VarChar(320)
+
   categoryId String?   @map("category_id")
   /// SetNull, not Cascade — deleting a category must never delete products.
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -285,6 +463,7 @@ model Product {
   variants   ProductVariant[]
   images     ProductImage[]
   discounts  Discount[]
+  redirects  ProductRedirect[]
 
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
@@ -294,6 +473,27 @@ model Product {
   @@index([categoryId])
   @@index([createdAt])
   @@map("products")
+}
+
+/// One row per slug a product used to have. Written automatically whenever
+/// a product's `slug` changes away from a non-null previous value — never
+/// on the FIRST slug being set (there is no "old" slug to redirect from
+/// yet). Purely a recorded history today: no route in this app resolves a
+/// product by slug, so nothing consumes this table live (see the header
+/// comment on `Product.slug`). Exists so a future public site has the
+/// mapping ready rather than needing it reconstructed from the audit log.
+model ProductRedirect {
+  id        String   @id @default(cuid())
+  oldSlug   String   @unique @map("old_slug") @db.VarChar(220)
+  productId String   @map("product_id")
+  /// Cascade: a redirect for a deleted product is dead weight, not history
+  /// worth keeping — unlike the product's OWN records (orders, audit log),
+  /// nothing points at a ProductRedirect that would orphan.
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([productId])
+  @@map("product_redirects")
 }
 
 /// A flat variant row — "Red / Large" as one line with its own price, stock
@@ -334,9 +534,14 @@ model ProductVariant {
 /// modelled (StockMovement, OrderItem), and `position` needs a real column
 /// to reorder against.
 model ProductImage {
-  id       String @id @default(cuid())
-  url      String @db.VarChar(512)
-  position Int    @default(0)
+  id       String  @id @default(cuid())
+  url      String  @db.VarChar(512)
+  position Int     @default(0)
+  /// Nullable, not defaulted to `""` — an empty string LOOKS filled in to a
+  /// form that just checks truthiness, so leaving it genuinely absent keeps
+  /// "nobody wrote alt text for this image" a real, queryable state rather
+  /// than one indistinguishable from "someone wrote an empty string".
+  alt      String? @db.VarChar(255)
 
   productId String  @map("product_id")
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -379,23 +584,35 @@ model Order {
   /// Human-facing reference shown to customers and couriers, e.g. "ORD-1024".
   orderNumber   String      @unique @map("order_number") @db.VarChar(40)
   /// Denormalised on purpose: the order total must not change if a product's
-  /// price is edited after the order was placed.
+  /// price is edited after the order was placed. Grand total — what the
+  /// customer actually paid, tax included. Every existing reader (Reports,
+  /// Dashboard KPIs) already treats this as the order's money figure; that
+  /// meaning does NOT change with `subtotal`/`taxAmount` below.
   total         Decimal     @default(0) @db.Decimal(10, 2)
+  /// Sum of line items before tax. NULL, not 0, on orders that predate this
+  /// column or were never run through a tax-aware creation path — 0 would
+  /// falsely claim "confirmed, no tax," which is a different fact from
+  /// "never recorded." Set once at creation, same snapshot discipline as
+  /// `total` and `OrderItem.price`.
+  subtotal      Decimal?    @db.Decimal(10, 2)
+  /// `subtotal * store.taxRate` at the time of the order, snapshotted for the
+  /// same reason `OrderItem.price` is: a later change to `store.taxRate`
+  /// must not rewrite what an old invoice already showed. NULL has the same
+  /// "never recorded" meaning as `subtotal`'s.
+  taxAmount     Decimal?    @map("tax_amount") @db.Decimal(10, 2)
   status        OrderStatus @default(PENDING)
   paymentMethod String?     @map("payment_method") @db.VarChar(48)
   placedAt      DateTime    @default(now()) @map("placed_at")
-  /// Staff-only, never surfaced to the customer — a place to record "called
-  /// twice, no answer" or similar, distinct from `OrderStatusHistory.note`
-  /// (which is tied to one specific status transition). Free text only,
-  /// deliberately: a structured tag vocabulary is a separate, bigger feature
-  /// this app doesn't have yet, and most real usage is exactly a short note.
-  internalNotes String?     @map("internal_notes") @db.Text
 
   customerId String?   @map("customer_id")
   /// SetNull so deleting a customer preserves order history for accounting.
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   items         OrderItem[]
+  /// Staff-only, never surfaced to the customer — a THREAD (C5.7), not the
+  /// single overwritable field this used to be. See `OrderNote`'s own doc
+  /// comment for why.
+  notes         OrderNote[]
   statusHistory OrderStatusHistory[]
   assignment    DeliveryAssignment?
   returns       Return[]
@@ -432,6 +649,30 @@ model OrderItem {
   @@map("order_items")
 }
 
+/// Staff-only order notes — a THREAD, not a single overwritable field (C5.7).
+/// The previous shape (`Order.internalNotes`, one blob every save replaced)
+/// meant a second staff member's note silently erased the first one's; this
+/// is append-only like every other history table in this file, for the same
+/// reason `OrderStatusHistory` is: "who said what, and when" must survive
+/// being edited again.
+model OrderNote {
+  id   String @id @default(cuid())
+  body String @db.Text
+
+  /// Who wrote it. Plain id, not a relation — same rule as
+  /// `OrderStatusHistory.changedById`: the thread must survive the staff
+  /// member being deleted, not lose its own history along with the account.
+  authorId String? @map("author_id")
+
+  orderId String @map("order_id")
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([orderId, createdAt])
+  @@map("order_notes")
+}
+
 /// Audit trail of order status changes. Not in the old schema — added because
 /// "who moved this order to shipped, and when" is a question the dashboard
 /// will be asked, and it cannot be answered retroactively.
@@ -463,6 +704,10 @@ model Return {
   /// Human-facing reference, e.g. "RMA-7F3K9QZR". Never the row id.
   rmaNumber    String           @unique @map("rma_number")
   reason       String           @db.VarChar(500)
+  /// NULL on any return requested before this was tracked — a real "never
+  /// classified" gap, not a silent OTHER. Existing rows are left alone
+  /// rather than guessed at from their free-text `reason`.
+  category     ReturnCategory?
   status       ReturnStatus     @default(REQUESTED)
   resolution   ReturnResolution @default(NONE)
   /// Set only when resolution = REFUND. Capped at approval time to the sum of
@@ -472,6 +717,10 @@ model Return {
   /// here so the return's own history says whether stock was ever adjusted,
   /// without re-deriving it from the movement log.
   restocked    Boolean          @default(false)
+  /// Staff's own words for why a return was refused. Set only on REJECTED —
+  /// same free-text, snapshot-once discipline as `reason` itself. NULL on
+  /// anything not (yet) rejected, not an empty string.
+  rejectionReason String?       @map("rejection_reason") @db.VarChar(500)
 
   orderId String @map("order_id")
   order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -640,6 +889,19 @@ model DeliveryAssignment {
   status        DeliveryStatus @default(ASSIGNED)
   note          String?        @db.VarChar(255)
 
+  /// How many delivery attempts have failed so far. Incremented only by a
+  /// courier reporting FAILED_ATTEMPT, never reset by a retry — "third
+  /// attempt" must stay knowable after the job cycles back to
+  /// OUT_FOR_DELIVERY, the same reason a StockMovement correction doesn't
+  /// erase the mistake it corrects.
+  attemptCount Int @default(0) @map("attempt_count")
+  /// Free text from the courier, e.g. "customer not home", "refused at
+  /// door". Set on FAILED_ATTEMPT, left as-is on a successful retry — a
+  /// staff member reviewing a 3rd attempt wants to see what the 1st and 2nd
+  /// said too, not just the latest, but this column only ever holds the
+  /// most recent one; the full history lives in AuditLog.
+  failureReason String? @map("failure_reason") @db.VarChar(255)
+
   /// One assignment per order.
   orderId String @unique @map("order_id")
   order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -744,13 +1006,162 @@ model AuditLog {
   /// the record itself. Values are redacted for sensitive fields.
   changes Json?
 
+  /// Whether the attempt succeeded. A trail of successes only answers "what
+  /// changed"; a security reviewer also needs "what did someone TRY to do and
+  /// get refused", which is the shape an attack has before it works.
+  outcome AuditOutcome @default(SUCCESS)
+
   /// Correlates with the request logs, so an entry can be traced end to end.
   requestId String? @map("request_id") @db.VarChar(64)
+
+  /// Where the request came from. Nullable: behind a proxy that does not set
+  /// a forwarding header there is no honest answer, and a fabricated one is
+  /// worse than a gap in evidence.
+  ip String? @db.VarChar(64)
+
+  /// Truncated at write time — a user-agent is attacker-controlled free text.
+  userAgent String? @map("user_agent") @db.VarChar(255)
 
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([entity, entityId])
   @@index([actorId, createdAt])
   @@index([createdAt])
+  /// Denied attempts are the security-review query, and they are rare relative
+  /// to successes — without this the one filter that matters most scans hardest.
+  @@index([outcome, createdAt])
+  @@index([requestId])
   @@map("audit_log")
+}
+
+/// Deliberately not a boolean: "denied" (refused by a permission rule) and
+/// "error" (the operation was allowed and then broke) are different events, and
+/// collapsing them loses the distinction a reviewer is looking for.
+enum AuditOutcome {
+  SUCCESS
+  DENIED
+  ERROR
+}
+
+/// Return/Privacy/Terms/Shipping — the four legal/policy documents a store
+/// publishes. A fixed enum, same reasoning as `StaffRole`: these four are the
+/// whole set the UI and any public-facing consumer need to know about, not an
+/// open-ended admin-defined list.
+enum PolicyType {
+  RETURN
+  PRIVACY
+  TERMS
+  SHIPPING
+}
+
+/// One row per (type, locale) — the CURRENTLY PUBLISHED text, denormalised
+/// out of `PolicyVersion` for a fast read with no "which version is live"
+/// join. Writing here always goes through `publishPolicyVersion()`, never a
+/// direct update — see policies.service.ts.
+model Policy {
+  id String @id @default(cuid())
+
+  type   PolicyType
+  /// Plain string, not the frontend's `Locale` type — this table has no
+  /// dependency on the frontend package, and validating against `en`/`ar` is
+  /// the service's job (mirrors how `Order.status` etc. are validated at the
+  /// service layer against the same enum Prisma also encodes).
+  locale String     @db.VarChar(8)
+
+  publishedVersionId String        @unique @map("published_version_id")
+  publishedVersion   PolicyVersion @relation("PublishedVersion", fields: [publishedVersionId], references: [id])
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([type, locale])
+  @@map("policy")
+}
+
+/// Append-only history — every save creates a NEW row, never edits one in
+/// place, same discipline as `StockMovement`/`AuditLog`. `Policy.publishedVersionId`
+/// points at whichever row is currently live; every other version for that
+/// (type, locale) stays queryable for "what did this say on March 3rd" and
+/// for reverting without re-typing lost text.
+model PolicyVersion {
+  id String @id @default(cuid())
+
+  type   PolicyType
+  locale String     @db.VarChar(8)
+
+  /// Monotonic per (type, locale), assigned by the service — not an
+  /// autoincrement column, so it can be computed inside the same transaction
+  /// that also decides whether this version becomes published.
+  version Int
+
+  /// Legal prose. Free-form text (Markdown rendered client-side), not HTML —
+  /// storing raw HTML from an admin textarea would be a stored-XSS vector the
+  /// moment it's rendered on a public-facing page.
+  content String @db.Text
+
+  /// Plain id, not a relation — same reasoning as `OrderStatusHistory.changedById`:
+  /// the history must survive the author's staff account being deactivated.
+  createdById String? @map("created_by_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// The reverse side of `Policy.publishedVersionId` — at most one `Policy`
+  /// row can point here, but most versions are OLD and have none.
+  publishedAs Policy? @relation("PublishedVersion")
+
+  @@unique([type, locale, version])
+  @@index([type, locale, createdAt])
+  @@map("policy_version")
+}
+
+/// A recurring send of one report to a recipient list (C3.2). Not a saved
+/// FILTER — the report key + a fixed range length (last 7/30/90 days,
+/// computed relative to send time) is what's saved; there is no "saved
+/// custom from/to" concept, since a fixed date range would go stale the
+/// moment it was reused a week later.
+enum ScheduleFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+/// CSV always works; XLSX/PDF depend on C3.4's export libraries being wired
+/// in — `reports.service.ts`'s scheduler send path is the single place that
+/// decision matters, not this row.
+enum ScheduleFormat {
+  CSV
+  XLSX
+  PDF
+}
+
+model ScheduledReport {
+  id String @id @default(cuid())
+
+  /// Matches a `ReportView` key on the frontend (`overview`, `revenue`,
+  /// `staff-activity`, ...) — plain string, not a Prisma enum, so a new
+  /// report type never needs a migration to become schedulable.
+  reportKey String            @map("report_key") @db.VarChar(64)
+  frequency ScheduleFrequency
+  format    ScheduleFormat    @default(CSV)
+  /// Plain email strings, not a relation to Customer/User — a recipient here
+  /// is very often someone with NO account in this system at all (an
+  /// external accountant, a franchise owner), same reasoning
+  /// `DeliveryAssignment.customerName`/`customerPhone` snapshot rather than
+  /// requiring a Customer row to exist.
+  recipients Json
+  isActive   Boolean @default(true) @map("is_active")
+
+  /// Set by the scheduler after each attempt — lets the UI show "last sent"
+  /// honestly instead of implying every active schedule has actually fired.
+  lastRunAt     DateTime? @map("last_run_at")
+  lastRunStatus String?   @map("last_run_status") @db.VarChar(16)
+
+  /// Plain id, not a relation — same "the record must survive the staff
+  /// member being deleted" rule as every other actor reference in this file.
+  createdById String? @map("created_by_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive, frequency])
+  @@map("scheduled_reports")
 }
