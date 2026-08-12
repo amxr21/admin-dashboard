@@ -493,6 +493,8 @@
     "requestReturn": "Request return",
     "placedOn": "Placed on {date}",
     "total": "{count, plural, one {# order} other {# orders}}",
+    "exportCsv": "Export CSV",
+    "exporting": "Preparing export…",
     "columns": {
       "number": "Order",
       "customer": "Customer",
@@ -545,6 +547,8 @@
       "phone": "Phone",
       "address": "Address",
       "status": "Status",
+      "attemptCount": "Failed attempts",
+      "failureReason": "Reason for last failure",
       "unassigned": "No courier assigned yet.",
       "assignLabel": "Courier",
       "assignPlaceholder": "Choose a courier",
@@ -553,13 +557,16 @@
       "reassign": "Reassign",
       "unassign": "Unassign",
       "cancel": "Cancel",
-      "addressHint": "The courier only sees the address recorded here.",
       "addressLabel": "Delivery address",
       "addressPlaceholder": "Street, building, apartment",
       "cityLabel": "City",
       "cityPlaceholder": "City",
       "noteLabel": "Note for the courier",
-      "notePlaceholder": "Optional, e.g. call on arrival"
+      "notePlaceholder": "Optional, e.g. call on arrival",
+      "addressHint": "The courier only sees the address recorded here.",
+      "editAddress": "Edit address",
+      "saveAddress": "Save address",
+      "saving": "Saving…"
     },
     "payment": {
       "title": "Payment",
@@ -568,14 +575,20 @@
     "notes": {
       "title": "Internal notes",
       "placeholder": "Staff-only — never shown to the customer.",
-      "save": "Save",
-      "saving": "Saving…"
+      "empty": "No notes yet.",
+      "add": "Add",
+      "adding": "Adding…",
+      "unknownAuthor": "an account that no longer exists"
     },
     "timeline": {
       "title": "History",
       "placed": "Order placed",
       "movedTo": "moved to",
-      "noChanges": "No status changes yet."
+      "noChanges": "Nothing else recorded yet.",
+      "noteAdded": "Note added by {who}",
+      "reportedBy": "reported by {who}",
+      "byActor": "by {who}",
+      "unknownActor": "an account that no longer exists"
     },
     "statusControl": {
       "label": "Move to",
@@ -586,6 +599,24 @@
       "notePlaceholder": "Why is this changing?",
       "terminal": "This order is {status} and cannot move further."
     },
+    "bulkStatus": {
+      "selected": "{count, plural, one {# selected} other {# selected}}",
+      "label": "Move to",
+      "placeholder": "Choose a status",
+      "apply": "Apply",
+      "confirmTitle": "{count, plural, one {Move this order?} other {Move these # orders?}}",
+      "confirmDescription": "Every selected order will be moved to {status}. Orders that cannot legally make this move will be skipped, not forced.",
+      "withAssignment": "{count, plural, one {# of these has an active courier assignment} other {# of these have an active courier assignment}} that will move forward too.",
+      "terminalWarning": "{status} cannot be undone — once applied, these orders can never be moved again.",
+      "typePhrase": "Type {phrase} to confirm.",
+      "confirm": "Move",
+      "applying": "Moving…",
+      "cancel": "Cancel",
+      "notice": {
+        "succeeded": "{count, plural, one {# order moved to} other {# orders moved to}} {status}.",
+        "skipped": "{count, plural, one {# order was skipped:} other {# orders were skipped:}} {reason}"
+      }
+    },
     "invoice": {
       "action": "Invoice",
       "title": "Invoice",
@@ -595,7 +626,9 @@
       "billedTo": "Billed to",
       "paidBy": "Paid by {method}",
       "storeLogoAlt": "{name} logo",
-      "taxId": "Tax/VAT no. {id}"
+      "taxId": "Tax/VAT no. {id}",
+      "subtotal": "Subtotal",
+      "tax": "Tax"
     }
   },
   "inventory": {
