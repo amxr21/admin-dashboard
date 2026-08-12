@@ -162,6 +162,19 @@ export const SETTINGS = {
     label: 'Tax / VAT registration number',
     description: 'Printed on invoices alongside the address, if your jurisdiction requires it.',
   },
+  'store.taxRate': {
+    type: 'number',
+    default: 0,
+    area: 'settings',
+    min: 0,
+    max: 100,
+    label: 'Tax / VAT rate (%)',
+    // 0 is a real, valid choice (no tax applies / not yet registered) — never
+    // treated as "unset". A single flat rate for the whole store, same
+    // single-jurisdiction assumption store.taxId already makes.
+    description:
+      'Applied to every order subtotal on the invoice. Set to 0 if you do not charge tax.',
+  },
 
   // ─── Security ───────────────────────────────────────────────────────
   'security.sessionTimeoutMinutes': {

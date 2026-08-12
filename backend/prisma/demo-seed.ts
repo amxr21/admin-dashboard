@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 
 import { DEMO, DEMO_TAG, makeRandom } from './demo-data.js';
+import { SETTINGS } from '../src/config/settings.config.js';
 
 /**
  * Fills the database with a realistic business, so the dashboard has something
@@ -244,6 +245,17 @@ async function main() {
     return OrderStatus.DELIVERED;
   }
 
+  // Same "missing row means never-changed default" rule getSettingValue()
+  // uses — read once, not per order, since the rate does not change mid-seed.
+  const taxRateSetting = await prisma.setting.findUnique({
+    where: { key: 'store.taxRate' },
+    select: { value: true },
+  });
+  const taxRatePercent = Number(
+    taxRateSetting === null ? SETTINGS['store.taxRate'].default : taxRateSetting.value,
+  );
+  const taxRate = new Prisma.Decimal(taxRatePercent).dividedBy(100);
+
   for (let index = 0; index < ORDER_COUNT; index += 1) {
     // Skewed toward recent: a business that grew, so the revenue chart has a
     // direction rather than being noise around a flat line.
@@ -259,16 +271,23 @@ async function main() {
       return { product, quantity };
     });
 
-    const total = lines.reduce(
+    const subtotal = lines.reduce(
       (sum, line) => sum.plus(line.product.price.times(line.quantity)),
       new Prisma.Decimal(0),
     );
+    // Rounded once at order creation and snapshotted, same discipline as
+    // OrderItem.price — a later change to store.taxRate must not reach back
+    // and rewrite what this order already showed.
+    const taxAmount = subtotal.times(taxRate).toDecimalPlaces(2);
+    const total = subtotal.plus(taxAmount);
 
     const order = await prisma.order.create({
       data: {
         orderNumber: DEMO.orderNumber(index + 1),
         // Denormalised on purpose — the reports read THIS, never a recomputation.
         total,
+        subtotal,
+        taxAmount,
         status,
         paymentMethod: random.pick(['card', 'cash', 'transfer']),
         placedAt,
