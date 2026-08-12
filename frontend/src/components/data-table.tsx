@@ -1,9 +1,10 @@
 'use client';
 
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ErrorSection } from '@/components/errors/error-section';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,6 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { useIsMobileViewport } from '@/hooks/useIsMobileViewport';
 
 /**
  * The dashboard's table.
@@ -63,6 +65,67 @@ interface DataTableProps<T> {
   /** Rendered above the table when at least one row is selected. */
   bulkActions?: (selectedIds: ReadonlySet<string>) => ReactNode;
   skeletonRows?: number;
+
+  /**
+   * Lifts sort into the caller (and, in practice, into the URL).
+   *
+   * Omit both and the table keeps its own sort in local state — correct for a
+   * table whose sort nobody would want to share. Pass both and the sort
+   * becomes part of the page's shareable state, so "sorted by oldest first"
+   * survives a reload and a pasted link.
+   *
+   * Controlled and uncontrolled are deliberately all-or-nothing: accepting
+   * `sort` without `onSortChange` would render a control that silently does
+   * nothing when clicked.
+   */
+  sort?: SortState | null;
+  onSortChange?: (sort: SortState | null) => void;
+
+  /**
+   * Overrides the store-wide `ui.density` setting for THIS table only.
+   *
+   * Omit to inherit the global `[data-density]` value applied to `<html>` —
+   * the correct default for every table that hasn't opted into its own
+   * choice. Setting this pins a literal `--table-cell-py` on the table's own
+   * wrapper, which wins over the inherited custom property regardless of
+   * what the global setting says or later changes to.
+   */
+  density?: 'comfortable' | 'compact';
+
+  /**
+   * Powers "Select all N matching filter", offered ALONGSIDE the page-only
+   * `toggleAll` checkbox — never replacing it. Selecting every row currently
+   * on screen stays the header checkbox's job, exactly as before; this is
+   * the escalation a user reaches for only after noticing the page they
+   * selected isn't the whole result.
+   *
+   * `DataTable` has no way to fetch rows outside the current page itself —
+   * it only ever receives one page of `data` — so the actual fetch is the
+   * CALLER's responsibility (it already owns the resource, filters and API
+   * client). This prop is the announcement of "there's more" plus the
+   * callback to ask for it; omit it and the escalation never appears, which
+   * is correct for any table that doesn't want to support it yet.
+   */
+  selectAllMatching?: {
+    /** Total rows the current filter matches — from the same paginated
+     *  response `data` came from, so it can never be a value the caller
+     *  half-manufactured. */
+    totalMatching: number;
+    /** Resolves every matching id, or throws. `DataTable` shows a loading
+     *  state on the button while this is in flight and surfaces a caught
+     *  error inline rather than losing it silently. */
+    fetchAllIds: () => Promise<string[]>;
+  };
+}
+
+const DENSITY_CELL_PADDING: Record<'comfortable' | 'compact', string> = {
+  comfortable: '0.5rem',
+  compact: '0.25rem',
+};
+
+export interface SortState {
+  id: string;
+  direction: SortDirection;
 }
 
 export function DataTable<T>({
@@ -77,18 +140,28 @@ export function DataTable<T>({
   emptyMessage,
   bulkActions,
   skeletonRows = 5,
+  sort: controlledSort,
+  onSortChange,
+  density,
+  selectAllMatching,
 }: DataTableProps<T>) {
   const t = useTranslations('table');
   const tStates = useTranslations('states');
   // `selected` is a pluralised COUNT, so it lives in `counts`, not `table`.
   const tCounts = useTranslations('counts');
   const locale = useLocale();
+  const isMobile = useIsMobileViewport();
 
-  const [sort, setSort] = useState<{ id: string; direction: SortDirection } | null>(
-    null,
-  );
+  // Uncontrolled fallback. Only read when the caller passes neither prop.
+  const [uncontrolledSort, setUncontrolledSort] = useState<SortState | null>(null);
+
+  const isControlled = controlledSort !== undefined && onSortChange !== undefined;
+  const sort = isControlled ? controlledSort : uncontrolledSort;
 
   const selectable = selectedIds !== undefined && onSelectionChange !== undefined;
+
+  const [isSelectingAllMatching, setIsSelectingAllMatching] = useState(false);
+  const [selectAllError, setSelectAllError] = useState<string | null>(null);
 
   /**
    * Locale-aware collator.
@@ -158,31 +231,121 @@ export function DataTable<T>({
     [selectedIds, onSelectionChange],
   );
 
+  const selectAllMatchingRows = useCallback(async () => {
+    if (!selectAllMatching || !onSelectionChange) return;
+
+    setIsSelectingAllMatching(true);
+    setSelectAllError(null);
+    try {
+      const ids = await selectAllMatching.fetchAllIds();
+      onSelectionChange(new Set(ids));
+    } catch (caught) {
+      // `fetchAllIds` throws a REAL, already-translated message for the
+      // known failure case (too many matching rows to select) — that message
+      // is the whole reason the escalation exists, so it must reach the
+      // user, not get flattened into a generic "something went wrong" that
+      // would leave them clicking the same button again with no new
+      // information. An unexpected non-Error throw still falls back safely.
+      setSelectAllError(
+        caught instanceof Error && caught.message ? caught.message : tStates('error.title'),
+      );
+    } finally {
+      setIsSelectingAllMatching(false);
+    }
+  }, [selectAllMatching, onSelectionChange, tStates]);
+
   function toggleSort(columnId: string) {
-    setSort((current) => {
-      if (current?.id !== columnId) return { id: columnId, direction: 'asc' };
-      // asc → desc → unsorted. The third state matters: without it there's no
-      // way back to the server's default order.
-      if (current.direction === 'asc') return { id: columnId, direction: 'desc' };
-      return null;
-    });
+    // asc → desc → unsorted. The third state matters: without it there's no
+    // way back to the server's default order.
+    const next: SortState | null =
+      sort?.id !== columnId
+        ? { id: columnId, direction: 'asc' }
+        : sort.direction === 'asc'
+          ? { id: columnId, direction: 'desc' }
+          : null;
+
+    if (isControlled) onSortChange(next);
+    else setUncontrolledSort(next);
   }
 
   const columnCount = columns.length + (selectable ? 1 : 0);
 
   return (
-    <div className="space-y-3">
+    <div
+      className="space-y-3"
+      style={
+        density
+          ? ({ '--table-cell-py': DENSITY_CELL_PADDING[density] } as CSSProperties)
+          : undefined
+      }
+    >
       {selectable && someSelected && bulkActions ? (
-        <div className="bg-muted flex items-center gap-3 rounded-md px-3 py-2">
-          <span className="text-sm font-medium">
-            {tCounts('selected', { count: selectedIds.size })}
-          </span>
-          <div className="ms-auto flex items-center gap-2">
-            {bulkActions(selectedIds)}
+        <div className="bg-muted flex flex-col gap-2 rounded-md px-3 py-2">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium">
+              {tCounts('selected', { count: selectedIds.size })}
+            </span>
+            <div className="ms-auto flex items-center gap-2">
+              {bulkActions(selectedIds)}
+              {/* Deselecting by unticking each row is the only way out
+                  otherwise, and a selection that survives a filter change is
+                  easy to forget about — right up until a bulk action applies to
+                  rows that scrolled out of view. */}
+              <Button variant="ghost" size="sm" onClick={() => onSelectionChange(new Set())}>
+                {t('clearSelection')}
+              </Button>
+            </div>
           </div>
+
+          {/* The escalation offer — ALONGSIDE the page-only checkbox above,
+              never replacing it. Only surfaces once the entire visible page
+              is already selected AND there is more beyond it; selecting 3 of
+              20 rows on a page has no "matching filter" story to escalate
+              to. */}
+          {selectAllMatching &&
+          allSelected &&
+          selectedIds.size < selectAllMatching.totalMatching ? (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">
+                {t('selectAllMatching.prompt', { count: selectAllMatching.totalMatching })}
+              </span>
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0"
+                disabled={isSelectingAllMatching}
+                onClick={() => void selectAllMatchingRows()}
+              >
+                {isSelectingAllMatching
+                  ? t('selectAllMatching.loading')
+                  : t('selectAllMatching.action', { count: selectAllMatching.totalMatching })}
+              </Button>
+              {selectAllError ? (
+                <span className="text-destructive">{selectAllError}</span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
+      {isMobile ? (
+        <MobileCardList
+          columns={columns}
+          sortedData={sortedData}
+          getRowId={getRowId}
+          isLoading={isLoading}
+          error={error}
+          onRetry={onRetry}
+          emptyMessage={emptyMessage}
+          skeletonRows={skeletonRows}
+          selectable={selectable}
+          selectedIds={selectedIds}
+          toggleRow={toggleRow}
+          selectRowLabel={t('selectRow')}
+          errorTitle={tStates('error.title')}
+          emptyTitle={tStates('empty.title')}
+        />
+      ) : (
       <Table>
         <TableHeader>
           <TableRow>
@@ -313,6 +476,139 @@ export function DataTable<T>({
           )}
         </TableBody>
       </Table>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The card fallback below the table→card breakpoint. Same six states, same
+ * data, same columns — just a different layout for the same information, so
+ * a caller never has to declare content twice.
+ *
+ * Kept as a separate component (rather than a second branch inline in
+ * `DataTable`) so its own hook rules and prop list stay readable — the
+ * function above was already doing a lot before this existed.
+ */
+interface MobileCardListProps<T> {
+  columns: readonly Column<T>[];
+  sortedData: readonly T[];
+  getRowId: (row: T) => string;
+  isLoading: boolean;
+  error: string | null;
+  onRetry?: () => void;
+  emptyMessage?: ReactNode;
+  skeletonRows: number;
+  selectable: boolean;
+  selectedIds?: ReadonlySet<string>;
+  toggleRow: (id: string) => void;
+  selectRowLabel: string;
+  errorTitle: string;
+  emptyTitle: string;
+}
+
+function MobileCardList<T>({
+  columns,
+  sortedData,
+  getRowId,
+  isLoading,
+  error,
+  onRetry,
+  emptyMessage,
+  skeletonRows,
+  selectable,
+  selectedIds,
+  toggleRow,
+  selectRowLabel,
+  errorTitle,
+  emptyTitle,
+}: MobileCardListProps<T>) {
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: skeletonRows }, (_, rowIndex) => (
+          <div key={`card-skeleton-${String(rowIndex)}`} className="space-y-2 rounded-lg border p-3">
+            {Array.from({ length: Math.min(columns.length, 4) }, (__, cellIndex) => (
+              <Skeleton key={cellIndex} className="h-4 w-full" />
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return <ErrorSection title={errorTitle} description={error} onRetry={onRetry} />;
+  }
+
+  if (sortedData.length === 0) {
+    return (
+      <div className="text-muted-foreground min-h-32 rounded-lg border p-6 text-center text-sm">
+        {emptyMessage ?? emptyTitle}
+      </div>
+    );
+  }
+
+  // The actions column has no meaningful "label: value" reading — it renders
+  // as a trailing action row instead, the same visual anchor it would be at
+  // the end of a table row.
+  const fieldColumns = columns.filter((column) => column.id !== '__actions');
+  const actionsColumn = columns.find((column) => column.id === '__actions');
+
+  return (
+    <div className="space-y-2">
+      {sortedData.map((row) => {
+        const id = getRowId(row);
+        const isSelected = selectedIds?.has(id) ?? false;
+
+        return (
+          <div
+            key={id}
+            data-state={isSelected ? 'selected' : undefined}
+            className="data-[state=selected]:bg-muted rounded-lg border p-3"
+          >
+            <div className="flex items-start gap-3">
+              {selectable ? (
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => toggleRow(id)}
+                  aria-label={selectRowLabel}
+                  className="mt-0.5"
+                />
+              ) : null}
+
+              {/* The FIRST field column doubles as the card's own title,
+                  matching reading order — a card leads with whatever the
+                  table would have shown leftmost/start-most too. */}
+              <dl className="min-w-0 flex-1 space-y-1.5">
+                {fieldColumns.map((column, index) => (
+                  <div
+                    key={column.id}
+                    className={cn(
+                      index === 0
+                        ? 'font-medium'
+                        : 'flex items-baseline justify-between gap-3 text-sm',
+                    )}
+                  >
+                    {index === 0 ? (
+                      <dd>{column.cell(row)}</dd>
+                    ) : (
+                      <>
+                        <dt className="text-muted-foreground shrink-0">{column.header}</dt>
+                        <dd className={cn(column.align === 'end' && 'text-end')}>
+                          {column.cell(row)}
+                        </dd>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </dl>
+
+              {actionsColumn ? <div className="shrink-0">{actionsColumn.cell(row)}</div> : null}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
