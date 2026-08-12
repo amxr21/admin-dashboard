@@ -1,4 +1,4 @@
-import { ReturnResolution, ReturnStatus } from '@prisma/client';
+import { ReturnCategory, ReturnResolution, ReturnStatus } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -36,6 +36,11 @@ const createBody = z
   .object({
     orderId: z.string().min(1),
     reason: z.string().trim().min(1, 'Explain why this is being returned').max(500),
+    // Optional: alongside `reason`, not a replacement for it — a fixed bucket
+    // for analytics, distinct from asking someone to describe the problem in
+    // their own words. Optional so an older client that doesn't send it yet
+    // keeps working exactly as before.
+    category: z.nativeEnum(ReturnCategory).optional(),
     items: z
       .array(
         z.object({
@@ -44,6 +49,16 @@ const createBody = z
         }),
       )
       .min(1, 'Select at least one item to return'),
+  })
+  .strict();
+
+const rejectBody = z
+  .object({
+    rejectionReason: z
+      .string()
+      .trim()
+      .min(1, 'Explain why this return is being rejected')
+      .max(500),
   })
   .strict();
 
@@ -111,10 +126,13 @@ returnsRouter.post('/returns/:id/approve', ...guard, async (req, res) => {
 });
 
 returnsRouter.post('/returns/:id/reject', ...guard, async (req, res) => {
+  const parsed = rejectBody.safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+
   const user = requireUser(req);
   const id = String(req.params.id);
 
-  const result = await rejectReturn(id, req);
+  const result = await rejectReturn(id, parsed.data.rejectionReason, req);
 
   req.log.warn({ event: 'return.rejected', returnId: id, userId: user.id });
 

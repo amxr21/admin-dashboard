@@ -7,13 +7,29 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
-import { createReturn } from '@/lib/returns-api';
+import { createReturn, type ReturnCategory } from '@/lib/returns-api';
 import type { OrderDetail } from '@/lib/orders-api';
+
+const CATEGORIES: ReturnCategory[] = [
+  'DAMAGED',
+  'WRONG_ITEM',
+  'NOT_AS_DESCRIBED',
+  'NO_LONGER_NEEDED',
+  'ARRIVED_LATE',
+  'OTHER',
+];
 
 /**
  * Request a return against a delivered order — a staff action recording that
@@ -39,11 +55,13 @@ export function RequestReturnSheet({
   onCreated,
 }: RequestReturnSheetProps) {
   const t = useTranslations('returns.request');
+  const tCategory = useTranslations('returnCategory');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
   const { editPanelMode } = useAppSettings();
 
   const [reason, setReason] = useState('');
+  const [category, setCategory] = useState<ReturnCategory | ''>('');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +69,7 @@ export function RequestReturnSheet({
   useEffect(() => {
     if (!open) return;
     setReason('');
+    setCategory('');
     setQuantities({});
     setError(null);
   }, [open]);
@@ -68,6 +87,7 @@ export function RequestReturnSheet({
       const created = await createReturn({
         orderId: order.id,
         reason: reason.trim(),
+        ...(category ? { category } : {}),
         items: selectedItems.map(([orderItemId, quantity]) => ({ orderItemId, quantity })),
       });
       onCreated(t('done', { rma: created.rmaNumber }));
@@ -88,7 +108,7 @@ export function RequestReturnSheet({
       <SheetContent
         side="end"
         variant={editPanelMode}
-        className="w-full max-w-lg overflow-y-auto"
+        className="max-w-lg overflow-y-auto"
         title={t('title', { order: order.orderNumber })}
       >
         <div className="space-y-5">
@@ -152,6 +172,22 @@ export function RequestReturnSheet({
               maxLength={500}
               placeholder={t('reasonPlaceholder')}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="return-category">{t('category')}</Label>
+            <Select value={category} onValueChange={(value) => setCategory(value as ReturnCategory)}>
+              <SelectTrigger id="return-category">
+                <SelectValue placeholder={t('categoryPlaceholder')} />
+              </SelectTrigger>
+              <SelectContent>
+                {CATEGORIES.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {tCategory(value)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {error ? (

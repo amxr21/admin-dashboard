@@ -105,6 +105,18 @@ enum ReturnStatus {
   REJECTED
 }
 
+/// Alongside the free-text `reason`, never replacing it — a requester can
+/// still describe the actual problem in their own words, while the category
+/// makes reason analytics possible.
+enum ReturnCategory {
+  DAMAGED
+  WRONG_ITEM
+  NOT_AS_DESCRIBED
+  NO_LONGER_NEEDED
+  ARRIVED_LATE
+  OTHER
+}
+
 /// What happens for the customer once a return is approved. NONE is not a
 /// real outcome — it exists so a freshly REQUESTED return has a value at all,
 /// the same reason Order.paymentMethod is optional rather than required.
@@ -591,19 +603,27 @@ model OrderStatusHistory {
 /// can legally move to RETURNED, optionally restocks, records a resolution),
 /// the same reason orders and delivery are bespoke rather than config.
 model Return {
-  id           String           @id @default(cuid())
+  id              String           @id @default(cuid())
   /// Human-facing reference, e.g. "RMA-7F3K9QZR". Never the row id.
-  rmaNumber    String           @unique @map("rma_number")
-  reason       String           @db.VarChar(500)
-  status       ReturnStatus     @default(REQUESTED)
-  resolution   ReturnResolution @default(NONE)
+  rmaNumber       String           @unique @map("rma_number")
+  reason          String           @db.VarChar(500)
+  /// NULL on any return requested before this was tracked — a real "never
+  /// classified" gap, not a silent OTHER. Existing rows are left alone
+  /// rather than guessed at from their free-text `reason`.
+  category        ReturnCategory?
+  status          ReturnStatus     @default(REQUESTED)
+  resolution      ReturnResolution @default(NONE)
   /// Set only when resolution = REFUND. Capped at approval time to the sum of
   /// the RETURNED line items' recorded price — never the order's live total.
-  refundAmount Decimal?         @map("refund_amount") @db.Decimal(10, 2)
+  refundAmount    Decimal?         @map("refund_amount") @db.Decimal(10, 2)
   /// Whether approving created a matching StockMovement per item. Recorded
   /// here so the return's own history says whether stock was ever adjusted,
   /// without re-deriving it from the movement log.
-  restocked    Boolean          @default(false)
+  restocked       Boolean          @default(false)
+  /// Staff's own words for why a return was refused. Set only on REJECTED —
+  /// same free-text, snapshot-once discipline as `reason` itself. NULL on
+  /// anything not (yet) rejected, not an empty string.
+  rejectionReason String?          @map("rejection_reason") @db.VarChar(500)
 
   orderId String @map("order_id")
   order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -777,7 +797,7 @@ model DeliveryAssignment {
   /// attempt" must stay knowable after the job cycles back to
   /// OUT_FOR_DELIVERY, the same reason a StockMovement correction doesn't
   /// erase the mistake it corrects.
-  attemptCount Int @default(0) @map("attempt_count")
+  attemptCount  Int     @default(0) @map("attempt_count")
   /// Free text from the courier, e.g. "customer not home", "refused at
   /// door". Set on FAILED_ATTEMPT, left as-is on a successful retry — a
   /// staff member reviewing a 3rd attempt wants to see what the 1st and 2nd
