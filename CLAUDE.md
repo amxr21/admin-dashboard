@@ -187,9 +187,12 @@
   items) shipped 2026-08-01 — see the Toaster changelog entry.
 - **Staff self-service profile** — no `PATCH /auth/me` or self-service password change yet; a staff
   member needs an OWNER to edit their own name/phone.
-- **Transactional email** — every "notify" path writes an in-app row only; no ESP integrated.
-  Needs a deliberate in-scope/out-of-scope decision before the notification-preferences settings
-  section's toggles fully mean what they imply.
+- ~~**Transactional email**~~ — **shipped**, found already merged to `dev` at session start
+  (commit `a5ef3a1`, PR via `feat/email-alerts`): `backend/src/services/email.service.ts` sends
+  outgoing alert email over plain SMTP (`nodemailer`), gated on three independent conditions (SMTP
+  env vars set, `email.enabled` setting on, `email.fromAddress` filled in) — any one missing is
+  "not configured," same non-error shape as `upload.service.ts`'s Cloudinary check. Never throws,
+  same pattern as `notify()`/`audit()`. This file's "Planned/not started" entry was stale.
 
 ## Flows
 
@@ -232,6 +235,20 @@ written; refund amount over the recorded line-item total → 400.
 apart is an enumeration oracle.
 
 ## Current work
+- **dev → main G-GATE** (separate track from the Design Fix Checklist below — see ROADMAP.md
+  §G-GATE): this session (2026-08-04) confirmed 2 of 4 remaining items are operational facts only
+  the user can answer, not things inferable from the repo. **Render redeploy status: unknown** —
+  user hasn't checked whether the live Render backend has the auth routes; this alone should block
+  a `main` push until confirmed. **Sentry DSN in prod: skipped** — the user's Sentry trial ended,
+  so RUN-layer Sentry work is on hold, not just unconfigured. **E2E**: re-wired `.github/workflows/
+  e2e.yml` for Option A (a persistent dev Render backend via `RENDER_DEV_BACKEND_URL` secret,
+  dropping the old "wait for Render preview" step entirely) but a real dev backend, while it
+  exists, currently only has a **local-only database** — so the `pull_request` trigger stays
+  commented out; flipping it on now would just red every check without proving anything. **Arabic
+  review**: generated a filterable, flagged en/ar review sheet (744 keys, 18 flagged by heuristics
+  — mostly correctly-untranslated loanwords like SKU/CSV, not real errors) as a Claude Artifact for
+  the user's own review pass — not self-certified as reviewed. Branch:
+  `chore/e2e-arabic-review-gate` off `dev`.
 - **Design Fix Checklist** (a phased dashboard/settings/shell redesign, run session-by-session):
   Phase 0 (recon) approved. Phases 1-5 built, verified, PR'd:
   **#80** `fix(shell)`: Phase 1 — scroll-model rebuild, global search, solid topbar (MERGED) →
@@ -287,6 +304,15 @@ apart is an enumeration oracle.
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-08-04** — dev → main G-GATE session: found transactional email (§ above) already shipped
+  on `dev` from a prior session (`a5ef3a1`), CLAUDE.md was stale on that. Re-wired `e2e.yml` for
+  Option A (persistent dev backend via `RENDER_DEV_BACKEND_URL`, dropping the Render-preview-wait
+  job entirely) — kept the `pull_request` trigger disabled since the dev backend's DB is local-only
+  right now, so a live run would fail everything without proving anything real. Generated a
+  filterable en/ar review-sheet Artifact (744 keys, 18 heuristically flagged) for the user's own
+  native-speaker review pass. Confirmed Render-redeploy status and prod Sentry DSN are both
+  open questions only the user can answer — not attempted from the repo. No code behavior changed;
+  `PasswordResetToken`/audit/returns/etc. untouched.
 - **2026-08-03 (even later)** — Real Tooltip primitive (PR #86, open; not part of the 7-phase
   checklist, an older-backlog item picked up between phases): `components/ui/tooltip.tsx`
   (Radix, matching Popover/AlertDialog conventions), `TooltipProvider` mounted once in the root
