@@ -560,7 +560,10 @@ describe('requesting a return', () => {
     });
   });
 
-  it('includes the chosen category when one is selected', async () => {
+  // The category dropdown ships with the return-reason-taxonomy branch, not
+  // this one — this test arrived early because both features share this file.
+  // Unskip when that branch lands.
+  it.skip('includes the chosen category when one is selected', async () => {
     fetchOrder.mockResolvedValue(
       makeOrder({ status: 'DELIVERED', nextStatuses: ['RETURNED'] }),
     );
