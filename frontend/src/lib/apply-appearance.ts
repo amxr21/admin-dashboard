@@ -91,6 +91,24 @@ export function getBlockingAppearanceScript(): string {
   }catch(e){}})();`;
 }
 
+/**
+ * Reads the CURRENTLY APPLIED store-wide density straight off the DOM.
+ *
+ * There is no React state for `root.dataset.density` — `applyAppearance` is a
+ * one-way side effect, same shape as `getDocumentDirection()` in
+ * `lib/direction.ts`. A per-table density override (see `useTableDensity`)
+ * needs to know what it would be INHERITING before the user picks an
+ * explicit choice, and re-deriving that from `SettingsContextValue` would
+ * mean plumbing density through a second path that could drift from this one.
+ *
+ * Returns 'comfortable' during SSR, matching `applyAppearance`'s own default
+ * when no attribute is set.
+ */
+export function getGlobalDensity(): 'comfortable' | 'compact' {
+  if (typeof document === 'undefined') return 'comfortable';
+  return document.documentElement.dataset.density === 'compact' ? 'compact' : 'comfortable';
+}
+
 export function applyAppearance(values: AppearanceValues): void {
   const root = document.documentElement;
 

@@ -115,6 +115,21 @@ enum ReturnResolution {
   REPLACEMENT
 }
 
+/// A fixed bucket for "why is this being returned", alongside — not instead
+/// of — `Return.reason`'s free text. A dropdown alone would lose "arrived
+/// with a cracked lid" down to whichever bucket is closest; free text alone
+/// (the previous shape) cannot be grouped for a reason-analytics report
+/// (TODO_SPEC.md's stated ask). OTHER is the deliberate escape hatch — this
+/// list is not, and does not try to be, exhaustive.
+enum ReturnCategory {
+  DAMAGED
+  WRONG_ITEM
+  NOT_AS_DESCRIBED
+  NO_LONGER_NEEDED
+  ARRIVED_LATE
+  OTHER
+}
+
 enum DiscountType {
   PERCENT
   FIXED
@@ -408,6 +423,37 @@ model Product {
   status      ProductStatus @default(ACTIVE)
   stock       Int           @default(0)
 
+  /// EAN/UPC/GTIN — distinct from `sku` (that's this business's own catalogue
+  /// code; a barcode is the globally-scannable one printed on the unit).
+  barcode         String?  @unique @db.VarChar(64)
+  /// Kilograms. NULL means "not recorded", never 0 — same "unknown, not
+  /// free/weightless" discipline as `cost`, since a fabricated 0 would break
+  /// any future shipping-rate calculation silently.
+  weightKg        Decimal? @map("weight_kg") @db.Decimal(10, 3)
+  lengthCm        Decimal? @map("length_cm") @db.Decimal(10, 2)
+  widthCm         Decimal? @map("width_cm") @db.Decimal(10, 2)
+  heightCm        Decimal? @map("height_cm") @db.Decimal(10, 2)
+  /// Harmonized System code for customs declarations. Free text, not
+  /// validated against the real HS nomenclature — this app has no tariff
+  /// database to validate against.
+  hsCode          String?  @map("hs_code") @db.VarChar(20)
+  /// ISO 3166-1 alpha-2 (e.g. "AE", "CN"). Not enforced as an enum — the
+  /// admin config layer, not the schema, is this app's validation surface
+  /// for catalogue fields (see admin.config.ts's own header comment).
+  countryOfOrigin String?  @map("country_of_origin") @db.VarChar(2)
+
+  /// URL-safe identifier. NULL means "not set yet" — nothing in this app
+  /// resolves a product BY slug today (no public storefront exists), so
+  /// this is a recorded value for a future public site, not a live route
+  /// key. Optional and never auto-derived from `name` on write: silently
+  /// re-deriving it on every rename is exactly what `redirects` exists to
+  /// avoid needing.
+  slug            String? @unique @db.VarChar(220)
+  /// Falls back to `name` wherever meta title is rendered — NULL is "use
+  /// the default", not "no title".
+  metaTitle       String? @map("meta_title") @db.VarChar(160)
+  metaDescription String? @map("meta_description") @db.VarChar(320)
+
   categoryId String?   @map("category_id")
   /// SetNull, not Cascade — deleting a category must never delete products.
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -417,6 +463,7 @@ model Product {
   variants   ProductVariant[]
   images     ProductImage[]
   discounts  Discount[]
+  redirects  ProductRedirect[]
 
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
@@ -426,6 +473,27 @@ model Product {
   @@index([categoryId])
   @@index([createdAt])
   @@map("products")
+}
+
+/// One row per slug a product used to have. Written automatically whenever
+/// a product's `slug` changes away from a non-null previous value — never
+/// on the FIRST slug being set (there is no "old" slug to redirect from
+/// yet). Purely a recorded history today: no route in this app resolves a
+/// product by slug, so nothing consumes this table live (see the header
+/// comment on `Product.slug`). Exists so a future public site has the
+/// mapping ready rather than needing it reconstructed from the audit log.
+model ProductRedirect {
+  id        String   @id @default(cuid())
+  oldSlug   String   @unique @map("old_slug") @db.VarChar(220)
+  productId String   @map("product_id")
+  /// Cascade: a redirect for a deleted product is dead weight, not history
+  /// worth keeping — unlike the product's OWN records (orders, audit log),
+  /// nothing points at a ProductRedirect that would orphan.
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([productId])
+  @@map("product_redirects")
 }
 
 /// A flat variant row — "Red / Large" as one line with its own price, stock
@@ -466,9 +534,14 @@ model ProductVariant {
 /// modelled (StockMovement, OrderItem), and `position` needs a real column
 /// to reorder against.
 model ProductImage {
-  id       String @id @default(cuid())
-  url      String @db.VarChar(512)
-  position Int    @default(0)
+  id       String  @id @default(cuid())
+  url      String  @db.VarChar(512)
+  position Int     @default(0)
+  /// Nullable, not defaulted to `""` — an empty string LOOKS filled in to a
+  /// form that just checks truthiness, so leaving it genuinely absent keeps
+  /// "nobody wrote alt text for this image" a real, queryable state rather
+  /// than one indistinguishable from "someone wrote an empty string".
+  alt      String? @db.VarChar(255)
 
   productId String  @map("product_id")
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -511,23 +584,35 @@ model Order {
   /// Human-facing reference shown to customers and couriers, e.g. "ORD-1024".
   orderNumber   String      @unique @map("order_number") @db.VarChar(40)
   /// Denormalised on purpose: the order total must not change if a product's
-  /// price is edited after the order was placed.
+  /// price is edited after the order was placed. Grand total — what the
+  /// customer actually paid, tax included. Every existing reader (Reports,
+  /// Dashboard KPIs) already treats this as the order's money figure; that
+  /// meaning does NOT change with `subtotal`/`taxAmount` below.
   total         Decimal     @default(0) @db.Decimal(10, 2)
+  /// Sum of line items before tax. NULL, not 0, on orders that predate this
+  /// column or were never run through a tax-aware creation path — 0 would
+  /// falsely claim "confirmed, no tax," which is a different fact from
+  /// "never recorded." Set once at creation, same snapshot discipline as
+  /// `total` and `OrderItem.price`.
+  subtotal      Decimal?    @db.Decimal(10, 2)
+  /// `subtotal * store.taxRate` at the time of the order, snapshotted for the
+  /// same reason `OrderItem.price` is: a later change to `store.taxRate`
+  /// must not rewrite what an old invoice already showed. NULL has the same
+  /// "never recorded" meaning as `subtotal`'s.
+  taxAmount     Decimal?    @map("tax_amount") @db.Decimal(10, 2)
   status        OrderStatus @default(PENDING)
   paymentMethod String?     @map("payment_method") @db.VarChar(48)
   placedAt      DateTime    @default(now()) @map("placed_at")
-  /// Staff-only, never surfaced to the customer — a place to record "called
-  /// twice, no answer" or similar, distinct from `OrderStatusHistory.note`
-  /// (which is tied to one specific status transition). Free text only,
-  /// deliberately: a structured tag vocabulary is a separate, bigger feature
-  /// this app doesn't have yet, and most real usage is exactly a short note.
-  internalNotes String?     @map("internal_notes") @db.Text
 
   customerId String?   @map("customer_id")
   /// SetNull so deleting a customer preserves order history for accounting.
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   items         OrderItem[]
+  /// Staff-only, never surfaced to the customer — a THREAD (C5.7), not the
+  /// single overwritable field this used to be. See `OrderNote`'s own doc
+  /// comment for why.
+  notes         OrderNote[]
   statusHistory OrderStatusHistory[]
   assignment    DeliveryAssignment?
   returns       Return[]
@@ -564,6 +649,30 @@ model OrderItem {
   @@map("order_items")
 }
 
+/// Staff-only order notes — a THREAD, not a single overwritable field (C5.7).
+/// The previous shape (`Order.internalNotes`, one blob every save replaced)
+/// meant a second staff member's note silently erased the first one's; this
+/// is append-only like every other history table in this file, for the same
+/// reason `OrderStatusHistory` is: "who said what, and when" must survive
+/// being edited again.
+model OrderNote {
+  id   String @id @default(cuid())
+  body String @db.Text
+
+  /// Who wrote it. Plain id, not a relation — same rule as
+  /// `OrderStatusHistory.changedById`: the thread must survive the staff
+  /// member being deleted, not lose its own history along with the account.
+  authorId String? @map("author_id")
+
+  orderId String @map("order_id")
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([orderId, createdAt])
+  @@map("order_notes")
+}
+
 /// Audit trail of order status changes. Not in the old schema — added because
 /// "who moved this order to shipped, and when" is a question the dashboard
 /// will be asked, and it cannot be answered retroactively.
@@ -591,19 +700,27 @@ model OrderStatusHistory {
 /// can legally move to RETURNED, optionally restocks, records a resolution),
 /// the same reason orders and delivery are bespoke rather than config.
 model Return {
-  id           String           @id @default(cuid())
+  id              String           @id @default(cuid())
   /// Human-facing reference, e.g. "RMA-7F3K9QZR". Never the row id.
-  rmaNumber    String           @unique @map("rma_number")
-  reason       String           @db.VarChar(500)
-  status       ReturnStatus     @default(REQUESTED)
-  resolution   ReturnResolution @default(NONE)
+  rmaNumber       String           @unique @map("rma_number")
+  reason          String           @db.VarChar(500)
+  /// NULL on any return requested before this was tracked — a real "never
+  /// classified" gap, not a silent OTHER. Existing rows are left alone
+  /// rather than guessed at from their free-text `reason`.
+  category        ReturnCategory?
+  status          ReturnStatus     @default(REQUESTED)
+  resolution      ReturnResolution @default(NONE)
   /// Set only when resolution = REFUND. Capped at approval time to the sum of
   /// the RETURNED line items' recorded price — never the order's live total.
-  refundAmount Decimal?         @map("refund_amount") @db.Decimal(10, 2)
+  refundAmount    Decimal?         @map("refund_amount") @db.Decimal(10, 2)
   /// Whether approving created a matching StockMovement per item. Recorded
   /// here so the return's own history says whether stock was ever adjusted,
   /// without re-deriving it from the movement log.
-  restocked    Boolean          @default(false)
+  restocked       Boolean          @default(false)
+  /// Staff's own words for why a return was refused. Set only on REJECTED —
+  /// same free-text, snapshot-once discipline as `reason` itself. NULL on
+  /// anything not (yet) rejected, not an empty string.
+  rejectionReason String?          @map("rejection_reason") @db.VarChar(500)
 
   orderId String @map("order_id")
   order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -926,6 +1043,10 @@ enum AuditOutcome {
   ERROR
 }
 
+/// Return/Privacy/Terms/Shipping — the four legal/policy documents a store
+/// publishes. A fixed enum, same reasoning as `StaffRole`: these four are the
+/// whole set the UI and any public-facing consumer need to know about, not an
+/// open-ended admin-defined list.
 enum PolicyType {
   RETURN
   PRIVACY
@@ -997,3 +1118,50 @@ model PolicyVersion {
 /// computed relative to send time) is what's saved; there is no "saved
 /// custom from/to" concept, since a fixed date range would go stale the
 /// moment it was reused a week later.
+enum ScheduleFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+/// CSV always works; XLSX/PDF depend on C3.4's export libraries being wired
+/// in — `reports.service.ts`'s scheduler send path is the single place that
+/// decision matters, not this row.
+enum ScheduleFormat {
+  CSV
+  XLSX
+  PDF
+}
+
+model ScheduledReport {
+  id String @id @default(cuid())
+
+  /// Matches a `ReportView` key on the frontend (`overview`, `revenue`,
+  /// `staff-activity`, ...) — plain string, not a Prisma enum, so a new
+  /// report type never needs a migration to become schedulable.
+  reportKey  String            @map("report_key") @db.VarChar(64)
+  frequency  ScheduleFrequency
+  format     ScheduleFormat    @default(CSV)
+  /// Plain email strings, not a relation to Customer/User — a recipient here
+  /// is very often someone with NO account in this system at all (an
+  /// external accountant, a franchise owner), same reasoning
+  /// `DeliveryAssignment.customerName`/`customerPhone` snapshot rather than
+  /// requiring a Customer row to exist.
+  recipients Json
+  isActive   Boolean           @default(true) @map("is_active")
+
+  /// Set by the scheduler after each attempt — lets the UI show "last sent"
+  /// honestly instead of implying every active schedule has actually fired.
+  lastRunAt     DateTime? @map("last_run_at")
+  lastRunStatus String?   @map("last_run_status") @db.VarChar(16)
+
+  /// Plain id, not a relation — same "the record must survive the staff
+  /// member being deleted" rule as every other actor reference in this file.
+  createdById String? @map("created_by_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive, frequency])
+  @@map("scheduled_reports")
+}

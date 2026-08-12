@@ -489,10 +489,12 @@
     "title": "الطلبات",
     "subtitle": "كل طلب وبنوده وموضعه في مسار العمل.",
     "empty": "لا توجد طلبات بعد.",
-    "guest": "زائر",
+    "guest": "ضيف",
     "requestReturn": "طلب إرجاع",
     "placedOn": "تم الطلب في {date}",
     "total": "{count, plural, zero {لا توجد طلبات} one {طلب واحد} two {طلبان} few {# طلبات} many {# طلباً} other {# طلب}}",
+    "exportCsv": "تصدير CSV",
+    "exporting": "جارٍ تجهيز الملف…",
     "columns": {
       "number": "الطلب",
       "customer": "العميل",
@@ -545,6 +547,8 @@
       "phone": "الهاتف",
       "address": "العنوان",
       "status": "الحالة",
+      "attemptCount": "المحاولات الفاشلة",
+      "failureReason": "سبب آخر فشل",
       "unassigned": "لم يُسنَد مندوب بعد.",
       "assignLabel": "المندوب",
       "assignPlaceholder": "اختر مندوبًا",
@@ -553,13 +557,16 @@
       "reassign": "إعادة الإسناد",
       "unassign": "إلغاء الإسناد",
       "cancel": "إلغاء",
-      "addressHint": "يرى المندوب العنوان المسجل هنا فقط.",
       "addressLabel": "عنوان التوصيل",
       "addressPlaceholder": "الشارع، المبنى، الشقة",
       "cityLabel": "المدينة",
       "cityPlaceholder": "المدينة",
       "noteLabel": "ملاحظة للمندوب",
-      "notePlaceholder": "اختياري، مثل الاتصال عند الوصول"
+      "notePlaceholder": "اختياري، مثل الاتصال عند الوصول",
+      "addressHint": "يرى المندوب العنوان المسجل هنا فقط.",
+      "editAddress": "تعديل العنوان",
+      "saveAddress": "حفظ العنوان",
+      "saving": "جارٍ الحفظ…"
     },
     "payment": {
       "title": "الدفع",
@@ -568,14 +575,20 @@
     "notes": {
       "title": "ملاحظات داخلية",
       "placeholder": "للموظفين فقط — لا تُعرض للعميل.",
-      "save": "حفظ",
-      "saving": "جارٍ الحفظ…"
+      "empty": "لا توجد ملاحظات بعد.",
+      "add": "إضافة",
+      "adding": "جارٍ الإضافة…",
+      "unknownAuthor": "حساب لم يعد موجودًا"
     },
     "timeline": {
       "title": "السجل",
       "placed": "تم إنشاء الطلب",
       "movedTo": "أصبح",
-      "noChanges": "لا توجد تغييرات في الحالة بعد."
+      "noChanges": "لا يوجد شيء آخر مسجل بعد.",
+      "noteAdded": "أُضيفت ملاحظة بواسطة {who}",
+      "reportedBy": "أبلغ عنها {who}",
+      "byActor": "بواسطة {who}",
+      "unknownActor": "حساب لم يعد موجودًا"
     },
     "statusControl": {
       "label": "الانتقال إلى",
@@ -586,6 +599,24 @@
       "notePlaceholder": "ما سبب هذا التغيير؟",
       "terminal": "هذا الطلب {status} ولا يمكن نقله أبعد من ذلك."
     },
+    "bulkStatus": {
+      "selected": "{count, plural, one {# محدد} two {محددان} few {# محددة} many {# محددًا} other {# محدد}}",
+      "label": "الانتقال إلى",
+      "placeholder": "اختر حالة",
+      "apply": "تطبيق",
+      "confirmTitle": "{count, plural, one {نقل هذا الطلب؟} two {نقل هذين الطلبين؟} few {نقل # طلبات؟} many {نقل # طلبًا؟} other {نقل # طلب؟}}",
+      "confirmDescription": "سيتم نقل كل طلب محدد إلى {status}. سيتم تخطي الطلبات التي لا يمكنها إجراء هذا الانتقال قانونيًا، دون إجبارها.",
+      "withAssignment": "{count, plural, one {طلب واحد منها لديه مندوب توصيل نشط} two {طلبان منها لديهما مندوب توصيل نشط} few {# طلبات منها لديها مندوب توصيل نشط} many {# طلبًا منها لديها مندوب توصيل نشط} other {# طلب منها لديها مندوب توصيل نشط}} سينتقل أيضًا.",
+      "terminalWarning": "لا يمكن التراجع عن {status} — بمجرد تطبيقها، لن يمكن نقل هذه الطلبات مرة أخرى أبدًا.",
+      "typePhrase": "اكتب {phrase} للتأكيد.",
+      "confirm": "نقل",
+      "applying": "جارٍ النقل…",
+      "cancel": "إلغاء",
+      "notice": {
+        "succeeded": "{count, plural, one {تم نقل طلب واحد إلى} two {تم نقل طلبين إلى} few {تم نقل # طلبات إلى} many {تم نقل # طلبًا إلى} other {تم نقل # طلب إلى}} {status}.",
+        "skipped": "{count, plural, one {تم تخطي طلب واحد:} two {تم تخطي طلبين:} few {تم تخطي # طلبات:} many {تم تخطي # طلبًا:} other {تم تخطي # طلب:}} {reason}"
+      }
+    },
     "invoice": {
       "action": "الفاتورة",
       "title": "فاتورة",
@@ -595,7 +626,9 @@
       "billedTo": "إلى",
       "paidBy": "الدفع عبر {method}",
       "storeLogoAlt": "شعار {name}",
-      "taxId": "الرقم الضريبي {id}"
+      "taxId": "الرقم الضريبي {id}",
+      "subtotal": "المجموع الفرعي",
+      "tax": "الضريبة"
     }
   },
   "inventory": {
