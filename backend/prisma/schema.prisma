@@ -408,6 +408,37 @@ model Product {
   status      ProductStatus @default(ACTIVE)
   stock       Int           @default(0)
 
+  /// EAN/UPC/GTIN — distinct from `sku` (that's this business's own catalogue
+  /// code; a barcode is the globally-scannable one printed on the unit).
+  barcode         String?  @unique @db.VarChar(64)
+  /// Kilograms. NULL means "not recorded", never 0 — same "unknown, not
+  /// free/weightless" discipline as `cost`, since a fabricated 0 would break
+  /// any future shipping-rate calculation silently.
+  weightKg        Decimal? @map("weight_kg") @db.Decimal(10, 3)
+  lengthCm        Decimal? @map("length_cm") @db.Decimal(10, 2)
+  widthCm         Decimal? @map("width_cm") @db.Decimal(10, 2)
+  heightCm        Decimal? @map("height_cm") @db.Decimal(10, 2)
+  /// Harmonized System code for customs declarations. Free text, not
+  /// validated against the real HS nomenclature — this app has no tariff
+  /// database to validate against.
+  hsCode          String?  @map("hs_code") @db.VarChar(20)
+  /// ISO 3166-1 alpha-2 (e.g. "AE", "CN"). Not enforced as an enum — the
+  /// admin config layer, not the schema, is this app's validation surface
+  /// for catalogue fields (see admin.config.ts's own header comment).
+  countryOfOrigin String?  @map("country_of_origin") @db.VarChar(2)
+
+  /// URL-safe identifier. NULL means "not set yet" — nothing in this app
+  /// resolves a product BY slug today (no public storefront exists), so
+  /// this is a recorded value for a future public site, not a live route
+  /// key. Optional and never auto-derived from `name` on write: silently
+  /// re-deriving it on every rename is exactly what `redirects` exists to
+  /// avoid needing.
+  slug            String? @unique @db.VarChar(220)
+  /// Falls back to `name` wherever meta title is rendered — NULL is "use
+  /// the default", not "no title".
+  metaTitle       String? @map("meta_title") @db.VarChar(160)
+  metaDescription String? @map("meta_description") @db.VarChar(320)
+
   categoryId String?   @map("category_id")
   /// SetNull, not Cascade — deleting a category must never delete products.
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -417,6 +448,7 @@ model Product {
   variants   ProductVariant[]
   images     ProductImage[]
   discounts  Discount[]
+  redirects  ProductRedirect[]
 
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
@@ -459,6 +491,27 @@ model ProductVariant {
   @@map("product_variants")
 }
 
+/// One row per slug a product used to have. Written automatically whenever
+/// a product's `slug` changes away from a non-null previous value — never
+/// on the FIRST slug being set (there is no "old" slug to redirect from
+/// yet). Purely a recorded history today: no route in this app resolves a
+/// product by slug, so nothing consumes this table live (see the header
+/// comment on `Product.slug`). Exists so a future public site has the
+/// mapping ready rather than needing it reconstructed from the audit log.
+model ProductRedirect {
+  id        String   @id @default(cuid())
+  oldSlug   String   @unique @map("old_slug") @db.VarChar(220)
+  productId String   @map("product_id")
+  /// Cascade: a redirect for a deleted product is dead weight, not history
+  /// worth keeping — unlike the product's OWN records (orders, audit log),
+  /// nothing points at a ProductRedirect that would orphan.
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([productId])
+  @@map("product_redirects")
+}
+
 /// Additional catalogue images beyond `Product.imageUrl` (kept as the
 /// "primary/cover" image — unchanged, still what every existing list/cell
 /// renders). A real model with its own id and `position`, not a JSON array:
@@ -466,9 +519,14 @@ model ProductVariant {
 /// modelled (StockMovement, OrderItem), and `position` needs a real column
 /// to reorder against.
 model ProductImage {
-  id       String @id @default(cuid())
-  url      String @db.VarChar(512)
-  position Int    @default(0)
+  id       String  @id @default(cuid())
+  url      String  @db.VarChar(512)
+  position Int     @default(0)
+  /// Nullable, not defaulted to `""` — an empty string LOOKS filled in to a
+  /// form that just checks truthiness, so leaving it genuinely absent keeps
+  /// "nobody wrote alt text for this image" a real, queryable state rather
+  /// than one indistinguishable from "someone wrote an empty string".
+  alt      String? @db.VarChar(255)
 
   productId String  @map("product_id")
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -777,7 +835,7 @@ model DeliveryAssignment {
   /// attempt" must stay knowable after the job cycles back to
   /// OUT_FOR_DELIVERY, the same reason a StockMovement correction doesn't
   /// erase the mistake it corrects.
-  attemptCount Int @default(0) @map("attempt_count")
+  attemptCount  Int     @default(0) @map("attempt_count")
   /// Free text from the courier, e.g. "customer not home", "refused at
   /// door". Set on FAILED_ATTEMPT, left as-is on a successful retry — a
   /// staff member reviewing a 3rd attempt wants to see what the 1st and 2nd

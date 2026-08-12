@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
+import { TriangleAlert } from 'lucide-react';
 
 import {
   AlertDialog,
@@ -28,9 +29,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { StickyFormBar } from '@/components/ui/sticky-form-bar';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api';
 import { isEmailShaped } from '@/lib/email';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import {
@@ -149,6 +154,84 @@ function toPayloadValue(field: FieldConfig, value: FormValue): unknown {
   }
 }
 
+/**
+ * Profit and margin, derived from the price and cost already on the form.
+ *
+ * Both numbers exist in the schema and neither was ever shown, so setting a
+ * price meant doing the arithmetic in your head — the one calculation this
+ * form is in the best position to do. Derived, never stored: a persisted
+ * margin column would be a third source of truth that drifts the moment either
+ * input changes.
+ *
+ * Renders only when BOTH values parse and price is non-zero. A partially typed
+ * form ("12." mid-keystroke) or a zero price would otherwise flash a nonsense
+ * figure or divide by zero. Negative margin is shown, not hidden — selling
+ * below cost is exactly the case worth surfacing.
+ */
+function MarginSummary({
+  schema,
+  price,
+  cost,
+}: {
+  schema: ResourceSchema;
+  // `FormValue`, not `string` — a boolean field can't reach here in practice
+  // (both are gated on `type === 'money'`), but the form's value map is
+  // genuinely wider and narrowing it with a cast would hide a real mismatch
+  // if someone renamed a field.
+  price: FormValue | undefined;
+  cost: FormValue | undefined;
+}) {
+  const t = useTranslations('resource');
+  const formatter = useFormatter();
+  const formatCurrency = useCurrencyFormat();
+
+  // Gated on the schema, not the resource name: any resource declaring both a
+  // `price` and a `cost` money field gets this for free, which is the whole
+  // point of a config-driven engine.
+  const hasBoth = ['price', 'cost'].every((name) =>
+    schema.fields.some((field) => field.name === name && field.type === 'money'),
+  );
+  if (!hasBoth) return null;
+
+  // Only a non-empty string can be money. A boolean would coerce to 0/1 and
+  // silently produce a real-looking figure from nonsense.
+  if (typeof price !== 'string' || typeof cost !== 'string') return null;
+  if (price.trim() === '' || cost.trim() === '') return null;
+
+  const priceValue = Number(price);
+  const costValue = Number(cost);
+
+  // A price of 0 is not an error, but the margin is undefined — dividing by it
+  // yields Infinity, which would render as a confident "∞%".
+  if (!Number.isFinite(priceValue) || !Number.isFinite(costValue)) return null;
+  if (priceValue === 0) return null;
+
+  const profit = priceValue - costValue;
+  const marginRatio = profit / priceValue;
+
+  return (
+    <dl
+      className="bg-muted/50 grid grid-cols-2 gap-2 rounded-md px-3 py-2 text-sm"
+      // Recomputes as you type, so a screen reader shouldn't announce every
+      // intermediate value — the figures are supporting detail, not an alert.
+      aria-live="off"
+    >
+      <dt className="text-muted-foreground">{t('margin.profit')}</dt>
+      <dd className="text-end tabular-nums">{formatCurrency(profit)}</dd>
+
+      <dt className="text-muted-foreground">{t('margin.margin')}</dt>
+      <dd
+        className={cn(
+          'text-end tabular-nums',
+          profit < 0 && 'text-destructive font-medium',
+        )}
+      >
+        {formatter.number(marginRatio, 'percent')}
+      </dd>
+    </dl>
+  );
+}
+
 export function ResourceForm({
   schema,
   row,
@@ -163,11 +246,23 @@ export function ResourceForm({
   const fields = useMemo(() => formFields(schema), [schema]);
   const isEdit = row !== null;
 
+  // Snapshot of what each field held when the form opened — used only to
+  // decide whether a `changeWarning` field's value has actually changed
+  // away from something real, not to detect dirtiness in general (isDirty
+  // already does that more cheaply as a single flag).
+  const originalValues = useMemo(() => initialValues(schema, row), [schema, row]);
+
   const [values, setValues] = useState<FormValues>(() => initialValues(schema, row));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+
+  // Tab close / reload / typing a new URL — the Sheet's own onEscapeKeyDown/
+  // onInteractOutside guards (below) already cover every in-app way to lose
+  // these edits; this is the one path outside React's control.
+  useUnsavedChangesGuard(open && isDirty);
+
   // Variants/gallery are a product's own sub-records, not generic-engine
   // fields — managed through their own bespoke panels, opened from this
   // form rather than nested inside it, so this stays the one place a
@@ -402,7 +497,15 @@ export function ResourceForm({
       <SheetContent
         side="end"
         variant={editPanelMode}
-        className="w-full max-w-lg overflow-y-auto"
+        // No `overflow-y-auto` here: scrolling the whole panel would carry the
+        // heading and the action buttons off-screen with it. The field list
+        // below is the only part that scrolls, so the title stays put and Save
+        // /Cancel stay reachable — in the modal variant especially, where the
+        // panel is capped at 85vh rather than running the full viewport height.
+        // Width is left to the variant: the drawer sizes itself to the edge,
+        // the modal keeps a small-screen gutter. Passing `w-full` here would
+        // win the class merge and flatten the modal back to edge-to-edge.
+        className="max-w-lg"
         title={isEdit ? t('editTitle', { label: schema.label }) : t('createTitle', { label: schema.label })}
         // Escape and outside clicks route through the same guard as the
         // buttons, so there is no way to lose edits by accident.
@@ -419,7 +522,14 @@ export function ResourceForm({
           }
         }}
       >
-        <form onSubmit={(event) => void handleSubmit(event)} className="flex h-full flex-col gap-4">
+        {/* `min-h-0` lets the scrollable field region below actually shrink:
+            a flex child defaults to min-height:auto, which refuses to go below
+            its content and would push the buttons past the panel's bottom edge
+            in the height-capped modal variant. */}
+        <form
+          onSubmit={(event) => void handleSubmit(event)}
+          className="flex min-h-0 flex-1 flex-col gap-4"
+        >
           <h2 className="text-lg font-semibold">
             {isEdit
               ? t('editTitle', { label: schema.label })
@@ -435,39 +545,104 @@ export function ResourceForm({
             </p>
           ) : null}
 
-          <div className="flex-1 space-y-4">
+          {/* The one scrolling region. `-mx-1 px-1` keeps focus rings on the
+              inputs from being clipped by the overflow container. */}
+          <div className="-mx-1 min-h-0 flex-1 space-y-4 overflow-y-auto px-1">
             {fields.map((field) => (
               <FormField
                 key={field.name}
                 field={field}
                 value={values[field.name] ?? ''}
+                originalValue={isEdit ? (originalValues[field.name] ?? '') : ''}
                 error={fieldErrors[field.name]}
                 options={relationOptions[field.name] ?? []}
                 resourceFolder={schema.resource}
                 onChange={(value) => setValue(field.name, value)}
+                onBlur={() => {
+                  // A blank REQUIRED field left empty is deliberately not
+                  // flagged here — a fresh create form's untouched fields
+                  // are all blank by definition, and tabbing through them
+                  // (focus → blur, never typing) would light up every
+                  // required field red before the user has done anything
+                  // wrong. Submit still catches a genuinely empty required
+                  // field; blur only catches a WRONG value in a field that
+                  // has content — a malformed email, an unparseable date —
+                  // which is unambiguously a mistake worth surfacing early.
+                  const current = values[field.name] ?? '';
+                  if (String(current).trim() === '') return;
+
+                  const message = validateField(field, current);
+                  setFieldErrors((prev) => {
+                    if (message === null) {
+                      if (!(field.name in prev)) return prev;
+                      const { [field.name]: _removed, ...rest } = prev;
+                      return rest;
+                    }
+                    return { ...prev, [field.name]: message };
+                  });
+                }}
               />
             ))}
 
-            {isEdit && schema.resource === 'products' ? (
-              <div className="flex gap-2 border-t pt-4">
-                <Button type="button" variant="outline" size="sm" onClick={() => setVariantsPanelOpen(true)}>
-                  {t('manageVariants')}
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => setGalleryPanelOpen(true)}>
-                  {t('manageGallery')}
-                </Button>
+            <MarginSummary
+              schema={schema}
+              price={values.price}
+              cost={values.cost}
+            />
+
+            {schema.resource === 'products' ? (
+              <div className="border-t pt-4">
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!isEdit}
+                    onClick={() => setVariantsPanelOpen(true)}
+                  >
+                    {t('manageVariants')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!isEdit}
+                    onClick={() => setGalleryPanelOpen(true)}
+                  >
+                    {t('manageGallery')}
+                  </Button>
+                </div>
+                {/* The dead end this replaces: these panels manage a
+                    product's OWN sub-records (variants, gallery images),
+                    which need a real product id to attach to — one that
+                    doesn't exist until the first Save. Previously the
+                    buttons were simply ABSENT during create, with nothing
+                    explaining why "Manage variants" that worked yesterday on
+                    an existing product is nowhere to be found today on a
+                    new one. Disabled-with-a-reason is the same discipline
+                    §U already asks for everywhere else in this app. */}
+                {!isEdit ? (
+                  <p className="text-muted-foreground mt-2 text-sm">
+                    {t('variantsAfterSave')}
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>
 
-          <div className="flex justify-end gap-2 border-t pt-4">
-            <Button type="button" variant="outline" onClick={() => requestClose(false)}>
-              {t('cancel')}
-            </Button>
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? t('saving') : t('save')}
-            </Button>
-          </div>
+          <StickyFormBar
+            isDirty={isDirty}
+            isSaving={isSaving}
+            save={{ type: 'submit' }}
+            onCancel={() => requestClose(false)}
+            saveLabel={t('save')}
+            cancelLabel={t('cancel')}
+            savingLabel={t('saving')}
+            // This form owns an inner scroll region, so the bar sits below it
+            // as a plain flex child — `sticky` would have nothing to pin to.
+            pin="static"
+            className="justify-end"
+          />
         </form>
       </SheetContent>
 
@@ -522,6 +697,10 @@ export function ResourceForm({
 interface FormFieldProps {
   field: FieldConfig;
   value: FormValue;
+  /** What this field held when the form opened. Only meaningful for
+   *  `changeWarning` fields — empty string on create, where there is
+   *  nothing to have changed FROM yet. */
+  originalValue: FormValue;
   error: string | undefined;
   options: RelationOption[];
   /** Which Cloudinary folder an `image`-type field's upload belongs in —
@@ -530,13 +709,36 @@ interface FormFieldProps {
    *  recognise, so this never needs to stay in sync with that allowlist. */
   resourceFolder: string;
   onChange: (value: FormValue) => void;
+  /** Runs `validateField` for THIS field only — never on boolean/
+   *  multiRelation controls, which have no such control on the underlying
+   *  DOM element blur actually corresponds to (a checkbox toggling or a
+   *  picker's checkbox list has no single "field commit" moment blur means
+   *  the same thing for that a text input's does). */
+  onBlur?: () => void;
 }
 
 /** One labelled control, chosen by the field's SEMANTIC type. */
-function FormField({ field, value, error, options, resourceFolder, onChange }: FormFieldProps) {
+function FormField({
+  field,
+  value,
+  originalValue,
+  error,
+  options,
+  resourceFolder,
+  onChange,
+  onBlur,
+}: FormFieldProps) {
   const t = useTranslations('resourceForm');
   const id = `field-${field.name}`;
   const errorId = `${id}-error`;
+
+  // Only once there WAS a real value and it has actually changed — never on
+  // create (originalValue is always '' there) and never while the field is
+  // still blank-to-something (that's normal first-time entry, not a change).
+  const showChangeWarning =
+    Boolean(field.changeWarning) &&
+    String(originalValue).trim() !== '' &&
+    String(value) !== String(originalValue);
 
   // aria-describedby only when there IS a message — pointing at an element
   // that doesn't exist makes some screen readers announce nothing at all.
@@ -682,6 +884,7 @@ function FormField({ field, value, error, options, resourceFolder, onChange }: F
         inputMode={field.type === 'money' ? 'decimal' : undefined}
         value={text}
         onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
         placeholder={placeholderFor(field)}
         {...aria}
       />
@@ -706,6 +909,13 @@ function FormField({ field, value, error, options, resourceFolder, onChange }: F
       {error ? (
         <p id={errorId} role="alert" className="text-destructive text-sm">
           {error}
+        </p>
+      ) : null}
+
+      {!error && showChangeWarning ? (
+        <p className="text-muted-foreground flex items-start gap-1.5 text-sm">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          {field.changeWarning}
         </p>
       ) : null}
     </div>

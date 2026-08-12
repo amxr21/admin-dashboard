@@ -16,7 +16,11 @@
     "loading": "Loading…",
     "loadingPage": "Loading {page}…",
     "retry": "Try again",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "savedNotice": "Saved.",
+    "saving": "Saving…",
+    "unsavedChangesPlain": "Unsaved changes",
+    "unsavedChanges": "{count, plural, one {# unsaved change} other {# unsaved changes}}"
   },
   "language": {
     "label": "Language",
@@ -371,7 +375,9 @@
       "placeholder": "Search by {fields}"
     },
     "filters": {
-      "all": "All"
+      "all": "All",
+      "applied": "Filters:",
+      "remove": "Remove {label} filter"
     },
     "pagination": {
       "previous": "Previous",
@@ -383,7 +389,9 @@
       "create": "New {label}",
       "editRow": "Edit {label}",
       "deleteRow": "Delete {label}",
-      "deleteSelected": "Delete selected"
+      "deleteSelected": "Delete selected",
+      "clearFilters": "Clear filters",
+      "import": "Import"
     },
     "notice": {
       "created": "Created.",
@@ -397,6 +405,31 @@
       "confirm": "Delete",
       "cancel": "Cancel",
       "working": "Deleting…"
+    },
+    "emptyFiltered": "No {label} match these filters.",
+    "emptyFilteredHint": "Try removing a filter or searching for something else.",
+    "margin": {
+      "profit": "Profit",
+      "margin": "Margin"
+    },
+    "import": {
+      "title": "Import {label}",
+      "description": "Upload a CSV file. Every row is checked before anything is saved — if any row is invalid, nothing is imported.",
+      "downloadTemplate": "Download CSV template",
+      "pickFile": "Choose a CSV file",
+      "pickFileHint": "or drag and drop",
+      "validating": "Checking the file…",
+      "summary": {
+        "preview": "{valid} of {total, plural, one {# row} other {# rows}} ready to import",
+        "applied": "{imported, plural, =0 {Nothing imported} one {# imported} other {# imported}} of {total, plural, one {# row} other {# rows}}"
+      },
+      "errorsHeading": "{count, plural, one {# row needs a fix} other {# rows need a fix}}",
+      "errorRow": "Row {row}",
+      "fixAndRetry": "Fix these rows in your file and upload it again.",
+      "cancel": "Cancel",
+      "confirmImport": "{count, plural, one {Import # row} other {Import # rows}}",
+      "importing": "Importing…",
+      "close": "Close"
     }
   },
   "placeholder": {
@@ -464,6 +497,7 @@
     "choose": "Choose…",
     "manageVariants": "Manage variants",
     "manageGallery": "Manage gallery",
+    "variantsAfterSave": "Save this product first — variants and gallery images attach to a real product record, which doesn't exist yet.",
     "noOptions": "None available.",
     "errors": {
       "required": "This field is required.",
@@ -651,7 +685,12 @@
       "current": "now {stock} in stock",
       "empty": "No movements recorded yet.",
       "close": "Close",
-      "truncated": "Showing the latest {shown} of {total} movements."
+      "by": "by {name}",
+      "previousPage": "Previous",
+      "nextPage": "Next",
+      "pageOf": "Page {page} of {totalPages}",
+      "reconcileAgrees": "The log matches the current stock.",
+      "reconcileMismatch": "The recorded stock ({stock}) does not match the log total ({fromMovements}). Something changed stock without recording why."
     }
   },
   "stockReason": {
@@ -685,7 +724,20 @@
     "out": "Out",
     "amount": "Amount",
     "record": "Record",
-    "wouldGoNegative": "Only {stock} in stock — that amount would go negative."
+    "wouldGoNegative": "Only {stock} in stock — that amount would go negative.",
+    "history": "History",
+    "log": {
+      "title": "Stock history — {name}",
+      "current": "now {stock} in stock",
+      "empty": "No movements recorded yet.",
+      "close": "Close",
+      "by": "by {name}",
+      "previousPage": "Previous",
+      "nextPage": "Next",
+      "pageOf": "Page {page} of {totalPages}",
+      "reconcileAgrees": "The log matches the current stock.",
+      "reconcileMismatch": "The recorded stock ({stock}) does not match the log total ({fromMovements}). Something changed stock without recording why."
+    }
   },
   "productGallery": {
     "title": "Gallery — {name}",
@@ -693,7 +745,9 @@
     "empty": "No gallery images yet.",
     "moveUp": "Move up",
     "moveDown": "Move down",
-    "delete": "Remove image"
+    "delete": "Remove image",
+    "altLabel": "Alt text",
+    "altPlaceholder": "Describe this image for screen readers"
   },
   "notificationsBell": {
     "unread": "{count, plural, one {# unread notification} other {# unread notifications}}",
@@ -917,6 +971,20 @@
         "cancel": "Cancel",
         "action": "Revoke"
       }
+    },
+    "data": {
+      "title": "Data",
+      "description": "Export any resource you can access as a CSV file.",
+      "exportTitle": "Export centre",
+      "exportDescription": "Choose a resource and download every row you have access to as CSV.",
+      "resourceLabel": "Resource",
+      "export": "Export CSV",
+      "exporting": "Exporting…",
+      "exported": "{resource} exported.",
+      "historyTitle": "Recent exports",
+      "historyEmpty": "No exports yet.",
+      "unknownActor": "Unknown",
+      "retry": "Retry"
     }
   },
   "audit": {

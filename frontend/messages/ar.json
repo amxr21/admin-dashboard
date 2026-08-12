@@ -16,7 +16,11 @@
     "loading": "جارٍ التحميل…",
     "loadingPage": "جارٍ تحميل {page}…",
     "retry": "إعادة المحاولة",
-    "signOut": "تسجيل الخروج"
+    "signOut": "تسجيل الخروج",
+    "savedNotice": "تم الحفظ.",
+    "saving": "جارٍ الحفظ…",
+    "unsavedChangesPlain": "تغييرات غير محفوظة",
+    "unsavedChanges": "{count, plural, zero {لا تغييرات غير محفوظة} one {تغيير واحد غير محفوظ} two {تغييران غير محفوظين} few {# تغييرات غير محفوظة} many {# تغييراً غير محفوظ} other {# تغيير غير محفوظ}}"
   },
   "language": {
     "label": "اللغة",
@@ -371,7 +375,9 @@
       "placeholder": "ابحث حسب {fields}"
     },
     "filters": {
-      "all": "الكل"
+      "all": "الكل",
+      "applied": "عوامل التصفية:",
+      "remove": "إزالة عامل تصفية {label}"
     },
     "pagination": {
       "previous": "السابق",
@@ -383,7 +389,9 @@
       "create": "إضافة {label}",
       "editRow": "تعديل {label}",
       "deleteRow": "حذف {label}",
-      "deleteSelected": "حذف المحدَّد"
+      "deleteSelected": "حذف المحدَّد",
+      "clearFilters": "مسح عوامل التصفية",
+      "import": "استيراد"
     },
     "notice": {
       "created": "تمت الإضافة.",
@@ -397,6 +405,31 @@
       "confirm": "حذف",
       "cancel": "إلغاء",
       "working": "جارٍ الحذف…"
+    },
+    "emptyFiltered": "لا توجد {label} تطابق عوامل التصفية هذه.",
+    "emptyFilteredHint": "جرّب إزالة أحد عوامل التصفية أو البحث عن شيء آخر.",
+    "margin": {
+      "profit": "الربح",
+      "margin": "هامش الربح"
+    },
+    "import": {
+      "title": "استيراد {label}",
+      "description": "ارفع ملف CSV. يتم التحقق من كل صف قبل حفظ أي شيء — إذا كان أي صف غير صالح، لن يتم استيراد شيء.",
+      "downloadTemplate": "تنزيل نموذج CSV",
+      "pickFile": "اختر ملف CSV",
+      "pickFileHint": "أو اسحبه وأفلته هنا",
+      "validating": "جارٍ التحقق من الملف…",
+      "summary": {
+        "preview": "{valid} من أصل {total, plural, zero {لا صفوف} one {صف واحد} two {صفَّين} few {# صفوف} many {# صفاً} other {# صف}} جاهزة للاستيراد",
+        "applied": "{imported, plural, =0 {لم يتم استيراد شيء} one {تم استيراد صف واحد} two {تم استيراد صفَّين} few {تم استيراد # صفوف} many {تم استيراد # صفاً} other {تم استيراد # صف}} من أصل {total, plural, zero {لا صفوف} one {صف واحد} two {صفَّين} few {# صفوف} many {# صفاً} other {# صف}}"
+      },
+      "errorsHeading": "{count, plural, zero {لا صفوف تحتاج إصلاحاً} one {صف واحد يحتاج إصلاحاً} two {صفَّان يحتاجان إصلاحاً} few {# صفوف تحتاج إصلاحاً} many {# صفاً يحتاج إصلاحاً} other {# صف يحتاج إصلاحاً}}",
+      "errorRow": "الصف {row}",
+      "fixAndRetry": "أصلح هذه الصفوف في ملفك وارفعه مرة أخرى.",
+      "cancel": "إلغاء",
+      "confirmImport": "{count, plural, zero {استيراد} one {استيراد صف واحد} two {استيراد صفَّين} few {استيراد # صفوف} many {استيراد # صفاً} other {استيراد # صف}}",
+      "importing": "جارٍ الاستيراد…",
+      "close": "إغلاق"
     }
   },
   "placeholder": {
@@ -464,6 +497,7 @@
     "choose": "اختر…",
     "manageVariants": "إدارة المتغيرات",
     "manageGallery": "إدارة المعرض",
+    "variantsAfterSave": "احفظ هذا المنتج أولاً — تُلحق المتغيرات وصور المعرض بسجل منتج حقيقي غير موجود بعد.",
     "noOptions": "لا توجد خيارات متاحة.",
     "errors": {
       "required": "هذا الحقل مطلوب.",
@@ -651,7 +685,12 @@
       "current": "المتوفر الآن {stock}",
       "empty": "لا توجد حركات مسجَّلة بعد.",
       "close": "إغلاق",
-      "truncated": "يعرض أحدث {shown} من أصل {total} حركة."
+      "by": "بواسطة {name}",
+      "previousPage": "السابق",
+      "nextPage": "التالي",
+      "pageOf": "صفحة {page} من {totalPages}",
+      "reconcileAgrees": "السجل يطابق المخزون الحالي.",
+      "reconcileMismatch": "المخزون المسجَّل ({stock}) لا يطابق إجمالي السجل ({fromMovements}). تغيّر المخزون دون تسجيل السبب."
     }
   },
   "stockReason": {
@@ -685,7 +724,20 @@
     "out": "إخراج",
     "amount": "الكمية",
     "record": "تسجيل",
-    "wouldGoNegative": "يوجد {stock} فقط في المخزون — هذه الكمية ستجعله سالبًا."
+    "wouldGoNegative": "يوجد {stock} فقط في المخزون — هذه الكمية ستجعله سالبًا.",
+    "history": "السجل",
+    "log": {
+      "title": "سجل المخزون — {name}",
+      "current": "المتوفر الآن {stock}",
+      "empty": "لا توجد حركات مسجَّلة بعد.",
+      "close": "إغلاق",
+      "by": "بواسطة {name}",
+      "previousPage": "السابق",
+      "nextPage": "التالي",
+      "pageOf": "صفحة {page} من {totalPages}",
+      "reconcileAgrees": "السجل يطابق المخزون الحالي.",
+      "reconcileMismatch": "المخزون المسجَّل ({stock}) لا يطابق إجمالي السجل ({fromMovements}). تغيّر المخزون دون تسجيل السبب."
+    }
   },
   "productGallery": {
     "title": "معرض الصور — {name}",
@@ -693,7 +745,9 @@
     "empty": "لا توجد صور في المعرض بعد.",
     "moveUp": "نقل للأعلى",
     "moveDown": "نقل للأسفل",
-    "delete": "إزالة الصورة"
+    "delete": "إزالة الصورة",
+    "altLabel": "النص البديل",
+    "altPlaceholder": "صِف هذه الصورة لقارئات الشاشة"
   },
   "notificationsBell": {
     "unread": "{count, plural, zero {لا إشعارات غير مقروءة} one {إشعار واحد غير مقروء} two {إشعاران غير مقروءين} few {# إشعارات غير مقروءة} many {# إشعاراً غير مقروء} other {# إشعار غير مقروء}}",
@@ -917,6 +971,20 @@
         "cancel": "إلغاء",
         "action": "إبطال"
       }
+    },
+    "data": {
+      "title": "البيانات",
+      "description": "صدّر أي مورد يمكنك الوصول إليه كملف CSV.",
+      "exportTitle": "مركز التصدير",
+      "exportDescription": "اختر موردًا وحمّل كل صف يمكنك الوصول إليه بصيغة CSV.",
+      "resourceLabel": "المورد",
+      "export": "تصدير CSV",
+      "exporting": "جارٍ التصدير…",
+      "exported": "تم تصدير {resource}.",
+      "historyTitle": "عمليات التصدير الأخيرة",
+      "historyEmpty": "لا توجد عمليات تصدير بعد.",
+      "unknownActor": "غير معروف",
+      "retry": "إعادة المحاولة"
     }
   },
   "audit": {
