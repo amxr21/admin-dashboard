@@ -1,12 +1,12 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { ReportsView } from '@/components/reports/reports-view';
+import { NavLabelHeading } from '@/components/shell/nav-label-heading';
+import { ReportCatalogue } from '@/components/reports/report-catalogue';
 
 /**
- * Reports — the last section that was still a placeholder.
- *
- * Stays a Server Component so `setRequestLocale` keeps the shell statically
- * rendered; the fetching and the date range live in ReportsView.
+ * The report catalogue (C3.1) — every report grouped by domain, linking out
+ * to its own page. Was the single revenue/KPI view before this session;
+ * that content moved to `/admin/reports/overview`, the first entry here.
  */
 export default async function ReportsPage({
   params,
@@ -16,16 +16,16 @@ export default async function ReportsPage({
   const { locale } = await params;
   setRequestLocale(locale);
 
-  const t = await getTranslations('reports');
+  const t = await getTranslations('reports.catalogue');
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <NavLabelHeading labelKey="reports" defaultTitle={t('title')} />
         <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
       </div>
 
-      <ReportsView />
+      <ReportCatalogue />
     </div>
   );
 }
