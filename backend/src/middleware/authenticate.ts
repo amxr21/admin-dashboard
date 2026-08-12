@@ -2,7 +2,14 @@ import type { Request, Response, NextFunction } from 'express';
 
 import { AppError } from '../errors/AppError.js';
 import { getAuthenticatedUser, verifyToken, type SafeUser } from '../services/auth.service.js';
-import { assertCanWrite, assertNotInMaintenance } from './authorize.js';
+import { touchSession } from '../services/session.service.js';
+import { authenticateApiKey } from '../services/api-key.service.js';
+import {
+  assertCanWrite,
+  assertIpAllowed,
+  assertNotInMaintenance,
+  assertTwoFactorCompliant,
+} from './authorize.js';
 
 /**
  * Requires a valid Bearer token, and attaches the live user to the request.
@@ -19,6 +26,12 @@ declare global {
       /// Only present after `authenticate` has run. Routes behind it can rely
       /// on this; routes that aren't must not.
       user?: SafeUser;
+      /// The `sid` claim of the JWT that authenticated this request, if any.
+      /// Absent for API-key auth (keys have no session) and for a token
+      /// minted before Sessions existed (see auth.service.ts's `sid?`
+      /// comment) — routes that need "the current session" must handle
+      /// undefined, not assume it's always there.
+      sessionId?: string;
     }
   }
 }
@@ -35,6 +48,13 @@ function extractBearerToken(header: string | undefined): string | null {
   return token;
 }
 
+/** API keys (api-key.service.ts) are prefixed `adk_` — everything else
+ * presented as a Bearer credential is treated as a session JWT. Distinguishing
+ * by SHAPE rather than trying one and falling back to the other means a
+ * malformed JWT never accidentally gets a second, slower attempt as an API
+ * key lookup — one credential type, one code path, decided up front. */
+const API_KEY_PREFIX = 'adk_';
+
 export async function authenticate(
   req: Request,
   _res: Response,
@@ -47,14 +67,9 @@ export async function authenticate(
       throw AppError.unauthorized('Authentication required');
     }
 
-    const payload = verifyToken(token);
-
-    // Re-read the user every request. The token proves who signed in, not that
-    // the account is still active — a user deactivated a minute ago still holds
-    // a validly-signed token until it expires.
-    // `payload.tv` carries the token's version; the service compares it to the
-    // row and refuses a token minted before the last revocation.
-    const user = await getAuthenticatedUser(payload.sub, payload.tv);
+    const user = token.startsWith(API_KEY_PREFIX)
+      ? await authenticateViaApiKey(token)
+      : await authenticateViaSession(req, token);
 
     req.user = user;
 
@@ -68,11 +83,53 @@ export async function authenticate(
     // Every authenticated route therefore gets this for free.
     assertCanWrite(req);
     await assertNotInMaintenance(req);
+    // Unlike the two checks above, this runs for READS too — an allowlist
+    // that only gated writes would still let a blocked network browse every
+    // page, which defeats the point of a network-level restriction.
+    await assertIpAllowed(req);
+    await assertTwoFactorCompliant(req);
 
     next();
   } catch (err) {
     next(err);
   }
+}
+
+async function authenticateViaSession(req: Request, token: string): Promise<SafeUser> {
+  const payload = verifyToken(token);
+
+  // Re-read the user every request. The token proves who signed in, not that
+  // the account is still active — a user deactivated a minute ago still holds
+  // a validly-signed token until it expires.
+  // `payload.tv` carries the token's version; the service compares it to the
+  // row and refuses a token minted before the last revocation.
+  const user = await getAuthenticatedUser(payload.sub, payload.tv, payload.sid);
+
+  // Opportunistic, fire-and-forget — see session.service.ts for why this
+  // isn't a write on every single request.
+  if (payload.sid) touchSession(payload.sid);
+
+  req.sessionId = payload.sid;
+
+  return user;
+}
+
+/**
+ * A key is its OWNER's exact permissions (see `ApiKey`'s schema doc comment
+ * and `api-key.service.ts`) — this returns the same `SafeUser` shape a
+ * session does, so every check downstream of `authenticate` (`requireArea`,
+ * `assertCanWrite`, …) treats a key-authenticated request identically to a
+ * session-authenticated one, with no second code path to keep in sync.
+ */
+async function authenticateViaApiKey(key: string): Promise<SafeUser> {
+  const user = await authenticateApiKey(key);
+
+  // Same message as an invalid session token — telling a caller "the key
+  // format was right but it's revoked" vs. "unknown key" is free
+  // reconnaissance about which keys might once have existed.
+  if (!user) throw AppError.unauthorized('Invalid or expired session');
+
+  return user;
 }
 
 /**

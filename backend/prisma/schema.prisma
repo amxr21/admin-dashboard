@@ -700,27 +700,27 @@ model OrderStatusHistory {
 /// can legally move to RETURNED, optionally restocks, records a resolution),
 /// the same reason orders and delivery are bespoke rather than config.
 model Return {
-  id           String           @id @default(cuid())
+  id              String           @id @default(cuid())
   /// Human-facing reference, e.g. "RMA-7F3K9QZR". Never the row id.
-  rmaNumber    String           @unique @map("rma_number")
-  reason       String           @db.VarChar(500)
+  rmaNumber       String           @unique @map("rma_number")
+  reason          String           @db.VarChar(500)
   /// NULL on any return requested before this was tracked — a real "never
   /// classified" gap, not a silent OTHER. Existing rows are left alone
   /// rather than guessed at from their free-text `reason`.
-  category     ReturnCategory?
-  status       ReturnStatus     @default(REQUESTED)
-  resolution   ReturnResolution @default(NONE)
+  category        ReturnCategory?
+  status          ReturnStatus     @default(REQUESTED)
+  resolution      ReturnResolution @default(NONE)
   /// Set only when resolution = REFUND. Capped at approval time to the sum of
   /// the RETURNED line items' recorded price — never the order's live total.
-  refundAmount Decimal?         @map("refund_amount") @db.Decimal(10, 2)
+  refundAmount    Decimal?         @map("refund_amount") @db.Decimal(10, 2)
   /// Whether approving created a matching StockMovement per item. Recorded
   /// here so the return's own history says whether stock was ever adjusted,
   /// without re-deriving it from the movement log.
-  restocked    Boolean          @default(false)
+  restocked       Boolean          @default(false)
   /// Staff's own words for why a return was refused. Set only on REJECTED —
   /// same free-text, snapshot-once discipline as `reason` itself. NULL on
   /// anything not (yet) rejected, not an empty string.
-  rejectionReason String?       @map("rejection_reason") @db.VarChar(500)
+  rejectionReason String?          @map("rejection_reason") @db.VarChar(500)
 
   orderId String @map("order_id")
   order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -894,7 +894,7 @@ model DeliveryAssignment {
   /// attempt" must stay knowable after the job cycles back to
   /// OUT_FOR_DELIVERY, the same reason a StockMovement correction doesn't
   /// erase the mistake it corrects.
-  attemptCount Int @default(0) @map("attempt_count")
+  attemptCount  Int     @default(0) @map("attempt_count")
   /// Free text from the courier, e.g. "customer not home", "refused at
   /// door". Set on FAILED_ATTEMPT, left as-is on a successful retry — a
   /// staff member reviewing a 3rd attempt wants to see what the 1st and 2nd
@@ -1139,16 +1139,16 @@ model ScheduledReport {
   /// Matches a `ReportView` key on the frontend (`overview`, `revenue`,
   /// `staff-activity`, ...) — plain string, not a Prisma enum, so a new
   /// report type never needs a migration to become schedulable.
-  reportKey String            @map("report_key") @db.VarChar(64)
-  frequency ScheduleFrequency
-  format    ScheduleFormat    @default(CSV)
+  reportKey  String            @map("report_key") @db.VarChar(64)
+  frequency  ScheduleFrequency
+  format     ScheduleFormat    @default(CSV)
   /// Plain email strings, not a relation to Customer/User — a recipient here
   /// is very often someone with NO account in this system at all (an
   /// external accountant, a franchise owner), same reasoning
   /// `DeliveryAssignment.customerName`/`customerPhone` snapshot rather than
   /// requiring a Customer row to exist.
   recipients Json
-  isActive   Boolean @default(true) @map("is_active")
+  isActive   Boolean           @default(true) @map("is_active")
 
   /// Set by the scheduler after each attempt — lets the UI show "last sent"
   /// honestly instead of implying every active schedule has actually fired.

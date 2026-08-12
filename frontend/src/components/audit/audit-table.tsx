@@ -1,13 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { useSearchParams } from 'next/navigation';
-import { X } from 'lucide-react';
+import { Download, Link2, ShieldCheck, X } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { DataTable, type Column } from '@/components/data-table';
 import { StatusBadge } from '@/components/status-badge';
 import { DatePicker } from '@/components/ui/date-picker';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -18,12 +19,16 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useUrlState } from '@/hooks/useUrlState';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import {
+  exportAuditCsv,
   fetchAudit,
+  fetchAuditActions,
   fetchAuditEntities,
   type AuditEntry,
   type AuditListResult,
+  type AuditOutcome,
 } from '@/lib/audit-api';
 import { fetchStaff, type StaffMember } from '@/lib/staff-api';
 
@@ -37,15 +42,25 @@ import { fetchStaff, type StaffMember } from '@/lib/staff-api';
 
 const ALL = 'all';
 
-/** One line per changed field: "price: 19.99 → 24.99". */
-function formatChanges(changes: AuditEntry['changes']): string[] {
-  if (!changes) return [];
+/** Defaults are omitted from the URL, so an unfiltered log has a clean one. */
+const URL_DEFAULTS = {
+  page: '1',
+  entity: ALL,
+  entityId: '',
+  actorId: ALL,
+  action: ALL,
+  outcome: ALL,
+  requestId: '',
+  from: '',
+  to: '',
+};
 
-  return Object.entries(changes).map(([field, change]) => {
-    const from = change && typeof change === 'object' ? change.from : undefined;
-    const to = change && typeof change === 'object' ? change.to : undefined;
-    return `${field}: ${formatValue(from)} → ${formatValue(to)}`;
-  });
+const OUTCOMES: readonly AuditOutcome[] = ['SUCCESS', 'DENIED', 'ERROR'];
+
+/** Hand-edited URLs reach this component too — an unknown value must fall back
+ * to "all" rather than travel to the API as an unactionable 400. */
+function toOutcome(value: string): AuditOutcome | null {
+  return (OUTCOMES as readonly string[]).includes(value) ? (value as AuditOutcome) : null;
 }
 
 function formatValue(value: unknown): string {
@@ -57,26 +72,39 @@ function formatValue(value: unknown): string {
 export function AuditTable() {
   const t = useTranslations('audit');
   const tTable = useTranslations('table');
+  const tOutcome = useTranslations('auditOutcome');
   const translateError = useTranslatedApiError();
   const { tablePageSize } = useAppSettings();
   const formatter = useFormatter();
-  const searchParams = useSearchParams();
 
-  // Seeded once from the URL — a "view history" link from a resource row
-  // arrives as `?entity=products&entityId=123`. Read with a lazy initializer
-  // rather than an effect, so the very first render already shows the
-  // scoped record instead of flashing "all entities" for a frame.
   const [result, setResult] = useState<AuditListResult | null>(null);
-  const [page, setPage] = useState(1);
-  const [entity, setEntity] = useState<string>(() => searchParams.get('entity') ?? ALL);
-  const [entityId, setEntityId] = useState<string>(() => searchParams.get('entityId') ?? '');
-  const [actorId, setActorId] = useState<string>(ALL);
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+
+  /**
+   * Every filter lives in the URL.
+   *
+   * This page is deep-linked into from two places — the "view history" icon on
+   * every resource row and the returns detail sheet — via `?entity=&entityId=`.
+   * Those were read once into state and never written back, so the moment a
+   * user changed any filter the URL described a different screen than the one
+   * they were looking at. Sharing that link sent a colleague somewhere else.
+   */
+  const { values, setValues } = useUrlState(URL_DEFAULTS);
+
+  const page = Math.max(1, Number(values.page) || 1);
+  const entity = values.entity ?? ALL;
+  const entityId = values.entityId ?? '';
+  const actorId = values.actorId ?? ALL;
+  const action = values.action ?? ALL;
+  const outcome = values.outcome ?? ALL;
+  const requestId = values.requestId ?? '';
+  const from = values.from ?? '';
+  const to = values.to ?? '';
   const [error, setError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const [entities, setEntities] = useState<string[]>([]);
+  const [actions, setActions] = useState<string[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
 
   useEffect(() => {
@@ -86,34 +114,63 @@ export function AuditTable() {
       // filter just renders with no options beyond "All".
       .catch(() => setEntities([]));
 
+    fetchAuditActions()
+      .then(setActions)
+      .catch(() => setActions([]));
+
     fetchStaff({ pageSize: 100 })
       .then((loaded) => setStaff(loaded.staff))
       .catch(() => setStaff([]));
   }, []);
+
+  /**
+   * The filter set, in one place.
+   *
+   * The table and the CSV export both read this, so an export can never
+   * describe a different set of rows than the screen it was taken from.
+   */
+  const filters = useMemo(
+    () => ({
+      ...(entity !== ALL ? { entity } : {}),
+      ...(entityId ? { entityId } : {}),
+      ...(actorId !== ALL ? { actorId } : {}),
+      ...(action !== ALL ? { action } : {}),
+      ...(toOutcome(outcome) ? { outcome: toOutcome(outcome) as AuditOutcome } : {}),
+      ...(requestId ? { requestId } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    }),
+    [entity, entityId, actorId, action, outcome, requestId, from, to],
+  );
+
+  const hasFilters = Object.keys(filters).length > 0;
 
   const load = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      setResult(
-        await fetchAudit({
-          page,
-          pageSize: tablePageSize,
-          ...(entity !== ALL ? { entity } : {}),
-          ...(entityId ? { entityId } : {}),
-          ...(actorId !== ALL ? { actorId } : {}),
-          ...(from ? { from } : {}),
-          ...(to ? { to } : {}),
-        }),
-      );
+      setResult(await fetchAudit({ page, pageSize: tablePageSize, ...filters }));
     } catch (caught) {
       setError(translateError(caught));
       setResult(null);
     } finally {
       setIsLoading(false);
     }
-  }, [page, entity, entityId, actorId, from, to, tablePageSize, translateError]);
+  }, [page, filters, tablePageSize, translateError]);
+
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      // Exports the FILTER, not the current page — a reviewer asking for "every
+      // denial last month" means all of them, not the 50 currently on screen.
+      await exportAuditCsv(filters);
+    } catch (caught) {
+      toast.error(translateError(caught));
+    } finally {
+      setIsExporting(false);
+    }
+  }, [filters, translateError]);
 
   useEffect(() => {
     void load();
@@ -144,7 +201,14 @@ export function AuditTable() {
     {
       id: 'action',
       header: t('columns.action'),
-      cell: (row) => <code className="force-ltr text-xs">{row.action}</code>,
+      cell: (row) => (
+        <div className="min-w-0 space-y-1">
+          <code className="force-ltr block text-xs">{row.action}</code>
+          {row.outcome !== 'SUCCESS' ? (
+            <StatusBadge kind="auditOutcome" value={row.outcome} />
+          ) : null}
+        </div>
+      ),
     },
     {
       id: 'entity',
@@ -164,25 +228,127 @@ export function AuditTable() {
       id: 'changes',
       header: t('columns.changes'),
       cell: (row) => {
-        const lines = formatChanges(row.changes);
-        if (lines.length === 0) {
+        // A denial changed nothing by definition. Saying so plainly is more
+        // useful than an empty cell that reads as missing data.
+        if (row.outcome === 'DENIED' && !row.changes) {
+          return <span className="text-muted-foreground text-sm">{t('deniedNotice')}</span>;
+        }
+
+        const fields = row.changes ? Object.entries(row.changes) : [];
+        if (fields.length === 0) {
           return <span className="text-muted-foreground text-sm">{t('noChanges')}</span>;
         }
+
         return (
-          <ul className="space-y-0.5">
-            {lines.map((line) => (
-              <li key={line} className="text-xs">
-                {line}
-              </li>
-            ))}
+          <ul className="space-y-1">
+            {fields.map(([field, change]) => {
+              const from = change && typeof change === 'object' ? change.from : undefined;
+              const to = change && typeof change === 'object' ? change.to : undefined;
+
+              // Some entries record context rather than a before→after pair
+              // (a denial's role/path, an export's row count). Rendering
+              // "undefined → undefined" for those would be a lie.
+              const isDiff =
+                change !== null &&
+                typeof change === 'object' &&
+                ('from' in change || 'to' in change);
+
+              return (
+                <li key={field} className="text-xs">
+                  <span className="text-muted-foreground">{field}: </span>
+                  {isDiff ? (
+                    <span className="force-ltr">
+                      <span className="text-destructive line-through">
+                        {formatValue(from)}
+                      </span>
+                      {' → '}
+                      <span className="text-success font-medium">{formatValue(to)}</span>
+                    </span>
+                  ) : (
+                    <span className="force-ltr">{formatValue(change)}</span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         );
       },
+    },
+    {
+      id: 'source',
+      header: t('columns.source'),
+      cell: (row) => (
+        <div className="min-w-0 space-y-0.5">
+          {row.ip ? (
+            <p className="force-ltr text-muted-foreground text-xs">{row.ip}</p>
+          ) : null}
+          {row.userAgent ? (
+            <p
+              className="text-muted-foreground max-w-[16rem] truncate text-xs"
+              title={row.userAgent}
+            >
+              {row.userAgent}
+            </p>
+          ) : null}
+          {row.requestId ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground h-auto px-1 py-0 text-xs"
+              // Correlation (B1.5): everything written by one request, so a
+              // single action's full set of effects reads together.
+              onClick={() => setValues({ requestId: row.requestId, page: null })}
+              title={t('sameRequest')}
+            >
+              <Link2 aria-hidden className="me-1 size-3" />
+              <span className="force-ltr truncate">{row.requestId.slice(0, 8)}</span>
+            </Button>
+          ) : null}
+        </div>
+      ),
     },
   ];
 
   return (
     <div className="space-y-4">
+      {/**
+       * B1.3 — say what this log IS.
+       *
+       * The read-only guarantee is the whole reason the trail is evidence, and
+       * it was invisible: nothing on screen distinguished this from an ordinary
+       * editable table. Retention states what is actually true today — entries
+       * are never pruned, because no pruning job exists. Naming a retention
+       * period the system does not enforce would be a false claim in the one
+       * screen that must not make them.
+       */}
+      <div className="bg-muted/50 text-muted-foreground flex items-start gap-2 rounded-md border px-3 py-2 text-xs">
+        <ShieldCheck aria-hidden className="mt-0.5 size-4 shrink-0" />
+        <p>
+          <span className="text-foreground font-medium">{t('readOnlyTitle')}</span>{' '}
+          {t('readOnlyBody')} {t('retentionUnknown')}
+        </p>
+      </div>
+
+      {requestId ? (
+        <div className="bg-muted flex items-center gap-2 rounded-md px-3 py-2 text-sm">
+          <Link2 aria-hidden className="size-4 shrink-0" />
+          <span className="force-ltr truncate">
+            {t('filters.requestId')}: {requestId}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6"
+            aria-label={t('filters.clear')}
+            onClick={() => setValues({ requestId: null, page: null })}
+          >
+            <X aria-hidden />
+          </Button>
+        </div>
+      ) : null}
+
       {entityId ? (
         <div className="bg-muted flex items-center gap-2 rounded-md px-3 py-2 text-sm">
           <span>
@@ -194,10 +360,7 @@ export function AuditTable() {
             size="icon"
             className="size-6"
             aria-label={t('filters.clear')}
-            onClick={() => {
-              setEntityId('');
-              setPage(1);
-            }}
+            onClick={() => setValues({ entityId: null, page: null })}
           >
             <X aria-hidden />
           </Button>
@@ -209,13 +372,15 @@ export function AuditTable() {
           <Label htmlFor="audit-filter-entity">{t('filters.entity')}</Label>
           <Select
             value={entity}
-            onValueChange={(value) => {
-              setEntity(value);
+            onValueChange={(value) =>
               // A stale entityId scoped to the PREVIOUS entity would silently
               // filter to a combination that can never match.
-              setEntityId('');
-              setPage(1);
-            }}
+              setValues({
+                entity: value === ALL ? null : value,
+                entityId: null,
+                page: null,
+              })
+            }
           >
             <SelectTrigger id="audit-filter-entity">
               <SelectValue />
@@ -235,10 +400,9 @@ export function AuditTable() {
           <Label htmlFor="audit-filter-actor">{t('filters.actor')}</Label>
           <Select
             value={actorId}
-            onValueChange={(value) => {
-              setActorId(value);
-              setPage(1);
-            }}
+            onValueChange={(value) =>
+              setValues({ actorId: value === ALL ? null : value, page: null })
+            }
           >
             <SelectTrigger id="audit-filter-actor">
               <SelectValue />
@@ -254,15 +418,77 @@ export function AuditTable() {
           </Select>
         </div>
 
+        <div className="w-56 space-y-2">
+          <Label htmlFor="audit-filter-action">{t('filters.action')}</Label>
+          <Select
+            value={action}
+            onValueChange={(value) =>
+              setValues({ action: value === ALL ? null : value, page: null })
+            }
+          >
+            <SelectTrigger id="audit-filter-action">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>{t('filters.all')}</SelectItem>
+              {actions.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="w-40 space-y-2">
+          <Label htmlFor="audit-filter-outcome">{t('filters.outcome')}</Label>
+          <Select
+            value={outcome}
+            onValueChange={(value) =>
+              setValues({ outcome: value === ALL ? null : value, page: null })
+            }
+          >
+            <SelectTrigger id="audit-filter-outcome">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>{t('filters.all')}</SelectItem>
+              {OUTCOMES.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {tOutcome(option)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="w-52 space-y-2">
+          <Label htmlFor="audit-filter-entity-id">{t('filters.entityId')}</Label>
+          {/* Uncontrolled-on-blur rather than per-keystroke: this filter drives
+              a request AND a URL replace, and firing both on every character
+              would spam the API and the history entry. */}
+          <Input
+            id="audit-filter-entity-id"
+            className="force-ltr"
+            defaultValue={entityId}
+            key={entityId}
+            placeholder={t('filters.entityIdPlaceholder')}
+            onBlur={(event) => {
+              const next = event.target.value.trim();
+              if (next !== entityId) setValues({ entityId: next || null, page: null });
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.currentTarget.blur();
+            }}
+          />
+        </div>
+
         <div className="w-44 space-y-2">
           <Label htmlFor="audit-filter-from">{t('filters.from')}</Label>
           <DatePicker
             id="audit-filter-from"
             value={from}
-            onChange={(value) => {
-              setFrom(value);
-              setPage(1);
-            }}
+            onChange={(value) => setValues({ from: value || null, page: null })}
           />
         </div>
 
@@ -271,30 +497,46 @@ export function AuditTable() {
           <DatePicker
             id="audit-filter-to"
             value={to}
-            onChange={(value) => {
-              setTo(value);
-              setPage(1);
-            }}
+            onChange={(value) => setValues({ to: value || null, page: null })}
           />
         </div>
 
-        {entity !== ALL || entityId || actorId !== ALL || from || to ? (
+        {hasFilters ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => {
-              setEntity(ALL);
-              setEntityId('');
-              setActorId(ALL);
-              setFrom('');
-              setTo('');
-              setPage(1);
-            }}
+            onClick={() =>
+              setValues({
+                entity: null,
+                entityId: null,
+                actorId: null,
+                action: null,
+                outcome: null,
+                requestId: null,
+                from: null,
+                to: null,
+                page: null,
+              })
+            }
           >
             {t('filters.clear')}
           </Button>
         ) : null}
+
+        {/* Pushed to the end of the row: it acts on the whole filter, not on
+            any single control next to it. */}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="ms-auto"
+          disabled={isExporting || isLoading || (result?.entries.length ?? 0) === 0}
+          onClick={() => void handleExport()}
+        >
+          <Download aria-hidden className="me-1 size-4" />
+          {isExporting ? t('exporting') : t('exportCsv')}
+        </Button>
       </div>
 
       <DataTable
@@ -317,7 +559,7 @@ export function AuditTable() {
               variant="outline"
               size="sm"
               disabled={page <= 1 || isLoading}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              onClick={() => setValues({ page: String(Math.max(1, page - 1)) })}
             >
               {t('pagination.previous')}
             </Button>
@@ -329,7 +571,7 @@ export function AuditTable() {
               size="sm"
               disabled={page >= result.totalPages || isLoading}
               onClick={() =>
-                setPage((current) => Math.min(result.totalPages, current + 1))
+                setValues({ page: String(Math.min(result.totalPages, page + 1)) })
               }
             >
               {t('pagination.next')}
