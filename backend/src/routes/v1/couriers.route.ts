@@ -13,6 +13,7 @@ import {
   regenerateAccessCode,
   revokeAccessCode,
   unassignOrder,
+  updateAssignment,
   updateCourier,
 } from '../../services/couriers.service.js';
 
@@ -61,6 +62,14 @@ const assignBody = z
   })
   .strict();
 
+const updateAssignmentBody = z
+  .object({
+    address: z.string().trim().max(255).optional(),
+    city: z.string().trim().max(96).optional(),
+    note: z.string().trim().max(255).optional(),
+  })
+  .strict();
+
 couriersRouter.get('/couriers', ...guard, async (req, res) => {
   const parsed = listQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid query', parsed.error.flatten());
@@ -87,7 +96,7 @@ couriersRouter.patch('/couriers/:id', ...guard, async (req, res) => {
     throw AppError.badRequest('Provide at least one field to write');
   }
 
-  res.json({ data: { courier: await updateCourier(String(req.params.id), parsed.data) } });
+  res.json({ data: { courier: await updateCourier(String(req.params.id), parsed.data, req) } });
 });
 
 /**
@@ -140,6 +149,29 @@ couriersRouter.post('/assignments', ...guard, async (req, res) => {
   });
 
   res.status(201).json({ data: { assignment } });
+});
+
+/**
+ * Corrects address/city/note WITHOUT reassigning — B4.1. Reassigning
+ * (`POST /assignments`) resets `status` back to ASSIGNED, which is right for
+ * a real reassignment but wrong for "same courier, fix the typo." This is
+ * the only route that can touch those three fields without that side effect.
+ */
+couriersRouter.patch('/assignments/:id', ...guard, async (req, res) => {
+  const parsed = updateAssignmentBody.safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+
+  if (Object.keys(parsed.data).length === 0) {
+    throw AppError.badRequest('Provide at least one field to write');
+  }
+
+  const user = requireUser(req);
+  const id = String(req.params.id);
+  const assignment = await updateAssignment(id, parsed.data);
+
+  req.log.info({ event: 'delivery.assignment.updated', assignmentId: id, userId: user.id });
+
+  res.json({ data: { assignment } });
 });
 
 couriersRouter.delete('/assignments/:id', ...guard, async (req, res) => {
