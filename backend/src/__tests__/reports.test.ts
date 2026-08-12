@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
-import { OrderStatus, Prisma, ReturnResolution, ReturnStatus, StaffRole } from '@prisma/client';
+import { OrderStatus, Prisma, ReturnResolution, ReturnStatus, ReviewStatus, StaffRole } from '@prisma/client';
 
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
@@ -24,6 +24,8 @@ interface OverviewBody {
     revenue: string;
     orders: number;
     canceledOrders: number;
+    lowStockProducts: number;
+    unitsSold: number;
     averageOrderValue: string;
   };
 }
@@ -178,12 +180,60 @@ describe('cancelled orders are not revenue', () => {
     expect(body.data.averageOrderValue).toBe('116.67');
   });
 
+  it('excludes their items from units sold too', async () => {
+    // 4 + 2 + 4 = 10 across the three real orders. The cancelled order's own
+    // item (quantity 1) must not be counted — same exclusion revenue uses,
+    // via the order relation, not a separately-maintained rule that could
+    // drift from it.
+    const body = (await get(`/reports/overview?from=${FROM}&to=${TO}`)).body as OverviewBody;
+
+    expect(body.data.unitsSold).toBe(10);
+  });
+
   it('excludes them from the series and from top products', async () => {
     const series = (await get(`/reports/revenue?from=${FROM}&to=${TO}`)).body as SeriesBody;
     const top = (await get(`/reports/top-products?from=${FROM}&to=${TO}`)).body as TopBody;
 
     expect(series.data.points.some((point) => point.revenue.startsWith('999'))).toBe(false);
     expect(top.data.products.some((row) => row.revenue.startsWith('999'))).toBe(false);
+  });
+});
+
+describe('low stock follows the configured threshold', () => {
+  /**
+   * The dashboard tile deep-links straight to the Inventory page's own
+   * low-stock filter, so if this count came from a hardcoded number the two
+   * screens would disagree the moment an owner changed the setting — you would
+   * click a tile reading "3" and land on a list of 11. `inventory.service.ts`
+   * already resolves the live setting; this pins the reports side to the same
+   * source rather than the magic 5 it used to use.
+   */
+  const threshold = 'inventory.lowStockThreshold';
+
+  afterAll(async () => {
+    await prisma.setting.deleteMany({ where: { key: threshold } });
+    await prisma.product.deleteMany({ where: { name: `${RUN} sparse` } });
+  });
+
+  it('counts a product the raised threshold now includes', async () => {
+    await prisma.product.create({
+      data: { name: `${RUN} sparse`, price: new Prisma.Decimal('10.00'), stock: 9 },
+    });
+
+    // Below the default of 5, a product at 9 is NOT low stock.
+    const before = (await get(`/reports/overview?from=${FROM}&to=${TO}`))
+      .body as OverviewBody;
+
+    await prisma.setting.upsert({
+      where: { key: threshold },
+      create: { key: threshold, value: 20 },
+      update: { value: 20 },
+    });
+
+    const after = (await get(`/reports/overview?from=${FROM}&to=${TO}`))
+      .body as OverviewBody;
+
+    expect(after.data.lowStockProducts).toBeGreaterThan(before.data.lowStockProducts);
   });
 });
 
@@ -357,7 +407,7 @@ describe('CSV export', () => {
 
     const [header, row] = res.text.trim().split('\r\n');
     expect(header).toBe(
-      'From,To,Revenue,Orders,Canceled orders,New customers,Low stock products,Average order value',
+      'From,To,Revenue,Orders,Canceled orders,New customers,Low stock products,Units sold,Average order value',
     );
     expect(row).toContain(FROM);
   });
@@ -393,6 +443,51 @@ describe('CSV export', () => {
   it('rejects an unknown format rather than silently falling back to JSON', async () => {
     const res = await get(`/reports/overview?from=${FROM}&to=${TO}&format=xml`);
     expect(res.status).toBe(400);
+  });
+});
+
+describe('XLSX and PDF export (C3.4)', () => {
+  it('overview as XLSX: a real workbook, not a renamed CSV', async () => {
+    const res = await get(`/reports/overview?from=${FROM}&to=${TO}&format=xlsx`).buffer(true).parse((response, cb) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () => cb(null, Buffer.concat(chunks)));
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/spreadsheetml/);
+    expect(res.headers['content-disposition']).toContain('overview.xlsx');
+    // The XLSX container is a ZIP archive — "PK" is its real magic number,
+    // proof this is not just the CSV bytes served under a different header.
+    const body = res.body as Buffer;
+    expect(body.subarray(0, 2).toString('latin1')).toBe('PK');
+  });
+
+  it('revenue as PDF: a real PDF document', async () => {
+    const res = await get(`/reports/revenue?from=${FROM}&to=${TO}&format=pdf`).buffer(true).parse((response, cb) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () => cb(null, Buffer.concat(chunks)));
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/application\/pdf/);
+    expect(res.headers['content-disposition']).toContain('revenue.pdf');
+    const body = res.body as Buffer;
+    expect(body.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('the explorer accepts XLSX with its dimension param intact', async () => {
+    const res = await get(`/reports/explorer?from=${FROM}&to=${TO}&dimension=status&format=xlsx`)
+      .buffer(true)
+      .parse((response, cb) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toContain('explorer.xlsx');
   });
 });
 
@@ -632,6 +727,568 @@ describe('order value distribution', () => {
     // The 999.00 CANCELED order is excluded, same as every other revenue view.
     expect(body.data.buckets.find((b) => b.label === '100-250')?.count).toBe(2);
     expect(body.data.buckets.find((b) => b.label === '50-100')?.count).toBe(1);
+  });
+});
+
+describe('needs attention (C1.5)', () => {
+  const createdReturnIds: string[] = [];
+  const createdReviewIds: string[] = [];
+  const createdOrderIds: string[] = [];
+  const createdProductIds: string[] = [];
+
+  afterAll(async () => {
+    await prisma.return.deleteMany({ where: { id: { in: createdReturnIds } } });
+    await prisma.review.deleteMany({ where: { id: { in: createdReviewIds } } });
+    await prisma.order.deleteMany({ where: { id: { in: createdOrderIds } } });
+    await prisma.product.deleteMany({ where: { id: { in: createdProductIds } } });
+  });
+
+  interface NeedsAttentionBody {
+    data: {
+      returnsAwaitingApproval: { count: number; items: { id: string; rmaNumber: string }[] };
+      reviewsAwaitingModeration: { count: number; items: { id: string; productName: string | null }[] };
+      unassignedDeliveries: { count: number; items: { id: string; orderNumber: string }[] };
+      outOfStockWithOpenOrders: { count: number; items: { id: string; name: string }[] };
+    };
+  }
+
+  it('is reachable by a role with the reports area, not by one without it', async () => {
+    expect((await get('/reports/needs-attention')).status).toBe(200);
+    expect((await get('/reports/needs-attention', fulfillmentToken)).status).toBe(403);
+  });
+
+  it('surfaces a return stuck in REQUESTED, live — not scoped to a date range', async () => {
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-a-return`,
+        // Placed FAR outside every date-range fixture in this file — if this
+        // endpoint were accidentally date-scoped, this return would never
+        // appear, and that silent omission is exactly the bug this pins.
+        placedAt: new Date('2010-01-01T00:00:00.000Z'),
+        total: new Prisma.Decimal('40.00'),
+        status: OrderStatus.DELIVERED,
+        items: { create: [{ productId, quantity: 1, price: new Prisma.Decimal('40.00') }] },
+      },
+      include: { items: true },
+    });
+    createdOrderIds.push(order.id);
+
+    const orderItem = order.items[0];
+    if (!orderItem) throw new Error('seed order item missing');
+
+    const returnRow = await prisma.return.create({
+      data: {
+        rmaNumber: `${RUN}-attn-rma`,
+        reason: 'test',
+        status: ReturnStatus.REQUESTED,
+        orderId: order.id,
+        items: { create: [{ orderItemId: orderItem.id, quantity: 1 }] },
+      },
+    });
+    createdReturnIds.push(returnRow.id);
+
+    const body = (await get('/reports/needs-attention')).body as NeedsAttentionBody;
+
+    expect(body.data.returnsAwaitingApproval.count).toBeGreaterThanOrEqual(1);
+    expect(
+      body.data.returnsAwaitingApproval.items.some((row) => row.rmaNumber === `${RUN}-attn-rma`),
+    ).toBe(true);
+  });
+
+  it('does not count an approved return as awaiting approval', async () => {
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-a-return-approved`,
+        placedAt: new Date('2010-01-01T00:00:00.000Z'),
+        total: new Prisma.Decimal('40.00'),
+        status: OrderStatus.RETURNED,
+        items: { create: [{ productId, quantity: 1, price: new Prisma.Decimal('40.00') }] },
+      },
+      include: { items: true },
+    });
+    createdOrderIds.push(order.id);
+    const orderItem = order.items[0];
+    if (!orderItem) throw new Error('seed order item missing');
+
+    const returnRow = await prisma.return.create({
+      data: {
+        rmaNumber: `${RUN}-attn-rma-approved`,
+        reason: 'test',
+        status: ReturnStatus.APPROVED,
+        resolution: 'REFUND',
+        refundAmount: new Prisma.Decimal('40.00'),
+        orderId: order.id,
+        items: { create: [{ orderItemId: orderItem.id, quantity: 1 }] },
+      },
+    });
+    createdReturnIds.push(returnRow.id);
+
+    const body = (await get('/reports/needs-attention')).body as NeedsAttentionBody;
+
+    expect(
+      body.data.returnsAwaitingApproval.items.some((row) => row.rmaNumber === `${RUN}-attn-rma-approved`),
+    ).toBe(false);
+  });
+
+  it('surfaces a review stuck in PENDING', async () => {
+    const review = await prisma.review.create({
+      data: { rating: 4, status: ReviewStatus.PENDING, productId },
+    });
+    createdReviewIds.push(review.id);
+
+    const body = (await get('/reports/needs-attention')).body as NeedsAttentionBody;
+
+    expect(body.data.reviewsAwaitingModeration.count).toBeGreaterThanOrEqual(1);
+    expect(body.data.reviewsAwaitingModeration.items.some((row) => row.id === review.id)).toBe(
+      true,
+    );
+  });
+
+  it('does not count an approved review', async () => {
+    const review = await prisma.review.create({
+      data: { rating: 5, status: ReviewStatus.APPROVED, productId },
+    });
+    createdReviewIds.push(review.id);
+
+    const body = (await get('/reports/needs-attention')).body as NeedsAttentionBody;
+
+    expect(body.data.reviewsAwaitingModeration.items.some((row) => row.id === review.id)).toBe(
+      false,
+    );
+  });
+
+  it('surfaces an open order with no courier assignment', async () => {
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-a-unassigned`,
+        placedAt: new Date('2010-01-01T00:00:00.000Z'),
+        total: new Prisma.Decimal('40.00'),
+        status: OrderStatus.CONFIRMED,
+      },
+    });
+    createdOrderIds.push(order.id);
+
+    const body = (await get('/reports/needs-attention')).body as NeedsAttentionBody;
+
+    expect(body.data.unassignedDeliveries.count).toBeGreaterThanOrEqual(1);
+    expect(
+      body.data.unassignedDeliveries.items.some((row) => row.orderNumber === `${SHORT_RUN}-a-unassigned`),
+    ).toBe(true);
+  });
+
+  it('does not count a DELIVERED order as needing a courier', async () => {
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-a-delivered`,
+        placedAt: new Date('2010-01-01T00:00:00.000Z'),
+        total: new Prisma.Decimal('40.00'),
+        status: OrderStatus.DELIVERED,
+      },
+    });
+    createdOrderIds.push(order.id);
+
+    const body = (await get('/reports/needs-attention')).body as NeedsAttentionBody;
+
+    expect(
+      body.data.unassignedDeliveries.items.some((row) => row.orderNumber === `${SHORT_RUN}-a-delivered`),
+    ).toBe(false);
+  });
+
+  it('surfaces a zero-stock product with a still-open order against it', async () => {
+    const sparseProduct = await prisma.product.create({
+      data: { name: `${RUN} attn sparse`, price: new Prisma.Decimal('10.00'), stock: 0 },
+    });
+    createdProductIds.push(sparseProduct.id);
+
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-a-oos`,
+        placedAt: new Date('2010-01-01T00:00:00.000Z'),
+        total: new Prisma.Decimal('10.00'),
+        status: OrderStatus.PENDING,
+        items: { create: [{ productId: sparseProduct.id, quantity: 1, price: new Prisma.Decimal('10.00') }] },
+      },
+    });
+    createdOrderIds.push(order.id);
+
+    const body = (await get('/reports/needs-attention')).body as NeedsAttentionBody;
+
+    expect(body.data.outOfStockWithOpenOrders.count).toBeGreaterThanOrEqual(1);
+    expect(
+      body.data.outOfStockWithOpenOrders.items.some((row) => row.name === `${RUN} attn sparse`),
+    ).toBe(true);
+  });
+
+  it('does not surface a zero-stock product whose only orders are all DELIVERED', async () => {
+    const sparseProduct = await prisma.product.create({
+      data: { name: `${RUN} attn sparse settled`, price: new Prisma.Decimal('10.00'), stock: 0 },
+    });
+    createdProductIds.push(sparseProduct.id);
+
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-a-oos-settled`,
+        placedAt: new Date('2010-01-01T00:00:00.000Z'),
+        total: new Prisma.Decimal('10.00'),
+        status: OrderStatus.DELIVERED,
+        items: { create: [{ productId: sparseProduct.id, quantity: 1, price: new Prisma.Decimal('10.00') }] },
+      },
+    });
+    createdOrderIds.push(order.id);
+
+    const body = (await get('/reports/needs-attention')).body as NeedsAttentionBody;
+
+    expect(
+      body.data.outOfStockWithOpenOrders.items.some((row) => row.name === `${RUN} attn sparse settled`),
+    ).toBe(false);
+  });
+
+  it('does not surface an in-stock product even with open orders', async () => {
+    // productId (the shared fixture) has stock 100 and DOES have open orders
+    // from other describe blocks in this file — proving it's absent here is
+    // proving the stock filter, not just the order-status filter, is doing
+    // real work.
+    const body = (await get('/reports/needs-attention')).body as NeedsAttentionBody;
+
+    expect(body.data.outOfStockWithOpenOrders.items.some((row) => row.id === productId)).toBe(
+      false,
+    );
+  });
+});
+
+describe('staff activity (C3.5)', () => {
+  interface StaffActivityBody {
+    data: {
+      staff: { actorId: string | null; actorEmail: string; actorRole: string | null; actionCount: number; deniedCount: number }[];
+    };
+  }
+
+  it('counts actions per actor within the window', async () => {
+    const courier = await prisma.deliveryStaff.create({ data: { name: `${RUN} activity courier` } });
+
+    // A real audited write, made by ownerToken, so it lands in the window's
+    // AuditLog rows attributed to a known actor (courier profile edits are
+    // audited as `courier.updated` — see couriers.service.ts's updateCourier).
+    await request(app)
+      .patch(`/api/v1/couriers/${courier.id}`)
+      .set(auth(ownerToken))
+      .send({ zone: 'Marina' });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const body = (await get(`/reports/staff-activity?from=${today}&to=${today}`)).body as StaffActivityBody;
+
+    const ownerRow = body.data.staff.find((row) => row.actorEmail === `${RUN}-owner@example.test`);
+    expect(ownerRow?.actionCount).toBeGreaterThan(0);
+
+    await prisma.deliveryStaff.delete({ where: { id: courier.id } });
+  });
+
+  it('counts denied attempts separately from successes, per actor', async () => {
+    // fulfillmentToken lacks the reports area — every read it attempts here
+    // is a real DENIED row.
+    await get('/reports/overview?from=2019-01-01&to=2019-01-02', fulfillmentToken);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const body = (await get(`/reports/staff-activity?from=${today}&to=${today}`)).body as StaffActivityBody;
+
+    const fulfillmentRow = body.data.staff.find((row) => row.actorRole === 'FULFILLMENT');
+    expect(fulfillmentRow?.deniedCount).toBeGreaterThan(0);
+  });
+
+  it('is denied to a role without the reports area', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    expect((await get(`/reports/staff-activity?from=${today}&to=${today}`, fulfillmentToken)).status).toBe(403);
+  });
+});
+
+describe('per-category breakdown (C3.5)', () => {
+  interface CategoryBody {
+    data: { categories: { categoryId: string | null; categoryName: string; units: number; revenue: string }[] };
+  }
+
+  it('groups revenue and units by the product\'s category', async () => {
+    const category = await prisma.category.create({
+      data: { name: `${RUN} category`, slug: `${RUN}-category-${Date.now()}` },
+    });
+    const categorisedProduct = await prisma.product.create({
+      data: { name: `${RUN} categorised`, price: new Prisma.Decimal('40.00'), stock: 10, categoryId: category.id },
+    });
+
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `${RUN}-cat-1`,
+        placedAt: new Date('2019-05-01T12:00:00.000Z'),
+        total: new Prisma.Decimal('80.00'),
+        status: OrderStatus.DELIVERED,
+        items: { create: [{ productId: categorisedProduct.id, quantity: 2, price: new Prisma.Decimal('40.00') }] },
+      },
+    });
+    orderIds.push(order.id);
+
+    const body = (await get('/reports/category-breakdown?from=2019-05-01&to=2019-05-01')).body as CategoryBody;
+    const row = body.data.categories.find((c) => c.categoryId === category.id);
+
+    expect(row).toBeDefined();
+    expect(row?.units).toBe(2);
+    expect(row?.revenue).toBe('80.00');
+
+    await prisma.product.delete({ where: { id: categorisedProduct.id } });
+    await prisma.category.delete({ where: { id: category.id } });
+  });
+
+  it('groups an order line with no category under an explicit bucket, not silently', async () => {
+    // productId (the shared fixture) has no category set.
+    const body = (await get(`/reports/category-breakdown?from=${FROM}&to=${TO}`)).body as CategoryBody;
+
+    expect(body.data.categories.some((c) => c.categoryId === null && c.categoryName === '(uncategorised)')).toBe(
+      true,
+    );
+  });
+});
+
+describe('refund-rate trend (C3.5)', () => {
+  interface TrendBody {
+    data: { points: { date: string; revenue: string; refunded: string; refundRate: number }[] };
+  }
+
+  it('computes refund rate as refunded ÷ revenue for the month', async () => {
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `${RUN}-trend-1`,
+        placedAt: new Date('2019-06-10T12:00:00.000Z'),
+        total: new Prisma.Decimal('100.00'),
+        status: OrderStatus.RETURNED,
+        items: { create: [{ productId, quantity: 1, price: new Prisma.Decimal('100.00') }] },
+      },
+      include: { items: true },
+    });
+    orderIds.push(order.id);
+
+    const returnRow = await prisma.return.create({
+      data: {
+        rmaNumber: `${RUN}-RMA-TREND`,
+        reason: 'test',
+        status: ReturnStatus.APPROVED,
+        resolution: ReturnResolution.REFUND,
+        refundAmount: new Prisma.Decimal('25.00'),
+        orderId: order.id,
+        items: { create: [{ orderItemId: order.items[0]!.id, quantity: 1 }] },
+      },
+    });
+
+    const body = (await get('/reports/refund-rate-trend?from=2019-06-01&to=2019-06-30')).body as TrendBody;
+    const point = body.data.points.find((p) => p.date === '2019-06-01');
+
+    expect(point?.revenue).toBe('100.00');
+    expect(point?.refunded).toBe('25.00');
+    expect(point?.refundRate).toBeCloseTo(0.25);
+
+    // ReturnItem.orderItem is Restrict, not Cascade (see schema.prisma) — the
+    // return must be deleted before afterAll's order cleanup runs, or the
+    // order's cascade delete hits that Restrict and the whole suite's
+    // cleanup fails.
+    await prisma.return.delete({ where: { id: returnRow.id } });
+  });
+
+  it('renders a zero rate, not NaN, for a month with revenue and no refunds', async () => {
+    const body = (await get(`/reports/refund-rate-trend?from=${FROM}&to=${TO}`)).body as TrendBody;
+    const point = body.data.points.find((p) => p.date === '2019-03-01');
+
+    expect(point?.refundRate).toBe(0);
+    expect(Number.isNaN(point?.refundRate)).toBe(false);
+  });
+});
+
+describe('inventory turnover / dead stock (C3.5)', () => {
+  interface TurnoverBody {
+    data: {
+      turnover: { productId: string; name: string; sku: string | null; stock: number; unitsSold: number }[];
+      deadStock: { productId: string; name: string }[];
+    };
+  }
+
+  it('counts SOLD stock movements as units sold, in the window', async () => {
+    const product = await prisma.product.create({
+      data: { name: `${RUN} turnover product`, price: new Prisma.Decimal('10.00'), stock: 20 },
+    });
+
+    await prisma.stockMovement.create({
+      data: { productId: product.id, delta: -5, reason: 'SOLD', createdAt: new Date('2019-07-15T00:00:00.000Z') },
+    });
+    // A DAMAGED movement must NOT count as sold.
+    await prisma.stockMovement.create({
+      data: { productId: product.id, delta: -2, reason: 'DAMAGED', createdAt: new Date('2019-07-15T00:00:00.000Z') },
+    });
+
+    const body = (await get('/reports/inventory-turnover?from=2019-07-01&to=2019-07-31')).body as TurnoverBody;
+    const row = body.data.turnover.find((r) => r.productId === product.id);
+
+    expect(row?.unitsSold).toBe(5);
+
+    await prisma.stockMovement.deleteMany({ where: { productId: product.id } });
+    await prisma.product.delete({ where: { id: product.id } });
+  });
+
+  it('flags a product with stock but zero sales in the window as dead stock', async () => {
+    const product = await prisma.product.create({
+      data: { name: `${RUN} dead stock product`, price: new Prisma.Decimal('10.00'), stock: 15 },
+    });
+
+    const body = (await get('/reports/inventory-turnover?from=2019-08-01&to=2019-08-31')).body as TurnoverBody;
+
+    expect(body.data.deadStock.some((r) => r.productId === product.id)).toBe(true);
+
+    await prisma.product.delete({ where: { id: product.id } });
+  });
+
+  it('does not flag a zero-stock product as dead stock — nothing to sell is not the same as not selling', async () => {
+    const product = await prisma.product.create({
+      data: { name: `${RUN} zero stock product`, price: new Prisma.Decimal('10.00'), stock: 0 },
+    });
+
+    const body = (await get('/reports/inventory-turnover?from=2019-08-01&to=2019-08-31')).body as TurnoverBody;
+
+    expect(body.data.deadStock.some((r) => r.productId === product.id)).toBe(false);
+
+    await prisma.product.delete({ where: { id: product.id } });
+  });
+});
+
+describe('report explorer (C3.3)', () => {
+  interface ExplorerBody {
+    data: {
+      dimension: string;
+      rows: { key: string | null; label: string; revenue: string; units: number; orders: number; averageOrderValue: string }[];
+    };
+  }
+
+  it('groups by category, matching the dedicated category-breakdown report', async () => {
+    const category = await prisma.category.create({
+      data: { name: `${RUN} explorer category`, slug: `${RUN}-explorer-category-${Date.now()}` },
+    });
+    const categorisedProduct = await prisma.product.create({
+      data: { name: `${RUN} explorer product`, price: new Prisma.Decimal('40.00'), stock: 10, categoryId: category.id },
+    });
+
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-explorer-1`,
+        placedAt: new Date('2019-09-01T12:00:00.000Z'),
+        total: new Prisma.Decimal('80.00'),
+        status: OrderStatus.DELIVERED,
+        items: { create: [{ productId: categorisedProduct.id, quantity: 2, price: new Prisma.Decimal('40.00') }] },
+      },
+    });
+    orderIds.push(order.id);
+
+    const body = (await get('/reports/explorer?from=2019-09-01&to=2019-09-01&dimension=category'))
+      .body as ExplorerBody;
+    const row = body.data.rows.find((r) => r.key === category.id);
+
+    expect(row).toBeDefined();
+    expect(row?.label).toBe(`${RUN} explorer category`);
+    expect(row?.units).toBe(2);
+    expect(row?.revenue).toBe('80.00');
+    expect(row?.orders).toBe(1);
+    expect(row?.averageOrderValue).toBe('80.00');
+
+    await prisma.product.delete({ where: { id: categorisedProduct.id } });
+    await prisma.category.delete({ where: { id: category.id } });
+  });
+
+  it('counts DISTINCT orders, not line items, so averageOrderValue is not double-counted', async () => {
+    const secondProduct = await prisma.product.create({
+      data: { name: `${RUN} explorer second`, price: new Prisma.Decimal('15.00'), stock: 10 },
+    });
+
+    // One order, two different line items — must count as ONE order.
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `${SHORT_RUN}-explorer-2`,
+        placedAt: new Date('2019-09-10T12:00:00.000Z'),
+        total: new Prisma.Decimal('55.00'),
+        status: OrderStatus.DELIVERED,
+        items: {
+          create: [
+            { productId, quantity: 1, price: new Prisma.Decimal('40.00') },
+            { productId: secondProduct.id, quantity: 1, price: new Prisma.Decimal('15.00') },
+          ],
+        },
+      },
+    });
+    orderIds.push(order.id);
+
+    const body = (await get('/reports/explorer?from=2019-09-10&to=2019-09-10&dimension=status')).body as ExplorerBody;
+    const row = body.data.rows.find((r) => r.key === 'DELIVERED');
+
+    expect(row?.orders).toBe(1);
+    expect(row?.revenue).toBe('55.00');
+    expect(row?.averageOrderValue).toBe('55.00');
+
+    await prisma.product.delete({ where: { id: secondProduct.id } });
+  });
+
+  it('excludes cancelled orders, same as every other report', async () => {
+    const body = (await get(`/reports/explorer?from=${FROM}&to=${TO}&dimension=status`)).body as ExplorerBody;
+
+    expect(body.data.rows.some((r) => r.key === 'CANCELED')).toBe(false);
+  });
+
+  it('rejects an unknown dimension', async () => {
+    const res = await get(`/reports/explorer?from=${FROM}&to=${TO}&dimension=not-a-real-dimension`);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts every declared dimension without erroring', async () => {
+    for (const dimension of ['day', 'week', 'month', 'status', 'category', 'product', 'paymentMethod']) {
+      const res = await get(`/reports/explorer?from=${FROM}&to=${TO}&dimension=${dimension}`);
+      expect(res.status).toBe(200);
+    }
+  });
+
+  it('denies a role without the reports area', async () => {
+    const res = await get(`/reports/explorer?from=${FROM}&to=${TO}&dimension=status`, fulfillmentToken);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('CSV export — new C3.5 reports', () => {
+  it('staff activity', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await get(`/reports/staff-activity?from=${today}&to=${today}&format=csv`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+    expect(res.text.trim().split('\r\n')[0]).toBe('Actor email,Role,Actions,Denied attempts');
+  });
+
+  it('category breakdown', async () => {
+    const res = await get(`/reports/category-breakdown?from=${FROM}&to=${TO}&format=csv`);
+
+    expect(res.status).toBe(200);
+    expect(res.text.trim().split('\r\n')[0]).toBe('Category,Units,Revenue');
+  });
+
+  it('refund rate trend', async () => {
+    const res = await get(`/reports/refund-rate-trend?from=${FROM}&to=${TO}&format=csv`);
+
+    expect(res.status).toBe(200);
+    expect(res.text.trim().split('\r\n')[0]).toBe('Month,Revenue,Refunded,Refund rate');
+  });
+
+  it('inventory turnover', async () => {
+    const res = await get(`/reports/inventory-turnover?from=${FROM}&to=${TO}&format=csv`);
+
+    expect(res.status).toBe(200);
+    expect(res.text.trim().split('\r\n')[0]).toBe('Product,SKU,Current stock,Units sold');
+  });
+
+  it('report explorer', async () => {
+    const res = await get(`/reports/explorer?from=${FROM}&to=${TO}&dimension=status&format=csv`);
+
+    expect(res.status).toBe(200);
+    expect(res.text.trim().split('\r\n')[0]).toBe('Label,Revenue,Units,Orders,Average order value');
   });
 });
 
