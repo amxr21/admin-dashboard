@@ -43,3 +43,7 @@ pnpm-debug.log*
 
 # Internal working docs - never committed
 docs/
+archive/
+MASTER_TODO.md
+PLUG_AND_PLAY.md
+SETUP_TODO.md

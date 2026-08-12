@@ -60,3 +60,7 @@ services:
         sync: false # openssl rand -base64 32 — rotating invalidates every courier code
       - key: PASSWORD_RESET_SECRET
         sync: false # openssl rand -base64 32 — rotating invalidates every outstanding reset token
+      - key: TWO_FACTOR_SECRET
+        sync: false # openssl rand -hex 32 (exactly 64 hex chars) — rotating locks out every enrolled account
+      - key: API_KEY_SECRET
+        sync: false # openssl rand -base64 32 — rotating invalidates every issued API key
