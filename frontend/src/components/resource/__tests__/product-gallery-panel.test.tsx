@@ -15,11 +15,12 @@ const fetchImages = vi.hoisted(() => vi.fn());
 const addImage = vi.hoisted(() => vi.fn());
 const reorderImages = vi.hoisted(() => vi.fn());
 const deleteImage = vi.hoisted(() => vi.fn());
+const setImageAlt = vi.hoisted(() => vi.fn());
 const uploadImage = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/product-images-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/product-images-api')>();
-  return { ...actual, fetchImages, addImage, reorderImages, deleteImage };
+  return { ...actual, fetchImages, addImage, reorderImages, deleteImage, setImageAlt };
 });
 
 vi.mock('@/lib/upload-api', () => ({ uploadImage }));
@@ -28,6 +29,7 @@ function makeImage(overrides: Partial<ProductImage> = {}): ProductImage {
   return {
     id: 'i1',
     url: 'https://cdn.example.com/1.png',
+    alt: null,
     position: 0,
     productId: 'p1',
     createdAt: '2026-07-01T00:00:00.000Z',
@@ -53,6 +55,7 @@ beforeEach(() => {
   addImage.mockReset();
   reorderImages.mockReset();
   deleteImage.mockReset();
+  setImageAlt.mockReset();
   uploadImage.mockReset();
 });
 
@@ -131,6 +134,55 @@ describe('reordering', () => {
 
     expect(upButtons[0]).toBeDisabled();
     expect(downButtons[downButtons.length - 1]).toBeDisabled();
+  });
+});
+
+describe('alt text', () => {
+  it('renders the thumbnail with its real alt value, not a hardcoded empty string', async () => {
+    fetchImages.mockResolvedValue([
+      makeImage({ id: 'i1', alt: 'A ceramic planter on a wooden shelf' }),
+    ]);
+    renderPanel();
+
+    const thumbnail = await screen.findByAltText('A ceramic planter on a wooden shelf');
+    expect(thumbnail).toBeInTheDocument();
+  });
+
+  it('saves alt text on blur, not per keystroke', async () => {
+    fetchImages.mockResolvedValue([makeImage({ id: 'i1', alt: null })]);
+    setImageAlt.mockResolvedValue(makeImage({ id: 'i1', alt: 'A red mug' }));
+    renderPanel();
+
+    const field = await screen.findByLabelText('Alt text');
+    await userEvent.type(field, 'A red mug');
+    expect(setImageAlt).not.toHaveBeenCalled();
+
+    await userEvent.tab();
+
+    await waitFor(() => expect(setImageAlt).toHaveBeenCalledWith('i1', 'A red mug'));
+  });
+
+  it('sends null, not an empty string, when the field is cleared', async () => {
+    fetchImages.mockResolvedValue([makeImage({ id: 'i1', alt: 'Something' })]);
+    setImageAlt.mockResolvedValue(makeImage({ id: 'i1', alt: null }));
+    renderPanel();
+
+    const field = await screen.findByLabelText('Alt text');
+    await userEvent.clear(field);
+    await userEvent.tab();
+
+    await waitFor(() => expect(setImageAlt).toHaveBeenCalledWith('i1', null));
+  });
+
+  it('does not save when the value did not actually change', async () => {
+    fetchImages.mockResolvedValue([makeImage({ id: 'i1', alt: 'Unchanged' })]);
+    renderPanel();
+
+    const field = await screen.findByLabelText('Alt text');
+    field.focus();
+    await userEvent.tab();
+
+    expect(setImageAlt).not.toHaveBeenCalled();
   });
 });
 
