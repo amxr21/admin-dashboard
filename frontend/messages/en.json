@@ -16,7 +16,11 @@
     "loading": "Loading…",
     "loadingPage": "Loading {page}…",
     "retry": "Try again",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "savedNotice": "Saved.",
+    "saving": "Saving…",
+    "unsavedChangesPlain": "Unsaved changes",
+    "unsavedChanges": "{count, plural, one {# unsaved change} other {# unsaved changes}}"
   },
   "language": {
     "label": "Language",
@@ -128,8 +132,15 @@
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar",
     "search": "Search",
-    "searchPlaceholder": "Jump to…",
+    "searchPlaceholder": "Search orders, customers, products…",
     "openPage": "Open",
+    "searchGroups": {
+      "pages": "Pages",
+      "orders": "Orders",
+      "customers": "Customers",
+      "products": "Products",
+      "noResults": "No matches"
+    },
     "descriptions": {
       "dashboard": "Revenue, orders, and what needs attention today, at a glance.",
       "orders": "Every order, its line items, and where it is in the fulfillment workflow.",
@@ -371,7 +382,9 @@
       "placeholder": "Search by {fields}"
     },
     "filters": {
-      "all": "All"
+      "all": "All",
+      "applied": "Filters:",
+      "remove": "Remove {label} filter"
     },
     "pagination": {
       "previous": "Previous",
@@ -383,7 +396,9 @@
       "create": "New {label}",
       "editRow": "Edit {label}",
       "deleteRow": "Delete {label}",
-      "deleteSelected": "Delete selected"
+      "deleteSelected": "Delete selected",
+      "clearFilters": "Clear filters",
+      "import": "Import"
     },
     "notice": {
       "created": "Created.",
@@ -397,6 +412,31 @@
       "confirm": "Delete",
       "cancel": "Cancel",
       "working": "Deleting…"
+    },
+    "emptyFiltered": "No {label} match these filters.",
+    "emptyFilteredHint": "Try removing a filter or searching for something else.",
+    "margin": {
+      "profit": "Profit",
+      "margin": "Margin"
+    },
+    "import": {
+      "title": "Import {label}",
+      "description": "Upload a CSV file. Every row is checked before anything is saved — if any row is invalid, nothing is imported.",
+      "downloadTemplate": "Download CSV template",
+      "pickFile": "Choose a CSV file",
+      "pickFileHint": "or drag and drop",
+      "validating": "Checking the file…",
+      "summary": {
+        "preview": "{valid} of {total, plural, one {# row} other {# rows}} ready to import",
+        "applied": "{imported, plural, =0 {Nothing imported} one {# imported} other {# imported}} of {total, plural, one {# row} other {# rows}}"
+      },
+      "errorsHeading": "{count, plural, one {# row needs a fix} other {# rows need a fix}}",
+      "errorRow": "Row {row}",
+      "fixAndRetry": "Fix these rows in your file and upload it again.",
+      "cancel": "Cancel",
+      "confirmImport": "{count, plural, one {Import # row} other {Import # rows}}",
+      "importing": "Importing…",
+      "close": "Close"
     }
   },
   "placeholder": {
@@ -464,6 +504,7 @@
     "choose": "Choose…",
     "manageVariants": "Manage variants",
     "manageGallery": "Manage gallery",
+    "variantsAfterSave": "Save this product first — variants and gallery images attach to a real product record, which doesn't exist yet.",
     "noOptions": "None available.",
     "errors": {
       "required": "This field is required.",
@@ -684,7 +725,12 @@
       "current": "now {stock} in stock",
       "empty": "No movements recorded yet.",
       "close": "Close",
-      "truncated": "Showing the latest {shown} of {total} movements."
+      "by": "by {name}",
+      "previousPage": "Previous",
+      "nextPage": "Next",
+      "pageOf": "Page {page} of {totalPages}",
+      "reconcileAgrees": "The log matches the current stock.",
+      "reconcileMismatch": "The recorded stock ({stock}) does not match the log total ({fromMovements}). Something changed stock without recording why."
     }
   },
   "stockReason": {
@@ -718,7 +764,20 @@
     "out": "Out",
     "amount": "Amount",
     "record": "Record",
-    "wouldGoNegative": "Only {stock} in stock — that amount would go negative."
+    "wouldGoNegative": "Only {stock} in stock — that amount would go negative.",
+    "history": "History",
+    "log": {
+      "title": "Stock history — {name}",
+      "current": "now {stock} in stock",
+      "empty": "No movements recorded yet.",
+      "close": "Close",
+      "by": "by {name}",
+      "previousPage": "Previous",
+      "nextPage": "Next",
+      "pageOf": "Page {page} of {totalPages}",
+      "reconcileAgrees": "The log matches the current stock.",
+      "reconcileMismatch": "The recorded stock ({stock}) does not match the log total ({fromMovements}). Something changed stock without recording why."
+    }
   },
   "productGallery": {
     "title": "Gallery — {name}",
@@ -726,7 +785,9 @@
     "empty": "No gallery images yet.",
     "moveUp": "Move up",
     "moveDown": "Move down",
-    "delete": "Remove image"
+    "delete": "Remove image",
+    "altLabel": "Alt text",
+    "altPlaceholder": "Describe this image for screen readers"
   },
   "notificationsBell": {
     "unread": "{count, plural, one {# unread notification} other {# unread notifications}}",
@@ -1003,6 +1064,66 @@
           "action": "Delete"
         }
       }
+    },
+    "account": {
+      "title": "Your account",
+      "description": "Your own name and password. An OWNER is no longer required for either.",
+      "email": "Email",
+      "name": "Name",
+      "save": "Save",
+      "saving": "Saving…",
+      "profileSaved": "Your details were updated.",
+      "changePassword": "Change password",
+      "changePasswordDescription": "You will need your current password. Every other signed-in session, including this one, is signed out and replaced with a fresh session.",
+      "currentPassword": "Current password",
+      "newPassword": "New password",
+      "passwordHint": "Use at least {min} characters.",
+      "passwordChanged": "Your password was changed.",
+      "confirmPasswordChange": "Change password",
+      "cancel": "Cancel"
+    },
+    "data": {
+      "title": "Data",
+      "description": "Export any resource you can access as a CSV file.",
+      "exportTitle": "Export centre",
+      "exportDescription": "Choose a resource and download every row you have access to as CSV.",
+      "resourceLabel": "Resource",
+      "export": "Export CSV",
+      "exporting": "Exporting…",
+      "exported": "{resource} exported.",
+      "historyTitle": "Recent exports",
+      "historyEmpty": "No exports yet.",
+      "unknownActor": "Unknown",
+      "retry": "Retry"
+    },
+    "policies": {
+      "title": "Policies",
+      "description": "Return, privacy, terms, and shipping policy text — per locale, versioned.",
+      "types": {
+        "RETURN": "Return policy",
+        "PRIVACY": "Privacy policy",
+        "TERMS": "Terms of service",
+        "SHIPPING": "Shipping policy"
+      },
+      "version": "v{version}",
+      "unpublished": "Not published",
+      "retry": "Retry",
+      "history": "History",
+      "historyEmpty": "No versions yet.",
+      "current": "Current",
+      "revert": "Revert",
+      "contentPlaceholder": "Write the policy text…",
+      "publish": "Publish",
+      "publishing": "Publishing…",
+      "published": "Policy published.",
+      "reverted": "Reverted to v{version}.",
+      "cancel": "Cancel",
+      "confirmRevert": {
+        "title": "Revert to v{version}?",
+        "description": "This publishes that version's text as a new version. The current text stays in history and can be restored the same way.",
+        "cancel": "Cancel",
+        "action": "Revert"
+      }
     }
   },
   "audit": {
@@ -1065,7 +1186,8 @@
       "role": "Role",
       "status": "Status",
       "lastLogin": "Last sign-in",
-      "actions": "Actions"
+      "actions": "Actions",
+      "accessExpiresAt": "Access expires"
     },
     "search": {
       "label": "Search",
@@ -1078,7 +1200,8 @@
     "status": {
       "active": "Active",
       "inactive": "Deactivated",
-      "locked": "Locked"
+      "locked": "Locked",
+      "expired": "expired"
     },
     "never": "Never",
     "you": "You",
@@ -1088,7 +1211,9 @@
       "unlock": "Unlock {name}",
       "unlockShort": "Unlock",
       "password": "Set a new password for {name}",
-      "passwordShort": "Password"
+      "passwordShort": "Password",
+      "resetToken": "Issue a reset token for {name}",
+      "invite": "Invite"
     },
     "notice": {
       "created": "{name} can now sign in.",
@@ -1103,17 +1228,19 @@
       "save": "Save",
       "saving": "Saving…",
       "emailRequired": "Email is required.",
-      "passwordHint": "At least 12 characters. You will need to give it to them directly.",
+      "passwordHint": "At least {min} characters. You will need to give it to them directly.",
       "fields": {
         "email": "Email",
         "name": "Name",
         "phone": "Phone",
         "role": "Role",
         "password": "Password",
-        "isActive": "Can sign in"
+        "isActive": "Can sign in",
+        "accessExpiresAt": "Access expires"
       },
       "selfRoleNote": "You cannot change your own role — ask another owner.",
-      "lockedNote": "Locked after too many failed sign-ins. Unlock or set a new password."
+      "lockedNote": "Locked after too many failed sign-ins. Unlock or set a new password.",
+      "accessExpiresHint": "After this date, they cannot sign in until it is cleared or extended. Leave blank for no expiry."
     },
     "password": {
       "title": "New password for {name}",
@@ -1121,6 +1248,36 @@
       "label": "New password",
       "confirm": "Set password",
       "cancel": "Cancel"
+    },
+    "resetToken": {
+      "title": "Reset token for {email}",
+      "shownOnce": "This token is shown once. Copy it now — it cannot be retrieved later.",
+      "copy": "Copy token",
+      "copyHint": "Copy the token and hand it over directly.",
+      "copied": "Token copied.",
+      "expires": "Expires {at}.",
+      "handOver": "Give it to them directly. They set their own password, so you never learn it.",
+      "done": "Done"
+    },
+    "filters": {
+      "role": "Role",
+      "status": "Status",
+      "all": "All",
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "invite": {
+      "title": "Invite someone to staff",
+      "description": "Creates the account and gives you a one-time activation code to hand over — you never see or set their password.",
+      "send": "Send invite"
+    },
+    "permissions": {
+      "title": "Permissions",
+      "description": "Which areas each role can reach. Enforced by the server — this is a read-only view of that model.",
+      "area": "Area",
+      "readOnly": "Read-only",
+      "granted": "{role} can reach {area}",
+      "notGranted": "{role} cannot reach {area}"
     }
   },
   "staffRole": {
@@ -1717,6 +1874,11 @@
       "refundAmountLabel": "Refund amount (up to {max})",
       "restock": "Put the returned items back in stock",
       "reject": "Reject",
+      "confirmReject": "Confirm rejection",
+      "cancel": "Cancel",
+      "rejectionReasonLabel": "Why is this being rejected?",
+      "rejectionReasonPlaceholder": "Explain the decision — the requester may see this.",
+      "rejectionReason": "Rejection reason",
       "approve": "Approve",
       "saving": "Saving…",
       "approved": "{rma} approved.",
@@ -1730,6 +1892,8 @@
       "quantityFor": "Quantity for {item}",
       "reason": "Reason",
       "reasonPlaceholder": "Why is this being returned?",
+      "category": "Category",
+      "categoryPlaceholder": "Choose a category (optional)",
       "cancel": "Cancel",
       "submit": "Request return",
       "saving": "Submitting…",
@@ -1744,5 +1908,38 @@
     "SUCCESS": "Success",
     "DENIED": "Denied",
     "ERROR": "Error"
+  },
+  "filters": {
+    "applied": "Filters:",
+    "remove": "Remove filter {label}",
+    "clearAll": "Clear all"
+  },
+  "commandPalette": {
+    "title": "Command palette",
+    "placeholder": "Search pages, orders, customers, products, or run an action…",
+    "hint": "Type to search, or choose an action below.",
+    "noResults": "No matches",
+    "groups": {
+      "pages": "Pages",
+      "orders": "Orders",
+      "customers": "Customers",
+      "products": "Products",
+      "actions": "Actions"
+    },
+    "actions": {
+      "addProduct": "Add product",
+      "createDiscount": "Create discount",
+      "switchToDark": "Switch to dark mode",
+      "switchToLight": "Switch to light mode",
+      "signOut": "Sign out"
+    }
+  },
+  "returnCategory": {
+    "DAMAGED": "Damaged",
+    "WRONG_ITEM": "Wrong item",
+    "NOT_AS_DESCRIBED": "Not as described",
+    "NO_LONGER_NEEDED": "No longer needed",
+    "ARRIVED_LATE": "Arrived late",
+    "OTHER": "Other"
   }
 }

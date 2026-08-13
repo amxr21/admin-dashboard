@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { Prisma, StaffRole } from '@prisma/client';
 
@@ -152,23 +153,29 @@ export interface CreateStaffInput {
   accessExpiresAt?: string | undefined;
 }
 
-export async function createStaff(actor: Actor, input: CreateStaffInput) {
-  // Rule 1.
-  if (!canAssignRole(actor.role, input.role)) {
+/**
+ * Rule 1 + the email-uniqueness check, shared by `createStaff` and
+ * `inviteStaff` — the two ways a new account comes into being differ only in
+ * where the password comes from, not in whether the account is allowed to
+ * exist at all.
+ */
+async function assertCanCreate(actor: Actor, email: string, role: StaffRole): Promise<void> {
+  if (!canAssignRole(actor.role, role)) {
     throw AppError.forbidden('You cannot grant a role with more access than your own', {
       field: 'role',
     });
   }
 
-  const existing = await prisma.user.findUnique({
-    where: { email: input.email },
-    select: { id: true },
-  });
+  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
 
   if (existing) {
     // 409 naming the field, not a 500 leaking the unique constraint.
     throw AppError.conflict('That email address is already in use', { field: 'email' });
   }
+}
+
+export async function createStaff(actor: Actor, input: CreateStaffInput) {
+  await assertCanCreate(actor, input.email, input.role);
 
   const user = await prisma.user.create({
     data: {
@@ -183,6 +190,58 @@ export async function createStaff(actor: Actor, input: CreateStaffInput) {
   });
 
   return serialise(user);
+}
+
+export interface InviteStaffInput {
+  email: string;
+  name?: string | undefined;
+  phone?: string | undefined;
+  role: StaffRole;
+  accessExpiresAt?: string | undefined;
+}
+
+/** An invite never has an admin choose the token's lifetime — it is not a
+ * live handover, and 30 minutes (the reset default) would expire before most
+ * people open the message it arrived in. */
+const INVITE_TOKEN_TTL_MINUTES = 24 * 60;
+
+/**
+ * Create a staff account with NO password anyone ever knows, and hand the
+ * caller a one-time token to activate it — the primary action the spec names
+ * for this page, which did not exist: accounts could only be created with the
+ * admin typing a password on the new person's behalf.
+ *
+ * ─── WHY NOT JUST `createStaff` WITH A RANDOM PASSWORD RETURNED ──────
+ * Returning the generated password would mean the ADMIN saw it, which is
+ * exactly the thing an invite is supposed to avoid — same reasoning
+ * `issueStaffPasswordResetToken`'s doc comment gives for using a token
+ * instead of `resetStaffPassword`. The random password here exists only to
+ * satisfy the column's NOT NULL constraint and is discarded immediately;
+ * nothing ever reads it back.
+ */
+export async function inviteStaff(actor: Actor, input: InviteStaffInput) {
+  await assertCanCreate(actor, input.email, input.role);
+
+  // 32 random bytes, hashed and thrown away — never logged, returned, or
+  // reachable again. Long enough that even a modelling mistake elsewhere
+  // could not make it guessable within the token's lifetime.
+  const unusedPassword = randomBytes(32).toString('hex');
+
+  const user = await prisma.user.create({
+    data: {
+      email: input.email,
+      name: input.name ?? null,
+      phone: input.phone ?? null,
+      role: input.role,
+      passwordHash: await bcrypt.hash(unusedPassword, 10),
+      accessExpiresAt: input.accessExpiresAt ? new Date(input.accessExpiresAt) : null,
+    },
+    select: STAFF_FIELDS,
+  });
+
+  const { token, expiresAt } = await createResetToken(user.id, INVITE_TOKEN_TTL_MINUTES);
+
+  return { staff: serialise(user), token, expiresAt: expiresAt.toISOString() };
 }
 
 export interface UpdateStaffInput {
@@ -321,26 +380,6 @@ export async function resetStaffPassword(actor: Actor, id: string, password: str
   return serialise(user);
 }
 
-/**
- * Issue a one-time reset token instead of setting the password directly.
- *
- * Same rank rules as every other write here (via `loadSubject`) — an admin
- * can issue a token for anyone at or below their own rank, never upward.
- * The plaintext token is returned exactly once, to be handed to the locked-out
- * person out of band; nothing stores it, so losing it means issuing another.
- */
-export async function issueStaffPasswordResetToken(actor: Actor, id: string) {
-  const subject = await loadSubject(actor, id);
-
-  const { token, expiresAt } = await createResetToken(subject.id);
-
-  return {
-    staff: { id: subject.id, email: subject.email },
-    token,
-    expiresAt: expiresAt.toISOString(),
-  };
-}
-
 export interface UpdateOwnProfileInput {
   name?: string | undefined;
   phone?: string | undefined;
@@ -425,4 +464,114 @@ export async function changeOwnPassword(
   ]);
 
   return updated;
+}
+
+/**
+ * Issue a one-time reset token instead of setting the password directly.
+ *
+ * Same rank rules as every other write here (via `loadSubject`) — an admin
+ * can issue a token for anyone at or below their own rank, never upward.
+ * The plaintext token is returned exactly once, to be handed to the locked-out
+ * person out of band; nothing stores it, so losing it means issuing another.
+ */
+export async function issueStaffPasswordResetToken(actor: Actor, id: string) {
+  const subject = await loadSubject(actor, id);
+
+  const { token, expiresAt } = await createResetToken(subject.id);
+
+  return {
+    staff: { id: subject.id, email: subject.email },
+    token,
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
+/**
+ * Transfer ownership — promote another active staff member to OWNER and step
+ * the caller down to MANAGER, atomically.
+ *
+ * ─── WHY THIS CANNOT GO THROUGH `updateStaff` ─────────────────────────
+ * `updateStaff`'s `isSelf` branch hard-refuses changing your own role, by
+ * design (rule 2 — no self-elevation). That rule is correct for every OTHER
+ * path into this file, but it also makes "hand off the account" impossible
+ * for the one role for whom nobody outranks them enough to do it on their
+ * behalf. This function is the one deliberate, narrow exception: it accepts
+ * exactly one shape of self-change (OWNER → MANAGER, paired with promoting
+ * someone else to OWNER in the SAME transaction) and nothing else, so it
+ * cannot be repurposed into a general self-role-change escape hatch.
+ *
+ * ─── WHY IT REQUIRES THE CURRENT PASSWORD ─────────────────────────────
+ * Same reasoning as `changeOwnPassword`: an already-issued session token is
+ * the only thing vouching for the caller, and this is the single most
+ * consequential write in the app. Re-proving the password is the one thing
+ * standing between "I left my laptop unlocked" and losing the account.
+ *
+ * ─── RULE 4 STILL HOLDS ────────────────────────────────────────────────
+ * The target is promoted BEFORE the actor is demoted (same transaction, but
+ * order matters for the invariant this file is built around): there is never
+ * a moment with fewer active owners than there were before the call, and if
+ * anything else in the transaction fails, neither write commits.
+ */
+export async function transferOwnership(
+  actor: Actor,
+  targetId: string,
+  currentPassword: string,
+): Promise<{ newOwner: ReturnType<typeof serialise>; self: ReturnType<typeof serialise> }> {
+  if (actor.role !== StaffRole.OWNER) {
+    throw AppError.forbidden('Only an owner can transfer ownership');
+  }
+
+  if (targetId === actor.id) {
+    throw AppError.badRequest('Choose someone else to transfer ownership to', {
+      field: 'targetId',
+    });
+  }
+
+  const [self, target] = await Promise.all([
+    prisma.user.findUniqueOrThrow({
+      where: { id: actor.id },
+      select: { id: true, passwordHash: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: targetId },
+      select: { id: true, role: true, isActive: true },
+    }),
+  ]);
+
+  if (!target) throw AppError.notFound('Staff member not found');
+  if (!target.isActive) {
+    throw AppError.badRequest('Cannot transfer ownership to a deactivated account', {
+      field: 'targetId',
+    });
+  }
+
+  const matches = await bcrypt.compare(currentPassword, self.passwordHash);
+  if (!matches) {
+    throw AppError.badRequest('Current password is incorrect', {
+      field: 'currentPassword',
+    });
+  }
+
+  const now = new Date();
+
+  const [newOwnerRow, selfRow] = await prisma.$transaction([
+    prisma.user.update({
+      where: { id: target.id },
+      data: { role: StaffRole.OWNER, tokenVersion: { increment: 1 } },
+      select: STAFF_FIELDS,
+    }),
+    prisma.user.update({
+      where: { id: actor.id },
+      data: { role: StaffRole.MANAGER, tokenVersion: { increment: 1 } },
+      select: STAFF_FIELDS,
+    }),
+    // Both accounts' existing sessions are now signed with a stale role
+    // claim — revoked the same way `updateStaff`'s role-change branch does.
+    prisma.session.updateMany({
+      where: { userId: { in: [target.id, actor.id] }, revokedAt: null },
+      data: { revokedAt: now },
+    }),
+  ]);
+
+  return { newOwner: serialise(newOwnerRow), self: serialise(selfRow) };
 }

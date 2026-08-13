@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api';
+import { apiDownload, apiFetch, apiUpload } from '@/lib/api';
 
 /**
  * Client for the schema-driven resource engine (`/api/v1/r/...`).
@@ -44,7 +44,9 @@ export interface FieldConfig {
   readOnly?: boolean;
   options?: string[];
   relation?: { resource: string; labelField: string };
-  currency?: string;
+  /** Shown when an existing non-empty value is being changed, never on
+   *  first-time entry or create. See admin.config.ts's own comment. */
+  changeWarning?: string;
 }
 
 export interface ResourceSchema {
@@ -161,6 +163,86 @@ export async function fetchRelationOptions(
     `/r/${resource}/_relations/${field}${query}`,
   );
   return body.options;
+}
+
+/**
+ * Downloads every row matching the given search/filters as CSV (B3.3, export
+ * centre). Same allowlisted query shape as `fetchRows`, minus pagination —
+ * the server walks the whole matching set, capped at 10,000 rows, and the
+ * response header names the real filename, which is why the fallback below is
+ * only ever a backstop.
+ */
+export async function exportResourceCsv(
+  resource: string,
+  params: Pick<ResourceListParams, 'search' | 'sort' | 'dir' | 'filters'> = {},
+): Promise<void> {
+  const query = new URLSearchParams();
+  const { filters, ...controls } = params;
+
+  for (const [key, value] of Object.entries(controls)) {
+    if (value !== undefined && value !== null && value !== '') {
+      query.set(key, String(value));
+    }
+  }
+  for (const [key, value] of Object.entries(filters ?? {})) {
+    if (value !== '') query.set(key, value);
+  }
+
+  await apiDownload(`/r/${resource}/export?${query.toString()}`, `${resource}.csv`);
+}
+
+/** Downloads a blank CSV naming the columns import will read back. */
+export async function downloadImportTemplate(resource: string): Promise<void> {
+  await apiDownload(
+    `/r/${resource}/import-template`,
+    `${resource}-import-template.csv`,
+  );
+}
+
+export interface ImportRowError {
+  row: number;
+  field: string | null;
+  message: string;
+}
+
+export interface ImportPreview {
+  totalRows: number;
+  validRows: number;
+  errors: ImportRowError[];
+}
+
+export interface ImportResult extends ImportPreview {
+  imported: number;
+}
+
+/**
+ * Validates the file WITHOUT writing anything — always called first by the
+ * import flow to build the preview table. Re-run by `applyResourceImport`
+ * server-side rather than trusted as still-true by the time Apply is
+ * clicked, so this function's job here is only ever to drive the preview UI.
+ */
+export async function previewResourceImport(
+  resource: string,
+  file: File,
+): Promise<ImportPreview> {
+  const formData = new FormData();
+  formData.set('file', file);
+  return apiUpload<ImportPreview>(`/r/${resource}/import?dryRun=true`, formData);
+}
+
+/**
+ * Commits the import. All-or-nothing server-side: if the file has even one
+ * invalid row, NOTHING is written and the response's `errors` explain why —
+ * same shape the preview returns, so a failed apply can reuse the preview
+ * table's rendering rather than needing a second error UI.
+ */
+export async function applyResourceImport(
+  resource: string,
+  file: File,
+): Promise<ImportResult> {
+  const formData = new FormData();
+  formData.set('file', file);
+  return apiUpload<ImportResult>(`/r/${resource}/import`, formData);
 }
 
 /** Columns shown in the list view. `inList: false` opts a field out. */

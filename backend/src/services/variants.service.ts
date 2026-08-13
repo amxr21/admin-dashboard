@@ -170,10 +170,28 @@ export async function listVariantMovements(
     prisma.stockMovement.count({ where: { variantId } }),
   ]);
 
+  // Same batched, read-time resolution as the product-level movement log
+  // (inventory.service.ts's `listMovements`) — `actorId` is a plain id, not
+  // a relation, so the trail survives the staff member being deleted; the
+  // name is a display convenience resolved here, not evidence snapshotted
+  // at write time.
+  const actorIds = [
+    ...new Set(movements.map((m) => m.actorId).filter((id): id is string => id !== null)),
+  ];
+  const actors =
+    actorIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: actorIds } },
+          select: { id: true, name: true, email: true },
+        })
+      : [];
+  const actorNames = new Map(actors.map((actor) => [actor.id, actor.name ?? actor.email]));
+
   return {
     variant,
     movements: movements.map((movement) => ({
       ...movement,
+      actorName: movement.actorId ? (actorNames.get(movement.actorId) ?? null) : null,
       createdAt: movement.createdAt.toISOString(),
     })),
     total,

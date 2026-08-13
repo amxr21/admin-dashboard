@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -50,7 +51,6 @@ interface StaffSheetProps {
   onSaved: (message: string) => void;
 }
 
-const MIN_PASSWORD = 12;
 
 export function StaffSheet({
   member,
@@ -63,7 +63,9 @@ export function StaffSheet({
   const t = useTranslations('staff');
   const tRole = useTranslations('staffRole');
   const translateError = useTranslatedApiError();
-  const { editPanelMode } = useAppSettings();
+  // The LIVE `security.minPasswordLength`, not a hardcoded 12 — the server
+  // enforces it and a local constant drifts as soon as an owner changes it.
+  const { editPanelMode, minPasswordLength: MIN_PASSWORD } = useAppSettings();
 
   const isEdit = member !== null;
   const isSelf = isEdit && member.id === actorId;
@@ -73,6 +75,10 @@ export function StaffSheet({
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<StaffRole>('SUPPORT');
   const [isActive, setIsActive] = useState(true);
+  // Calendar date only — the picker works in whole days. Sent as end-of-day
+  // UTC on that date, the same "inclusive to-date" convention the audit
+  // route's own date-range filter uses.
+  const [accessExpiresAt, setAccessExpiresAt] = useState('');
   const [password, setPassword] = useState('');
 
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +93,7 @@ export function StaffSheet({
     setPhone(member?.phone ?? '');
     setRole(member?.role ?? 'SUPPORT');
     setIsActive(member?.isActive ?? true);
+    setAccessExpiresAt(member?.accessExpiresAt ? member.accessExpiresAt.slice(0, 10) : '');
     setPassword('');
     setError(null);
     setEmailError(null);
@@ -111,11 +118,15 @@ export function StaffSheet({
           phone: phone.trim(),
         };
 
-        // Rule 2, mirrored: never send your own role or active flag. The
-        // server refuses both, so sending them would only produce an error.
+        // Rule 2, mirrored: never send your own role, active flag, or access
+        // expiry — same self-lockout risk as the other two, and the server
+        // has no special case for this one either.
         if (!isSelf) {
           payload.role = role;
           payload.isActive = isActive;
+          payload.accessExpiresAt = accessExpiresAt
+            ? `${accessExpiresAt}T23:59:59.999Z`
+            : null;
         }
 
         const saved = await updateStaff(member.id, payload);
@@ -235,7 +246,7 @@ export function StaffSheet({
                 aria-describedby="staff-password-hint"
               />
               <p id="staff-password-hint" className="text-muted-foreground text-sm">
-                {t('form.passwordHint')}
+                {t('form.passwordHint', { min: MIN_PASSWORD })}
               </p>
             </div>
           ) : null}
@@ -271,6 +282,18 @@ export function StaffSheet({
                 onCheckedChange={(checked) => setIsActive(checked === true)}
               />
               <Label htmlFor="staff-active">{t('form.fields.isActive')}</Label>
+            </div>
+          ) : null}
+
+          {isEdit && !isSelf ? (
+            <div className="space-y-2">
+              <Label htmlFor="staff-access-expires">{t('form.fields.accessExpiresAt')}</Label>
+              <DatePicker
+                id="staff-access-expires"
+                value={accessExpiresAt}
+                onChange={setAccessExpiresAt}
+              />
+              <p className="text-muted-foreground text-sm">{t('form.accessExpiresHint')}</p>
             </div>
           ) : null}
 
