@@ -46,7 +46,7 @@ export function CourierWorkloadSnapshotView() {
       {isLoading ? (
         <Skeleton className="h-64 w-full" />
       ) : error ? (
-        <ErrorSection title={tStates('errorTitle')} description={error} onRetry={() => void load()} />
+        <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : (
         <>
           <div className="flex flex-wrap gap-3">
