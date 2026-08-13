@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
+import { Link } from '@/i18n/navigation';
 import { KeyRound, Pencil, Plus, Search, ShieldOff } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -23,17 +24,34 @@ import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useUrlState } from '@/hooks/useUrlState';
+import { FilterChips, type AppliedFilter } from '@/components/filter-chips';
+import { RowActions, type RowAction } from '@/components/row-actions';
+import { TablePagination } from '@/components/table-pagination';
+import { DensityToggle } from '@/components/density-toggle';
+import { getGlobalDensity } from '@/lib/apply-appearance';
+import { useTableDensity } from '@/hooks/useTableDensity';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import {
+  COURIER_STATUSES,
   fetchCouriers,
   issueAccessCode,
   revokeAccessCode,
   type Courier,
   type CourierListResult,
+  type CourierStatus,
 } from '@/lib/delivery-api';
+
+const ALL = 'all';
 
 /**
  * Couriers, and the credential each one signs in with.
@@ -42,18 +60,38 @@ import {
  * one is an action whose response contains a secret that exists exactly once.
  */
 
+/** Defaults are omitted from the URL, so an unfiltered list has a clean one. */
+const URL_DEFAULTS = { page: '1', search: '', status: ALL, pageSize: '' };
+
 export function CouriersTable() {
   const t = useTranslations('delivery');
+  const tStatus = useTranslations('deliveryStaffStatus');
   const tTable = useTranslations('table');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
   const { tablePageSize } = useAppSettings();
 
+  /** Per-table density override — see resource-table.tsx / useTableDensity.ts. */
+  const { override: densityOverride, setOverride: setDensityOverride } =
+    useTableDensity('couriers');
+
   const [result, setResult] = useState<CourierListResult | null>(null);
-  const [page, setPage] = useState(1);
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+
+  /** Page, search and status live in the URL so a filtered view is shareable. */
+  const { values, setValues } = useUrlState(URL_DEFAULTS);
+
+  const page = Math.max(1, Number(values.page) || 1);
+
+  /** Overrides `dashboard.tablePageSize` for this view only — see resource-table.tsx. */
+  const urlPageSize = Number(values.pageSize);
+  const effectivePageSize =
+    Number.isFinite(urlPageSize) && urlPageSize > 0 ? urlPageSize : tablePageSize;
+  const search = values.search ?? '';
+  const status = values.status ?? ALL;
+
+  // Holds raw keystrokes; only the debounced value reaches the URL.
+  const [searchInput, setSearchInput] = useState(search);
   const [error, setError] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<Courier | null>(null);
@@ -67,7 +105,12 @@ export function CouriersTable() {
 
     try {
       setResult(
-        await fetchCouriers({ page, pageSize: tablePageSize, ...(search ? { search } : {}) }),
+        await fetchCouriers({
+          page,
+          pageSize: effectivePageSize,
+          ...(search ? { search } : {}),
+          ...(status !== ALL ? { status: status as CourierStatus } : {}),
+        }),
       );
     } catch (caught) {
       setError(translateError(caught));
@@ -75,20 +118,27 @@ export function CouriersTable() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, search, tablePageSize, translateError]);
+  }, [page, search, status, effectivePageSize, translateError]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  /**
+   * Debounced so typing doesn't fire a request — or a navigation — per
+   * keystroke. The equality guard prevents a redundant write on mount, where
+   * the effect would otherwise push back the same value it just read.
+   */
   useEffect(() => {
+    const trimmed = searchInput.trim();
+    if (trimmed === search) return;
+
     const timer = setTimeout(() => {
-      setSearch(searchInput.trim());
-      setPage(1);
+      setValues({ search: trimmed, page: null });
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchInput]);
+  }, [searchInput, search, setValues]);
 
   async function issue(courier: Courier) {
     try {
@@ -130,7 +180,12 @@ export function CouriersTable() {
       header: t('columns.courier'),
       cell: (courier) => (
         <div className="min-w-0">
-          <p className="truncate font-medium">{courier.name}</p>
+          <Link
+            href={`/admin/delivery/${courier.id}`}
+            className="hover:text-primary block truncate font-medium underline-offset-4 hover:underline"
+          >
+            {courier.name}
+          </Link>
           {courier.phone ? (
             <p className="text-muted-foreground force-ltr truncate text-xs">
               {courier.phone}
@@ -176,53 +231,50 @@ export function CouriersTable() {
       id: '__actions',
       header: <span className="sr-only">{t('columns.actions')}</span>,
       align: 'end',
-      cell: (courier) => (
-        <div className="flex justify-end gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={t('actions.edit', { name: courier.name })}
-                onClick={() => setEditing(courier)}
-              >
-                <Pencil aria-hidden />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('actions.edit', { name: courier.name })}</TooltipContent>
-          </Tooltip>
+      cell: (courier) => {
+        const rowActions: RowAction[] = [
+          {
+            id: 'edit',
+            label: t('actions.edit', { name: courier.name }),
+            icon: Pencil,
+            onClick: () => setEditing(courier),
+          },
+          ...(courier.hasAccessCode
+            ? [
+                {
+                  id: 'revoke',
+                  label: t('actions.revoke', { name: courier.name }),
+                  icon: ShieldOff,
+                  variant: 'destructive' as const,
+                  onClick: () => setConfirmRevoke(courier),
+                },
+              ]
+            : []),
+        ];
 
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label={
-              courier.hasAccessCode
-                ? t('actions.reissue', { name: courier.name })
-                : t('actions.issue', { name: courier.name })
-            }
-            onClick={() => void issue(courier)}
-          >
-            <KeyRound aria-hidden />
-            {courier.hasAccessCode ? t('actions.reissueShort') : t('actions.issueShort')}
-          </Button>
+        return (
+          <div className="flex justify-end gap-1">
+            {/* Text-labeled, so it stays outside RowActions same as staff's
+                unlock button — "Issue" vs "Reissue" is the row's most
+                important state and reads badly as a bare icon. */}
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={
+                courier.hasAccessCode
+                  ? t('actions.reissue', { name: courier.name })
+                  : t('actions.issue', { name: courier.name })
+              }
+              onClick={() => void issue(courier)}
+            >
+              <KeyRound aria-hidden />
+              {courier.hasAccessCode ? t('actions.reissueShort') : t('actions.issueShort')}
+            </Button>
 
-          {courier.hasAccessCode ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t('actions.revoke', { name: courier.name })}
-                  onClick={() => setConfirmRevoke(courier)}
-                >
-                  <ShieldOff aria-hidden />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t('actions.revoke', { name: courier.name })}</TooltipContent>
-            </Tooltip>
-          ) : null}
-        </div>
-      ),
+            <RowActions actions={rowActions} />
+          </div>
+        );
+      },
     },
   ];
 
@@ -244,6 +296,26 @@ export function CouriersTable() {
               className="ps-9"
             />
           </div>
+        </div>
+
+        <div className="w-44 space-y-2">
+          <Label htmlFor="courier-status">{t('columns.status')}</Label>
+          <Select
+            value={status}
+            onValueChange={(value) => setValues({ status: value === ALL ? null : value, page: null })}
+          >
+            <SelectTrigger id="courier-status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>{t('filters.allStatuses')}</SelectItem>
+              {COURIER_STATUSES.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {tStatus(value)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <Button onClick={() => setIsCreating(true)}>
@@ -287,6 +359,37 @@ export function CouriersTable() {
         </AlertDialogContent>
       </AlertDialog>
 
+      <div className="flex items-center justify-between gap-3">
+        <FilterChips
+          filters={
+            [
+              search
+                ? {
+                    id: 'search',
+                    label: `${t('search.label')}: ${search}`,
+                    onRemove: () => {
+                      setSearchInput('');
+                      setValues({ search: null, page: null });
+                    },
+                  }
+                : null,
+              status !== ALL
+                ? {
+                    id: 'status',
+                    label: `${t('columns.status')}: ${tStatus(status)}`,
+                    onRemove: () => setValues({ status: null, page: null }),
+                  }
+                : null,
+            ].filter((filter): filter is AppliedFilter => filter !== null)
+          }
+        />
+        <DensityToggle
+          value={densityOverride ?? getGlobalDensity()}
+          onChange={setDensityOverride}
+          className="ms-auto shrink-0"
+        />
+      </div>
+
       <DataTable
         data={result?.couriers ?? []}
         columns={columns}
@@ -294,6 +397,7 @@ export function CouriersTable() {
         isLoading={isLoading}
         error={error}
         onRetry={() => void load()}
+        density={densityOverride ?? undefined}
         emptyMessage={
           search ? (
             tTable('noResults')
@@ -306,35 +410,17 @@ export function CouriersTable() {
         }
       />
 
-      {result && result.totalPages > 1 ? (
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-muted-foreground text-sm tabular-nums">
-            {t('total', { count: result.total })}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1 || isLoading}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-            >
-              {t('pagination.previous')}
-            </Button>
-            <span className="text-sm tabular-nums">
-              {tTable('pageOf', { page, total: result.totalPages })}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= result.totalPages || isLoading}
-              onClick={() =>
-                setPage((current) => Math.min(result.totalPages, current + 1))
-              }
-            >
-              {t('pagination.next')}
-            </Button>
-          </div>
-        </div>
+      {result ? (
+        <TablePagination
+          page={page}
+          totalPages={result.totalPages}
+          total={result.total}
+          pageSize={effectivePageSize}
+          isLoading={isLoading}
+          onPageChange={(next) => setValues({ page: String(next) })}
+          onPageSizeChange={(next) => setValues({ pageSize: String(next), page: null })}
+          totalLabel={t('total', { count: result.total })}
+        />
       ) : null}
 
       <CourierSheet

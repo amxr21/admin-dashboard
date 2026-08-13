@@ -62,7 +62,7 @@ export function DeliveryCycleTimeView() {
       {isLoading ? (
         <Skeleton className="h-40 w-full" />
       ) : error ? (
-        <ErrorSection title={tStates('errorTitle')} description={error} onRetry={() => void load()} />
+        <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="bg-card rounded-lg border p-4">

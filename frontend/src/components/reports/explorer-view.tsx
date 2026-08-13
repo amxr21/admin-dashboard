@@ -192,7 +192,7 @@ export function ExplorerView() {
       {isLoading ? (
         <Skeleton className="h-96 w-full" />
       ) : error ? (
-        <ErrorSection title={tStates('errorTitle')} description={error} onRetry={() => void load()} />
+        <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : rows.length === 0 ? (
         <EmptyState title={t('empty.title')} description={t('empty.description')} />
       ) : (

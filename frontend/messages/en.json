@@ -834,6 +834,9 @@
       "label": "Search",
       "placeholder": "Name, phone or zone"
     },
+    "filters": {
+      "allStatuses": "All statuses"
+    },
     "pagination": {
       "previous": "Previous",
       "next": "Next"
@@ -888,6 +891,45 @@
         "region": "Region",
         "country": "Country",
         "status": "Status"
+      }
+    },
+    "detail": {
+      "back": "Back to couriers",
+      "region": "Region",
+      "country": "Country",
+      "phone": "Phone",
+      "email": "Email",
+      "vehicle": "Vehicle",
+      "plateNumber": "Plate number",
+      "recentAssignments": "Recent assignments",
+      "noAssignments": {
+        "title": "No assignments yet",
+        "description": "Orders assigned to this courier will appear here."
+      },
+      "columns": {
+        "order": "Order",
+        "deliveryStatus": "Delivery status",
+        "assignedAt": "Assigned"
+      },
+      "dangerZone": {
+        "title": "Danger zone",
+        "description": "Actions here affect this courier's ability to work — think before confirming.",
+        "deactivate": {
+          "title": "Deactivate courier",
+          "description": "Stops them signing in to the courier portal and receiving new deliveries. Their access code is kept, not revoked — see the roster if you need to revoke it too.",
+          "action": "Deactivate",
+          "confirmPhrase": "DEACTIVATE",
+          "confirm": {
+            "title": "Deactivate {name}?",
+            "descriptionWithActive": "{name} has {count, plural, one {# active delivery} other {# active deliveries}} right now. Deactivating does not reassign or cancel them.",
+            "description": "{name} will no longer be able to sign in to the courier portal or be assigned new deliveries.",
+            "typePhrase": "Type {phrase} to confirm.",
+            "cancel": "Cancel",
+            "action": "Deactivate"
+          },
+          "done": "{name} has been deactivated."
+        },
+        "alreadyInactive": "This courier is already deactivated."
       }
     }
   },
@@ -1020,6 +1062,59 @@
       "totalKeys": "{count} total interface text keys.",
       "missingFromAr": "{count, plural, one {# key} other {# keys}} missing from Arabic",
       "missingFromEn": "{count, plural, one {# key} other {# keys}} missing from English"
+    },
+    "dangerZone": {
+      "title": "Danger zone",
+      "description": "Irreversible actions. Each one requires typing a confirmation phrase.",
+      "deactivate": {
+        "title": "Deactivate store",
+        "description": "Blocks writes for everyone except owners and developers.",
+        "descriptionOn": "The store is currently deactivated. Only owners and developers can make changes.",
+        "turnOn": "Deactivate",
+        "turnOff": "Reactivate store",
+        "activated": "Store deactivated.",
+        "deactivated": "Store reactivated.",
+        "confirmPhrase": "DEACTIVATE",
+        "confirm": {
+          "title": "Deactivate the store?",
+          "description": "Every staff member except owners and developers will be blocked from making changes until this is turned back off.",
+          "typePhrase": "Type {phrase} to confirm",
+          "cancel": "Cancel",
+          "action": "Deactivate"
+        }
+      },
+      "transferOwnership": {
+        "title": "Transfer ownership",
+        "description": "Promote another staff member to owner and step yourself down to manager.",
+        "action": "Transfer ownership",
+        "targetLabel": "New owner",
+        "targetPlaceholder": "Choose a staff member",
+        "passwordLabel": "Your current password",
+        "transferred": "Ownership transferred. Signing you out.",
+        "confirmPhrase": "TRANSFER",
+        "confirm": {
+          "title": "Transfer ownership?",
+          "description": "You will immediately become a manager and lose owner access. This cannot be undone by yourself — only the new owner could transfer it back.",
+          "typePhrase": "Type {phrase} to confirm",
+          "cancel": "Cancel",
+          "action": "Transfer ownership"
+        }
+      },
+      "deleteTestData": {
+        "title": "Delete test data",
+        "description": "Permanently removes every demo-seeded row. Real data is never touched.",
+        "action": "Delete test data",
+        "deleted": "Removed {count} demo rows.",
+        "confirmPhrase": "DELETE",
+        "confirm": {
+          "title": "Delete all test data?",
+          "counting": "Counting demo rows…",
+          "description": "This will permanently remove {count} demo-tagged rows. Nothing without the demo tag is ever touched. This cannot be undone.",
+          "typePhrase": "Type {phrase} to confirm",
+          "cancel": "Cancel",
+          "action": "Delete"
+        }
+      }
     },
     "account": {
       "title": "Your account",

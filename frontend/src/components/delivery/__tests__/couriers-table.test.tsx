@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createElement, useEffect, useReducer, type ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 
 import { render, screen, waitFor } from '@/test/render';
@@ -14,6 +15,60 @@ import type { Courier } from '@/lib/delivery-api';
  * readable form exactly once, so the failure modes are: showing it where it
  * shouldn't be, losing it silently, or implying it can be read back.
  */
+
+/**
+ * A STATEFUL stand-in for the URL bar — same shape as orders-table.test.tsx's,
+ * needed for the same reason: the global `vitest.setup.ts` mock of
+ * `next/navigation` returns a fresh, empty `URLSearchParams` on every call
+ * and a `router.replace` that does nothing, so a status filter applied via
+ * `useUrlState` would write the value and then read back "no filter" —
+ * exactly the round trip B4.4's status filter depends on.
+ */
+const urlState = vi.hoisted(() => {
+  let current = new URLSearchParams();
+  const listeners = new Set<() => void>();
+
+  return {
+    get: () => current,
+    reset: () => {
+      current = new URLSearchParams();
+    },
+    write: (href: string) => {
+      current = new URLSearchParams(href.split('?')[1] ?? '');
+      for (const listener of listeners) listener();
+    },
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+});
+
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ href, children, ...props }: Record<string, unknown>) =>
+    createElement('a', { href, ...props }, children as ReactNode),
+  useRouter: () => ({
+    push: (href: string) => urlState.write(href),
+    replace: (href: string) => urlState.write(href),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  usePathname: () => '/admin/delivery',
+  redirect: vi.fn(),
+  getPathname: ({ href }: { href: string }) => href,
+}));
+
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => {
+    const [, force] = useReducer((count: number) => count + 1, 0);
+    useEffect(() => urlState.subscribe(force), []);
+    return urlState.get();
+  },
+}));
 
 const fetchCouriers = vi.hoisted(() => vi.fn());
 const issueAccessCode = vi.hoisted(() => vi.fn());
@@ -54,6 +109,9 @@ function resolveWith(couriers: Courier[]) {
 }
 
 beforeEach(() => {
+  // Filters persist in the URL now, so without this a status applied in one
+  // test would leak into the next one's initial fetch.
+  urlState.reset();
   fetchCouriers.mockReset();
   issueAccessCode.mockReset();
   revokeAccessCode.mockReset();
@@ -208,6 +266,38 @@ describe('revoking', () => {
     await screen.findByText('Sami');
 
     expect(screen.queryByRole('button', { name: /revoke sami/i })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * B4.4 — `status` was typed in `CourierListParams` and accepted by the
+ * backend, but the table never sent it and had no control to set it.
+ */
+describe('status filter', () => {
+  it('does not send a status filter by default', async () => {
+    resolveWith([makeCourier()]);
+    render(<CouriersTable />);
+
+    await screen.findByText('Sami');
+
+    await waitFor(() => expect(fetchCouriers).toHaveBeenCalled());
+    const call = fetchCouriers.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(call).not.toHaveProperty('status');
+  });
+
+  it('sends the chosen status once picked', async () => {
+    resolveWith([makeCourier()]);
+    render(<CouriersTable />);
+
+    await screen.findByText('Sami');
+    await userEvent.click(screen.getByRole('combobox', { name: /status/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /^inactive$/i }));
+
+    await waitFor(() =>
+      expect(fetchCouriers).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: 'INACTIVE' }),
+      ),
+    );
   });
 });
 
