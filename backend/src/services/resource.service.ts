@@ -41,16 +41,7 @@ import { audit, diff } from './audit.service.js';
  * someone adds a config entry, which is exactly the hole the allowlist exists
  * to close. Adding a resource means adding a line here, on purpose.
  */
-const DELEGATES = {
-  category: prisma.category,
-  customer: prisma.customer,
-  discount: prisma.discount,
-  notification: prisma.notification,
-  review: prisma.review,
-  product: prisma.product,
-} as const;
-
-type DelegateName = keyof typeof DELEGATES;
+type DelegateName = 'category' | 'customer' | 'discount' | 'notification' | 'review' | 'product';
 
 /** Minimal shape shared by every Prisma model delegate we use. */
 interface ModelDelegate {
@@ -62,15 +53,46 @@ interface ModelDelegate {
   delete: (args: unknown) => Promise<Record<string, unknown>>;
 }
 
-function delegateFor(config: ResourceConfig): ModelDelegate {
-  const delegate = DELEGATES[config.model as DelegateName] as ModelDelegate | undefined;
+/** Satisfied by both the top-level `prisma` client and a `$transaction`
+ *  callback's `tx` — the standard Prisma type for "either works here". */
+type PrismaClientOrTx = typeof prisma | Prisma.TransactionClient;
+
+function delegatesFrom(client: PrismaClientOrTx): Record<DelegateName, ModelDelegate> {
+  return {
+    category: client.category,
+    customer: client.customer,
+    discount: client.discount,
+    notification: client.notification,
+    review: client.review,
+    product: client.product,
+  } as unknown as Record<DelegateName, ModelDelegate>;
+}
+
+/**
+ * Resource → Prisma delegate.
+ *
+ * Explicit rather than `(client as any)[model]`. An index into the client by
+ * a config string would silently reach ANY model — including `user` — the
+ * moment someone adds a config entry, which is exactly the hole the
+ * allowlist exists to close. Adding a resource means adding a line to
+ * `delegatesFrom` above, on purpose.
+ *
+ * `client` defaults to the top-level `prisma` — every existing call site
+ * keeps working unchanged — but import's atomic apply passes a
+ * `$transaction` callback's `tx` here instead, so a mid-batch failure rolls
+ * every row in that batch back together rather than leaving a partial import
+ * committed.
+ */
+function delegateFor(config: ResourceConfig, client: PrismaClientOrTx = prisma): ModelDelegate {
+  const name = config.model as DelegateName;
+  const delegate = delegatesFrom(client)[name];
 
   if (!delegate) {
     // A config entry naming a model with no delegate is a programming error,
     // not a client error — fail loudly rather than 404 and look like a typo.
     throw new Error(
       `admin.config.ts declares model "${config.model}" for resource "${config.resource}", ` +
-        'but resource.service.ts has no delegate for it. Add one to DELEGATES.',
+        'but resource.service.ts has no delegate for it. Add it to delegatesFrom.',
     );
   }
 
@@ -396,7 +418,7 @@ async function buildWriteData(
     data[field.name] =
       field.type === 'multiRelation'
         ? await coerceMultiRelationValue(field, body[field.name], { partial })
-        : coerceWriteValue(field, body[field.name]);
+        : await coerceWriteValue(field, body[field.name]);
   }
 
   if (Object.keys(data).length === 0) {
@@ -462,12 +484,53 @@ async function coerceMultiRelationValue(
   return partial ? { set: refs } : { connect: refs };
 }
 
-function coerceWriteValue(field: FieldConfig, value: unknown): unknown {
+/**
+ * A single `relation` field's value is written straight as the scalar FK
+ * column (`categoryId`, not a nested `connect`) — unlike `multiRelation`,
+ * there is no join table here, just a plain string column with a foreign
+ * key constraint pointing at it.
+ *
+ * The existence check exists for the same reason `coerceMultiRelationValue`
+ * has one: without it, a bad id reaches Prisma's own FK constraint and
+ * surfaces as an unhandled 500 that leaks a raw database error, instead of
+ * a 400 naming the field the way every other type-mismatch on this endpoint
+ * already does.
+ */
+async function coerceRelationValue(field: FieldConfig, value: unknown): Promise<string> {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw AppError.badRequest(`"${field.label}" must be an id`, { field: field.name });
+  }
+
+  const relation = field.relation;
+  if (!relation) {
+    throw new Error(`Field "${field.name}" is relation but declares no relation target.`);
+  }
+
+  const target = requireResource(relation.resource);
+  const found = await delegateFor(target).findUnique({
+    where: { id: value },
+    select: { id: true },
+  });
+
+  if (!found) {
+    throw AppError.badRequest(`"${field.label}" references unknown ${relation.resource}`, {
+      field: field.name,
+    });
+  }
+
+  return value;
+}
+
+async function coerceWriteValue(field: FieldConfig, value: unknown): Promise<unknown> {
   if (value === null || value === '') {
     if (field.required) {
       throw AppError.badRequest(`"${field.label}" is required`, { field: field.name });
     }
     return null;
+  }
+
+  if (field.type === 'relation') {
+    return coerceRelationValue(field, value);
   }
 
   switch (field.type) {
@@ -672,6 +735,11 @@ export async function updateResourceRow(
       });
     }
 
+    // Fire-and-forget, same discipline as audit() — a hook failure (e.g.
+    // products' redirect recording) must never make an update that already
+    // committed look like it failed to the caller.
+    void hooksFor(config.resource)?.afterUpdate?.(id, before, after, req);
+
     return after;
   } catch (error) {
     throw translateWriteError(error, config);
@@ -726,6 +794,48 @@ export async function deleteResourceRow(
   return { row: serializeRow(row, config), action: 'deleted' };
 }
 
+/**
+ * A page is capped at MAX_PAGE_SIZE; an export is not a page. Capped instead
+ * at a fixed ceiling so a resource with an unexpectedly large table degrades
+ * to "truncated, told you so" rather than an unbounded query.
+ */
+export const RESOURCE_EXPORT_LIMIT = 10_000;
+
+export interface ResourceExportResult {
+  rows: Record<string, unknown>[];
+  truncated: boolean;
+}
+
+/**
+ * All rows matching the same `search`/`filters` a list view would use, for
+ * CSV export — same `where`/`select`/label-attachment as `listResource`, just
+ * without pagination. Reusing `buildWhere` means an export can never see a
+ * column or a filter the list view couldn't already reach.
+ */
+export async function listResourceForExport(
+  config: ResourceConfig,
+  params: Pick<ListParams, 'search' | 'filters' | 'sort' | 'dir'>,
+): Promise<ResourceExportResult> {
+  const delegate = delegateFor(config);
+  const where = buildWhere(config, params);
+  const orderBy = buildOrderBy(config, params);
+
+  const rows = await delegate.findMany({
+    where,
+    orderBy,
+    take: RESOURCE_EXPORT_LIMIT + 1,
+    select: selectFor(config),
+  });
+
+  const truncated = rows.length > RESOURCE_EXPORT_LIMIT;
+  const page = truncated ? rows.slice(0, RESOURCE_EXPORT_LIMIT) : rows;
+
+  const serialized = page.map((row) => serializeRow(row, config));
+  await attachRelationLabels(config, serialized);
+
+  return { rows: serialized, truncated };
+}
+
 /** Options for a relation picker. Capped — a picker is not a data export. */
 export async function relationOptions(
   config: ResourceConfig,
@@ -752,4 +862,274 @@ export async function relationOptions(
     value: String(row.id),
     label: String(row[labelField] ?? row.id),
   }));
+}
+
+/**
+ * CSV import.
+ *
+ * ─── WHY THIS IS A SEPARATE COERCION LAYER, NOT A REUSE OF coerceWriteValue ──
+ * A JSON body already arrives typed: a boolean field is a real `boolean`, a
+ * number field a real `number`. A CSV cell is ALWAYS a string — `"true"`,
+ * `"19.99"`, `"3"` — so importing has to convert cell text into the exact
+ * shape `buildWriteData`/`coerceWriteValue` already validate, rather than
+ * duplicating that validation a second time. This function is the ONLY new
+ * validation surface; everything after it re-enters the same code path
+ * every other write in this app goes through.
+ *
+ * `relation` is the one type CSV cannot express as a bare value the way JSON
+ * can (a raw cuid means nothing to someone filling in a spreadsheet) — a
+ * template names the column by the TARGET's label field, and this layer
+ * resolves that label to an id via a batched pre-fetch (`buildRelationLookup`
+ * below), never one query per row.
+ */
+export const IMPORT_ROW_LIMIT = 2_000;
+
+export interface ImportRowError {
+  row: number;
+  field: string | null;
+  message: string;
+}
+
+export interface ImportPreview {
+  totalRows: number;
+  validRows: number;
+  errors: ImportRowError[];
+}
+
+export interface ImportResult extends ImportPreview {
+  imported: number;
+}
+
+/** Multi-relation cells are a single delimited string — the same separator
+ *  the CSV export doesn't need (multiRelation columns are skipped there) but
+ *  import does, since round-tripping a many-to-many picker through one
+ *  spreadsheet cell needs SOME delimiter, and a semicolon is the one least
+ *  likely to appear inside a label that a comma-based format doesn't already
+ *  reserve. */
+const MULTI_VALUE_SEPARATOR = ';';
+
+/** Builds `label -> id` (case-insensitive) for every relation/multiRelation
+ *  field an import might reference, in ONE query per target table rather
+ *  than one per cell — a 500-row import of a resource with two relation
+ *  columns is 2 queries, not 1,000. */
+async function buildRelationLookups(
+  config: ResourceConfig,
+): Promise<Map<string, Map<string, string>>> {
+  const lookups = new Map<string, Map<string, string>>();
+
+  const relationFields = writableFields(config).filter(
+    (field) => field.type === 'relation' || field.type === 'multiRelation',
+  );
+
+  for (const field of relationFields) {
+    const relation = field.relation;
+    if (!relation) continue;
+
+    const target = requireResource(relation.resource);
+    const labelField = relation.labelField;
+
+    const rows = await delegateFor(target).findMany({
+      select: { id: true, [labelField]: true },
+    });
+
+    const byLabel = new Map<string, string>();
+    for (const row of rows) {
+      const label = row[labelField];
+      if (typeof label === 'string') byLabel.set(label.toLowerCase(), String(row.id));
+    }
+    lookups.set(field.name, byLabel);
+  }
+
+  return lookups;
+}
+
+/**
+ * Converts one CSV row's string cells into the typed shape `buildWriteData`
+ * expects, resolving relation labels to ids along the way. Returns the
+ * converted body — validation itself (required-ness, type-correctness,
+ * enum membership) still happens inside `buildWriteData`, not here, so
+ * there is exactly one place that decides what a valid value looks like.
+ */
+function csvRowToBody(
+  config: ResourceConfig,
+  row: Record<string, string>,
+  lookups: Map<string, Map<string, string>>,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+
+  for (const field of writableFields(config)) {
+    if (!Object.prototype.hasOwnProperty.call(row, field.label)) continue;
+
+    const raw = row[field.label]?.trim() ?? '';
+
+    if (raw === '') {
+      // An empty cell means "not provided" for a create, same as an absent
+      // JSON key — NOT the literal empty string, which coerceWriteValue
+      // treats as an explicit clear (fine for update, wrong for a fresh row
+      // where "clear" has nothing to clear).
+      continue;
+    }
+
+    switch (field.type) {
+      case 'number':
+        body[field.name] = Number(raw);
+        break;
+
+      case 'boolean': {
+        const lower = raw.toLowerCase();
+        if (['true', '1', 'yes'].includes(lower)) body[field.name] = true;
+        else if (['false', '0', 'no'].includes(lower)) body[field.name] = false;
+        // Anything else is left as the raw string — coerceWriteValue's own
+        // "`must be true or false`" rejection is the one message the user
+        // sees, rather than this layer inventing a second wording for the
+        // same failure.
+        else body[field.name] = raw;
+        break;
+      }
+
+      case 'relation': {
+        const id = lookups.get(field.name)?.get(raw.toLowerCase());
+        // An unresolved label is passed through AS THE RAW TEXT rather than
+        // silently dropped — coerceRelationValue's existence check then
+        // rejects a value that resolves to nothing real, naming the field,
+        // instead of the row quietly landing with that relation unset.
+        body[field.name] = id ?? raw;
+        break;
+      }
+
+      case 'multiRelation': {
+        const labels = raw
+          .split(MULTI_VALUE_SEPARATOR)
+          .map((label) => label.trim())
+          .filter((label) => label.length > 0);
+        const table = lookups.get(field.name);
+        body[field.name] = labels.map((label) => table?.get(label.toLowerCase()) ?? label);
+        break;
+      }
+
+      default:
+        body[field.name] = raw;
+    }
+  }
+
+  return body;
+}
+
+/**
+ * Validates every row without writing anything — the dry-run half of
+ * import. Shared by the preview endpoint AND the apply endpoint (apply
+ * re-validates from scratch rather than trusting a client-supplied "this was
+ * already checked" flag, since the underlying data — a relation target, a
+ * unique column — could have changed in the gap between preview and apply).
+ */
+export async function previewResourceImport(
+  config: ResourceConfig,
+  rows: Record<string, string>[],
+): Promise<{ preview: ImportPreview; validated: Record<string, unknown>[] }> {
+  assertPermitted(config, 'create');
+
+  if (rows.length === 0) {
+    throw AppError.badRequest('The file has no data rows');
+  }
+  if (rows.length > IMPORT_ROW_LIMIT) {
+    throw AppError.badRequest(`Import is capped at ${IMPORT_ROW_LIMIT} rows per file`, {
+      max: IMPORT_ROW_LIMIT,
+      received: rows.length,
+    });
+  }
+
+  const lookups = await buildRelationLookups(config);
+  const errors: ImportRowError[] = [];
+  const validated: Record<string, unknown>[] = [];
+
+  for (const [index, row] of rows.entries()) {
+    // 1-indexed and counting the header line, so "row 2" in an error message
+    // is the same row a spreadsheet application would call row 2.
+    const rowNumber = index + 2;
+
+    try {
+      const body = csvRowToBody(config, row, lookups);
+      const data = await buildWriteData(config, body, { partial: false });
+      validated.push(data);
+    } catch (caught) {
+      if (caught instanceof AppError) {
+        const field =
+          typeof caught.details === 'object' &&
+          caught.details !== null &&
+          'field' in caught.details &&
+          typeof (caught.details as { field?: unknown }).field === 'string'
+            ? (caught.details as { field: string }).field
+            : null;
+        errors.push({ row: rowNumber, field, message: caught.message });
+      } else {
+        errors.push({ row: rowNumber, field: null, message: 'Unexpected error validating this row' });
+      }
+    }
+  }
+
+  return {
+    preview: { totalRows: rows.length, validRows: validated.length, errors },
+    validated,
+  };
+}
+
+/**
+ * Commits an import — ALL rows in one transaction, so "no silent partial
+ * writes" is a database guarantee, not a best-effort loop. If even one row
+ * that validated at preview time fails to write (a unique-constraint race,
+ * a relation deleted in the gap since preview), the whole transaction rolls
+ * back and reports zero imported rather than leaving the table with an
+ * unpredictable subset of the file applied.
+ */
+export async function applyResourceImport(
+  config: ResourceConfig,
+  rows: Record<string, string>[],
+  req: Request,
+): Promise<ImportResult> {
+  const { preview, validated } = await previewResourceImport(config, rows);
+
+  if (preview.errors.length > 0) {
+    // Apply refuses outright rather than importing the valid subset — a
+    // partial import of "47 of 50 rows" is a worse failure mode than
+    // refusing all 50, because the 47 that landed now silently disagree
+    // with whatever the other 3 were supposed to complete (e.g. a batch of
+    // discount codes meant to be redeemed together).
+    return { ...preview, imported: 0 };
+  }
+
+  const createdIds: string[] = [];
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const data of validated) {
+        const row = await delegateFor(config, tx).create({ data, select: selectFor(config) });
+        createdIds.push(String(row.id));
+      }
+    });
+  } catch (error) {
+    // A unique-constraint race (e.g. a duplicate barcode/SKU written by
+    // someone else in the gap since preview) must surface as the same clean
+    // 400 a single create/update gets, not a raw Prisma error escaping this
+    // transaction as an unhandled 500.
+    throw translateWriteError(error, config);
+  }
+
+  // One audit entry for the whole batch, not one per row — a reviewer
+  // asking "was this data bulk-imported" needs the fact and the count, not
+  // fifty near-identical rows crowding out everything else in the trail
+  // around it.
+  audit(req, {
+    action: `${config.resource}.import`,
+    entity: config.resource,
+    changes: { rowCount: createdIds.length, ids: createdIds },
+  });
+
+  return { ...preview, imported: createdIds.length };
+}
+
+/** Column headers for the downloadable import template — writable field
+ *  LABELS, matching what csvRowToBody reads back, not the internal field
+ *  name a user importing data has never seen. */
+export function importTemplateColumns(config: ResourceConfig): string[] {
+  return writableFields(config).map((field) => field.label);
 }

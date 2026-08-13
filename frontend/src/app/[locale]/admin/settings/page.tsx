@@ -1,6 +1,11 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { PageTitle } from '@/components/shell/page-title';
+import { TranslationCompletenessPanel } from '@/components/settings/translation-completeness-panel';
+import { DangerZonePanel } from '@/components/settings/danger-zone-panel';
+import { MyAccountPanel } from '@/components/settings/my-account-panel';
+import { DataExportPanel } from '@/components/settings/data-export-panel';
+import { PoliciesPanel } from '@/components/settings/policies-panel';
 import { PersonalSettingsPanel } from '@/components/settings/personal-settings-panel';
 import { SettingsForm } from '@/components/settings/settings-form';
 
@@ -37,8 +42,13 @@ export default async function SettingsPage({
       {/* Personal preferences first — instant, nothing to save — then the
           server-backed store settings with their single shared save bar,
           separated by the page's own vertical rhythm (space-y-10). */}
+      <MyAccountPanel />
       <PersonalSettingsPanel />
       <SettingsForm />
+      <DataExportPanel />
+      <TranslationCompletenessPanel />
+      <PoliciesPanel />
+      <DangerZonePanel />
     </div>
   );
 }

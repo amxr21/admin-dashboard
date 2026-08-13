@@ -7,6 +7,8 @@ import { ChevronDown, ChevronUp, ImageIcon, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/empty-state';
 import { ImageUploadField } from '@/components/image-upload-field';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAppSettings } from '@/components/providers/settings-provider';
@@ -16,6 +18,7 @@ import {
   deleteImage,
   fetchImages,
   reorderImages,
+  setImageAlt,
   type ProductImage,
 } from '@/lib/product-images-api';
 
@@ -63,6 +66,32 @@ export function ProductGalleryPanel({
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, productId]);
+
+  /**
+   * Committed on blur, not per keystroke — an alt-text edit is prose, and a
+   * request per character would be both wasteful and, on a slow connection,
+   * a source of out-of-order writes racing each other. Unlike the debounced
+   * search inputs elsewhere in this app, there's no live result depending on
+   * this value, so waiting for the field to be LEFT is the natural moment,
+   * not an arbitrary timer.
+   */
+  async function commitAlt(image: ProductImage, value: string) {
+    const next = value.trim() === '' ? null : value.trim();
+    if (next === image.alt) return;
+
+    // Optimistic: the field already shows what the user typed, and reverting
+    // it on a failed save (rather than leaving the stale value) would erase
+    // work they just did for no visible reason if the request fails.
+    setImages((current) =>
+      current?.map((i) => (i.id === image.id ? { ...i, alt: next } : i)) ?? current,
+    );
+
+    try {
+      await setImageAlt(image.id, next);
+    } catch (caught) {
+      setError(translateError(caught));
+    }
+  }
 
   async function move(index: number, direction: -1 | 1) {
     if (!images) return;
@@ -126,18 +155,38 @@ export function ProductGalleryPanel({
           ) : (
             <ul className="space-y-2">
               {images.map((image, index) => (
-                <li key={image.id} className="bg-card flex items-center gap-3 rounded-lg border p-2">
+                <li key={image.id} className="bg-card flex items-start gap-3 rounded-lg border p-2">
                   {/* Admin-supplied/Cloudinary-hosted at runtime — same reasoning
-                      as resource-cell.tsx for why this is a plain <img>. */}
+                      as resource-cell.tsx for why this is a plain <img>. `alt`
+                      is the field's own live value: this thumbnail is the most
+                      direct preview of what a screen reader will actually say,
+                      so it must reflect what's typed below, not a placeholder. */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={image.url}
-                    alt=""
+                    alt={image.alt ?? ''}
                     className="bg-muted size-14 shrink-0 rounded-md object-cover"
                   />
-                  <p className="force-ltr text-muted-foreground min-w-0 flex-1 truncate text-xs">
-                    {image.url}
-                  </p>
+
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <p className="force-ltr text-muted-foreground truncate text-xs">
+                      {image.url}
+                    </p>
+                    <div className="space-y-1">
+                      <Label htmlFor={`alt-${image.id}`} className="sr-only">
+                        {t('altLabel')}
+                      </Label>
+                      <Input
+                        id={`alt-${image.id}`}
+                        defaultValue={image.alt ?? ''}
+                        placeholder={t('altPlaceholder')}
+                        maxLength={160}
+                        onBlur={(event) => void commitAlt(image, event.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+
                   <div className="flex shrink-0 gap-1">
                     <Button
                       type="button"

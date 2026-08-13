@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 
 import { AppShell } from '@/components/shell/app-shell';
+import { BreadcrumbProvider } from '@/components/shell/breadcrumb';
 import { PageTitleProvider } from '@/components/shell/page-title';
 import { AuthGuard } from '@/components/auth/auth-guard';
 import { SchemaProvider } from '@/components/providers/schema-provider';
@@ -30,6 +31,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <SchemaProvider>
         <SettingsProvider>
         <PageTitleProvider>
+        <BreadcrumbProvider>
         <AppShell
           user={{
             // The API allows a null name; the UI needs something to render.
@@ -44,6 +46,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         >
           {children}
         </AppShell>
+        </BreadcrumbProvider>
         </PageTitleProvider>
         </SettingsProvider>
         </SchemaProvider>

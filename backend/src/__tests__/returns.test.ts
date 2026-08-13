@@ -6,6 +6,7 @@ import { OrderStatus, Prisma, StaffRole } from '@prisma/client';
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { signToken } from '../services/auth.service.js';
+import { waitFor } from './helpers/wait-for.js';
 
 /**
  * Returns / RMA.
@@ -26,8 +27,10 @@ interface ReturnBody {
       rmaNumber: string;
       status: string;
       resolution: string;
+      category: string | null;
       refundAmount: string | null;
       restocked: boolean;
+      rejectionReason: string | null;
       order: { id: string; status?: OrderStatus };
       items: { orderItemId: string; quantity: number }[];
     };
@@ -91,8 +94,9 @@ function auth(token: string) {
   return { Authorization: `Bearer ${token}` } as const;
 }
 
-async function waitForAudit() {
-  return new Promise((resolve) => setTimeout(resolve, 400));
+/** For an assertion expecting nothing to have landed — nothing to poll for. */
+function waitForNoWrite() {
+  return new Promise((resolve) => setTimeout(resolve, 1500));
 }
 
 beforeAll(async () => {
@@ -195,6 +199,41 @@ describe('creating a return', () => {
     const body = res.body as ReturnBody;
     expect(body.data.return.status).toBe('REQUESTED');
     expect(body.data.return.rmaNumber).toMatch(/^RMA-[A-Z0-9]{8}$/);
+    // Optional, and never sent here — must not silently default to a value.
+    expect(body.data.return.category).toBeNull();
+  });
+
+  it('accepts an optional category alongside the free-text reason', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED, 4);
+
+    const res = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({
+        orderId,
+        reason: 'damaged on arrival',
+        category: 'DAMAGED',
+        items: [{ orderItemId, quantity: 2 }],
+      });
+
+    expect(res.status).toBe(201);
+    expect((res.body as ReturnBody).data.return.category).toBe('DAMAGED');
+  });
+
+  it('rejects a category outside the declared enum', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED, 4);
+
+    const res = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({
+        orderId,
+        reason: 'x',
+        category: 'CHANGED_MY_MIND',
+        items: [{ orderItemId, quantity: 1 }],
+      });
+
+    expect(res.status).toBe(400);
   });
 
   it('a second request is capped by what the first one left', async () => {
@@ -225,7 +264,10 @@ describe('creating a return', () => {
       .send({ orderId, reason: 'first', items: [{ orderItemId, quantity: 4 }] });
     const firstId = (first.body as ReturnBody).data.return.id;
 
-    await request(app).post(`/api/v1/returns/${firstId}/reject`).set(auth(ownerToken));
+    await request(app)
+      .post(`/api/v1/returns/${firstId}/reject`)
+      .set(auth(ownerToken))
+      .send({ rejectionReason: 'Duplicate request' });
 
     // All 4 should be requestable again now that the first was rejected.
     const second = await request(app)
@@ -378,11 +420,11 @@ describe('approving a return', () => {
       .set(auth(ownerToken))
       .send({ resolution: 'REPLACEMENT', restock: false });
 
-    await waitForAudit();
-
-    const entry = await prisma.auditLog.findFirst({
-      where: { entity: 'return', entityId: id, action: 'return.approved' },
-    });
+    const entry = await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { entity: 'return', entityId: id, action: 'return.approved' },
+      }),
+    );
     expect(entry).not.toBeNull();
   });
 });
@@ -396,13 +438,40 @@ describe('rejecting a return', () => {
       .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
     const id = (created.body as ReturnBody).data.return.id;
 
-    const res = await request(app).post(`/api/v1/returns/${id}/reject`).set(auth(ownerToken));
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/reject`)
+      .set(auth(ownerToken))
+      .send({ rejectionReason: 'Outside the return window' });
 
     expect(res.status).toBe(200);
     expect((res.body as ReturnBody).data.return.status).toBe('REJECTED');
+    expect((res.body as ReturnBody).data.return.rejectionReason).toBe(
+      'Outside the return window',
+    );
 
     const order = await prisma.order.findUnique({ where: { id: orderId } });
     expect(order?.status).toBe(OrderStatus.DELIVERED);
+  });
+
+  it('requires a rejection reason', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const missing = await request(app)
+      .post(`/api/v1/returns/${id}/reject`)
+      .set(auth(ownerToken))
+      .send({});
+    expect(missing.status).toBe(400);
+
+    const blank = await request(app)
+      .post(`/api/v1/returns/${id}/reject`)
+      .set(auth(ownerToken))
+      .send({ rejectionReason: '   ' });
+    expect(blank.status).toBe(400);
   });
 
   it('cannot be rejected twice', async () => {
@@ -413,8 +482,14 @@ describe('rejecting a return', () => {
       .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
     const id = (created.body as ReturnBody).data.return.id;
 
-    await request(app).post(`/api/v1/returns/${id}/reject`).set(auth(ownerToken));
-    const second = await request(app).post(`/api/v1/returns/${id}/reject`).set(auth(ownerToken));
+    await request(app)
+      .post(`/api/v1/returns/${id}/reject`)
+      .set(auth(ownerToken))
+      .send({ rejectionReason: 'First rejection' });
+    const second = await request(app)
+      .post(`/api/v1/returns/${id}/reject`)
+      .set(auth(ownerToken))
+      .send({ rejectionReason: 'Second attempt' });
 
     expect(second.status).toBe(400);
   });
@@ -448,12 +523,11 @@ describe('requesting a return notifies staff', () => {
       .send({ orderId, reason, items: [{ orderItemId, quantity: 1 }] });
     expect(res.status).toBe(201);
 
-    await waitForAudit();
-
-    const notification = await prisma.notification.findFirst({
-      where: { type: 'return.requested', body: reason },
-    });
-    expect(notification).not.toBeNull();
+    const notification = await waitFor(() =>
+      prisma.notification.findFirst({
+        where: { type: 'return.requested', body: reason },
+      }),
+    );
     expect(notification?.title).toContain((res.body as ReturnBody).data.return.rmaNumber);
   });
 
@@ -469,7 +543,7 @@ describe('requesting a return notifies staff', () => {
       .send({ orderId, reason, items: [{ orderItemId, quantity: 1 }] });
     expect(res.status).toBe(201);
 
-    await waitForAudit();
+    await waitForNoWrite();
 
     expect(
       await prisma.notification.count({ where: { type: 'return.requested', body: reason } }),

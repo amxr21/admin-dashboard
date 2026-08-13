@@ -12,12 +12,22 @@ import { apiFetch } from '@/lib/api';
 
 export type ReturnStatus = 'REQUESTED' | 'APPROVED' | 'REJECTED';
 export type ReturnResolution = 'NONE' | 'REFUND' | 'STORE_CREDIT' | 'REPLACEMENT';
+export type ReturnCategory =
+  | 'DAMAGED'
+  | 'WRONG_ITEM'
+  | 'NOT_AS_DESCRIBED'
+  | 'NO_LONGER_NEEDED'
+  | 'ARRIVED_LATE'
+  | 'OTHER';
 
 export interface ReturnListRow {
   id: string;
   rmaNumber: string;
   status: ReturnStatus;
   resolution: ReturnResolution;
+  /** Null on any return requested before this was tracked, or where the
+   *  requester skipped it — it's optional alongside the free-text reason. */
+  category: ReturnCategory | null;
   createdAt: string;
   order: { id: string; orderNumber: string };
   customer: { id: string; name: string } | null;
@@ -37,10 +47,13 @@ export interface ReturnDetail {
   id: string;
   rmaNumber: string;
   reason: string;
+  category: ReturnCategory | null;
   status: ReturnStatus;
   resolution: ReturnResolution;
   refundAmount: string | null;
   restocked: boolean;
+  /** Staff's own words for the rejection. Null on anything not (yet) rejected. */
+  rejectionReason: string | null;
   createdAt: string;
   order: { id: string; orderNumber: string; status: string };
   customer: { id: string; name: string; email: string } | null;
@@ -82,6 +95,7 @@ export async function fetchReturn(id: string): Promise<ReturnDetail> {
 export interface CreateReturnInput {
   orderId: string;
   reason: string;
+  category?: ReturnCategory;
   items: { orderItemId: string; quantity: number }[];
 }
 
@@ -110,9 +124,10 @@ export async function approveReturn(
   return body.return;
 }
 
-export async function rejectReturn(id: string): Promise<ReturnDetail> {
+export async function rejectReturn(id: string, rejectionReason: string): Promise<ReturnDetail> {
   const body = await apiFetch<{ return: ReturnDetail }>(`/returns/${id}/reject`, {
     method: 'POST',
+    body: JSON.stringify({ rejectionReason }),
   });
   return body.return;
 }
