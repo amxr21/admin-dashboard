@@ -137,7 +137,7 @@ export function CourierSheet({ courier, open, onOpenChange, onSaved }: CourierSh
       <SheetContent
         side="end"
         variant={editPanelMode}
-        className="w-full max-w-md overflow-y-auto"
+        className="max-w-md overflow-y-auto"
         title={isEdit ? t('editTitle') : t('createTitle')}
       >
         <div className="space-y-4">

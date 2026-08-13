@@ -834,6 +834,9 @@
       "label": "بحث",
       "placeholder": "الاسم أو الهاتف أو المنطقة"
     },
+    "filters": {
+      "allStatuses": "كل الحالات"
+    },
     "pagination": {
       "previous": "السابق",
       "next": "التالي"
@@ -888,6 +891,45 @@
         "region": "الإقليم",
         "country": "الدولة",
         "status": "الحالة"
+      }
+    },
+    "detail": {
+      "back": "العودة إلى المندوبين",
+      "region": "الإقليم",
+      "country": "الدولة",
+      "phone": "الهاتف",
+      "email": "البريد الإلكتروني",
+      "vehicle": "المركبة",
+      "plateNumber": "رقم اللوحة",
+      "recentAssignments": "المهام الأخيرة",
+      "noAssignments": {
+        "title": "لا توجد مهام بعد",
+        "description": "ستظهر هنا الطلبات المسندة إلى هذا المندوب."
+      },
+      "columns": {
+        "order": "الطلب",
+        "deliveryStatus": "حالة التوصيل",
+        "assignedAt": "تاريخ الإسناد"
+      },
+      "dangerZone": {
+        "title": "منطقة الخطر",
+        "description": "تؤثر الإجراءات هنا على قدرة هذا المندوب على العمل — فكّر قبل التأكيد.",
+        "deactivate": {
+          "title": "إيقاف المندوب",
+          "description": "يمنعه من تسجيل الدخول إلى بوابة المندوبين واستلام طلبات توصيل جديدة. يبقى رمز الدخول كما هو ولا يُلغى — راجع القائمة إذا أردت إلغاءه أيضًا.",
+          "action": "إيقاف",
+          "confirmPhrase": "DEACTIVATE",
+          "confirm": {
+            "title": "إيقاف {name}؟",
+            "descriptionWithActive": "لدى {name} حاليًا {count, plural, one {# مهمة توصيل نشطة} other {# مهام توصيل نشطة}}. الإيقاف لا يعيد إسنادها أو يلغيها.",
+            "description": "لن يتمكن {name} من تسجيل الدخول إلى بوابة المندوبين أو استلام طلبات توصيل جديدة.",
+            "typePhrase": "اكتب {phrase} للتأكيد.",
+            "cancel": "إلغاء",
+            "action": "إيقاف"
+          },
+          "done": "تم إيقاف {name}."
+        },
+        "alreadyInactive": "هذا المندوب متوقف بالفعل."
       }
     }
   },
