@@ -132,8 +132,15 @@
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar",
     "search": "Search",
-    "searchPlaceholder": "Jump to…",
+    "searchPlaceholder": "Search orders, customers, products…",
     "openPage": "Open",
+    "searchGroups": {
+      "pages": "Pages",
+      "orders": "Orders",
+      "customers": "Customers",
+      "products": "Products",
+      "noResults": "No matches"
+    },
     "descriptions": {
       "dashboard": "Revenue, orders, and what needs attention today, at a glance.",
       "orders": "Every order, its line items, and where it is in the fulfillment workflow.",
@@ -1005,6 +1012,23 @@
         "action": "Revoke"
       }
     },
+    "account": {
+      "title": "Your account",
+      "description": "Your own name and password. An OWNER is no longer required for either.",
+      "email": "Email",
+      "name": "Name",
+      "save": "Save",
+      "saving": "Saving…",
+      "profileSaved": "Your details were updated.",
+      "changePassword": "Change password",
+      "changePasswordDescription": "You will need your current password. Every other signed-in session, including this one, is signed out and replaced with a fresh session.",
+      "currentPassword": "Current password",
+      "newPassword": "New password",
+      "passwordHint": "Use at least {min} characters.",
+      "passwordChanged": "Your password was changed.",
+      "confirmPasswordChange": "Change password",
+      "cancel": "Cancel"
+    },
     "data": {
       "title": "Data",
       "description": "Export any resource you can access as a CSV file.",
@@ -1109,7 +1133,8 @@
       "role": "Role",
       "status": "Status",
       "lastLogin": "Last sign-in",
-      "actions": "Actions"
+      "actions": "Actions",
+      "accessExpiresAt": "Access expires"
     },
     "search": {
       "label": "Search",
@@ -1122,7 +1147,8 @@
     "status": {
       "active": "Active",
       "inactive": "Deactivated",
-      "locked": "Locked"
+      "locked": "Locked",
+      "expired": "expired"
     },
     "never": "Never",
     "you": "You",
@@ -1132,7 +1158,9 @@
       "unlock": "Unlock {name}",
       "unlockShort": "Unlock",
       "password": "Set a new password for {name}",
-      "passwordShort": "Password"
+      "passwordShort": "Password",
+      "resetToken": "Issue a reset token for {name}",
+      "invite": "Invite"
     },
     "notice": {
       "created": "{name} can now sign in.",
@@ -1147,17 +1175,19 @@
       "save": "Save",
       "saving": "Saving…",
       "emailRequired": "Email is required.",
-      "passwordHint": "At least 12 characters. You will need to give it to them directly.",
+      "passwordHint": "At least {min} characters. You will need to give it to them directly.",
       "fields": {
         "email": "Email",
         "name": "Name",
         "phone": "Phone",
         "role": "Role",
         "password": "Password",
-        "isActive": "Can sign in"
+        "isActive": "Can sign in",
+        "accessExpiresAt": "Access expires"
       },
       "selfRoleNote": "You cannot change your own role — ask another owner.",
-      "lockedNote": "Locked after too many failed sign-ins. Unlock or set a new password."
+      "lockedNote": "Locked after too many failed sign-ins. Unlock or set a new password.",
+      "accessExpiresHint": "After this date, they cannot sign in until it is cleared or extended. Leave blank for no expiry."
     },
     "password": {
       "title": "New password for {name}",
@@ -1165,6 +1195,36 @@
       "label": "New password",
       "confirm": "Set password",
       "cancel": "Cancel"
+    },
+    "resetToken": {
+      "title": "Reset token for {email}",
+      "shownOnce": "This token is shown once. Copy it now — it cannot be retrieved later.",
+      "copy": "Copy token",
+      "copyHint": "Copy the token and hand it over directly.",
+      "copied": "Token copied.",
+      "expires": "Expires {at}.",
+      "handOver": "Give it to them directly. They set their own password, so you never learn it.",
+      "done": "Done"
+    },
+    "filters": {
+      "role": "Role",
+      "status": "Status",
+      "all": "All",
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "invite": {
+      "title": "Invite someone to staff",
+      "description": "Creates the account and gives you a one-time activation code to hand over — you never see or set their password.",
+      "send": "Send invite"
+    },
+    "permissions": {
+      "title": "Permissions",
+      "description": "Which areas each role can reach. Enforced by the server — this is a read-only view of that model.",
+      "area": "Area",
+      "readOnly": "Read-only",
+      "granted": "{role} can reach {area}",
+      "notGranted": "{role} cannot reach {area}"
     }
   },
   "staffRole": {
@@ -1795,6 +1855,11 @@
     "SUCCESS": "Success",
     "DENIED": "Denied",
     "ERROR": "Error"
+  },
+  "filters": {
+    "applied": "Filters:",
+    "remove": "Remove filter {label}",
+    "clearAll": "Clear all"
   },
   "commandPalette": {
     "title": "Command palette",

@@ -7,13 +7,16 @@ import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import {
   createStaff,
+  inviteStaff,
   issueStaffPasswordResetToken,
   listStaff,
   resetStaffPassword,
+  transferOwnership,
   unlockStaff,
   updateStaff,
 } from '../../services/staff.service.js';
 import { assertPasswordMeetsPolicy } from '../../services/settings.service.js';
+import { audit } from '../../services/audit.service.js';
 
 /**
  * Staff accounts.
@@ -68,6 +71,16 @@ const createBody = z
   })
   .strict();
 
+const inviteBody = z
+  .object({
+    email: z.string().trim().email('Enter a valid email address').max(255),
+    name: z.string().trim().max(255).optional(),
+    phone: z.string().trim().max(48).optional(),
+    role: z.nativeEnum(StaffRole, { message: 'Choose a role' }),
+    accessExpiresAt: z.string().datetime().optional(),
+  })
+  .strict();
+
 const updateBody = z
   .object({
     name: z.string().trim().max(255).optional(),
@@ -102,6 +115,32 @@ staffRouter.post('/staff', ...guard, async (req, res) => {
   });
 
   res.status(201).json({ data: { staff: created } });
+});
+
+/**
+ * Invite: create the account with no password anyone knows, and hand back a
+ * one-time activation token in the same response — the primary action the
+ * spec names for this page. Placed ahead of `/staff/:id` in this file only
+ * for reading order; Express matches the literal `invite` segment before it
+ * would ever try `:id`, so there is no routing ambiguity either way.
+ */
+staffRouter.post('/staff/invite', ...guard, async (req, res) => {
+  const parsed = inviteBody.safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+
+  const actor = requireUser(req);
+  const result = await inviteStaff(actor, parsed.data);
+
+  // Same rule as every other token issuance: the token itself is never
+  // logged, only the fact that one was issued.
+  req.log.info({
+    event: 'staff.invited',
+    staffId: result.staff.id,
+    role: result.staff.role,
+    userId: actor.id,
+  });
+
+  res.status(201).json({ data: result });
 });
 
 staffRouter.patch('/staff/:id', ...guard, async (req, res) => {
@@ -158,6 +197,41 @@ staffRouter.post('/staff/:id/password', ...guard, async (req, res) => {
   req.log.warn({ event: 'staff.password.reset', staffId: id, userId: actor.id });
 
   res.json({ data: { staff } });
+});
+
+/**
+ * Danger zone (B3.4). Ahead of `/staff/:id` reads no ambiguity here since
+ * this is a distinct literal segment, same reasoning as `/staff/invite`
+ * above — kept next to it in the file for that same "read ahead of :id"
+ * grouping, not because Express needs it.
+ */
+staffRouter.post('/staff/:id/transfer-ownership', ...guard, async (req, res) => {
+  const parsed = z
+    .object({ currentPassword: z.string().min(1, 'Current password is required').max(200) })
+    .strict()
+    .safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+
+  const actor = requireUser(req);
+  const targetId = String(req.params.id);
+
+  const result = await transferOwnership(actor, targetId, parsed.data.currentPassword);
+
+  // The single most consequential write in the app — logged AND audited,
+  // not just one or the other.
+  req.log.warn({
+    event: 'staff.ownership.transferred',
+    fromUserId: actor.id,
+    toUserId: targetId,
+  });
+  audit(req, {
+    action: 'staff.ownership.transferred',
+    entity: 'staff',
+    entityId: targetId,
+    changes: { role: { from: 'OWNER', to: 'MANAGER' }, newOwnerId: { from: null, to: targetId } },
+  });
+
+  res.json({ data: result });
 });
 
 staffRouter.post('/staff/:id/reset-token', ...guard, async (req, res) => {

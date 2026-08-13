@@ -65,10 +65,17 @@ function hashesMatch(a: string, b: string): boolean {
  * Only one outstanding token per user at a time — otherwise an admin who
  * issues twice (a chat message that didn't send, say) leaves two valid
  * credentials where the locked-out person only knows about one.
+ *
+ * `ttlMinutes` defaults to the 30-minute reset window. It is overridable for
+ * exactly one other caller: a first-time staff invite (`inviteStaff` in
+ * staff.service.ts), where 30 minutes is the wrong assumption — a reset is
+ * handed over live (chat, call), an invite is typically opened hours or days
+ * later. Same token, same redemption path, same one-time/expiring guarantees;
+ * only the clock differs.
  */
-export async function createResetToken(userId: string) {
+export async function createResetToken(userId: string, ttlMinutes: number = TOKEN_TTL_MINUTES) {
   const token = generateToken();
-  const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES * 60_000);
+  const expiresAt = new Date(Date.now() + ttlMinutes * 60_000);
 
   await prisma.$transaction([
     prisma.passwordResetToken.deleteMany({ where: { userId, usedAt: null } }),
