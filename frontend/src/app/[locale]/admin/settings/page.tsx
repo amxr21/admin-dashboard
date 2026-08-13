@@ -1,6 +1,7 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { PageTitle } from '@/components/shell/page-title';
+import { DangerZonePanel } from '@/components/settings/danger-zone-panel';
 import { MyAccountPanel } from '@/components/settings/my-account-panel';
 import { DataExportPanel } from '@/components/settings/data-export-panel';
 import { PoliciesPanel } from '@/components/settings/policies-panel';
@@ -45,6 +46,7 @@ export default async function SettingsPage({
       <SettingsForm />
       <DataExportPanel />
       <PoliciesPanel />
+      <DangerZonePanel />
     </div>
   );
 }
