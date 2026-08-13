@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useGSAP } from '@gsap/react';
-import { History, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { FilterX, History, Pencil, Plus, Search, SearchX, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -16,15 +16,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { DataTable, type Column } from '@/components/data-table';
+import { DataTable, type Column, type SortState } from '@/components/data-table';
+import { ColumnManager } from '@/components/column-manager';
+import { DensityToggle } from '@/components/density-toggle';
 import { EmptyState } from '@/components/empty-state';
+import { FilterChips, type AppliedFilter } from '@/components/filter-chips';
+import { RowActions, type RowAction } from '@/components/row-actions';
+import { TablePagination } from '@/components/table-pagination';
+import { ImportResourceSheet } from '@/components/resource/import-resource-sheet';
 import { ResourceCell } from '@/components/resource/resource-cell';
 import { ResourceForm } from '@/components/resource/resource-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -34,13 +39,17 @@ import {
 } from '@/components/ui/select';
 import { canAccessArea, type StaffRole } from '@/config/areas';
 import { useAuth } from '@/hooks/useAuth';
-import { Link } from '@/i18n/navigation';
+import { useUrlState } from '@/hooks/useUrlState';
+import { useTableDensity } from '@/hooks/useTableDensity';
+import { useColumnVisibility } from '@/hooks/useColumnVisibility';
 import { gsap } from '@/lib/gsap';
 import { DURATION, EASE, DISTANCE, STAGGER_TOTAL_MAX } from '@/lib/motion-tokens';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { useAppSettings } from '@/components/providers/settings-provider';
+import { getGlobalDensity } from '@/lib/apply-appearance';
 import {
   deleteRow,
+  fetchRelationOptions,
   fetchRows,
   listFields,
   searchableFields,
@@ -63,9 +72,22 @@ import {
 
 const ALL = 'all';
 
+/**
+ * Namespace for filter params.
+ *
+ * Without it, a resource with an enum field named `page` or `search` would
+ * quietly overwrite the pagination controls — `admin.config.ts` is
+ * user-editable, so a collision is a configuration away, not a hypothetical.
+ */
+const FILTER_PREFIX = 'f_';
+
+/** Defaults are omitted from the URL, so the unfiltered view has a clean one. */
+const URL_DEFAULTS = { page: '1', search: '', sort: '', dir: 'asc', pageSize: '' };
+
 interface ResourceTableProps {
   schema: ResourceSchema;
 }
+
 
 export function ResourceTable({ schema }: ResourceTableProps) {
   const t = useTranslations('resource');
@@ -73,23 +95,185 @@ export function ResourceTable({ schema }: ResourceTableProps) {
   const tTable = useTranslations('table');
   const translateError = useTranslatedApiError();
   const { tablePageSize } = useAppSettings();
+
+  /**
+   * Per-table density, overriding `ui.density` for just this table — see
+   * useTableDensity.ts. `override` is null until the user picks one, in
+   * which case DataTable is left to inherit the global `[data-density]`
+   * value the same way it always has.
+   */
+  const { override: densityOverride, setOverride: setDensityOverride } =
+    useTableDensity(`resource:${schema.resource}`);
+
+  /** Per-table column show/hide — see useColumnVisibility.ts. */
+  const { hiddenColumns, toggle: toggleColumn, reset: resetColumns } = useColumnVisibility(
+    `resource:${schema.resource}`,
+  );
   const { user } = useAuth();
   // Same gate as the audit route itself (requireArea('staff')) — showing the
   // link to someone who cannot open the page would be a courtesy that 403s.
   const canViewHistory = canAccessArea((user?.role ?? 'DEMO') as StaffRole, 'staff');
 
   const [result, setResult] = useState<ResourceListResult | null>(null);
-  const [page, setPage] = useState(1);
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
-  const [filters, setFilters] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Options for `relation`-type filter dropdowns, keyed by field name.
+   *
+   * Loaded once per resource (no search box on a FILTER dropdown — unlike the
+   * form's relation picker, which searches as the target list can be large,
+   * a filter only needs "which values actually occur", so the plain
+   * unfiltered option list is enough here).
+   */
+  const [relationFilterOptions, setRelationFilterOptions] = useState<
+    Record<string, { value: string; label: string }[]>
+  >({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  /**
+   * Page, search and filters live in the URL, not in component state.
+   *
+   * This table renders six different resources, so the fix lands on products,
+   * customers, categories, discounts, reviews and notifications at once. The
+   * requirement it satisfies: paste the URL and a colleague sees the same
+   * screen, and back steps through the filters you applied.
+   *
+   * Filter keys are namespaced `f_<field>` so an enum field called `page` or
+   * `search` can never collide with the reserved controls.
+   */
+  const { values, setValues, clear } = useUrlState(URL_DEFAULTS);
+
+  const page = Math.max(1, Number(values.page) || 1);
+  const search = values.search ?? '';
+
+  /**
+   * Overrides `dashboard.tablePageSize` for THIS view only.
+   *
+   * The store-wide setting stays the default; a value in the URL is a
+   * temporary "show me more rows" for the current list, shareable and gone on
+   * the next visit rather than a round-trip through Settings.
+   */
+  const urlPageSize = Number(values.pageSize);
+  const effectivePageSize =
+    Number.isFinite(urlPageSize) && urlPageSize > 0 ? urlPageSize : tablePageSize;
+
+  const filters = useMemo(() => {
+    const active: Record<string, string> = {};
+    for (const [key, value] of Object.entries(values)) {
+      if (!key.startsWith(FILTER_PREFIX) || !value || value === ALL) continue;
+
+      const name = key.slice(FILTER_PREFIX.length);
+      const field = schema.fields.find((candidate) => candidate.name === name);
+
+      // A hand-edited URL naming an unknown field, or a boolean filter with
+      // anything other than "true"/"false", degrades to "no filter" instead
+      // of reaching the API — coerceFilterValue would 400 on either, and an
+      // unfiltered list is a truthful recovery where an error page isn't.
+      if (!field) continue;
+      if (field.type === 'boolean' && value !== 'true' && value !== 'false') continue;
+
+      active[name] = value;
+    }
+    return active;
+  }, [values, schema.fields]);
+
+  /**
+   * The search box is uncontrolled-ish: it holds the raw keystrokes locally
+   * and only writes to the URL after the debounce. Driving the input straight
+   * from the URL would navigate on every character.
+   *
+   * Seeded from the URL so a shared link populates the box, and re-seeded when
+   * the resource changes (the effect below), never on every URL change — that
+   * would fight the user's own typing.
+   */
+  const [searchInput, setSearchInput] = useState(search);
+
+  /**
+   * Drives the filtered-vs-first-run empty state and the Clear-all control.
+   * Page is deliberately excluded: being on page 3 is not a filter, and an
+   * empty page 3 is a pagination problem, not "no results".
+   */
+  const hasActiveFilters = search !== '' || Object.keys(filters).length > 0;
+
+  const clearFilters = useCallback(() => {
+    setSearchInput('');
+    clear([
+      'search',
+      'page',
+      ...Object.keys(filters).map((name) => `${FILTER_PREFIX}${name}`),
+    ]);
+  }, [clear, filters]);
+
+  /**
+   * Sort in the URL, as `?sort=name&dir=desc`.
+   *
+   * Validated against the schema's sortable fields rather than trusted: a
+   * hand-edited or stale `?sort=` naming a column that no longer exists would
+   * otherwise leave the header showing an active sort for a field the table
+   * can't sort by.
+   */
+  const sortField = values.sort ?? '';
+  const sortIsValid = listFields(schema).some(
+    (field) => field.name === sortField && field.sortable,
+  );
+
+  const sort: SortState | null = sortIsValid
+    ? { id: sortField, direction: values.dir === 'desc' ? 'desc' : 'asc' }
+    : null;
+
+  const handleSortChange = useCallback(
+    (next: SortState | null) => {
+      setValues({
+        sort: next?.id ?? null,
+        // Only `desc` is written — `asc` is the default, so omitting it keeps
+        // the common case's URL short.
+        dir: next?.direction === 'desc' ? 'desc' : null,
+      });
+    },
+    [setValues],
+  );
+
+  /** Built from the same values the query uses, so a chip can never claim a
+   *  filter that isn't actually applied. */
+  const appliedFilters: AppliedFilter[] = [
+    ...(search
+      ? [
+          {
+            id: 'search',
+            label: `${t('search.label')}: ${search}`,
+            onRemove: () => {
+              setSearchInput('');
+              setValues({ search: null, page: null });
+            },
+          },
+        ]
+      : []),
+    ...Object.entries(filters).map(([name, value]) => {
+      const field = schema.fields.find((candidate) => candidate.name === name);
+      // Chip text should read like the option the user picked, not the raw
+      // wire value — "true"/"false" and a bare relation id both mean nothing
+      // to whoever glances at the chip row.
+      const displayValue =
+        field?.type === 'boolean'
+          ? t(value === 'true' ? 'yes' : 'no')
+          : field?.type === 'relation'
+            ? (relationFilterOptions[name]?.find((option) => option.value === value)?.label ??
+              value)
+            : value;
+      return {
+        id: name,
+        label: `${field?.label ?? name}: ${displayValue}`,
+        onRemove: () =>
+          setValues({ [`${FILTER_PREFIX}${name}`]: null, page: null }),
+      };
+    }),
+  ];
 
   const [formRow, setFormRow] = useState<ResourceRow | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -120,7 +304,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
       setResult(
         await fetchRows(schema.resource, {
           page,
-          pageSize: tablePageSize,
+          pageSize: effectivePageSize,
           ...(search ? { search } : {}),
           filters: active,
         }),
@@ -131,31 +315,136 @@ export function ResourceTable({ schema }: ResourceTableProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [schema.resource, page, search, filters, tablePageSize, translateError]);
+  }, [schema.resource, page, search, filters, effectivePageSize, translateError]);
+
+  /**
+   * Walks every page matching the CURRENT filter and returns every row id.
+   *
+   * Capped, not unbounded — the backend clamps a single page to 100 rows
+   * (`MAX_PAGE_SIZE`), so "select all 4,000 matching rows" would otherwise
+   * mean 40 sequential requests before the user's click resolves. The cap is
+   * generous for an admin back office's real scale (hundreds, rarely
+   * thousands, of rows per resource) and — critically — the caller is told
+   * explicitly when it's hit rather than silently handed a truncated
+   * selection that LOOKS like everything.
+   */
+  const MAX_SELECT_ALL = 2000;
+
+  const fetchAllMatchingIds = useCallback(async (): Promise<string[]> => {
+    const active = Object.fromEntries(
+      Object.entries(filters).filter(([, value]) => value !== ALL && value !== ''),
+    );
+
+    const ids: string[] = [];
+    let currentPage = 1;
+    // The server's own max — walking the fewest possible requests to reach
+    // MAX_SELECT_ALL.
+    const walkPageSize = 100;
+
+    for (;;) {
+      const chunk = await fetchRows(schema.resource, {
+        page: currentPage,
+        pageSize: walkPageSize,
+        ...(search ? { search } : {}),
+        filters: active,
+      });
+
+      // Checked against the SERVER'S total, not against how many ids have
+      // been collected so far. A total of exactly 2000 sitting right at the
+      // cap must succeed — collected-so-far reaching 2000 while more still
+      // remains beyond it must refuse. Comparing `ids.length` to itself would
+      // conflate "exactly at the cap, nothing more" with "over the cap,
+      // truncated here", and silently return a partial set as if complete.
+      if (chunk.total > MAX_SELECT_ALL) {
+        throw new Error(tTable('selectAllMatching.tooMany', { max: MAX_SELECT_ALL }));
+      }
+
+      for (const row of chunk.rows) ids.push(String(row.id));
+
+      if (currentPage >= chunk.totalPages) break;
+      currentPage += 1;
+    }
+
+    return ids;
+  }, [schema.resource, search, filters, tTable]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // Debounced so typing doesn't fire a request per keystroke.
+  /**
+   * Debounced so typing doesn't fire a request — or a navigation — per
+   * keystroke. Writing search and page together in ONE call matters: two
+   * separate writes would each read the same `searchParams` snapshot and the
+   * second would clobber the first, leaving the user on page 4 of a new query.
+   */
   useEffect(() => {
+    const trimmed = searchInput.trim();
+    if (trimmed === search) return;
+
     const timer = setTimeout(() => {
-      setSearch(searchInput.trim());
-      setPage(1);
+      setValues({ search: trimmed, page: null });
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchInput]);
+  }, [searchInput, search, setValues]);
 
-  // Reset everything when the resource changes — carrying a product's filters
-  // onto the customers table would silently produce an error or empty page.
+  /**
+   * Reset when the resource CHANGES — carrying a product's filters onto the
+   * customers table would silently produce an error or an empty page.
+   *
+   * Guarded against firing on mount. A plain `[schema.resource]` effect runs
+   * once on first render too, which would blank the search box on arrival and
+   * throw away a deep-linked `?search=` before the user ever saw it.
+   *
+   * Only the local input is reset. The URL params belong to the route being
+   * left, and Next.js gives the new route its own query string, so clearing
+   * them here would fight a legitimate inbound link.
+   */
+  const previousResource = useRef(schema.resource);
+
   useEffect(() => {
-    setPage(1);
+    if (previousResource.current === schema.resource) return;
+    previousResource.current = schema.resource;
+
     setSearchInput('');
-    setSearch('');
-    setFilters({});
     setSelectedIds(new Set());
   }, [schema.resource]);
+
+  /**
+   * Loads the option list for every `relation` filter once per resource.
+   *
+   * A field silently keeps its stale options if the fetch fails — a filter
+   * dropdown with no choices is a worse failure than one showing last
+   * resource's options for the instant before a retry, and the field is not
+   * load-bearing enough to justify an error state of its own.
+   */
+  useEffect(() => {
+    const relationFields = schema.fields.filter((field) => field.type === 'relation');
+    if (relationFields.length === 0) return;
+
+    let cancelled = false;
+
+    void Promise.all(
+      relationFields.map(async (field) => {
+        const options = await fetchRelationOptions(schema.resource, field.name).catch(() => null);
+        return [field.name, options] as const;
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      setRelationFilterOptions((previous) => {
+        const next = { ...previous };
+        for (const [name, options] of entries) {
+          if (options) next[name] = options;
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [schema.resource, schema.fields]);
 
   /**
    * Deletion reports what the SERVER actually did.
@@ -205,7 +494,8 @@ export function ResourceTable({ schema }: ResourceTableProps) {
     setSelectedIds(new Set());
 
     if (wasWholePage && page > 1) {
-      setPage((current) => current - 1);
+      // Stepping back changes the URL, which re-runs `load` via the effect.
+      setValues({ page: String(page - 1) });
     } else {
       await load();
     }
@@ -251,7 +541,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
     { scope: container, dependencies: [result, isLoading] },
   );
 
-  const dataColumns: Column<ResourceRow>[] = listFields(schema).map((field) => ({
+  const allDataColumns: Column<ResourceRow>[] = listFields(schema).map((field) => ({
     id: field.name,
     header: field.label,
     // Numeric values are end-aligned so digits line up column-wise.
@@ -273,6 +563,11 @@ export function ResourceTable({ schema }: ResourceTableProps) {
       : {}),
   }));
 
+  // A column hidden via the manager is dropped from render entirely, not
+  // just visually hidden — an unrendered ResourceCell can't fire the extra
+  // request some field types (relations) make to resolve their display value.
+  const dataColumns = allDataColumns.filter((column) => !hiddenColumns.has(column.id));
+
   /**
    * Row actions live in a trailing column rather than a hover-only affordance:
    * hover targets are invisible to touch and to keyboard users, and this table
@@ -286,60 +581,49 @@ export function ResourceTable({ schema }: ResourceTableProps) {
             id: '__actions',
             header: <span className="sr-only">{t('actions.label')}</span>,
             align: 'end',
-            cell: (row) => (
-              <div className="flex justify-end gap-1">
-                {canUpdate ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
+            cell: (row) => {
+              // Edit and Delete visible (the two a staff member reaches for
+              // most), history behind the overflow — but the split is
+              // RowActions' call, not hand-tuned per row.
+              const actions: RowAction[] = [
+                ...(canUpdate
+                  ? [
+                      {
+                        id: 'edit',
+                        label: t('actions.editRow', { label: rowLabel(row) }),
+                        icon: Pencil,
+                        onClick: () => {
                           setFormRow(row);
                           setIsFormOpen(true);
-                        }}
-                        // The row has no visible label of its own, so the button
-                        // names what it acts on for screen readers.
-                        aria-label={t('actions.editRow', { label: rowLabel(row) })}
-                      >
-                        <Pencil aria-hidden />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{t('actions.editRow', { label: rowLabel(row) })}</TooltipContent>
-                  </Tooltip>
-                ) : null}
-                {canDelete ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setPendingDelete([String(row.id)])}
-                        aria-label={t('actions.deleteRow', { label: rowLabel(row) })}
-                      >
-                        <Trash2 aria-hidden />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{t('actions.deleteRow', { label: rowLabel(row) })}</TooltipContent>
-                  </Tooltip>
-                ) : null}
-                {canViewHistory ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" asChild>
-                        <Link
-                          href={`/admin/audit?entity=${schema.resource}&entityId=${String(row.id)}`}
-                          aria-label={tAudit('viewHistory')}
-                        >
-                          <History aria-hidden />
-                        </Link>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{tAudit('viewHistory')}</TooltipContent>
-                  </Tooltip>
-                ) : null}
-              </div>
-            ),
+                        },
+                      },
+                    ]
+                  : []),
+                ...(canDelete
+                  ? [
+                      {
+                        id: 'delete',
+                        label: t('actions.deleteRow', { label: rowLabel(row) }),
+                        icon: Trash2,
+                        variant: 'destructive' as const,
+                        onClick: () => setPendingDelete([String(row.id)]),
+                      },
+                    ]
+                  : []),
+                ...(canViewHistory
+                  ? [
+                      {
+                        id: 'history',
+                        label: tAudit('viewHistory'),
+                        icon: History,
+                        href: `/admin/audit?entity=${schema.resource}&entityId=${String(row.id)}`,
+                      },
+                    ]
+                  : []),
+              ];
+
+              return <RowActions actions={actions} />;
+            },
           },
         ]
       : dataColumns;
@@ -348,12 +632,32 @@ export function ResourceTable({ schema }: ResourceTableProps) {
     (field) => field.type === 'enum' && field.options?.length,
   );
 
+  /**
+   * Boolean and relation fields get their own dropdown, same `f_<field>`
+   * mechanism as enum filters — both are EXACT-match on the backend
+   * (`coerceFilterValue` in resource.service.ts), so a `Select` is a truthful
+   * UI for them. Number/money/date/datetime are deliberately NOT included
+   * here: the backend has no range-comparison support today, and an
+   * exact-match filter on a price or timestamp would be nearly useless — that
+   * needs its own backend work first, not a UI-only pass.
+   */
+  const booleanFilters = schema.fields.filter((field) => field.type === 'boolean');
+  const relationFilters = schema.fields.filter(
+    (field) => field.type === 'relation' && relationFilterOptions[field.name]?.length,
+  );
+
   const canSearch = searchableFields(schema).length > 0;
+  const hasFilterControls =
+    enumFilters.length > 0 || booleanFilters.length > 0 || relationFilters.length > 0;
 
   return (
     <div ref={container} className="space-y-4">
       {canCreate ? (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+            <Upload aria-hidden />
+            {t('actions.import')}
+          </Button>
           <Button
             onClick={() => {
               setFormRow(null);
@@ -366,6 +670,14 @@ export function ResourceTable({ schema }: ResourceTableProps) {
           </Button>
         </div>
       ) : null}
+
+      <ImportResourceSheet
+        resource={schema.resource}
+        resourceLabel={schema.label}
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        onImported={() => void load()}
+      />
 
       <AlertDialog
         open={pendingDelete !== null}
@@ -405,7 +717,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {canSearch || enumFilters.length > 0 ? (
+      {canSearch || hasFilterControls ? (
         <div className="flex flex-wrap items-end gap-3">
           {canSearch ? (
             <div className="min-w-56 flex-1 space-y-2">
@@ -476,8 +788,12 @@ export function ResourceTable({ schema }: ResourceTableProps) {
               <Select
                 value={filters[field.name] ?? ALL}
                 onValueChange={(value) => {
-                  setFilters((current) => ({ ...current, [field.name]: value }));
-                  setPage(1);
+                  // Filter + page reset in one write, for the same
+                  // clobbering reason as the debounced search above.
+                  setValues({
+                    [`${FILTER_PREFIX}${field.name}`]: value === ALL ? null : value,
+                    page: null,
+                  });
                 }}
               >
                 <SelectTrigger id={`filter-${field.name}`}>
@@ -494,8 +810,82 @@ export function ResourceTable({ schema }: ResourceTableProps) {
               </Select>
             </div>
           ))}
+
+          {booleanFilters.map((field) => (
+            <div key={field.name} className="w-44 space-y-2">
+              <Label htmlFor={`filter-${field.name}`}>{field.label}</Label>
+              <Select
+                value={filters[field.name] ?? ALL}
+                onValueChange={(value) => {
+                  setValues({
+                    [`${FILTER_PREFIX}${field.name}`]: value === ALL ? null : value,
+                    page: null,
+                  });
+                }}
+              >
+                <SelectTrigger id={`filter-${field.name}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>{t('filters.all')}</SelectItem>
+                  <SelectItem value="true">{t('yes')}</SelectItem>
+                  <SelectItem value="false">{t('no')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
+
+          {relationFilters.map((field) => (
+            <div key={field.name} className="w-44 space-y-2">
+              <Label htmlFor={`filter-${field.name}`}>{field.label}</Label>
+              <Select
+                value={filters[field.name] ?? ALL}
+                onValueChange={(value) => {
+                  setValues({
+                    [`${FILTER_PREFIX}${field.name}`]: value === ALL ? null : value,
+                    page: null,
+                  });
+                }}
+              >
+                <SelectTrigger id={`filter-${field.name}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>{t('filters.all')}</SelectItem>
+                  {relationFilterOptions[field.name]?.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
         </div>
       ) : null}
+
+      <div className="flex items-center justify-between gap-3">
+        <FilterChips filters={appliedFilters} onClearAll={clearFilters} />
+        <div className="ms-auto flex shrink-0 items-center gap-2">
+          <ColumnManager
+            columns={allDataColumns.map((column) => ({
+              id: column.id,
+              // `header` is a plain string for every generated column here
+              // (see `listFields` above) — never the sort-button JSX the
+              // desktop table renders it as, so this cast is safe rather
+              // than approximate.
+              label: String(column.header),
+            }))}
+            hiddenColumns={hiddenColumns}
+            onToggle={toggleColumn}
+            onReset={resetColumns}
+          />
+          <DensityToggle
+            value={densityOverride ?? getGlobalDensity()}
+            onChange={setDensityOverride}
+          />
+        </div>
+      </div>
 
       <DataTable
         data={result?.rows ?? []}
@@ -506,9 +896,35 @@ export function ResourceTable({ schema }: ResourceTableProps) {
         onRetry={() => void load()}
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
+        density={densityOverride ?? undefined}
+        sort={sort}
+        onSortChange={handleSortChange}
+        selectAllMatching={
+          result
+            ? { totalMatching: result.total, fetchAllIds: fetchAllMatchingIds }
+            : undefined
+        }
+        /**
+         * Two genuinely different empty states.
+         *
+         * "Nothing exists yet" invites you to create the first row. "Nothing
+         * matched" must NOT — the rows are there, the filter is hiding them,
+         * and offering "create" as the only way out is how a user ends up with
+         * a duplicate record they didn't need. The filtered case gets its own
+         * copy and a way to undo the filter instead.
+         */
         emptyMessage={
-          search || Object.keys(filters).length > 0 ? (
-            tTable('noResults')
+          hasActiveFilters ? (
+            <EmptyState
+              icon={SearchX}
+              title={t('emptyFiltered', { label: schema.label })}
+              description={t('emptyFilteredHint')}
+              action={{
+                label: t('actions.clearFilters'),
+                onClick: clearFilters,
+                icon: FilterX,
+              }}
+            />
           ) : (
             <EmptyState
               title={t('empty', { label: schema.label })}
@@ -548,35 +964,22 @@ export function ResourceTable({ schema }: ResourceTableProps) {
         }
       />
 
-      {result && result.totalPages > 1 ? (
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-muted-foreground text-sm tabular-nums">
-            {t('total', { count: result.total })}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1 || isLoading}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-            >
-              {t('pagination.previous')}
-            </Button>
-            <span className="text-sm tabular-nums">
-              {tTable('pageOf', { page, total: result.totalPages })}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= result.totalPages || isLoading}
-              onClick={() =>
-                setPage((current) => Math.min(result.totalPages, current + 1))
-              }
-            >
-              {t('pagination.next')}
-            </Button>
-          </div>
-        </div>
+      {result ? (
+        <TablePagination
+          page={page}
+          totalPages={result.totalPages}
+          total={result.total}
+          pageSize={effectivePageSize}
+          isLoading={isLoading}
+          onPageChange={(next) => setValues({ page: String(next) })}
+          onPageSizeChange={(next) =>
+            // Changing the size mid-scroll and staying on a page that no
+            // longer exists would show an empty table with the count still
+            // claiming rows — resetting to 1 keeps the result honest.
+            setValues({ pageSize: String(next), page: null })
+          }
+          totalLabel={t('total', { count: result.total })}
+        />
       ) : null}
 
       {canCreate || canUpdate ? (

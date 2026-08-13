@@ -31,6 +31,21 @@ interface AdjustBody {
 interface ReconcileBody {
   data: { stock: number; fromMovements: number; agrees: boolean };
 }
+interface MovementsListBody {
+  data: {
+    variant: { id: string; name: string };
+    movements: {
+      id: string;
+      delta: number;
+      reason: string;
+      actorId: string | null;
+      actorName: string | null;
+    }[];
+    total: number;
+    page: number;
+    totalPages: number;
+  };
+}
 interface ErrorBody {
   error: { code: string; message: string; details?: unknown };
 }
@@ -270,6 +285,44 @@ describe('stock: the log explains the number, same rule as products', () => {
     expect(body.stock).toBe(35);
     expect(body.fromMovements).toBe(35);
     expect(body.agrees).toBe(true);
+  });
+
+  it('resolves the actor name on each movement, batched, same as the product-level log', async () => {
+    const variantId = await makeVariant();
+    await request(app)
+      .post(`/api/v1/variants/${variantId}/movements`)
+      .set(auth(ownerToken))
+      .send({ delta: 10, reason: 'RECEIVED' });
+
+    const res = await request(app)
+      .get(`/api/v1/variants/${variantId}/movements`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    const body = (res.body as MovementsListBody).data;
+    expect(body.movements).toHaveLength(1);
+    // The seeded OWNER user's `name` field is literally "OWNER" — see makeUser.
+    expect(body.movements[0]?.actorName).toBe('OWNER');
+  });
+
+  it('paginates the movement log, newest first', async () => {
+    const variantId = await makeVariant();
+
+    for (let i = 0; i < 3; i += 1) {
+      await request(app)
+        .post(`/api/v1/variants/${variantId}/movements`)
+        .set(auth(ownerToken))
+        .send({ delta: 1, reason: 'RECEIVED' });
+    }
+
+    const res = await request(app)
+      .get(`/api/v1/variants/${variantId}/movements?page=1&pageSize=2`)
+      .set(auth(ownerToken));
+
+    const body = (res.body as MovementsListBody).data;
+    expect(body.movements).toHaveLength(2);
+    expect(body.total).toBe(3);
+    expect(body.totalPages).toBe(2);
   });
 
   it('will not let stock go negative, and leaves nothing behind', async () => {

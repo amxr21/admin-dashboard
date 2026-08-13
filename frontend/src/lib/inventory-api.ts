@@ -61,6 +61,11 @@ export interface StockMovement {
   reason: StockMovementReason;
   note: string | null;
   actorId: string | null;
+  /** Resolved server-side, batched. Null when the actor is unknown (a
+   *  system-initiated movement) or the account no longer exists — `actorId`
+   *  is deliberately not a foreign key, so it survives the staff member
+   *  being deleted even though the name can no longer be resolved. */
+  actorName: string | null;
   createdAt: string;
 }
 
@@ -111,6 +116,23 @@ export async function fetchMovements(
   return apiFetch<MovementListResult>(
     `/inventory/${productId}/movements?${query.toString()}`,
   );
+}
+
+export interface ReconcileResult {
+  productId: string;
+  stock: number;
+  fromMovements: number;
+  /** False means something wrote `stock` without recording why. */
+  agrees: boolean;
+}
+
+/**
+ * Does the log still agree with the running total? Built specifically so
+ * discrepancies are diagnosable from the UI (B4.2) — the two are written
+ * together and should never diverge, but "should never" is worth checking.
+ */
+export async function fetchReconcile(productId: string): Promise<ReconcileResult> {
+  return apiFetch<ReconcileResult>(`/inventory/${productId}/reconcile`);
 }
 
 export interface AdjustStockInput {
