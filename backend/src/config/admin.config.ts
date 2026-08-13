@@ -67,8 +67,13 @@ export interface FieldConfig {
   /** For `enum`. The engine rejects any value not in this list. */
   options?: readonly string[];
   relation?: RelationSpec;
-  /** For `money`. Display only — the API always emits a decimal string. */
-  currency?: string;
+  /**
+   * Shown by the form when an EXISTING non-empty value is being changed to
+   * something different (never on first-time entry, and never on create —
+   * there is nothing to warn about changing yet). Purely a UI hint; the
+   * backend enforces nothing extra because of this flag.
+   */
+  changeWarning?: string;
 }
 
 export interface ResourceConfig {
@@ -108,11 +113,11 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       // Excluded from the list view: a TEXT column makes rows unreadable and
       // is not what anyone scans a catalogue for.
       { name: 'description', label: 'Description', type: 'longtext', inList: false },
-      { name: 'price', label: 'Price', type: 'money', currency: 'AED', required: true, sortable: true },
+      { name: 'price', label: 'Price', type: 'money', required: true, sortable: true },
       // Optional and deliberately not in the list view: most rows won't have
       // it filled in yet, and margin reporting must treat a blank cost as
       // "not tracked", never as free — see the schema comment on Product.cost.
-      { name: 'cost', label: 'Cost', type: 'money', currency: 'AED', inList: false },
+      { name: 'cost', label: 'Cost', type: 'money', inList: false },
       { name: 'stock', label: 'Stock', type: 'number', sortable: true },
       {
         name: 'categoryId',
@@ -127,6 +132,34 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         options: ['DRAFT', 'ACTIVE', 'ARCHIVED'],
         sortable: true,
       },
+      // Shipping/customs block. All optional and off the list view — a
+      // catalogue table isn't where anyone scans for these, and most rows
+      // won't have them filled in yet (same "not yet tracked" framing as
+      // `cost`, not a required-fields regression).
+      { name: 'barcode', label: 'Barcode (EAN/UPC)', type: 'text', inList: false, searchable: true },
+      { name: 'weightKg', label: 'Weight (kg)', type: 'number', inList: false },
+      { name: 'lengthCm', label: 'Length (cm)', type: 'number', inList: false },
+      { name: 'widthCm', label: 'Width (cm)', type: 'number', inList: false },
+      { name: 'heightCm', label: 'Height (cm)', type: 'number', inList: false },
+      { name: 'hsCode', label: 'HS code', type: 'text', inList: false },
+      { name: 'countryOfOrigin', label: 'Country of origin', type: 'text', inList: false },
+      // SEO block. `slug` is never auto-derived from `name` on write — see
+      // the schema comment on Product.slug — a user types it, so changing it
+      // is a deliberate act the UI can warn about, not a side effect of
+      // renaming the product. Meta title/description are single-locale for
+      // now, matching `name`/`description` (no i18n content model exists
+      // yet — that's A5.8's job, not duplicated here).
+      {
+        name: 'slug',
+        label: 'Slug',
+        type: 'text',
+        inList: false,
+        searchable: true,
+        changeWarning:
+          'Changing the slug records a redirect from the old one, but nothing in this app resolves products by slug yet — this is for a future public site.',
+      },
+      { name: 'metaTitle', label: 'Meta title', type: 'text', inList: false },
+      { name: 'metaDescription', label: 'Meta description', type: 'longtext', inList: false },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],
   },
@@ -212,7 +245,7 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       { name: 'type', label: 'Type', type: 'enum', options: ['PERCENT', 'FIXED'], required: true, sortable: true },
       // PERCENT stores the percentage itself (10.00 = 10%); FIXED stores a
       // money amount. Same Decimal(10,2) either way, so the same string rule.
-      { name: 'value', label: 'Value', type: 'money', currency: 'AED', required: true, sortable: true },
+      { name: 'value', label: 'Value', type: 'money', required: true, sortable: true },
       { name: 'maxUses', label: 'Max uses', type: 'number' },
       { name: 'usedCount', label: 'Used', type: 'number', readOnly: true, sortable: true },
       { name: 'isActive', label: 'Active', type: 'boolean', sortable: true },

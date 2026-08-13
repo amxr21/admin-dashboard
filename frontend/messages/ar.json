@@ -16,7 +16,11 @@
     "loading": "جارٍ التحميل…",
     "loadingPage": "جارٍ تحميل {page}…",
     "retry": "إعادة المحاولة",
-    "signOut": "تسجيل الخروج"
+    "signOut": "تسجيل الخروج",
+    "savedNotice": "تم الحفظ.",
+    "saving": "جارٍ الحفظ…",
+    "unsavedChangesPlain": "تغييرات غير محفوظة",
+    "unsavedChanges": "{count, plural, zero {لا تغييرات غير محفوظة} one {تغيير واحد غير محفوظ} two {تغييران غير محفوظين} few {# تغييرات غير محفوظة} many {# تغييراً غير محفوظ} other {# تغيير غير محفوظ}}"
   },
   "language": {
     "label": "اللغة",
@@ -128,8 +132,15 @@
     "collapseSidebar": "طي الشريط الجانبي",
     "expandSidebar": "توسيع الشريط الجانبي",
     "search": "بحث",
-    "searchPlaceholder": "الانتقال إلى…",
+    "searchPlaceholder": "ابحث في الطلبات والعملاء والمنتجات…",
     "openPage": "فتح",
+    "searchGroups": {
+      "pages": "الصفحات",
+      "orders": "الطلبات",
+      "customers": "العملاء",
+      "products": "المنتجات",
+      "noResults": "لا توجد نتائج مطابقة"
+    },
     "descriptions": {
       "dashboard": "الإيرادات والطلبات وما يحتاج انتباهك اليوم، في لمحة واحدة.",
       "orders": "كل طلب وعناصره ومكانه في مسار التنفيذ.",
@@ -371,7 +382,9 @@
       "placeholder": "ابحث حسب {fields}"
     },
     "filters": {
-      "all": "الكل"
+      "all": "الكل",
+      "applied": "عوامل التصفية:",
+      "remove": "إزالة عامل تصفية {label}"
     },
     "pagination": {
       "previous": "السابق",
@@ -383,7 +396,9 @@
       "create": "إضافة {label}",
       "editRow": "تعديل {label}",
       "deleteRow": "حذف {label}",
-      "deleteSelected": "حذف المحدَّد"
+      "deleteSelected": "حذف المحدَّد",
+      "clearFilters": "مسح عوامل التصفية",
+      "import": "استيراد"
     },
     "notice": {
       "created": "تمت الإضافة.",
@@ -397,6 +412,31 @@
       "confirm": "حذف",
       "cancel": "إلغاء",
       "working": "جارٍ الحذف…"
+    },
+    "emptyFiltered": "لا توجد {label} تطابق عوامل التصفية هذه.",
+    "emptyFilteredHint": "جرّب إزالة أحد عوامل التصفية أو البحث عن شيء آخر.",
+    "margin": {
+      "profit": "الربح",
+      "margin": "هامش الربح"
+    },
+    "import": {
+      "title": "استيراد {label}",
+      "description": "ارفع ملف CSV. يتم التحقق من كل صف قبل حفظ أي شيء — إذا كان أي صف غير صالح، لن يتم استيراد شيء.",
+      "downloadTemplate": "تنزيل نموذج CSV",
+      "pickFile": "اختر ملف CSV",
+      "pickFileHint": "أو اسحبه وأفلته هنا",
+      "validating": "جارٍ التحقق من الملف…",
+      "summary": {
+        "preview": "{valid} من أصل {total, plural, zero {لا صفوف} one {صف واحد} two {صفَّين} few {# صفوف} many {# صفاً} other {# صف}} جاهزة للاستيراد",
+        "applied": "{imported, plural, =0 {لم يتم استيراد شيء} one {تم استيراد صف واحد} two {تم استيراد صفَّين} few {تم استيراد # صفوف} many {تم استيراد # صفاً} other {تم استيراد # صف}} من أصل {total, plural, zero {لا صفوف} one {صف واحد} two {صفَّين} few {# صفوف} many {# صفاً} other {# صف}}"
+      },
+      "errorsHeading": "{count, plural, zero {لا صفوف تحتاج إصلاحاً} one {صف واحد يحتاج إصلاحاً} two {صفَّان يحتاجان إصلاحاً} few {# صفوف تحتاج إصلاحاً} many {# صفاً يحتاج إصلاحاً} other {# صف يحتاج إصلاحاً}}",
+      "errorRow": "الصف {row}",
+      "fixAndRetry": "أصلح هذه الصفوف في ملفك وارفعه مرة أخرى.",
+      "cancel": "إلغاء",
+      "confirmImport": "{count, plural, zero {استيراد} one {استيراد صف واحد} two {استيراد صفَّين} few {استيراد # صفوف} many {استيراد # صفاً} other {استيراد # صف}}",
+      "importing": "جارٍ الاستيراد…",
+      "close": "إغلاق"
     }
   },
   "placeholder": {
@@ -464,6 +504,7 @@
     "choose": "اختر…",
     "manageVariants": "إدارة المتغيرات",
     "manageGallery": "إدارة المعرض",
+    "variantsAfterSave": "احفظ هذا المنتج أولاً — تُلحق المتغيرات وصور المعرض بسجل منتج حقيقي غير موجود بعد.",
     "noOptions": "لا توجد خيارات متاحة.",
     "errors": {
       "required": "هذا الحقل مطلوب.",
@@ -684,7 +725,12 @@
       "current": "المتوفر الآن {stock}",
       "empty": "لا توجد حركات مسجَّلة بعد.",
       "close": "إغلاق",
-      "truncated": "يعرض أحدث {shown} من أصل {total} حركة."
+      "by": "بواسطة {name}",
+      "previousPage": "السابق",
+      "nextPage": "التالي",
+      "pageOf": "صفحة {page} من {totalPages}",
+      "reconcileAgrees": "السجل يطابق المخزون الحالي.",
+      "reconcileMismatch": "المخزون المسجَّل ({stock}) لا يطابق إجمالي السجل ({fromMovements}). تغيّر المخزون دون تسجيل السبب."
     }
   },
   "stockReason": {
@@ -718,7 +764,20 @@
     "out": "إخراج",
     "amount": "الكمية",
     "record": "تسجيل",
-    "wouldGoNegative": "يوجد {stock} فقط في المخزون — هذه الكمية ستجعله سالبًا."
+    "wouldGoNegative": "يوجد {stock} فقط في المخزون — هذه الكمية ستجعله سالبًا.",
+    "history": "السجل",
+    "log": {
+      "title": "سجل المخزون — {name}",
+      "current": "المتوفر الآن {stock}",
+      "empty": "لا توجد حركات مسجَّلة بعد.",
+      "close": "إغلاق",
+      "by": "بواسطة {name}",
+      "previousPage": "السابق",
+      "nextPage": "التالي",
+      "pageOf": "صفحة {page} من {totalPages}",
+      "reconcileAgrees": "السجل يطابق المخزون الحالي.",
+      "reconcileMismatch": "المخزون المسجَّل ({stock}) لا يطابق إجمالي السجل ({fromMovements}). تغيّر المخزون دون تسجيل السبب."
+    }
   },
   "productGallery": {
     "title": "معرض الصور — {name}",
@@ -726,7 +785,9 @@
     "empty": "لا توجد صور في المعرض بعد.",
     "moveUp": "نقل للأعلى",
     "moveDown": "نقل للأسفل",
-    "delete": "إزالة الصورة"
+    "delete": "إزالة الصورة",
+    "altLabel": "النص البديل",
+    "altPlaceholder": "صِف هذه الصورة لقارئات الشاشة"
   },
   "notificationsBell": {
     "unread": "{count, plural, zero {لا إشعارات غير مقروءة} one {إشعار واحد غير مقروء} two {إشعاران غير مقروءين} few {# إشعارات غير مقروءة} many {# إشعاراً غير مقروء} other {# إشعار غير مقروء}}",
@@ -960,6 +1021,37 @@
       "missingFromAr": "{count, plural, one {مفتاح واحد} other {# مفاتيح}} مفقود من العربية",
       "missingFromEn": "{count, plural, one {مفتاح واحد} other {# مفاتيح}} مفقود من الإنجليزية"
     },
+    "account": {
+      "title": "حسابك",
+      "description": "اسمك وكلمة مرورك. لم تعد الحاجة إلى مالك لتغيير أي منهما.",
+      "email": "البريد الإلكتروني",
+      "name": "الاسم",
+      "save": "حفظ",
+      "saving": "جارٍ الحفظ…",
+      "profileSaved": "تم تحديث بياناتك.",
+      "changePassword": "تغيير كلمة المرور",
+      "changePasswordDescription": "ستحتاج كلمة مرورك الحالية. سيتم تسجيل الخروج من كل جلسة أخرى، بما في ذلك هذه الجلسة، واستبدالها بجلسة جديدة.",
+      "currentPassword": "كلمة المرور الحالية",
+      "newPassword": "كلمة المرور الجديدة",
+      "passwordHint": "استخدم {min} حرفًا على الأقل.",
+      "passwordChanged": "تم تغيير كلمة المرور.",
+      "confirmPasswordChange": "تغيير كلمة المرور",
+      "cancel": "إلغاء"
+    },
+    "data": {
+      "title": "البيانات",
+      "description": "صدّر أي مورد يمكنك الوصول إليه كملف CSV.",
+      "exportTitle": "مركز التصدير",
+      "exportDescription": "اختر موردًا وحمّل كل صف يمكنك الوصول إليه بصيغة CSV.",
+      "resourceLabel": "المورد",
+      "export": "تصدير CSV",
+      "exporting": "جارٍ التصدير…",
+      "exported": "تم تصدير {resource}.",
+      "historyTitle": "عمليات التصدير الأخيرة",
+      "historyEmpty": "لا توجد عمليات تصدير بعد.",
+      "unknownActor": "غير معروف",
+      "retry": "إعادة المحاولة"
+    },
     "policies": {
       "title": "السياسات",
       "description": "نصوص سياسة الإرجاع والخصوصية والشروط والشحن — لكل لغة، مع سجل إصدارات.",
@@ -1050,7 +1142,8 @@
       "role": "الدور",
       "status": "الحالة",
       "lastLogin": "آخر دخول",
-      "actions": "إجراءات"
+      "actions": "إجراءات",
+      "accessExpiresAt": "تنتهي صلاحية الوصول"
     },
     "search": {
       "label": "بحث",
@@ -1063,9 +1156,10 @@
     "status": {
       "active": "نشط",
       "inactive": "معطّل",
-      "locked": "مقفل"
+      "locked": "مقفل",
+      "expired": "منتهية"
     },
-    "never": "لم يسجّل الدخول بعد",
+    "never": "لم يسجّل الدخول قط",
     "you": "أنت",
     "actions": {
       "create": "إضافة شخص",
@@ -1073,7 +1167,9 @@
       "unlock": "إلغاء قفل {name}",
       "unlockShort": "إلغاء القفل",
       "password": "تعيين كلمة مرور جديدة لـ {name}",
-      "passwordShort": "كلمة المرور"
+      "passwordShort": "كلمة المرور",
+      "resetToken": "إصدار رمز إعادة تعيين لـ {name}",
+      "invite": "دعوة"
     },
     "notice": {
       "created": "يمكن لـ {name} تسجيل الدخول الآن.",
@@ -1088,17 +1184,19 @@
       "save": "حفظ",
       "saving": "جارٍ الحفظ…",
       "emailRequired": "البريد الإلكتروني مطلوب.",
-      "passwordHint": "12 حرفاً على الأقل. ستحتاج إلى تسليمها له مباشرة.",
+      "passwordHint": "لا تقل عن {min} حرفًا. ستحتاج إلى تسليمها إليه مباشرة.",
       "fields": {
         "email": "البريد الإلكتروني",
         "name": "الاسم",
         "phone": "الهاتف",
         "role": "الدور",
         "password": "كلمة المرور",
-        "isActive": "يمكنه تسجيل الدخول"
+        "isActive": "يمكنه تسجيل الدخول",
+        "accessExpiresAt": "تنتهي صلاحية الوصول"
       },
       "selfRoleNote": "لا يمكنك تغيير دورك بنفسك — اطلب ذلك من مالك آخر.",
-      "lockedNote": "أُقفل الحساب بعد محاولات دخول فاشلة كثيرة. ألغِ القفل أو عيّن كلمة مرور جديدة."
+      "lockedNote": "أُقفل الحساب بعد محاولات دخول فاشلة كثيرة. ألغِ القفل أو عيّن كلمة مرور جديدة.",
+      "accessExpiresHint": "بعد هذا التاريخ، لن يتمكنوا من تسجيل الدخول حتى يتم مسح التاريخ أو تمديده. اتركه فارغًا لعدم وجود انتهاء."
     },
     "password": {
       "title": "كلمة مرور جديدة لـ {name}",
@@ -1106,6 +1204,36 @@
       "label": "كلمة المرور الجديدة",
       "confirm": "تعيين كلمة المرور",
       "cancel": "إلغاء"
+    },
+    "resetToken": {
+      "title": "رمز إعادة التعيين لـ {email}",
+      "shownOnce": "يظهر هذا الرمز مرة واحدة فقط. انسخه الآن — لا يمكن استرجاعه لاحقًا.",
+      "copy": "نسخ الرمز",
+      "copyHint": "انسخ الرمز وسلّمه مباشرة.",
+      "copied": "تم نسخ الرمز.",
+      "expires": "تنتهي صلاحيته في {at}.",
+      "handOver": "سلّمه إليه مباشرة. سيعيّن كلمة المرور بنفسه، فلن تعرفها أنت.",
+      "done": "تم"
+    },
+    "filters": {
+      "role": "الدور",
+      "status": "الحالة",
+      "all": "الكل",
+      "active": "نشط",
+      "inactive": "غير نشط"
+    },
+    "invite": {
+      "title": "دعوة شخص إلى فريق العمل",
+      "description": "يُنشئ الحساب ويمنحك رمز تفعيل لمرة واحدة تسلّمه له — لن ترى كلمة مروره أو تحددها أبدًا.",
+      "send": "إرسال الدعوة"
+    },
+    "permissions": {
+      "title": "الصلاحيات",
+      "description": "المجالات التي يمكن لكل دور الوصول إليها. يفرضها الخادم — هذا عرض للقراءة فقط لذلك النموذج.",
+      "area": "المجال",
+      "readOnly": "قراءة فقط",
+      "granted": "يمكن لـ {role} الوصول إلى {area}",
+      "notGranted": "لا يمكن لـ {role} الوصول إلى {area}"
     }
   },
   "staffRole": {
@@ -1702,6 +1830,11 @@
       "refundAmountLabel": "مبلغ الاسترداد (حتى {max})",
       "restock": "إعادة العناصر المرتجعة إلى المخزون",
       "reject": "رفض",
+      "confirmReject": "تأكيد الرفض",
+      "cancel": "إلغاء",
+      "rejectionReasonLabel": "لماذا يُرفض هذا الطلب؟",
+      "rejectionReasonPlaceholder": "اشرح سبب القرار — قد يطّلع مقدّم الطلب على هذا.",
+      "rejectionReason": "سبب الرفض",
       "approve": "قبول",
       "saving": "جارٍ الحفظ…",
       "approved": "تم قبول {rma}.",
@@ -1715,6 +1848,8 @@
       "quantityFor": "الكمية لـ {item}",
       "reason": "السبب",
       "reasonPlaceholder": "لماذا يُعاد هذا المنتج؟",
+      "category": "الفئة",
+      "categoryPlaceholder": "اختر فئة (اختياري)",
       "cancel": "إلغاء",
       "submit": "طلب الإرجاع",
       "saving": "جارٍ الإرسال…",
@@ -1729,5 +1864,38 @@
     "SUCCESS": "ناجح",
     "DENIED": "مرفوض",
     "ERROR": "خطأ"
+  },
+  "filters": {
+    "applied": "عوامل التصفية:",
+    "remove": "إزالة عامل التصفية {label}",
+    "clearAll": "مسح الكل"
+  },
+  "commandPalette": {
+    "title": "لوحة الأوامر",
+    "placeholder": "ابحث في الصفحات، الطلبات، العملاء، المنتجات، أو نفّذ إجراءً…",
+    "hint": "اكتب للبحث، أو اختر إجراءً أدناه.",
+    "noResults": "لا توجد نتائج مطابقة",
+    "groups": {
+      "pages": "الصفحات",
+      "orders": "الطلبات",
+      "customers": "العملاء",
+      "products": "المنتجات",
+      "actions": "الإجراءات"
+    },
+    "actions": {
+      "addProduct": "إضافة منتج",
+      "createDiscount": "إنشاء خصم",
+      "switchToDark": "التبديل إلى الوضع الداكن",
+      "switchToLight": "التبديل إلى الوضع الفاتح",
+      "signOut": "تسجيل الخروج"
+    }
+  },
+  "returnCategory": {
+    "DAMAGED": "تالف",
+    "WRONG_ITEM": "منتج خاطئ",
+    "NOT_AS_DESCRIBED": "لا يطابق الوصف",
+    "NO_LONGER_NEEDED": "لم يعد مطلوبًا",
+    "ARRIVED_LATE": "وصل متأخرًا",
+    "OTHER": "أخرى"
   }
 }

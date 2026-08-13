@@ -1,6 +1,8 @@
+import type { Request } from 'express';
 import { ProductStatus } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
+import { logger } from '../logger.js';
 
 /**
  * Resource-specific BEHAVIOUR.
@@ -32,6 +34,18 @@ export interface ResourceHooks {
    * Returning `handled: false` falls through to the normal delete.
    */
   beforeDelete?: (id: string) => Promise<DeleteOutcome>;
+  /**
+   * Runs AFTER a successful generic update, given the row as it was before
+   * and after. Side-effect only — return value is ignored, and a throw here
+   * must never undo the update that already committed (see the products
+   * hook's own try/catch for why).
+   */
+  afterUpdate?: (
+    id: string,
+    before: Record<string, unknown>,
+    after: Record<string, unknown>,
+    req: Request,
+  ) => Promise<void>;
 }
 
 export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>> = {
@@ -59,6 +73,44 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
       });
 
       return { handled: true, action: 'archived' };
+    },
+
+    /**
+     * Records the OLD slug whenever a product's slug changes away from a
+     * previously-set value — never on the first slug being assigned (there
+     * is no "old" one to redirect from). See the schema comment on
+     * `ProductRedirect` for why nothing consumes this live today.
+     *
+     * Best-effort, same discipline as `audit()`: a redirect row is history,
+     * not the update itself — a failure here (e.g. the freakishly unlucky
+     * case of the old slug already existing as ANOTHER product's current
+     * redirect) must never make the slug update the user just performed
+     * look like it failed.
+     */
+    afterUpdate: async (
+      _id: string,
+      before: Record<string, unknown>,
+      after: Record<string, unknown>,
+      req: Request,
+    ): Promise<void> => {
+      const previousSlug = typeof before.slug === 'string' ? before.slug : null;
+      const nextSlug = typeof after.slug === 'string' ? after.slug : null;
+      if (!previousSlug || previousSlug === nextSlug) return;
+
+      try {
+        await prisma.productRedirect.create({
+          data: { oldSlug: previousSlug, productId: String(after.id) },
+        });
+      } catch (error) {
+        const detail = {
+          event: 'product.redirect.write_failed',
+          productId: String(after.id),
+          oldSlug: previousSlug,
+          error: error instanceof Error ? error.message : String(error),
+        };
+        if (typeof req.log?.error === 'function') req.log.error(detail);
+        else logger.error(detail);
+      }
     },
   },
 };

@@ -80,3 +80,44 @@ export async function adjustVariantStock(
     body: JSON.stringify(input.note ? input : { delta: input.delta, reason: input.reason }),
   });
 }
+
+export interface VariantMovementListResult {
+  variant: { id: string; name: string; sku: string | null; stock: number };
+  movements: (VariantStockMovement & { actorName: string | null })[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export async function fetchVariantMovements(
+  variantId: string,
+  params: { page?: number; pageSize?: number } = {},
+): Promise<VariantMovementListResult> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) query.set(key, String(value));
+  }
+
+  return apiFetch<VariantMovementListResult>(
+    `/variants/${variantId}/movements?${query.toString()}`,
+  );
+}
+
+export interface VariantReconcileResult {
+  variantId: string;
+  stock: number;
+  fromMovements: number;
+  /** False means something wrote `stock` without recording why. */
+  agrees: boolean;
+}
+
+/**
+ * Does the log still agree with the running total? Same purpose as the
+ * product-level `fetchReconcile` in inventory-api.ts — built specifically
+ * so a discrepancy is diagnosable from the UI rather than by querying the
+ * database directly.
+ */
+export async function fetchVariantReconcile(variantId: string): Promise<VariantReconcileResult> {
+  return apiFetch<VariantReconcileResult>(`/variants/${variantId}/reconcile`);
+}

@@ -10,6 +10,9 @@ import { apiFetch } from '@/lib/api';
 export interface ProductImage {
   id: string;
   url: string;
+  /** Null means nobody has written alt text yet — distinct from `""`,
+   *  which would mean someone explicitly cleared it. */
+  alt: string | null;
   position: number;
   productId: string;
   createdAt: string;
@@ -20,10 +23,23 @@ export async function fetchImages(productId: string): Promise<ProductImage[]> {
   return body.images;
 }
 
-export async function addImage(productId: string, url: string): Promise<ProductImage> {
+export async function addImage(
+  productId: string,
+  url: string,
+  alt?: string,
+): Promise<ProductImage> {
   const body = await apiFetch<{ image: ProductImage }>(`/products/${productId}/images`, {
     method: 'POST',
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, ...(alt ? { alt } : {}) }),
+  });
+  return body.image;
+}
+
+/** `null` clears alt text back to unset, not to an empty string. */
+export async function setImageAlt(id: string, alt: string | null): Promise<ProductImage> {
+  const body = await apiFetch<{ image: ProductImage }>(`/images/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ alt }),
   });
   return body.image;
 }

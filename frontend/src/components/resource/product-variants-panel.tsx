@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { Minus, Package, Plus, Trash2 } from 'lucide-react';
+import { History, Minus, Package, Plus, Trash2 } from 'lucide-react';
 
 import {
   AlertDialog,
@@ -29,6 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { VariantMovementLogSheet } from '@/components/resource/variant-movement-log-sheet';
 import {
   STOCK_REASONS,
   adjustVariantStock,
@@ -88,6 +89,7 @@ export function ProductVariantsPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [adjustingId, setAdjustingId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [historyId, setHistoryId] = useState<string | null>(null);
 
   function load() {
     setIsLoading(true);
@@ -190,6 +192,15 @@ export function ProductVariantsPanel({
                         type="button"
                         variant="ghost"
                         size="icon"
+                        aria-label={t('history')}
+                        onClick={() => setHistoryId(variant.id)}
+                      >
+                        <History className="size-4" aria-hidden />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
                         aria-label={t('delete', { name: variant.name })}
                         onClick={() => setPendingDeleteId(variant.id)}
                       >
@@ -247,6 +258,14 @@ export function ProductVariantsPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <VariantMovementLogSheet
+        variantId={historyId}
+        open={historyId !== null}
+        onOpenChange={(next) => {
+          if (!next) setHistoryId(null);
+        }}
+      />
     </Sheet>
   );
 }

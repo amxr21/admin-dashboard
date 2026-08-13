@@ -12,6 +12,7 @@ import type { Request } from 'express';
 function serializeImage(image: {
   id: string;
   url: string;
+  alt: string | null;
   position: number;
   productId: string;
   createdAt: Date;
@@ -34,7 +35,12 @@ export async function listImages(productId: string) {
   return images.map(serializeImage);
 }
 
-export async function addImage(productId: string, url: string, req: Request) {
+export async function addImage(
+  productId: string,
+  url: string,
+  alt: string | null,
+  req: Request,
+) {
   const product = await prisma.product.findUnique({
     where: { id: productId },
     select: { id: true },
@@ -48,14 +54,36 @@ export async function addImage(productId: string, url: string, req: Request) {
   const position = (last._max.position ?? -1) + 1;
 
   const image = await prisma.productImage.create({
-    data: { productId, url, position },
+    data: { productId, url, alt, position },
   });
 
   audit(req, {
     action: 'product.image.added',
     entity: 'product_images',
     entityId: image.id,
-    changes: { url: { from: null, to: url } },
+    changes: { url: { from: null, to: url }, alt: { from: null, to: alt } },
+  });
+
+  return serializeImage(image);
+}
+
+/**
+ * Alt text is the only field an existing image can be edited through — url
+ * and position have their own dedicated flows (delete-and-re-add, reorder),
+ * and folding either into a generic "update" would blur which one actually
+ * happened in the audit trail.
+ */
+export async function setImageAlt(id: string, alt: string | null, req: Request) {
+  const existing = await prisma.productImage.findUnique({ where: { id } });
+  if (!existing) throw AppError.notFound('Image not found');
+
+  const image = await prisma.productImage.update({ where: { id }, data: { alt } });
+
+  audit(req, {
+    action: 'product.image.alt_updated',
+    entity: 'product_images',
+    entityId: id,
+    changes: { alt: { from: existing.alt, to: alt } },
   });
 
   return serializeImage(image);
