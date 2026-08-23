@@ -1,3 +1,7 @@
+import 'dotenv/config';
+
+import { pathToFileURL } from 'node:url';
+
 import {
   DeliveryStaffStatus,
   DeliveryStatus,
@@ -86,8 +90,18 @@ function money(value: number): Prisma.Decimal {
  * `__demo__` products in it looks like a data-entry mistake, not a script.
  */
 function assertSafeEnvironment() {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('Refusing to seed demo data with NODE_ENV=production.');
+  // A public demo deployment is the one legitimate reason to want demo rows in
+  // a NODE_ENV=production database: showing the dashboard with data in it is
+  // the entire point of that instance. It stays opt-in and explicit — nobody
+  // reaches this by muscle memory, only by setting the variable deliberately.
+  // The `defaultdb` check below is NOT relaxed by it.
+  const demoDeployment = process.env.DEMO_DEPLOYMENT === '1';
+
+  if (process.env.NODE_ENV === 'production' && !demoDeployment) {
+    throw new Error(
+      'Refusing to seed demo data with NODE_ENV=production. If this really is a ' +
+        'public demo instance, set DEMO_DEPLOYMENT=1 to allow it.',
+    );
   }
 
   const url = process.env.DATABASE_URL ?? '';
@@ -108,7 +122,7 @@ function assertSafeEnvironment() {
   process.stdout.write(`  target database: ${database}\n`);
 }
 
-async function main() {
+export async function seedDemoData() {
   assertSafeEnvironment();
 
   const existing = await prisma.product.count({
@@ -442,11 +456,20 @@ async function main() {
   );
 }
 
-main()
-  .catch((error: unknown) => {
-    process.stderr.write(
-      `\n  demo seed failed: ${error instanceof Error ? error.message : String(error)}\n`,
-    );
-    process.exitCode = 1;
-  })
-  .finally(() => void prisma.$disconnect());
+// Only self-run when invoked directly (`tsx prisma/demo-seed.ts`). When seed.ts
+// imports seedDemoData(), it owns the lifecycle — running main() on import
+// would seed twice and disconnect the client out from under the caller.
+const invokedDirectly =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (invokedDirectly) {
+  seedDemoData()
+    .catch((error: unknown) => {
+      process.stderr.write(
+        `\n  demo seed failed: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      process.exitCode = 1;
+    })
+    .finally(() => void prisma.$disconnect());
+}
