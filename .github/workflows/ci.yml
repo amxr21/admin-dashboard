@@ -115,7 +115,14 @@ jobs:
         env:
           # Dummy build-time values — real ones live in Vercel. Sentry source-map
           # upload is skipped automatically because SENTRY_AUTH_TOKEN is unset.
-          NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
+          #
+          # Mode is `local` because the URL below is a localhost one:
+          # src/lib/api-config.ts refuses a loopback URL under dev/prod, which
+          # is the guard that keeps a real deploy from shipping localhost. CI
+          # only type-checks and builds, it never calls the API, so `local` is
+          # the honest label for a build that talks to nothing.
+          NEXT_PUBLIC_APP_MODE: local
+          NEXT_PUBLIC_API_URL_LOCAL: http://localhost:4000/api/v1
           NEXT_PUBLIC_ENV: ci
         run: pnpm --filter ./frontend build
 

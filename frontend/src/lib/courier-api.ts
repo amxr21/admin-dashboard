@@ -1,4 +1,5 @@
 import { ApiError } from '@/lib/api';
+import { API_BASE_URL } from '@/lib/api-config';
 import { readCourierToken, type CourierSession } from '@/lib/courier-auth-storage';
 
 /**
@@ -10,7 +11,7 @@ import { readCourierToken, type CourierSession } from '@/lib/courier-auth-storag
  * prevent.
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+const API_URL = API_BASE_URL;
 
 type ErrorBody = {
   error?: { code?: string; message?: string; requestId?: string; details?: unknown };

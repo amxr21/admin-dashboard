@@ -4,6 +4,21 @@ import { vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 
 /**
+ * API config for the test run.
+ *
+ * `src/lib/api-config.ts` throws at module scope when no API URL is set for
+ * the active mode — deliberately, so a misconfigured deploy fails the build
+ * instead of silently shipping a localhost URL to real visitors. Every suite
+ * that imports `@/lib/api` (roughly forty of them) would inherit that throw,
+ * so the runner declares a local backend here.
+ *
+ * `??=` so a CI job or a developer can still override either value from the
+ * real environment without editing this file.
+ */
+process.env.NEXT_PUBLIC_APP_MODE ??= 'local';
+process.env.NEXT_PUBLIC_API_URL_LOCAL ??= 'http://localhost:4000/api/v1';
+
+/**
  * Default stub for the locale-aware navigation primitives.
  *
  * Fifteen test files each hand-rolled a PARTIAL mock of this module —
