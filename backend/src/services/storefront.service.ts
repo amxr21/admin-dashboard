@@ -487,7 +487,13 @@ export async function checkout(
     const byId = new Map(products.map((product) => [product.id, product]));
 
     let subtotal = new Prisma.Decimal(0);
-    const lines: { productId: string; quantity: number; price: Prisma.Decimal }[] = [];
+    const lines: {
+      productId: string;
+      /** Carried only so the oversell conflict below can name the product. */
+      name: string;
+      quantity: number;
+      price: Prisma.Decimal;
+    }[] = [];
 
     for (const [productId, quantity] of quantities) {
       const product = byId.get(productId);
@@ -496,6 +502,9 @@ export async function checkout(
       // the id and doesn't need to learn whether it exists but is a draft.
       if (!product) throw AppError.badRequest('One or more items are no longer available');
 
+      // Fails the common case early — before an order row, its items and a
+      // movement log are written and then rolled back — and names the exact
+      // remaining count, which the decrement below cannot report.
       if (product.stock < quantity) {
         throw AppError.conflict(
           `Only ${String(product.stock)} × ${product.name} left — please adjust your cart`,
@@ -503,7 +512,7 @@ export async function checkout(
       }
 
       subtotal = subtotal.plus(product.price.times(quantity));
-      lines.push({ productId, quantity, price: product.price });
+      lines.push({ productId, name: product.name, quantity, price: product.price });
     }
 
     // Rounded once, at creation, and snapshotted — same discipline as
@@ -573,11 +582,34 @@ export async function checkout(
 
     // Stock: decrement AND log a movement. Both, or the "sum of deltas equals
     // stock" invariant breaks.
+    //
+    // The decrement is computed by the database (`stock - n`), not written back
+    // from the value read above, so no update can be lost. Two simultaneous
+    // checkouts for the same product contend on the row: InnoDB takes an
+    // exclusive lock for the UPDATE and reads the latest committed value, so
+    // the second one either waits or is aborted as a deadlock — it never
+    // applies to a stale count. The P2034 branch below is that abort.
     for (const line of lines) {
-      await tx.product.update({
-        where: { id: line.productId },
-        data: { stock: { decrement: line.quantity } },
-      });
+      try {
+        await tx.product.update({
+          where: { id: line.productId },
+          data: { stock: { decrement: line.quantity } },
+        });
+      } catch (err) {
+        // P2034 — write conflict / deadlock. This is the EXPECTED way to lose
+        // a race for a contended product, not a bug in this code. Left
+        // unmapped it surfaces to the shopper as a generic 500 and to Sentry
+        // as an incident, which is wrong on both counts: nothing is broken,
+        // someone else simply got there first. Mapped to the 409 the pre-flight
+        // stock check already returns, so both paths look the same to the
+        // storefront. Anything else is a real failure and must surface.
+        if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2034') {
+          throw err;
+        }
+        throw AppError.conflict(
+          `${line.name} just sold out — please adjust your cart and try again`,
+        );
+      }
       await tx.stockMovement.create({
         data: {
           productId: line.productId,
