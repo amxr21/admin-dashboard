@@ -4,7 +4,8 @@
 - **Project**: A schema-driven admin back office (orders, inventory, delivery, staff, settings,
   reports, returns) built as a generalisable "plug-and-play dashboard for any business" — most
   resources render themselves from `admin.config.ts` rather than being hand-coded per feature.
-- **Stack**: Next.js 15 (App Router) + TypeScript → Vercel · Express 5 + TypeScript → Render ·
+- **Stack**: Next.js 15 (App Router) + TypeScript · Express 5 + TypeScript · both self-hosted on a
+  Hostinger KVM VPS via Coolify (moved off Vercel/Render 2026-09-03) ·
   MySQL via Prisma (Aiven) · pnpm workspace · Node 22.
 - **Status**: active development. Every admin section has a real page; what remains before the
   `dev` → `main` gate is security/readiness work, not features (see Current work).
@@ -407,6 +408,22 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
 - **Blockers**: none currently. Setup/Schema wizard remains blocked on an architecture decision
   (compiled-TS config vs. a DB-backed override layer) — not started, not in scope.
 - **Context to remember**:
+  - **New 2026-09-03 rule — env files: `.env` + `.env.local` + `.env.example` per side, nothing
+    else.** No `.env.fluffy`, `.env.dev`, `.env.staging` or other per-target variants — a deleted
+    `backend/.env.fluffy` (its own DB `fluffy_cookies` on port 4001) is what prompted this. `.env`
+    and `.env.local` are gitignored local reality; `.env.example` is the ONLY committed one and is
+    the template a fresh clone sets up from, so it stays. Environment differences belong in
+    `NEXT_PUBLIC_APP_MODE` (see the rule below) or in the Coolify service's own env vars, never in
+    a new file.
+  - **Hosting moved to Hostinger + Coolify (2026-09-03).** Vercel and Render are GONE — ignore any
+    older note in this file or in `ROADMAP.md` that treats them as live, including the whole
+    `dev → main` G-GATE item about "Render redeploy status". The `hostinger-coolify-hosting` skill
+    covers this setup. Still stale and not yet rewritten: `.github/workflows/e2e.yml` (built around
+    Vercel preview URLs + `RENDER_DEV_BACKEND_URL`; already disabled, so it breaks nothing).
+    `frontend/src/middleware.ts`'s `_vercel` matcher exclusion is harmless and was left alone.
+    **The user's dev/prod backend URLs are not yet known** — `NEXT_PUBLIC_API_URL_DEV`/`_PROD` are
+    deliberately EMPTY placeholders in both `frontend/.env` and `.env.example`. Local is the only
+    working target right now; the user will fill the others in later. Do not invent a value.
   - **New 2026-08-23 rule — the frontend API URL is mode-driven, never inferred.**
     `frontend/src/lib/api-config.ts` is the ONLY place the API base URL is resolved. Set
     `NEXT_PUBLIC_APP_MODE` to `local` | `dev` | `prod` (unset = `dev`) and provide the matching
