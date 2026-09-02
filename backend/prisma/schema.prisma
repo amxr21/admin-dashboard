@@ -464,6 +464,8 @@ model Product {
   images     ProductImage[]
   discounts  Discount[]
   redirects  ProductRedirect[]
+  cartItems     CartItem[]
+  wishlistItems WishlistItem[]
 
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
@@ -556,6 +558,14 @@ model ProductImage {
 // CUSTOMERS & ORDERS
 // ═══════════════════════════════════════════════════════════════════
 
+/// A shopper on the public storefront.
+///
+/// Deliberately NOT the same model as `User`, which is STAFF: `User` carries
+/// `StaffRole`, a bcrypt password, 2FA, lockout counters and the whole RBAC
+/// surface (`authorize.ts`). A customer must never be able to acquire any of
+/// that, and keeping the two tables apart makes that structural rather than a
+/// rule someone has to remember. The token side of the same separation lives
+/// in `customer-auth.service.ts`.
 model Customer {
   id            String  @id @default(cuid())
   name          String  @db.VarChar(200)
@@ -567,10 +577,29 @@ model Customer {
   /// vocabulary, deliberately (see the design note on Order.internalNotes).
   internalNotes String? @map("internal_notes") @db.Text
 
+  /// ─── Storefront sign-in (Google) ──────────────────────────────────
+  /// Google's stable subject id (`sub`). NULL for a customer created by staff
+  /// or by a guest checkout — those rows are order history, not accounts, and
+  /// must keep working. A first Google sign-in on a matching email adopts the
+  /// existing row rather than creating a duplicate customer.
+  ///
+  /// There is deliberately NO password column: the storefront authenticates
+  /// only via Google ID tokens, so this app never stores a customer credential
+  /// that could leak.
+  googleId     String?   @unique @map("google_id") @db.VarChar(64)
+  /// Google profile picture URL, shown in the storefront header. Display only.
+  picture      String?   @db.VarChar(512)
+  lastLoginAt  DateTime? @map("last_login_at")
+  /// Bumped to invalidate every storefront token this customer holds — the
+  /// same revocation mechanism `User.tokenVersion` gives staff.
+  tokenVersion Int       @default(0) @map("token_version")
+
   orders    Order[]
   reviews   Review[]
   returns   Return[]
   discounts Discount[]
+  cartItems     CartItem[]
+  wishlistItems WishlistItem[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -647,6 +676,61 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
   @@map("order_items")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STOREFRONT (public shopping surface)
+// ═══════════════════════════════════════════════════════════════════
+
+/// A signed-in shopper's cart line.
+///
+/// Carts are storefront-only — nothing in the admin UI reads them. Guests keep
+/// their cart in browser storage instead and it is merged here on sign-in, so
+/// a row only ever exists for an authenticated customer.
+///
+/// Deliberately stores NO price: a cart is a live intention, so it must show
+/// today's price. Snapshotting happens at checkout, on `OrderItem.price` —
+/// the opposite discipline to an order, and for the opposite reason.
+model CartItem {
+  id       String @id @default(cuid())
+  quantity Int    @default(1)
+
+  customerId String   @map("customer_id")
+  /// Cascade — a deleted customer's cart is meaningless. Order history is NOT
+  /// cascaded (see `Order.customerId`), because that has accounting value.
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  productId String  @map("product_id")
+  /// Cascade — a delisted product must leave the cart rather than linger as a
+  /// line that cannot be ordered.
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// One line per product per customer. The storefront's add-to-cart relies on
+  /// this for an atomic upsert-and-increment — without it, two rapid taps
+  /// create two rows instead of quantity 2.
+  @@unique([customerId, productId], map: "uq_cart_customer_product")
+  @@index([customerId])
+  @@map("cart_items")
+}
+
+/// A product a customer saved for later ("liked").
+model WishlistItem {
+  id String @id @default(cuid())
+
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([customerId, productId], map: "uq_wishlist_customer_product")
+  @@index([customerId])
+  @@map("wishlist_items")
 }
 
 /// Staff-only order notes — a THREAD, not a single overwritable field (C5.7).
