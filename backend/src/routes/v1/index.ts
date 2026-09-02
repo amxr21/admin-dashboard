@@ -20,6 +20,7 @@ import { notificationsRouter } from './notifications.route.js';
 import { uploadRouter } from './upload.route.js';
 import { variantsRouter } from './variants.route.js';
 import { productImagesRouter } from './product-images.route.js';
+import { publicRouter } from './public.route.js';
 import { resourceRouter } from './resource.route.js';
 
 /**
@@ -53,5 +54,9 @@ v1Router.use(notificationsRouter);
 v1Router.use(uploadRouter);
 v1Router.use(variantsRouter);
 v1Router.use(productImagesRouter);
+// The public storefront surface (/public/*). Unlike every router above it,
+// this one is NOT staff-authenticated — see public.route.ts for why that is
+// safe here and what replaces `authenticate` on the routes that need a shopper.
+v1Router.use(publicRouter);
 // LAST: /r/:resource is a catch-all shape, so it must not shadow a named route.
 v1Router.use(resourceRouter);
