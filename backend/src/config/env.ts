@@ -152,6 +152,29 @@ const envSchema = z.object({
   LOGIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
   // How long the lock lasts, in minutes.
   LOGIN_LOCKOUT_MINUTES: z.coerce.number().int().positive().default(15),
+
+  // ─── Storefront (public customer API) ────────────────────────────
+  // Google OAuth *Web* Client ID, used to verify shoppers' ID tokens as the
+  // token `audience`. Must match the storefront's NEXT_PUBLIC_GOOGLE_CLIENT_ID
+  // exactly or every sign-in fails.
+  //
+  // Optional, and unset means "storefront sign-in is off" rather than a
+  // misconfiguration — same opt-in treatment as CLOUDINARY_*/SMTP_* above, so a
+  // deployment with no public storefront boots without inventing a fake value.
+  // The public catalogue still works; only signing in is disabled.
+  //
+  // NOTE: only the public Client ID is needed to verify an ID token. There is
+  // deliberately no client SECRET in this flow — nothing extra to leak.
+  GOOGLE_CLIENT_ID: z.string().optional(),
+
+  // Google sits on the critical path of every storefront sign-in. Cap the wait
+  // so a slow third party can't hold connections open indefinitely.
+  GOOGLE_VERIFY_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
+
+  // Storefront sessions are separate from staff sessions and deliberately
+  // longer-lived: the blast radius of a leaked shopper token is that person's
+  // own cart and order history, not the admin surface. Staff keep JWT_EXPIRES_IN.
+  CUSTOMER_JWT_EXPIRES_IN: z.string().default('30d'),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -42,5 +42,12 @@ process.env.JWT_EXPIRES_IN ??= '7d';
 process.env.LOGIN_MAX_ATTEMPTS ??= '5';
 process.env.LOGIN_LOCKOUT_MINUTES ??= '15';
 
+// Storefront. These are OPTIONAL in env.ts (unset = storefront sign-in is off,
+// not a misconfiguration), so the suite would boot without them — pinned here
+// so the customer-auth tests get a deterministic audience instead of depending
+// on whether a local .env happens to define one.
+process.env.GOOGLE_CLIENT_ID ??= 'test-only.apps.googleusercontent.com';
+process.env.CUSTOMER_JWT_EXPIRES_IN ??= '30d';
+
 // No SENTRY_DSN on purpose — Sentry is disabled outside production/preview,
 // and tests must never emit real events.
