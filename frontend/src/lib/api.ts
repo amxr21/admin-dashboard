@@ -12,9 +12,10 @@
  * This centralises it: callers get `T` or an `ApiError` they can catch.
  */
 
+import { API_BASE_URL } from '@/lib/api-config';
 import { readToken } from '@/lib/auth-storage';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+const API_URL = API_BASE_URL;
 
 /** The error envelope the backend returns for every failure. */
 export class ApiError extends Error {

@@ -407,6 +407,19 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
 - **Blockers**: none currently. Setup/Schema wizard remains blocked on an architecture decision
   (compiled-TS config vs. a DB-backed override layer) — not started, not in scope.
 - **Context to remember**:
+  - **New 2026-08-23 rule — the frontend API URL is mode-driven, never inferred.**
+    `frontend/src/lib/api-config.ts` is the ONLY place the API base URL is resolved. Set
+    `NEXT_PUBLIC_APP_MODE` to `local` | `dev` | `prod` (unset = `dev`) and provide the matching
+    `NEXT_PUBLIC_API_URL_LOCAL` / `_DEV` / `_PROD`. There is deliberately **no fallback** — the
+    old `process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1'` in `api.ts` and
+    `courier-api.ts` meant a deploy that lost the variable shipped a bundle calling the
+    *visitor's own machine*, failing as an unexplained network error naming nothing. The module
+    throws at module scope (so `next build` goes red) if the active mode has no URL, if a
+    `dev`/`prod` URL is a loopback host, or if a `local` URL is remote (that mirror guard stops
+    local testing writing to shared data). Legacy `NEXT_PUBLIC_API_URL` is still honoured as an
+    override but is subject to the same guards. `NEXT_PUBLIC_ENV` is a SEPARATE axis, untouched —
+    it still drives Sentry's environment tag only. `frontend/vitest.setup.ts` declares
+    `local` + a localhost URL for the test run, since ~40 suites import `lib/api` transitively.
   - PRs #85 and #86 (this session) are pushed and open; merging is the user's call per standing
     instruction.
   - `prisma migrate dev` raising a drop-database-looking alarm has now happened three times on
