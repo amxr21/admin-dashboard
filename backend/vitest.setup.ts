@@ -29,12 +29,12 @@ process.env.CORS_ORIGINS ??= 'http://localhost:3000';
 // import time with "process.exit unexpectedly called with 1" — a message that
 // does not name the missing variable, so it costs a CI round-trip to diagnose.
 //
-// Adding a required env var means touching FOUR places:
+// Adding a required env var means touching THREE places:
 //   1. src/config/env.ts        (the schema)
-//   2. backend/.env.example     (documentation)
-//   3. backend/vitest.setup.ts  (this file)
-//   4. .github/workflows/ci.yml (the test job's env block)
-// Miss #3 or #4 and it passes locally, fails in CI.
+//   2. backend/vitest.setup.ts  (this file)
+//   3. .github/workflows/ci.yml (the test job's env block)
+// Miss #2 or #3 and it passes locally, fails in CI.
+// (There is deliberately no committed env template — see CLAUDE.md.)
 //
 // Test-only value: valid (32+ chars) but deliberately not secret.
 process.env.JWT_SECRET ??= 'test-only-secret-never-used-in-production-0123456789';

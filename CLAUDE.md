@@ -408,13 +408,16 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
 - **Blockers**: none currently. Setup/Schema wizard remains blocked on an architecture decision
   (compiled-TS config vs. a DB-backed override layer) — not started, not in scope.
 - **Context to remember**:
-  - **New 2026-09-03 rule — env files: `.env` + `.env.local` + `.env.example` per side, nothing
-    else.** No `.env.fluffy`, `.env.dev`, `.env.staging` or other per-target variants — a deleted
-    `backend/.env.fluffy` (its own DB `fluffy_cookies` on port 4001) is what prompted this. `.env`
-    and `.env.local` are gitignored local reality; `.env.example` is the ONLY committed one and is
-    the template a fresh clone sets up from, so it stays. Environment differences belong in
-    `NEXT_PUBLIC_APP_MODE` (see the rule below) or in the Coolify service's own env vars, never in
-    a new file.
+  - **New 2026-09-03 rule — env files: `.env` + `.env.local` per side. NOTHING is committed.**
+    No `.env.example`, and no `.env.fluffy`/`.env.dev`/`.env.staging` per-target variants (a
+    deleted `backend/.env.fluffy`, its own DB `fluffy_cookies` on port 4001, is what prompted
+    this). `.gitignore` no longer whitelists `.env.example` — do not re-add that whitelist, and
+    do not recreate the file. The user does not want his setup shared with everyone who can read
+    the repo, so "the values are only placeholders" and "a fresh clone needs a template" are NOT
+    reasons to override this; both were argued once and rejected. Environment differences belong
+    in `NEXT_PUBLIC_APP_MODE` (see the rule below) or in the host's own service env vars, never in
+    a new file. **The same applies beyond env files**: do not write hosting/deployment/infra
+    details into any committed file. This file (CLAUDE.md) is the right place for them.
   - **Hosting moved to Hostinger + Coolify (2026-09-03).** Vercel and Render are GONE — ignore any
     older note in this file or in `ROADMAP.md` that treats them as live, including the whole
     `dev → main` G-GATE item about "Render redeploy status". The `hostinger-coolify-hosting` skill
@@ -422,7 +425,7 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
     Vercel preview URLs + `RENDER_DEV_BACKEND_URL`; already disabled, so it breaks nothing).
     `frontend/src/middleware.ts`'s `_vercel` matcher exclusion is harmless and was left alone.
     **The user's dev/prod backend URLs are not yet known** — `NEXT_PUBLIC_API_URL_DEV`/`_PROD` are
-    deliberately EMPTY placeholders in both `frontend/.env` and `.env.example`. Local is the only
+    deliberately EMPTY placeholders in `frontend/.env`. Local is the only
     working target right now; the user will fill the others in later. Do not invent a value.
   - **New 2026-08-23 rule — the frontend API URL is mode-driven, never inferred.**
     `frontend/src/lib/api-config.ts` is the ONLY place the API base URL is resolved. Set

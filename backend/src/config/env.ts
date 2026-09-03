@@ -13,7 +13,9 @@ import { z } from 'zod';
  * Instead: parse once, at boot, and crash immediately with a readable message.
  * Everything downstream imports `env` and gets fully-typed, guaranteed values.
  *
- * Adding a variable: add it here AND to .env.example. Those two stay in sync.
+ * Adding a required variable: add it here, to backend/vitest.setup.ts and to
+ * .github/workflows/ci.yml. Env files are never committed, so there is no
+ * template to update; the variable list lives in CLAUDE.md.
  */
 
 const envSchema = z.object({
@@ -188,7 +190,7 @@ if (!parsed.success) {
       parsed.error.issues
         .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
         .join('\n') +
-      '\n\nCheck .env against .env.example.',
+      '\n\nSet the missing variables in backend/.env (see CLAUDE.md).',
   );
   process.exit(1);
 }

@@ -21,8 +21,8 @@ Admin dashboard — Next.js (App Router) frontend + Express/MySQL backend, both 
 ```bash
 pnpm install
 
-cp frontend/.env.example frontend/.env.local   # fill in real values
-cp backend/.env.example  backend/.env          # fill in real values
+# Env files are never committed and there is no template in the repo.
+# Create backend/.env and frontend/.env — see CLAUDE.md for the variables.
 
 pnpm --filter ./backend db:migrate             # create the schema
 pnpm dev                                       # FE :3000  ·  BE :4000
