@@ -52,7 +52,7 @@ const MIGRATIONS_DIR = path.join(
  * Migration folders on disk vs. rows Prisma has actually recorded as applied.
  *
  * ─── WHY THIS IS READ-ONLY, WITH NO "APPLY" ACTION NEXT TO IT ────────────
- * `render.yaml`'s build command already runs `prisma migrate deploy` on every
+ * The deploy's build command already runs `prisma migrate deploy` on every
  * deploy — migrations are applied automatically, before this process is even
  * serving traffic. Adding an HTTP-triggered "run migrations now" button next
  * to that would either do nothing (already applied) or fight the deploy

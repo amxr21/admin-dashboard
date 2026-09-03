@@ -66,7 +66,7 @@ Two persistent environments plus preview-per-PR:
 
 Each environment gets its own Sentry environment tag and its own keys.
 
-`.env.example` in each package documents every required variable. On the backend these are **validated at boot** by `backend/src/config/env.ts` — a missing or malformed variable exits the process immediately with a readable message, rather than surfacing as a mystery failure under load hours later. When you add a variable, add it in both `env.ts` and `.env.example`.
+Env files are never committed, and the repo carries no template — the required variables are listed in `CLAUDE.md`. On the backend they are **validated at boot** by `backend/src/config/env.ts` — a missing or malformed variable exits the process immediately with a readable message, rather than surfacing as a mystery failure under load hours later. When you add a required variable, add it to `env.ts` and to `.github/workflows/ci.yml`; `backend/src/__tests__/env-contract.test.ts` enforces the CI half, since a var missing there fails every backend test at once with a message that names no file.
 
 **When to add a real staging environment:** when you have QA who isn't the dev, external integrations with approval flows, destructive migrations that need prod-like rehearsal, or an SLA where 20 minutes of downtime costs real money. Until then, preview-per-PR covers it.
 
@@ -194,8 +194,8 @@ repository. The rules that carry their weight solo are **require status checks t
 ```bash
 pnpm install
 
-cp backend/.env.example  backend/.env          # fill in DATABASE_URL
-cp frontend/.env.example frontend/.env.local
+# Env files are never committed and there is no template in the repo.
+# Create backend/.env and frontend/.env — see CLAUDE.md for the variables.
 
 pnpm --filter ./backend db:migrate             # creates the schema
 pnpm dev                                       # FE :3000 · BE :4000

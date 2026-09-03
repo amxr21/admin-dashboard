@@ -8,7 +8,7 @@ import { dueScheduledReports, runScheduledReport } from './services/scheduled-re
  * The scheduled-reports ticker (C3.2).
  *
  * ─── IN-PROCESS, NOT A SEPARATE WORKER ────────────────────────────────
- * `render.yaml` defines one web service and no Render Cron Job — adding a
+ * The deploy runs one web service and no separate cron worker — adding a
  * second service is a deploy/billing decision, not a code one, so this runs
  * inside the same process as the API. That is a real limitation, not an
  * oversight: if this app is ever scaled to multiple instances, every

@@ -17,9 +17,9 @@ import { env, isProduction } from './config/env.js';
 const enabled = isProduction || env.NODE_ENV === 'preview';
 
 Sentry.init({
-  // Sentry parses the DSN even when disabled, so the placeholder in
-  // .env.example would print "Invalid Sentry Dsn" on every dev boot. Withhold
-  // it entirely unless we actually intend to report.
+  // Sentry parses the DSN even when disabled, so a placeholder value would
+  // print "Invalid Sentry Dsn" on every dev boot. Withhold it entirely unless
+  // we actually intend to report.
   dsn: enabled ? env.SENTRY_DSN || undefined : undefined,
   environment: env.NODE_ENV,
   tracesSampleRate: 1.0,
