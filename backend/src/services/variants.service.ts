@@ -208,12 +208,16 @@ export interface AdjustVariantStockInput {
   actorId: string;
 }
 
-export async function adjustVariantStock(variantId: string, input: AdjustVariantStockInput) {
+export async function adjustVariantStock(
+  variantId: string,
+  input: AdjustVariantStockInput,
+  req: Request,
+) {
   if (!Number.isInteger(input.delta) || input.delta === 0) {
     throw AppError.badRequest('Enter a whole number that is not zero', { field: 'delta' });
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const variant = await tx.productVariant.findUnique({
       where: { id: variantId },
       select: { id: true, name: true, stock: true },
@@ -250,6 +254,25 @@ export async function adjustVariantStock(variantId: string, input: AdjustVariant
       movement: { ...movement, createdAt: movement.createdAt.toISOString() },
     };
   });
+
+  // Same reasoning as `adjustStock` in inventory.service.ts (F6.2) — the
+  // movement's own `actorId` was never enough to make it visible in
+  // /admin/audit or countable in getStaffActivity. After the transaction, so
+  // a rolled-back movement leaves no audit entry behind.
+  audit(req, {
+    action: 'inventory.variant-stock.adjusted',
+    entity: 'product_variants',
+    entityId: result.variant.id,
+    changes: {
+      stock: { from: result.variant.stock - result.movement.delta, to: result.variant.stock },
+      delta: { to: result.movement.delta },
+      reason: { to: result.movement.reason },
+      note: { to: result.movement.note },
+      movementId: { to: result.movement.id },
+    },
+  });
+
+  return result;
 }
 
 export async function reconcileVariant(variantId: string) {

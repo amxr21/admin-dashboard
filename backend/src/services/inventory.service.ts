@@ -1,7 +1,9 @@
 import { Prisma, type StockMovementReason } from '@prisma/client';
+import type { Request } from 'express';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
+import { audit } from './audit.service.js';
 import { getSettingValue } from './settings.service.js';
 import { notify } from './notify.service.js';
 
@@ -161,7 +163,7 @@ export interface AdjustStockInput {
  * and the write happen in the same transaction so the negative-stock check is
  * made against a value that cannot have moved underneath it.
  */
-export async function adjustStock(productId: string, input: AdjustStockInput) {
+export async function adjustStock(productId: string, input: AdjustStockInput, req: Request) {
   if (!Number.isInteger(input.delta) || input.delta === 0) {
     throw AppError.badRequest('Enter a whole number that is not zero', {
       field: 'delta',
@@ -234,6 +236,38 @@ export async function adjustStock(productId: string, input: AdjustStockInput) {
       link: '/admin/inventory',
     });
   }
+
+  /**
+   * The stock movement reaches the AUDIT TRAIL too (F6.2), not just its own
+   * log.
+   *
+   * `StockMovement.actorId` already recorded who moved stock, so the fact was
+   * never lost — but it was only visible by opening that one product's
+   * movement log. It did not appear in `/admin/audit`, and
+   * `getStaffActivity` did not count it, so "what did this person do today"
+   * silently omitted counting stock, which for a shift worker is most of the
+   * job.
+   *
+   * Written AFTER the transaction commits, deliberately: an audit entry for a
+   * movement that then rolled back would be a record of something that never
+   * happened. `audit()` is best-effort and never throws (see its own note),
+   * so a logging outage cannot fail an adjustment that already succeeded.
+   *
+   * `resultingStock` is included because the delta alone is not reviewable —
+   * "−3" raises "from what?", and the answer is otherwise a second query.
+   */
+  audit(req, {
+    action: 'inventory.stock.adjusted',
+    entity: 'product',
+    entityId: result.product.id,
+    changes: {
+      stock: { from: result.product.stock - result.movement.delta, to: result.product.stock },
+      delta: { to: result.movement.delta },
+      reason: { to: result.movement.reason },
+      note: { to: result.movement.note },
+      movementId: { to: result.movement.id },
+    },
+  });
 
   return { product: result.product, movement: result.movement };
 }
