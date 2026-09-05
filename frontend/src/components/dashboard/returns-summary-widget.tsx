@@ -3,6 +3,7 @@
 import { useFormatter, useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
+import { MetricDefinition } from '@/components/reports/metric-definition';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ReturnsSummary } from '@/lib/reports-api';
 
@@ -42,19 +43,28 @@ export function ReturnsSummaryWidget({ data, isLoading = false }: ReturnsSummary
         <div className="mt-3 space-y-4">
           <dl className="grid grid-cols-3 gap-3">
             <div className="space-y-0.5">
-              <dt className="text-muted-foreground text-xs">{t('returnRate')}</dt>
+              <dt className="text-muted-foreground flex items-center gap-1 text-xs">
+                {t('returnRate')}
+                <MetricDefinition label={t('returnRate')} definition={t('definitions.returnRate')} />
+              </dt>
               <dd className="text-sm font-medium tabular-nums">
                 {formatter.number(data.returnRate, { style: 'percent', maximumFractionDigits: 1 })}
               </dd>
             </div>
             <div className="space-y-0.5">
-              <dt className="text-muted-foreground text-xs">{t('refundValue')}</dt>
+              <dt className="text-muted-foreground flex items-center gap-1 text-xs">
+                {t('refundValue')}
+                <MetricDefinition label={t('refundValue')} definition={t('definitions.refundValue')} />
+              </dt>
               <dd className="text-sm font-medium tabular-nums">
                 {formatter.number(Number(data.refundValue), 'currency')}
               </dd>
             </div>
             <div className="space-y-0.5">
-              <dt className="text-muted-foreground text-xs">{t('unitsReturned')}</dt>
+              <dt className="text-muted-foreground flex items-center gap-1 text-xs">
+                {t('unitsReturned')}
+                <MetricDefinition label={t('unitsReturned')} definition={t('definitions.unitsReturned')} />
+              </dt>
               <dd className="text-sm font-medium tabular-nums">
                 {formatter.number(data.unitsReturned)}
               </dd>

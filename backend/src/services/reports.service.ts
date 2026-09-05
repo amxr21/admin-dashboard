@@ -27,7 +27,7 @@ import { getSettingValue } from './settings.service.js';
  */
 
 /** A cancelled order never took money. Everything else did, at least once. */
-const EXCLUDED_FROM_REVENUE: OrderStatus[] = [OrderStatus.CANCELED];
+export const EXCLUDED_FROM_REVENUE: OrderStatus[] = [OrderStatus.CANCELED];
 
 /**
  * Longest reportable window.

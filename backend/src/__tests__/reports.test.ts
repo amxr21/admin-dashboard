@@ -441,6 +441,36 @@ describe('CSV export', () => {
     expect(res.text).toContain('CANCELED,1,');
   });
 
+  /**
+   * F4.3 — this report INCLUDES canceled orders, because the statuses have to
+   * sum to the order count; that is the point of a breakdown. Which makes its
+   * money column order VALUE, not revenue: the CANCELED row is money that was
+   * never collected.
+   *
+   * Headed "Total" in a spreadsheet, the obvious thing to do is sum it — which
+   * overstated revenue by 33% on the demo data and disagreed with every
+   * revenue report in the app. The CSV has to carry its own caveat, because
+   * the person who opens it is not the person who knows this rule.
+   */
+  it('status breakdown CSV names the money column honestly and flags non-revenue rows', async () => {
+    const res = await get(`/reports/status-breakdown?from=${FROM}&to=${TO}&format=csv`);
+
+    expect(res.status).toBe(200);
+
+    const lines = res.text.trim().split('\r\n');
+    const header = lines[0] ?? '';
+
+    // Not "Total" — that invites summing a figure which is not revenue.
+    expect(header).toContain('Order value');
+    expect(header).toContain('Counts toward revenue');
+
+    const canceled = lines.find((line) => line.startsWith('CANCELED,'));
+    const delivered = lines.find((line) => line.startsWith('DELIVERED,'));
+
+    expect(canceled?.endsWith('No')).toBe(true);
+    expect(delivered?.endsWith('Yes')).toBe(true);
+  });
+
   it('rejects an unknown format rather than silently falling back to JSON', async () => {
     const res = await get(`/reports/overview?from=${FROM}&to=${TO}&format=xml`);
     expect(res.status).toBe(400);
