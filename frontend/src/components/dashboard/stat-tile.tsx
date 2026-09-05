@@ -6,6 +6,7 @@ import {
   Boxes,
   ChevronLeft,
   ChevronRight,
+  Coins,
   Package,
   ShoppingCart,
   TrendingDown,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import { Link } from '@/i18n/navigation';
+import { MetricDefinition } from '@/components/reports/metric-definition';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -43,6 +45,7 @@ import { cn } from '@/lib/utils';
  */
 const ICONS = {
   revenue: TrendingUp,
+  profit: Coins,
   orders: ShoppingCart,
   customers: Users,
   pending: Package,
@@ -65,7 +68,15 @@ const INVERTED_METRICS = new Set(['canceledOrders', 'pendingOrders', 'lowStockPr
 
 export interface StatTileProps {
   labelKey: string;
-  value: number;
+  /**
+   * NULL means "not knowable", and renders as an em dash, never as 0.
+   *
+   * A metric with no honest value must not borrow zero's appearance: "0%
+   * margin" and "margin cannot be computed" are different claims, and the
+   * first one is wrong. Pair it with `noDeltaReason` to say WHY — the dash
+   * shows there is no number, that line says what is missing.
+   */
+  value: number | null;
   /** Percentage change vs the comparison period. Omit when the metric has
    *  no meaningful comparison (e.g. a live snapshot) — the delta SLOT still
    *  renders, just with a neutral placeholder instead of a number. */
@@ -87,9 +98,19 @@ export interface StatTileProps {
   /** Looked up in ICONS — a component cannot cross the RSC boundary. */
   icon?: StatIcon;
   /** Optional status slot — e.g. an attention badge when a metric crosses a
-   *  threshold. Not consumed by any caller yet; the slot exists so a future
-   *  one can fill it without changing the tile's anatomy. */
+   *  threshold, or the coverage qualifier the profit tiles carry. */
   status?: ReactNode;
+  /**
+   * The metric's definition, shown in an info tooltip next to its label
+   * (F4.1). Already translated by the caller.
+   *
+   * Optional rather than required because a few tiles genuinely are what
+   * they say (a plain count of rows). But prefer supplying it: the rules
+   * behind these numbers — which orders are excluded, which denominator is
+   * used, whether the date range even applies — are exactly what makes a
+   * dashboard feel untrustworthy when they are invisible.
+   */
+  definition?: string;
   isLoading?: boolean;
   /** Makes the whole tile a drill-down link — a KPI with nowhere to go is a
    *  dead end. Omit for tiles with no matching destination view. */
@@ -106,6 +127,7 @@ export function StatTile({
   format = 'number',
   icon,
   status,
+  definition,
   isLoading = false,
   href,
 }: StatTileProps) {
@@ -137,9 +159,12 @@ export function StatTile({
   const body = (
     <>
       <div className="flex items-start justify-between gap-2">
-        <div className="text-muted-foreground flex items-center gap-2 text-sm">
-          {Icon ? <Icon className="size-4" aria-hidden /> : null}
+        <div className="text-muted-foreground flex items-center gap-1.5 text-sm">
+          {Icon ? <Icon className="size-4 me-0.5" aria-hidden /> : null}
           <span>{t(labelKey)}</span>
+          {definition ? (
+            <MetricDefinition label={t(labelKey)} definition={definition} />
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {status}
@@ -159,9 +184,17 @@ export function StatTile({
       {/* tabular-nums so the digits don't reflow as values update — a jittering
           number is hard to read and looks broken. */}
       <p className="mt-2 text-2xl font-semibold tabular-nums">
-        {format === 'currency'
-          ? formatter.number(value, 'currency')
-          : formatter.number(value)}
+        {value === null ? (
+          // Muted, so an absent value doesn't read with the same visual
+          // weight as a real one sitting in the same strip.
+          <span className="text-muted-foreground" aria-label={t('valueUnavailable')}>
+            —
+          </span>
+        ) : format === 'currency' ? (
+          formatter.number(value, 'currency')
+        ) : (
+          formatter.number(value)
+        )}
       </p>
 
       {/* The delta slot ALWAYS renders — never omitted — so every tile in
