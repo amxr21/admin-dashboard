@@ -2,13 +2,14 @@
 
 import { useTranslations } from 'next-intl';
 import { useState, type FormEvent } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { CheckCircle2, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/useAuth';
-import { useRouter } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 import { ApiError } from '@/lib/api';
 
 /**
@@ -38,6 +39,17 @@ export function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  /**
+   * `?reset=1` — set by the reset form after a successful redemption.
+   *
+   * Without it, someone who just set a password lands back on a bare sign-in
+   * form with no acknowledgement, which reads as "it didn't work" for the one
+   * flow where the user is already anxious about being locked out. Redemption
+   * revokes every session server-side, so arriving here IS the success path,
+   * not a failure.
+   */
+  const justReset = useSearchParams().get('reset') === '1';
 
   function messageFor(caught: unknown): string {
     if (!(caught instanceof ApiError)) {
@@ -87,6 +99,20 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      {/* Suppressed once an error exists: the failure is the newer and more
+          actionable fact, and stacking "password set" above "that password
+          isn't right" is actively confusing. */}
+      {justReset && !error ? (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400"
+        >
+          {/* Icon AND colour — never colour alone, per the app-wide rule. */}
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span>{t('reset.done')}</span>
+        </div>
+      ) : null}
+
       {error ? (
         // role=alert so it is announced immediately — a sighted user sees the
         // message appear, a screen-reader user would otherwise get nothing.
@@ -143,6 +169,18 @@ export function LoginForm() {
           t('signIn')
         )}
       </Button>
+
+      {/* The ONLY discoverable route to the reset page. Without this, someone
+          locked out has to be sent the URL by hand — and the admin-issued
+          token they were given would have nowhere to go. */}
+      <p className="text-muted-foreground text-center text-sm">
+        <Link
+          href="/reset-password"
+          className="hover:text-foreground underline underline-offset-4"
+        >
+          {t('haveResetCode')}
+        </Link>
+      </p>
     </form>
   );
 }
