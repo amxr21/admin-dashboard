@@ -44,6 +44,17 @@ interface StockAdjustSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdjusted: (message: string) => void;
+  /**
+   * Reframes the sheet as "record opening stock" for a product that was just
+   * created (F3.2). Copy only — the mechanism is identical, because an
+   * opening balance IS a stock movement, and pretending otherwise would put
+   * a number into `product.stock` that the movement log cannot explain.
+   *
+   * Worth the separate wording: "Adjust Widget / Currently 0 in stock" reads
+   * as a correction to something that already went wrong, when in fact
+   * nothing has happened to this product yet.
+   */
+  variant?: 'adjust' | 'opening';
 }
 
 type Direction = 'in' | 'out';
@@ -62,6 +73,7 @@ export function StockAdjustSheet({
   open,
   onOpenChange,
   onAdjusted,
+  variant = 'adjust',
 }: StockAdjustSheetProps) {
   const t = useTranslations('inventory.adjust');
   const tReason = useTranslations('stockReason');
@@ -76,14 +88,19 @@ export function StockAdjustSheet({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isOpening = variant === 'opening';
+
   useEffect(() => {
     if (!open) return;
     setDirection('in');
     setAmount('');
-    setReason('');
+    // An opening balance is stock ARRIVING, so RECEIVED is preselected —
+    // still changeable (a migrated count is arguably a CORRECTION), just not
+    // asked from scratch when the answer is obvious.
+    setReason(isOpening ? 'RECEIVED' : '');
     setNote('');
     setError(null);
-  }, [open, product?.id]);
+  }, [open, product?.id, isOpening]);
 
   if (!product) return null;
 
@@ -145,13 +162,17 @@ export function StockAdjustSheet({
         side="end"
         variant={editPanelMode}
         className="w-full max-w-md overflow-y-auto"
-        title={t('title', { name: product.name })}
+        title={isOpening ? t('openingTitle', { name: product.name }) : t('title', { name: product.name })}
       >
         <div className="space-y-5">
           <div>
-            <h2 className="text-lg font-semibold">{t('title', { name: product.name })}</h2>
+            <h2 className="text-lg font-semibold">
+              {isOpening ? t('openingTitle', { name: product.name }) : t('title', { name: product.name })}
+            </h2>
             <p className="text-muted-foreground mt-1 text-sm">
-              {t('current', { stock: formatter.number(product.stock) })}
+              {isOpening
+                ? t('openingHint', { name: product.name })
+                : t('current', { stock: formatter.number(product.stock) })}
             </p>
           </div>
 
@@ -249,13 +270,13 @@ export function StockAdjustSheet({
 
           <div className="flex justify-end gap-2 border-t pt-4">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              {t('cancel')}
+              {isOpening ? t('openingSkip') : t('cancel')}
             </Button>
             <Button
               disabled={!reason || !isValidAmount || wouldGoNegative || isSaving}
               onClick={() => void submit()}
             >
-              {isSaving ? t('saving') : t('record')}
+              {isSaving ? t('saving') : isOpening ? t('openingRecord') : t('record')}
             </Button>
           </div>
         </div>
