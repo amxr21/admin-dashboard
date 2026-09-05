@@ -57,6 +57,19 @@ beforeEach(() => {
 });
 
 describe('creating a schedule', () => {
+  /**
+   * Given its own timeout, NOT a retry.
+   *
+   * This test types a 47-character recipients string through `userEvent`,
+   * which dispatches a full event sequence per keystroke. Alone it finishes
+   * in well under a second; in a full-suite run on a loaded machine it
+   * crossed vitest's 5000ms default and failed — reproducibly, on a clean
+   * checkout, which is why it is a SPEED problem and not a flaky one.
+   *
+   * A global retry would have hidden it, and would hide the next real
+   * failure in this file too. A longer budget for the one slow test does
+   * not.
+   */
   it('parses comma- and newline-separated recipients, trimmed', async () => {
     createScheduledReport.mockResolvedValue(makeSchedule());
     const onSaved = vi.fn();
@@ -79,7 +92,7 @@ describe('creating a schedule', () => {
         recipients: ['a@example.test', 'b@example.test', 'c@example.test'],
       });
     });
-  });
+  }, 20000);
 
   it('surfaces the server-side 400 message verbatim rather than a generic error', async () => {
     createScheduledReport.mockRejectedValue(new ApiError(400, 'VALIDATION', 'Recipient "x" is not a valid email.'));
