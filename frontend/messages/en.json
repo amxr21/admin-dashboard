@@ -171,8 +171,10 @@
       "reports": "Revenue over time, top products, and how orders are trending.",
       "settings": "Brand, appearance, notifications, and security policy — one place for all of it.",
       "staff": "Who has access to this dashboard, and how much of it they can reach.",
-      "audit": "A record of every change made here, and who made it."
-    }
+      "audit": "A record of every change made here, and who made it.",
+      "loginHistory": "Who signed in and who was refused"
+    },
+    "loginHistory": "Sign-in history"
   },
   "roles": {
     "DEVELOPER": "Developer",
@@ -2042,5 +2044,44 @@
     "NO_LONGER_NEEDED": "No longer needed",
     "ARRIVED_LATE": "Arrived late",
     "OTHER": "Other"
+  },
+  "loginHistory": {
+    "title": "Sign-in history",
+    "subtitle": "Who signed in, who was refused, and from where. Read from the audit trail — nothing here is recorded twice.",
+    "attempted": "Attempted — not signed in",
+    "unknownActor": "Not identified",
+    "noIp": "Not recorded",
+    "empty": "No sign-in activity recorded yet.",
+    "emptyHint": "Successful and failed sign-ins both appear here as they happen.",
+    "emptyFiltered": "No sign-ins match these filters.",
+    "emptyFilteredHint": "Try a wider date range, or clear the filters to see everything.",
+    "pageOf": "Page {page} of {total}",
+    "columns": {
+      "event": "Event",
+      "who": "Who",
+      "reason": "Reason",
+      "where": "Where from",
+      "when": "When"
+    },
+    "filters": {
+      "outcome": "Outcome",
+      "allOutcomes": "All sign-in events",
+      "failuresOnly": "Failed attempts only",
+      "from": "From",
+      "to": "To",
+      "clear": "Clear filters"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "events": {
+      "auth_login_succeeded": "Signed in",
+      "auth_login_failed": "Sign-in refused",
+      "auth_login_2fa-verified": "Two-factor verified",
+      "auth_login_2fa-failed": "Two-factor refused",
+      "auth_logout": "Signed out",
+      "auth_session_revoked": "Session revoked"
+    }
   }
 }

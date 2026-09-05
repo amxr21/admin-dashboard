@@ -81,6 +81,100 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+/**
+ * F2 — sessions and sign-in history for ANOTHER user.
+ *
+ * The rank rule is the whole risk surface here. Reading someone's sign-in
+ * history and killing their sessions are exactly as privileged as editing
+ * them, so "nobody reaches upward" has to hold on these routes too — a
+ * MANAGER must not be able to watch an OWNER's logins or sign them out.
+ */
+describe('sessions and login history are rank-checked like any other staff write', () => {
+  it('lets an owner read the sessions of a lower-ranked user', async () => {
+    const res = await request(app)
+      .get(`/api/v1/staff/${supportId}/sessions`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray((res.body as { data: unknown[] }).data)).toBe(true);
+  });
+
+  it('refuses a manager reaching UPWARD to owner sessions', async () => {
+    // The manager is not denied the staff area (they never had it) — this is
+    // specifically rule 3, and it must apply to reads, not only to writes.
+    const res = await request(app)
+      .get(`/api/v1/staff/${ownerId}/sessions`)
+      .set(auth(managerToken));
+
+    expect([403, 404]).toContain(res.status);
+  });
+
+  it('refuses a manager signing an owner out everywhere', async () => {
+    const res = await request(app)
+      .post(`/api/v1/staff/${ownerId}/sign-out-everywhere`)
+      .set(auth(managerToken));
+
+    expect([403, 404]).toContain(res.status);
+  });
+
+  it('returns a login history for a user, in the shared `entries` shape', async () => {
+    const res = await request(app)
+      .get(`/api/v1/staff/${ownerId}/login-history`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    // Both branches of listLoginHistory must agree on this key, or a caller
+    // would have to know which one it took.
+    expect((res.body as { data: { entries: unknown[] } }).data.entries).toBeDefined();
+  });
+
+  it('404s revoking a session that does not belong to that user', async () => {
+    // The session id is a cuid, not a secret, so the PAIRING has to be proven
+    // rather than assumed from the id alone.
+    const res = await request(app)
+      .delete(`/api/v1/staff/${supportId}/sessions/does-not-exist`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(404);
+  });
+
+  it('signs a user out everywhere by bumping tokenVersion, not just revoking rows', async () => {
+    const before = await prisma.user.findUnique({
+      where: { id: supportId },
+      select: { tokenVersion: true },
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/staff/${supportId}/sign-out-everywhere`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(204);
+
+    const after = await prisma.user.findUnique({
+      where: { id: supportId },
+      select: { tokenVersion: true },
+    });
+
+    // Revoking the rows alone would leave already-issued JWTs verifying until
+    // they expired — which is precisely the case this endpoint exists for.
+    expect(after!.tokenVersion).toBe(before!.tokenVersion + 1);
+  });
+});
+
+describe('the staff list answers "who is actually using this"', () => {
+  it('carries lastSeenAt and a recent-failure count per row', async () => {
+    const res = await request(app).get('/api/v1/staff').set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    const row = (res.body as { data: { staff: Record<string, unknown>[] } }).data.staff[0];
+
+    // Present as declared keys even when null/0 — an absent field is
+    // indistinguishable from "never seen" at the call site.
+    expect(row).toHaveProperty('lastSeenAt');
+    expect(row).toHaveProperty('recentFailedLogins');
+  });
+});
+
 describe('who can reach the staff area at all', () => {
   it('rejects an unauthenticated request', async () => {
     expect((await request(app).get('/api/v1/staff')).status).toBe(401);

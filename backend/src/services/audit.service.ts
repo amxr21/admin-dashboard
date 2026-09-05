@@ -219,6 +219,18 @@ export interface AuditListParams {
   actorId?: string;
   /** Exact match on the action name, e.g. every `product.deleted`. */
   action?: string;
+  /**
+   * Several action names at once — a whole FAMILY of related events, e.g. the
+   * six that make up "someone signed in" (success, failure, both 2FA
+   * outcomes, logout, session revoked).
+   *
+   * Separate from `action` rather than replacing it: `action` is the audit
+   * viewer's own single-select filter and its callers are correct as they
+   * are. When both are given, both apply — an empty array is treated as
+   * "no constraint", never as "match nothing", so a caller that builds the
+   * list dynamically cannot accidentally hide everything.
+   */
+  actions?: string[];
   /** `DENIED` is the security-review query this exists for. */
   outcome?: AuditOutcome;
   /** All entries from one request, so a single action's effects read together. */
@@ -236,6 +248,23 @@ export interface AuditListParams {
  * Extracted so a filter can never mean one thing on screen and another in the
  * CSV a reviewer hands to an auditor.
  */
+/**
+ * `action` (single-select, the audit viewer's own filter) and `actions` (a
+ * family of related events) both constrain `action`. Given both, an entry
+ * must satisfy both — which for one column means the single value has to be
+ * IN the family, so an impossible pair correctly matches nothing rather than
+ * quietly returning the wider set.
+ */
+function actionFilter(params: AuditListParams) {
+  const { action, actions } = params;
+  const list = actions && actions.length > 0 ? actions : undefined;
+
+  if (action && list) return { action: { in: list.filter((name) => name === action) } };
+  if (action) return { action };
+  if (list) return { action: { in: list } };
+  return {};
+}
+
 export function auditWhere(params: AuditListParams) {
   const createdAt =
     params.from || params.to
@@ -249,7 +278,10 @@ export function auditWhere(params: AuditListParams) {
     ...(params.entity ? { entity: params.entity } : {}),
     ...(params.entityId ? { entityId: params.entityId } : {}),
     ...(params.actorId ? { actorId: params.actorId } : {}),
-    ...(params.action ? { action: params.action } : {}),
+    // Both narrow the SAME column, so they are combined rather than spread
+    // one over the other — two object spreads would silently let `actions`
+    // overwrite `action` and widen the query instead of narrowing it.
+    ...actionFilter(params),
     ...(params.outcome ? { outcome: params.outcome } : {}),
     ...(params.requestId ? { requestId: params.requestId } : {}),
     ...(createdAt ? { createdAt } : {}),
