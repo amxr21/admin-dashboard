@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { Download, Info, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
+import { Download, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
 
 import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-chart';
 // Reused, not reimplemented: these three render the same three endpoints on the
@@ -14,6 +14,7 @@ import { ReturnsSummaryWidget } from '@/components/dashboard/returns-summary-wid
 import { StatusBreakdownWidget } from '@/components/dashboard/status-breakdown-widget';
 import { ErrorSection } from '@/components/errors/error-section';
 import { DateRangePresetField } from '@/components/reports/date-range-field';
+import { MetricDefinition } from '@/components/reports/metric-definition';
 import { Link } from '@/i18n/navigation';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -25,7 +26,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
@@ -392,30 +392,25 @@ export function ReportsView() {
                 <div key={tile.key} className="bg-card rounded-lg border p-4">
                   <p className="text-muted-foreground flex items-center gap-1.5 text-sm">
                     {t(`tiles.${tile.key}`)}
-                    {/* C2.7: `averageOrderValue`'s denominator EXCLUDES
-                        canceled orders (a canceled order has no realized
-                        value to average in), while the adjacent `orders`
-                        tile counts every order INCLUDING canceled ones —
-                        two tiles built from the same window that quietly
-                        disagree on what "orders" means unless this says so.
-                        Labeled rather than "aligned" (made AOV divide by the
-                        undivided count instead): that would be the
-                        economically wrong number, counting $0-realized
-                        orders toward an AVERAGE VALUE. */}
-                    {tile.key === 'averageOrderValue' ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className="text-muted-foreground/70 hover:text-foreground focus-visible:ring-ring rounded-full focus-visible:ring-2 focus-visible:outline-none"
-                            aria-label={t('tiles.averageOrderValueDefinitionLabel')}
-                          >
-                            <Info className="size-3.5" aria-hidden />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent>{t('tiles.averageOrderValueDefinition')}</TooltipContent>
-                      </Tooltip>
-                    ) : null}
+                    {/* F4.1: EVERY tile now carries its definition, not just
+                        `averageOrderValue`.
+                        
+                        That one had a hand-rolled tooltip here because its
+                        denominator EXCLUDES canceled orders while the
+                        adjacent `orders` tile COUNTS them — two tiles from
+                        the same window quietly disagreeing on what "orders"
+                        means. (Labeled rather than "aligned": making AOV
+                        divide by the undivided count would be the
+                        economically wrong number, averaging in orders that
+                        realized nothing.)
+                        
+                        But that was never the only tile with a rule worth
+                        stating — revenue's own exclusions are just as
+                        surprising, and were just as invisible. */}
+                    <MetricDefinition
+                      label={t(`tiles.${tile.key}`)}
+                      definition={t(`tiles.definitions.${tile.key}`)}
+                    />
                   </p>
                   <p className="mt-1 text-2xl font-semibold tabular-nums">{tile.value}</p>
                   {/* Only the revenue tile carries a delta — the dashboard's
