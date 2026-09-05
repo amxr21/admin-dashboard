@@ -103,7 +103,7 @@ variantsRouter.post('/variants/:id/movements', ...stockGuard, async (req, res) =
     reason: parsed.data.reason,
     note: parsed.data.note,
     actorId: user.id,
-  });
+  }, req);
 
   req.log.info({
     event: 'variant.stock.adjusted',

@@ -104,6 +104,24 @@ function waitForNotify() {
   return new Promise((resolve) => setTimeout(resolve, 400));
 }
 
+/**
+ * audit() is fire-and-forget for the same reason notify() is — it must never
+ * fail the write it records — so poll rather than asserting immediately after
+ * the response. Polling, not a flat sleep, so a fast machine does not pay for
+ * a slow one's worst case.
+ */
+async function waitForAuditEntry(action: string, entityId: string) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const entry = await prisma.auditLog.findFirst({
+      where: { action, entityId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (entry) return entry;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return null;
+}
+
 beforeAll(async () => {
   const [owner, demo, support] = await Promise.all([
     makeUser(StaffRole.OWNER),
@@ -119,6 +137,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Audit rows are not cascaded — `entityId` is a plain id, not a relation,
+  // exactly so the trail outlives what it describes. So they need clearing by
+  // hand or this run's entries leak into the next one's assertions.
+  await prisma.auditLog.deleteMany({ where: { entityId: { in: productIds } } });
   // Movements cascade from the product.
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -221,6 +243,52 @@ describe('the log explains the number', () => {
       .set(auth(ownerToken));
 
     expect((res.body as ReconcileBody).data.agrees).toBe(false);
+  });
+});
+
+/**
+ * F6.2 — a stock movement has to reach the AUDIT TRAIL, not only its own log.
+ *
+ * `StockMovement.actorId` always recorded who moved stock, so the fact was
+ * never lost — but it was visible only by opening that one product's movement
+ * log. It never appeared in /admin/audit and getStaffActivity never counted
+ * it, so "what did this person do today" silently omitted counting stock,
+ * which for a shift worker is most of the job.
+ */
+describe('a stock movement is auditable, not just logged', () => {
+  it('writes an audit entry naming the actor, the delta and the resulting stock', async () => {
+    const id = await makeProduct(10);
+
+    await adjust(id, { delta: -4, reason: 'DAMAGED', note: 'dropped' });
+
+    // audit() is deliberately fire-and-forget (it must never fail the write it
+    // records), so the row can land just after the response.
+    const entry = await waitForAuditEntry('inventory.stock.adjusted', id);
+
+    expect(entry).toBeTruthy();
+    expect(entry?.actorId).toBe(ownerId);
+    expect(entry?.entity).toBe('product');
+    // The delta alone is not reviewable — "-4" invites "from what?".
+    expect(entry?.changes).toMatchObject({
+      stock: { from: 10, to: 6 },
+      delta: { to: -4 },
+      reason: { to: 'DAMAGED' },
+    });
+  });
+
+  it('writes NO audit entry when the adjustment was refused', async () => {
+    // An entry for a movement that rolled back would record something that
+    // never happened — worse than no entry at all.
+    const id = await makeProduct(3);
+
+    expect((await adjust(id, { delta: -5, reason: 'DAMAGED' })).status).toBe(400);
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(
+      await prisma.auditLog.count({
+        where: { action: 'inventory.stock.adjusted', entityId: id },
+      }),
+    ).toBe(0);
   });
 });
 
