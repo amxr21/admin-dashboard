@@ -736,7 +736,9 @@
       "adjust": "Adjust stock for {name}",
       "adjustShort": "Adjust",
       "history": "Stock history for {name}",
-      "addProduct": "Add product"
+      "addProduct": "Add product",
+      "receive": "Receive stock for {name}",
+      "receiveShort": "Receive"
     },
     "adjust": {
       "title": "Adjust {name}",
@@ -762,7 +764,9 @@
       "openingSkip": "Skip for now",
       "unitCost": "Unit cost (optional)",
       "unitCostPlaceholder": "e.g. 12.50",
-      "unitCostHint": "What one unit in this batch cost you. Leave blank if you are not tracking it — blank means \"not recorded\", which is different from zero."
+      "unitCostHint": "What one unit in this batch cost you. Leave blank if you are not tracking it — blank means \"not recorded\", which is different from zero.",
+      "receiveTitle": "Receive stock for {name}",
+      "receiveRecord": "Record delivery"
     },
     "log": {
       "title": "Stock history",
