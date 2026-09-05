@@ -1,0 +1,12 @@
+-- Per-batch acquisition cost on a stock movement (F1.4a).
+--
+-- Additive and nullable. NULL means "not recorded", never 0 — same discipline
+-- as products.cost and order_items.cost. Only meaningful where stock is
+-- ACQUIRED (RECEIVED/RETURNED); the API refuses a cost on an outgoing
+-- movement rather than storing a number nothing can interpret.
+--
+-- Not consumed by profit reporting: COGS reads order_items.cost, the snapshot
+-- taken at sale time. This records what a delivery cost, so cost drift is
+-- visible; making sales draw down specific batches (FIFO vs weighted average)
+-- is a separate, larger design this column would feed.
+ALTER TABLE `stock_movements` ADD COLUMN `unit_cost` DECIMAL(10, 2) NULL;

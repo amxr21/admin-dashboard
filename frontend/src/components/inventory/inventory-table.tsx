@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import {
@@ -50,6 +51,7 @@ export function InventoryTable() {
   const t = useTranslations('inventory');
   const tTable = useTranslations('table');
   const formatter = useFormatter();
+  const formatCurrency = useCurrencyFormat();
   const translateError = useTranslatedApiError();
   const { tablePageSize } = useAppSettings();
   const searchParams = useSearchParams();
@@ -154,6 +156,28 @@ export function InventoryTable() {
         </span>
       ),
       sortValue: (row) => row.stock,
+    },
+    {
+      id: 'cost',
+      header: t('columns.cost'),
+      align: 'end',
+      cell: (row) =>
+        row.cost === null ? (
+          /**
+           * F1.4b — "not tracked" is stated, not left blank.
+           *
+           * Profit reporting EXCLUDES uncosted lines entirely, so a product
+           * nobody has priced goes silently missing from margin rather than
+           * showing up wrong there. An empty cell would read as a rendering
+           * gap; this reads as a thing to go and fill in.
+           */
+          <span className="text-muted-foreground text-xs">{t('noCost')}</span>
+        ) : (
+          <span className="tabular-nums">{formatCurrency(Number(row.cost))}</span>
+        ),
+      // Nulls sort together rather than being scattered as 0 — the point is
+      // to find them, and a fake 0 would file them among the cheapest items.
+      sortValue: (row) => (row.cost === null ? null : Number(row.cost)),
     },
     {
       id: '__actions',

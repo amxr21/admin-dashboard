@@ -41,6 +41,14 @@ export interface InventoryRow {
   status: string;
   imageUrl: string | null;
   category: { id: string; name: string } | null;
+  /**
+   * Acquisition cost per unit, 2dp string. Null means NOT TRACKED (F1.4b).
+   *
+   * Worth surfacing because profit reporting EXCLUDES uncosted lines
+   * entirely — a product nobody has priced is silently missing from margin
+   * rather than wrong in it, which is harder to notice.
+   */
+  cost: string | null;
   /** Computed server-side so the UI never re-implements the rule. */
   isLow: boolean;
 }
@@ -60,6 +68,15 @@ export interface StockMovement {
   delta: number;
   reason: StockMovementReason;
   note: string | null;
+  /**
+   * What ONE unit in this batch cost to acquire (F1.4a), as a 2dp string —
+   * money crosses the wire as a string so cents cannot be lost to a float.
+   *
+   * Null means NOT RECORDED, which is different from a recorded "0.00" (free
+   * stock — a sample, a warranty replacement — is a real acquisition at a
+   * real cost of nothing). Only ever present on an incoming movement.
+   */
+  unitCost: string | null;
   actorId: string | null;
   /** Resolved server-side, batched. Null when the actor is unknown (a
    *  system-initiated movement) or the account no longer exists — `actorId`
@@ -140,6 +157,15 @@ export interface AdjustStockInput {
   delta: number;
   reason: StockMovementReason;
   note?: string;
+  /**
+   * Per-unit acquisition cost for this batch. A string, not a number: the
+   * column is `Decimal(10,2)` and a float cannot represent 0.1 exactly.
+   *
+   * Omit for "not recorded". The server REFUSES it on an outgoing movement
+   * (DAMAGED/LOST/SOLD have no acquisition cost) rather than ignoring it,
+   * so the UI must not offer the field there.
+   */
+  unitCost?: string;
 }
 
 export async function adjustStock(
