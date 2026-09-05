@@ -85,6 +85,11 @@ export async function listInventory(params: InventoryListParams) {
         stock: true,
         status: true,
         imageUrl: true,
+        // Surfaced so the list can flag "no cost recorded" (F1.4b). Profit
+        // reporting excludes uncosted lines entirely, so a product nobody has
+        // priced is silently absent from margin — this is where that becomes
+        // visible and fixable.
+        cost: true,
         category: { select: { id: true, name: true } },
       },
     }),
@@ -92,7 +97,12 @@ export async function listInventory(params: InventoryListParams) {
   ]);
 
   return {
-    products: rows.map((row) => ({ ...row, isLow: row.stock <= threshold })),
+    products: rows.map((row) => ({
+      ...row,
+      // Decimal → 2dp string; null stays null and means "not tracked", never 0.
+      cost: row.cost === null ? null : row.cost.toFixed(2),
+      isLow: row.stock <= threshold,
+    })),
     total,
     page,
     pageSize,
@@ -127,6 +137,7 @@ export async function listMovements(
         delta: true,
         reason: true,
         note: true,
+        unitCost: true,
         actorId: true,
         createdAt: true,
       },
@@ -138,6 +149,10 @@ export async function listMovements(
     product,
     movements: movements.map((movement) => ({
       ...movement,
+      // Decimal → string, deliberately: JSON.stringify would emit it
+      // inconsistently and a float would lose the cents. Null stays null —
+      // "not recorded" is not "0.00".
+      unitCost: movement.unitCost === null ? null : movement.unitCost.toFixed(2),
       createdAt: movement.createdAt.toISOString(),
     })),
     total,
@@ -151,6 +166,15 @@ export interface AdjustStockInput {
   delta: number;
   reason: StockMovementReason;
   note?: string | undefined;
+  /**
+   * Per-unit acquisition cost for THIS batch (F1.4a), as a decimal string —
+   * money never crosses a boundary as a float in this codebase.
+   *
+   * Undefined means "not recorded", which is a real and permanent state, not
+   * a zero. The route refuses it outright on an outgoing movement, so by the
+   * time it arrives here it is already known to belong.
+   */
+  unitCost?: string | undefined;
   actorId: string;
 }
 
@@ -200,6 +224,9 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
         delta: input.delta,
         reason: input.reason,
         note: input.note ?? null,
+        // `new Prisma.Decimal(string)` — never a float. Undefined stays NULL,
+        // which means "not recorded" and is distinct from a recorded 0.
+        unitCost: input.unitCost === undefined ? null : new Prisma.Decimal(input.unitCost),
         actorId: input.actorId,
       },
       select: {
@@ -207,6 +234,7 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
         delta: true,
         reason: true,
         note: true,
+        unitCost: true,
         actorId: true,
         createdAt: true,
       },
@@ -220,7 +248,11 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
 
     return {
       product: updated,
-      movement: { ...movement, createdAt: movement.createdAt.toISOString() },
+      movement: {
+        ...movement,
+        unitCost: movement.unitCost === null ? null : movement.unitCost.toFixed(2),
+        createdAt: movement.createdAt.toISOString(),
+      },
       // Crossing INTO low stock, not merely being low — otherwise every
       // further movement on an already-low product renotifies, and the one
       // crossing that mattered disappears into that noise.
@@ -265,6 +297,9 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
       delta: { to: result.movement.delta },
       reason: { to: result.movement.reason },
       note: { to: result.movement.note },
+      // What the batch cost, where it was recorded (F1.4a) — a price paid is
+      // exactly the kind of fact a reviewer asks about later.
+      unitCost: { to: result.movement.unitCost },
       movementId: { to: result.movement.id },
     },
   });

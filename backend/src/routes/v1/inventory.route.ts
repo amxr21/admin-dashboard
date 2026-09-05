@@ -40,6 +40,14 @@ const listQuery = z.object({
   threshold: z.coerce.number().int().min(0).max(100000).optional(),
 });
 
+/** Reasons where stock ARRIVES, and so has an acquisition cost worth
+ *  recording. CORRECTION is excluded on purpose: it reconciles a count, it
+ *  does not represent a purchase. */
+const INCOMING_REASONS = new Set<StockMovementReason>([
+  StockMovementReason.RECEIVED,
+  StockMovementReason.RETURNED,
+]);
+
 const adjustBody = z
   .object({
     /**
@@ -51,8 +59,39 @@ const adjustBody = z
     // Matches the column width, so a long note is a 400 rather than a silent
     // truncation the user never sees.
     note: z.string().trim().max(255).optional(),
+    /**
+     * What ONE unit in this batch cost to acquire (F1.4a).
+     *
+     * A string, not a number: money is `Decimal(10,2)` in the schema and JS
+     * floats cannot represent 0.1 exactly, so accepting a number here would
+     * let rounding drift in before the value ever reached the database.
+     * Same reason every other money field in this app crosses the wire as a
+     * string.
+     *
+     * Zero IS allowed — free stock (a supplier sample, a warranty
+     * replacement) is a real acquisition at a real cost of nothing, which is
+     * different from "not recorded". Omitting the field is how you say the
+     * latter.
+     */
+    unitCost: z
+      .string()
+      .trim()
+      .regex(/^\d{1,8}(\.\d{1,2})?$/, 'Enter an amount like 12.50')
+      .optional(),
   })
-  .strict();
+  .strict()
+  /**
+   * A cost only means something where stock is ACQUIRED.
+   *
+   * A DAMAGED/LOST/SOLD movement has no acquisition cost — accepting one
+   * would store a number nothing can interpret later, and silently ignoring
+   * it would lose data the user believed they had entered. Refuse instead,
+   * naming the field so the form can point at it.
+   */
+  .refine(
+    (body) => body.unitCost === undefined || INCOMING_REASONS.has(body.reason),
+    { message: 'A unit cost only applies when stock is received', path: ['unitCost'] },
+  );
 
 inventoryRouter.get('/inventory', ...guard, async (req, res) => {
   const parsed = listQuery.safeParse(req.query);
@@ -90,6 +129,7 @@ inventoryRouter.post('/inventory/:productId/movements', ...guard, async (req, re
     delta: parsed.data.delta,
     reason: parsed.data.reason,
     note: parsed.data.note,
+    unitCost: parsed.data.unitCost,
     actorId: user.id,
   }, req);
 

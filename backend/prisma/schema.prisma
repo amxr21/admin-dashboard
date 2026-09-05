@@ -1042,6 +1042,24 @@ model StockMovement {
   /// its stock — a test asserts exactly that.
   delta  Int
   reason StockMovementReason
+  /// What ONE unit in this movement cost to acquire (F1.4a).
+  ///
+  /// Records what a given delivery actually cost, so cost drift over time is
+  /// visible rather than collapsed into the product's single current `cost`.
+  ///
+  /// NULL means "not recorded", never 0 — same discipline as `Product.cost`
+  /// and `OrderItem.cost`. Only meaningful on a movement where stock is
+  /// ACQUIRED (RECEIVED, and arguably RETURNED); a DAMAGED/LOST/SOLD movement
+  /// has no acquisition cost to record, and the API refuses one there rather
+  /// than storing a number nothing can interpret.
+  ///
+  /// Deliberately NOT consumed by profit reporting. COGS reads
+  /// `OrderItem.cost`, the snapshot taken at sale time. Making sales draw
+  /// down specific batches (FIFO vs. weighted average) is a much larger
+  /// design that this column would feed — see MASTER_TODO F1.4a's own note on
+  /// why that was deferred rather than rejected: this app has no checkout
+  /// flow yet, so batch consumption would have nothing to run on.
+  unitCost Decimal? @map("unit_cost") @db.Decimal(10, 2)
   /// Free-text detail, e.g. "pallet 4, water damage".
   note   String?             @db.VarChar(255)
 
