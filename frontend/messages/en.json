@@ -702,10 +702,12 @@
     },
     "search": {
       "label": "Search",
-      "placeholder": "Search by name or SKU"
+      "placeholder": "Search by name or SKU",
+      "clear": "Clear search"
     },
     "filters": {
-      "lowOnly": "Low stock only"
+      "lowOnly": "Low stock only",
+      "showAll": "Show all stock"
     },
     "pagination": {
       "previous": "Previous",
@@ -714,7 +716,8 @@
     "actions": {
       "adjust": "Adjust stock for {name}",
       "adjustShort": "Adjust",
-      "history": "Stock history for {name}"
+      "history": "Stock history for {name}",
+      "addProduct": "Add product"
     },
     "adjust": {
       "title": "Adjust {name}",
@@ -733,7 +736,11 @@
       "cancel": "Cancel",
       "record": "Record movement",
       "saving": "Recording…",
-      "done": "{name} is now at {stock}."
+      "done": "{name} is now at {stock}.",
+      "openingTitle": "Opening stock for {name}",
+      "openingHint": "{name} was created. Record how many you have on hand — or skip, and it stays at zero until you do.",
+      "openingRecord": "Record opening stock",
+      "openingSkip": "Skip for now"
     },
     "log": {
       "title": "Stock history",
@@ -746,7 +753,11 @@
       "pageOf": "Page {page} of {totalPages}",
       "reconcileAgrees": "The log matches the current stock.",
       "reconcileMismatch": "The recorded stock ({stock}) does not match the log total ({fromMovements}). Something changed stock without recording why."
-    }
+    },
+    "emptyHint": "Products are created in the catalogue — stock is recorded against them here.",
+    "emptyHintReadOnly": "Nothing has been added to the catalogue yet. Ask an owner or manager to add a product.",
+    "emptyLowHint": "Every product is above its low-stock threshold.",
+    "emptySearchHint": "No product matches that name or SKU. Check the spelling, or clear the search to see everything."
   },
   "stockReason": {
     "RECEIVED": "Received",

@@ -94,7 +94,12 @@ interface ResourceFormProps {
   row: ResourceRow | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaved: (action: 'created' | 'updated') => void;
+  /**
+   * The saved row is passed back on a CREATE so the caller can offer a real
+   * next step (F3.2: recording opening stock for a product it now has the id
+   * of). Null on an update — the caller already has that row.
+   */
+  onSaved: (action: 'created' | 'updated', row: ResourceRow | null) => void;
 }
 
 /**
@@ -460,14 +465,17 @@ export function ResourceForm({
     setFormError(null);
 
     try {
+      let created: ResourceRow | null = null;
       if (isEdit) {
         await updateRow(schema.resource, String(row.id), payload);
       } else {
-        await createRow(schema.resource, payload);
+        // The response row was previously discarded; it carries the new id,
+        // which is the only way a follow-up action can address the record.
+        created = await createRow(schema.resource, payload);
       }
 
       setIsDirty(false);
-      onSaved(isEdit ? 'updated' : 'created');
+      onSaved(isEdit ? 'updated' : 'created', created);
       onOpenChange(false);
     } catch (caught) {
       applyApiError(caught);

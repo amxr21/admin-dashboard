@@ -702,10 +702,12 @@
     },
     "search": {
       "label": "بحث",
-      "placeholder": "ابحث بالاسم أو رمز SKU"
+      "placeholder": "ابحث بالاسم أو رمز SKU",
+      "clear": "مسح البحث"
     },
     "filters": {
-      "lowOnly": "المخزون المنخفض فقط"
+      "lowOnly": "المخزون المنخفض فقط",
+      "showAll": "عرض كل المخزون"
     },
     "pagination": {
       "previous": "السابق",
@@ -714,7 +716,8 @@
     "actions": {
       "adjust": "تعديل مخزون {name}",
       "adjustShort": "تعديل",
-      "history": "سجل مخزون {name}"
+      "history": "سجل مخزون {name}",
+      "addProduct": "إضافة منتج"
     },
     "adjust": {
       "title": "تعديل {name}",
@@ -733,7 +736,11 @@
       "cancel": "إلغاء",
       "record": "تسجيل الحركة",
       "saving": "جارٍ التسجيل…",
-      "done": "أصبح مخزون {name} الآن {stock}."
+      "done": "أصبح مخزون {name} الآن {stock}.",
+      "openingTitle": "المخزون الافتتاحي لـ {name}",
+      "openingHint": "تم إنشاء {name}. سجّل الكمية المتوفرة لديك — أو تخطَّ الخطوة، وسيبقى المخزون صفرًا حتى تسجّلها.",
+      "openingRecord": "تسجيل المخزون الافتتاحي",
+      "openingSkip": "تخطٍّ الآن"
     },
     "log": {
       "title": "سجل المخزون",
@@ -746,7 +753,11 @@
       "pageOf": "صفحة {page} من {totalPages}",
       "reconcileAgrees": "السجل يطابق المخزون الحالي.",
       "reconcileMismatch": "المخزون المسجَّل ({stock}) لا يطابق إجمالي السجل ({fromMovements}). تغيّر المخزون دون تسجيل السبب."
-    }
+    },
+    "emptyHint": "تُنشأ المنتجات في الكتالوج — أما المخزون فيُسجّل هنا مقابلها.",
+    "emptyHintReadOnly": "لم يُضف أي منتج إلى الكتالوج بعد. اطلب من مالك أو مدير إضافة منتج.",
+    "emptyLowHint": "كل المنتجات أعلى من حدّ المخزون المنخفض.",
+    "emptySearchHint": "لا يوجد منتج يطابق هذا الاسم أو رمز SKU. تحقّق من الإملاء، أو امسح البحث لعرض كل شيء."
   },
   "stockReason": {
     "RECEIVED": "وارد",

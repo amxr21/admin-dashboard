@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { useSearchParams } from 'next/navigation';
 import { useGSAP } from '@gsap/react';
 import { FilterX, History, Pencil, Plus, Search, SearchX, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
@@ -24,6 +25,8 @@ import { FilterChips, type AppliedFilter } from '@/components/filter-chips';
 import { RowActions, type RowAction } from '@/components/row-actions';
 import { TablePagination } from '@/components/table-pagination';
 import { ImportResourceSheet } from '@/components/resource/import-resource-sheet';
+import { StockAdjustSheet } from '@/components/inventory/stock-adjust-sheet';
+import type { InventoryRow } from '@/lib/inventory-api';
 import { ResourceCell } from '@/components/resource/resource-cell';
 import { ResourceForm } from '@/components/resource/resource-form';
 import { Button } from '@/components/ui/button';
@@ -144,6 +147,23 @@ export function ResourceTable({ schema }: ResourceTableProps) {
    * `search` can never collide with the reserved controls.
    */
   const { values, setValues, clear } = useUrlState(URL_DEFAULTS);
+
+  /**
+   * `?new=1` opens the create form on arrival (F3.1).
+   *
+   * Deliberately NOT part of `URL_DEFAULTS`/`useUrlState`: those keys are
+   * shareable view state that SHOULD survive a reload and a pasted link,
+   * whereas "I clicked Add" is a one-shot intent. Left in the URL it would
+   * reopen the form on every refresh and on every back-navigation to this
+   * page, and a colleague opening a shared link would get a create drawer
+   * they never asked for.
+   *
+   * So it is consumed once and stripped with `replace` (not `push`), which
+   * also keeps it out of history. Inventory deep-links here this way because
+   * product creation has exactly one home and it is this form — see the note
+   * at the top of `inventory-table.tsx`.
+   */
+  const rawSearchParams = useSearchParams();
 
   const page = Math.max(1, Number(values.page) || 1);
   const search = values.search ?? '';
@@ -274,6 +294,24 @@ export function ResourceTable({ schema }: ResourceTableProps) {
   const [formRow, setFormRow] = useState<ResourceRow | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+
+  /**
+   * F3.2 — opening stock, offered immediately after a product is created.
+   *
+   * "Add an item and its stock" was two disconnected operations on two pages:
+   * create here, then find the product again under Inventory to give it a
+   * quantity. A product created and then forgotten sits at 0 and shows up in
+   * the low-stock list as if it were selling, which is the actual symptom.
+   *
+   * Non-blocking on purpose: the product IS created either way. Dismissing
+   * this leaves stock at 0, which is a truthful state (the movement log has
+   * no entry, and 0 is what the sum of no movements is), not a broken one.
+   *
+   * Reuses `StockAdjustSheet` rather than a bespoke field, so opening stock
+   * goes through the same append-only movement log as every other change —
+   * `product.stock` is never written directly, which is load-bearing here.
+   */
+  const [openingStockFor, setOpeningStockFor] = useState<InventoryRow | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -371,6 +409,25 @@ export function ResourceTable({ schema }: ResourceTableProps) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (rawSearchParams.get('new') !== '1') return;
+
+    // Permission-gated even though the caller is too: a hand-typed URL must
+    // not open a form whose save would 403. Silently ignored rather than
+    // shown an error — the page itself is legitimately viewable.
+    if (canCreate) {
+      setFormRow(null);
+      setIsFormOpen(true);
+    }
+
+    // Cleared through `useUrlState`, which navigates with the LOCALE-AWARE
+    // router. A raw `next/navigation` router would silently drop an Arabic
+    // user back to English here — see the header of `@/i18n/navigation`.
+    // `setValues` deletes on null and defaults to `replace`, so this also
+    // keeps the consumed param out of history.
+    setValues({ new: null });
+  }, [rawSearchParams, setValues, canCreate]);
 
   /**
    * Debounced so typing doesn't fire a request — or a navigation — per
@@ -988,12 +1045,45 @@ export function ResourceTable({ schema }: ResourceTableProps) {
           row={formRow}
           open={isFormOpen}
           onOpenChange={setIsFormOpen}
-          onSaved={(action) => {
+          onSaved={(action, saved) => {
             toast.success(t(`notice.${action}`));
             void load();
+
+            // Products only: no other resource in the engine has a stock
+            // level, so there is nothing to offer for customers/categories/
+            // discounts/reviews/notifications.
+            if (action === 'created' && saved && schema.resource === 'products') {
+              setOpeningStockFor({
+                id: String(saved.id),
+                name: String(saved[schema.labelField] ?? saved.id),
+                sku: typeof saved.sku === 'string' ? saved.sku : null,
+                // A product is created with no movements, so its stock is 0
+                // by definition — not read from the response, which would
+                // make this depend on the create endpoint's select shape.
+                stock: 0,
+                status: String(saved.status ?? ''),
+                imageUrl: null,
+                category: null,
+                isLow: false,
+              });
+            }
           }}
         />
       ) : null}
+
+      <StockAdjustSheet
+        variant="opening"
+        product={openingStockFor}
+        open={openingStockFor !== null}
+        onOpenChange={(open) => {
+          if (!open) setOpeningStockFor(null);
+        }}
+        onAdjusted={(message) => {
+          toast.success(message);
+          setOpeningStockFor(null);
+          void load();
+        }}
+      />
     </div>
   );
 }
