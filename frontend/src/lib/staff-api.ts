@@ -55,6 +55,26 @@ export interface StaffMember {
   isActive: boolean;
   accessExpiresAt: string | null;
   lastLoginAt: string | null;
+  /**
+   * Last ACTIVITY across live sessions — distinct from `lastLoginAt`, which is
+   * when they last signed IN (F2.5).
+   *
+   * Someone who signed in on Monday and has been working ever since has an old
+   * `lastLoginAt` and a recent `lastSeenAt`; someone who signed in an hour ago
+   * and closed the tab has the reverse. "Who is actually using this dashboard"
+   * is the second question, and it was previously unanswerable.
+   *
+   * Null when no live session exists — signed out everywhere, or never used it.
+   */
+  lastSeenAt: string | null;
+  /**
+   * Failed sign-in attempts against this email in the last 24h (F2.4).
+   *
+   * A SIGNAL, not an enforcement — the app already has its own lockout
+   * (`lockedUntil` below), and a second differently-triggered one would be a
+   * footgun. A non-zero count here does not mean the account is locked.
+   */
+  recentFailedLogins: number;
   /** Non-null means a brute-force lockout is in force. */
   lockedUntil: string | null;
   createdAt: string;
@@ -218,4 +238,100 @@ export async function transferOwnership(
     method: 'POST',
     body: JSON.stringify({ currentPassword }),
   });
+}
+
+/* ── Sessions & sign-in history (F2) ─────────────────────────────────── */
+
+export interface StaffSession {
+  id: string;
+  /** Free text from the User-Agent header. Attacker-controlled, so it is only
+   *  ever DISPLAYED, never parsed for a decision. */
+  userAgent: string | null;
+  /** Null where there is no trustworthy answer — never a guess. */
+  ip: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+}
+
+/** Live sessions for another user. Rank-checked server-side: nobody reaches
+ *  upward, exactly as with any other staff write. */
+export async function fetchStaffSessions(id: string): Promise<StaffSession[]> {
+  return apiFetch<StaffSession[]>(`/staff/${id}/sessions`);
+}
+
+export interface LoginHistoryParams {
+  page?: number;
+  pageSize?: number;
+  from?: string;
+  to?: string;
+  /** `DENIED` narrows to failures — the security-review query. */
+  outcome?: 'SUCCESS' | 'DENIED';
+}
+
+export interface LoginHistoryEntry {
+  id: string;
+  action: string;
+  actorId: string | null;
+  actorEmail: string | null;
+  actorRole: string | null;
+  outcome: 'SUCCESS' | 'DENIED';
+  /** On a FAILED attempt this carries the attempted email and the reason —
+   *  a failure has not proved who anyone is, so `actorEmail` is null there
+   *  and this is the only identifying fact available. */
+  changes: Record<string, unknown> | null;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
+
+export interface LoginHistoryResult {
+  entries: LoginHistoryEntry[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
+}
+
+function historyQuery(params: LoginHistoryParams): string {
+  const search = new URLSearchParams();
+  if (params.page) search.set('page', String(params.page));
+  if (params.pageSize) search.set('pageSize', String(params.pageSize));
+  if (params.from) search.set('from', params.from);
+  if (params.to) search.set('to', params.to);
+  if (params.outcome) search.set('outcome', params.outcome);
+  const query = search.toString();
+  return query ? `?${query}` : '';
+}
+
+/**
+ * Store-wide sign-in history — who got in, who did not, from where.
+ *
+ * Read entirely from audit rows that already existed; this adds no new write
+ * path, so it cannot drift from the trail it reports.
+ */
+export async function fetchLoginHistory(
+  params: LoginHistoryParams = {},
+): Promise<LoginHistoryResult> {
+  return apiFetch<LoginHistoryResult>(`/login-history${historyQuery(params)}`);
+}
+
+/** One person's history. Includes their FAILED attempts, which carry no
+ *  actor id and are matched by the attempted email instead. */
+export async function fetchStaffLoginHistory(
+  id: string,
+  params: LoginHistoryParams = {},
+): Promise<LoginHistoryResult> {
+  return apiFetch<LoginHistoryResult>(`/staff/${id}/login-history${historyQuery(params)}`);
+}
+
+/** Kill one device. */
+export async function revokeStaffSession(id: string, sessionId: string): Promise<void> {
+  await apiFetch<void>(`/staff/${id}/sessions/${sessionId}`, { method: 'DELETE' });
+}
+
+/** Kill every device AND invalidate already-issued tokens (the server bumps
+ *  `tokenVersion`); revoking session rows alone would leave live JWTs working
+ *  until they expired. */
+export async function signOutStaffEverywhere(id: string): Promise<void> {
+  await apiFetch<void>(`/staff/${id}/sign-out-everywhere`, { method: 'POST' });
 }

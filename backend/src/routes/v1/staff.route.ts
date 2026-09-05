@@ -1,4 +1,4 @@
-import { StaffRole } from '@prisma/client';
+import { AuditOutcome, StaffRole } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -6,6 +6,7 @@ import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import {
+  assertCanActOn,
   createStaff,
   inviteStaff,
   issueStaffPasswordResetToken,
@@ -15,6 +16,12 @@ import {
   unlockStaff,
   updateStaff,
 } from '../../services/staff.service.js';
+import {
+  listLoginHistory,
+  listSessionsFor,
+  revokeSessionFor,
+  signOutEverywhere,
+} from '../../services/login-history.service.js';
 import { assertPasswordMeetsPolicy } from '../../services/settings.service.js';
 import { audit } from '../../services/audit.service.js';
 
@@ -244,4 +251,106 @@ staffRouter.post('/staff/:id/reset-token', ...guard, async (req, res) => {
   req.log.warn({ event: 'staff.password.reset-token.issued', staffId: id, userId: actor.id });
 
   res.status(201).json({ data: result });
+});
+
+/**
+ * Sessions and sign-in history for ANOTHER user (F2).
+ *
+ * `/auth/me/sessions` already existed but is self-scoped — it backs "my
+ * devices". Nothing let an owner see who is signed in, from where, or who has
+ * been failing to sign in, which is the one security signal worth watching.
+ *
+ * Every route here calls `assertCanActOn` first. Reading someone's sign-in
+ * history and killing their sessions are exactly as privileged as editing
+ * them, so the same rank rule applies: nobody reaches upward, peers are fine.
+ */
+
+staffRouter.get('/staff/:id/sessions', ...guard, async (req, res) => {
+  const actor = requireUser(req);
+  const id = String(req.params.id);
+
+  await assertCanActOn(actor, id);
+
+  res.json({ data: await listSessionsFor(id) });
+});
+
+const loginHistoryQuery = z
+  .object({
+    page: z.coerce.number().int().min(1).optional(),
+    pageSize: z.coerce.number().int().min(1).max(100).optional(),
+    // Date-only, so a caller cannot smuggle a timezone in and shift the range.
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    outcome: z.nativeEnum(AuditOutcome).optional(),
+  })
+  .strict();
+
+staffRouter.get('/staff/:id/login-history', ...guard, async (req, res) => {
+  const actor = requireUser(req);
+  const id = String(req.params.id);
+
+  const parsed = loginHistoryQuery.safeParse(req.query);
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+
+  await assertCanActOn(actor, id);
+
+  res.json({ data: await listLoginHistory({ ...parsed.data, userId: id }) });
+});
+
+/** Store-wide sign-in history. Same `staff` area as everything else in this
+ *  file, so only OWNER/DEVELOPER reach it — it names who has been failing to
+ *  sign in, which is not something every role should see. */
+staffRouter.get('/login-history', ...guard, async (req, res) => {
+  const parsed = loginHistoryQuery.safeParse(req.query);
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+
+  res.json({ data: await listLoginHistory(parsed.data) });
+});
+
+staffRouter.delete('/staff/:id/sessions/:sessionId', ...guard, async (req, res) => {
+  const actor = requireUser(req);
+  const id = String(req.params.id);
+  const sessionId = String(req.params.sessionId);
+
+  await assertCanActOn(actor, id);
+
+  const revoked = await revokeSessionFor(id, sessionId);
+  // 404 rather than a silent 200: "already gone" and "never yours" are both
+  // answers the caller should see, and neither is a success.
+  if (!revoked) throw AppError.notFound('Session not found');
+
+  audit(req, {
+    action: 'staff.session.revoked',
+    entity: 'staff',
+    entityId: id,
+    changes: { sessionId: { to: sessionId } },
+  });
+
+  res.status(204).end();
+});
+
+/**
+ * Sign someone out of everything.
+ *
+ * Bumps `tokenVersion` as well as revoking the rows — the rows drive the
+ * device list, but the token version is what makes an ALREADY-ISSUED JWT stop
+ * verifying. Revoking rows alone would leave live tokens working until they
+ * expired, which is precisely the case this exists for.
+ */
+staffRouter.post('/staff/:id/sign-out-everywhere', ...guard, async (req, res) => {
+  const actor = requireUser(req);
+  const id = String(req.params.id);
+
+  await assertCanActOn(actor, id);
+  await signOutEverywhere(id);
+
+  req.log.warn({ event: 'staff.sessions.all-revoked', staffId: id, userId: actor.id });
+
+  audit(req, {
+    action: 'staff.sessions.all-revoked',
+    entity: 'staff',
+    entityId: id,
+  });
+
+  res.status(204).end();
 });
