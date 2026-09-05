@@ -69,7 +69,23 @@
     "accountLocked": "Too many failed attempts. Try again in {minutes} minutes.",
     "accountDeactivated": "This account has been deactivated.",
     "accessEnded": "This account's access period has ended.",
-    "rateLimited": "Too many attempts from this address. Try again shortly."
+    "rateLimited": "Too many attempts from this address. Try again shortly.",
+    "haveResetCode": "Have a reset code?",
+    "reset": {
+      "title": "Set a new password",
+      "subtitle": "Enter the code you were given, then choose a password.",
+      "token": "Reset code",
+      "tokenPlaceholder": "The code you were given",
+      "tokenHint": "One-time use, and it expires. Ask whoever sent it for a new one if it no longer works.",
+      "password": "New password",
+      "confirm": "Confirm new password",
+      "mismatch": "Those two passwords don't match.",
+      "submit": "Set password",
+      "submitting": "Setting password…",
+      "rateLimited": "Too many attempts from this address. Try again shortly.",
+      "backToLogin": "Back to sign in",
+      "done": "Password set. Sign in with your new password."
+    }
   },
   "courier": {
     "login": {
