@@ -77,6 +77,16 @@ export function InventoryTable() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const [adjusting, setAdjusting] = useState<InventoryRow | null>(null);
+  /**
+   * F3.4 — receiving is its own action, not a preset buried in "Adjust".
+   *
+   * "Adjust stock" is the right language for a CORRECTION and the wrong
+   * language for the routine case: a delivery arriving is not something
+   * going wrong, and asking someone to "adjust" it every week reads as if it
+   * were. Same sheet, same endpoint, same append-only movement log — a
+   * different name and a preselected reason, not a second code path.
+   */
+  const [receiving, setReceiving] = useState<InventoryRow | null>(null);
   const [viewingLog, setViewingLog] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -198,6 +208,16 @@ export function InventoryTable() {
             </TooltipTrigger>
             <TooltipContent>{t('actions.history', { name: row.name })}</TooltipContent>
           </Tooltip>
+          {/* Receive first and visually primary — it is what happens most
+              days. Adjust stays available for the correction case. */}
+          <Button
+            size="sm"
+            aria-label={t('actions.receive', { name: row.name })}
+            onClick={() => setReceiving(row)}
+          >
+            <PackagePlus aria-hidden />
+            {t('actions.receiveShort')}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -366,6 +386,20 @@ export function InventoryTable() {
           </div>
         </div>
       ) : null}
+
+      <StockAdjustSheet
+        variant="receive"
+        product={receiving}
+        open={receiving !== null}
+        onOpenChange={(next) => {
+          if (!next) setReceiving(null);
+        }}
+        onAdjusted={(message) => {
+          setReceiving(null);
+          setNotice(message);
+          void load();
+        }}
+      />
 
       <StockAdjustSheet
         product={adjusting}

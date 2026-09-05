@@ -86,6 +86,22 @@ describe('unit cost is offered only where stock arrives', () => {
     expect(screen.getByLabelText(/unit cost/i)).toBeInTheDocument();
   });
 
+  it('preselects RECEIVED in the receive variant, so the cost field is there immediately', () => {
+    // F3.4 — a delivery arriving is the routine case. Asking for the reason
+    // from scratch every week is friction on the most repeated action.
+    render(
+      <StockAdjustSheet
+        variant="receive"
+        product={product()}
+        open
+        onOpenChange={vi.fn()}
+        onAdjusted={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/unit cost/i)).toBeInTheDocument();
+  });
+
   it('omits unitCost from the payload when left blank — blank means not recorded', async () => {
     const user = userEvent.setup();
     render(
