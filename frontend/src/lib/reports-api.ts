@@ -31,6 +31,23 @@ export interface Overview {
   lowStockProducts: number;
   unitsSold: number;
   averageOrderValue: string;
+
+  /**
+   * Profit (F1.2). PARTIAL BY CONSTRUCTION — computed only over order lines
+   * carrying a cost snapshot, since `OrderItem.cost` is nullable ("not
+   * recorded", never a fabricated 0).
+   *
+   * `costCoverage` is not decoration: rendering `grossMarginPercent` without
+   * saying what share of lines it covers presents a partial figure as the
+   * store's real margin. Show them together or not at all.
+   */
+  cogs: string;
+  grossProfit: string;
+  /** Null when no costed line has revenue — a blank, never a misleading 0%. */
+  grossMarginPercent: number | null;
+  /** Revenue of the costed subset — the denominator behind the percent. */
+  costedRevenue: string;
+  costCoverage: { costedLines: number; totalLines: number };
 }
 
 export interface RevenueSeries {
@@ -312,10 +329,12 @@ export interface ProductMargin {
     marginPercent: number;
     units: number;
   }[];
-  /** A count, not a list — every OTHER product sold in the window that has
+  /** A count of order LINES (not distinct products) sold in the window with
    *  no recorded cost, so the gap is visible without duplicating the
-   *  catalogue's own product list. */
-  productsWithoutCost: number;
+   *  catalogue's own product list. Lines, because cost is snapshotted per
+   *  line — one product can have both measured and unmeasured lines, and
+   *  counting products would place it in the table AND in this count. */
+  orderLinesWithoutCost: number;
 }
 export async function fetchProductMargin(range: DateRange): Promise<ProductMargin> {
   return apiFetch<ProductMargin>(`/reports/product-margin?${query({ ...range })}`);

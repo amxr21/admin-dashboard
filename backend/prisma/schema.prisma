@@ -661,6 +661,18 @@ model OrderItem {
   /// Price AT TIME OF ORDER. Never read the live product price when
   /// displaying a historical order.
   price    Decimal @default(0) @db.Decimal(10, 2)
+  /// Unit COST at time of order — the other half of the snapshot above, and
+  /// for the same reason. Margin reporting used to join `products.cost` live,
+  /// which meant a supplier price change silently rewrote the recorded profit
+  /// on every order already in the book.
+  ///
+  /// Nullable, and NULL means "cost was not recorded at sale time" — a real,
+  /// permanent gap, never a 0 (same discipline as `Product.cost`). Rows
+  /// written before this column existed stay NULL on purpose: backfilling
+  /// them from today's `products.cost` would fabricate exactly the history
+  /// this column exists to preserve. Margin reporting EXCLUDES them and
+  /// counts them, rather than quietly shrinking its own denominator.
+  cost     Decimal? @db.Decimal(10, 2)
 
   orderId String @map("order_id")
   /// Cascade — an order's items have no meaning without the order.

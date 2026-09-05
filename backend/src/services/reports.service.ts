@@ -107,6 +107,16 @@ function money(value: Prisma.Decimal | null | undefined): string {
  * One transaction so the tiles cannot describe different moments — a revenue
  * figure from before an order landed next to a count from after it is the kind
  * of inconsistency nobody notices and everybody argues about later.
+ *
+ * The two profit queries (F1.2) run AFTER that transaction, because Prisma
+ * cannot aggregate a product of two columns (`cost * quantity`) and raw
+ * queries cannot join the same `$transaction([...])` array. The window they
+ * read is bounded by the same `start`/`end`, and orders are only ever
+ * appended within a past window, so the exposure is limited to an order
+ * landing mid-call — it would add revenue without its matching COGS for one
+ * render. Worth knowing; not worth a serialisable transaction on a dashboard
+ * read. If it ever matters, the fix is `$queryRaw` inside an interactive
+ * transaction, not reordering these.
  */
 export async function getOverview(params: RangeParams) {
   const { start, end } = resolveRange(params);
@@ -123,7 +133,16 @@ export async function getOverview(params: RangeParams) {
   // transaction because it is its own read.
   const lowStockThreshold = await getSettingValue('inventory.lowStockThreshold');
 
-  const [revenue, orderCount, canceledCount, customerCount, lowStock, unitsSold] =
+  const [
+    revenue,
+    orderCount,
+    canceledCount,
+    customerCount,
+    lowStock,
+    unitsSold,
+    costedLineCount,
+    totalLineCount,
+  ] =
     await prisma.$transaction([
       prisma.order.aggregate({ where: revenueWhere, _sum: { total: true } }),
       prisma.order.count({ where: inRange }),
@@ -138,10 +157,54 @@ export async function getOverview(params: RangeParams) {
         where: { order: revenueWhere },
         _sum: { quantity: true },
       }),
+      // Cost of goods sold, over the lines that HAVE a recorded cost
+      // snapshot. Counted alongside so coverage can be stated rather than
+      // implied — see the `costCoverage` note below.
+      prisma.orderItem.count({ where: { order: revenueWhere, cost: { not: null } } }),
+      prisma.orderItem.count({ where: { order: revenueWhere } }),
     ]);
 
   const total = revenue._sum.total ?? new Prisma.Decimal(0);
   const paidOrders = orderCount - canceledCount;
+
+  /**
+   * Gross profit (F1.2).
+   *
+   * Prisma cannot aggregate `cost * quantity` (a product of two columns), so
+   * this is one raw query rather than another `_sum` in the transaction
+   * above — the same reason `getProductMargin` is raw.
+   *
+   * Restricted to lines with a recorded cost, so it is a partial figure by
+   * construction. That partiality is REPORTED, not hidden: a margin computed
+   * over 30% of lines is not the store's margin, and a bare percentage with
+   * no denominator would be a confidently wrong number on the most prominent
+   * surface in the app. The UI is expected to qualify it with `costCoverage`.
+   */
+  const cogsRows = await prisma.$queryRaw<{ cogs: Prisma.Decimal | null }[]>`
+    SELECT SUM(oi.cost * oi.quantity) AS cogs
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
+      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND oi.cost IS NOT NULL
+  `;
+
+  // Revenue over the SAME subset of lines the COGS above covers. Subtracting
+  // costed-lines-only COGS from all-lines revenue would invent profit out of
+  // every uncosted line, which is exactly the false 100%-margin the whole
+  // nullable-cost discipline exists to prevent.
+  const costedRevenueRows = await prisma.$queryRaw<{ revenue: Prisma.Decimal | null }[]>`
+    SELECT SUM(oi.price * oi.quantity) AS revenue
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
+      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND oi.cost IS NOT NULL
+  `;
+
+  const cogs = cogsRows[0]?.cogs ?? new Prisma.Decimal(0);
+  const costedRevenue = costedRevenueRows[0]?.revenue ?? new Prisma.Decimal(0);
+  const grossProfit = costedRevenue.minus(cogs);
 
   return {
     range: { from: params.from, to: params.to },
@@ -154,6 +217,22 @@ export async function getOverview(params: RangeParams) {
     // Guarded: dividing by zero orders would produce NaN, which serialises to
     // null and renders as a blank tile rather than an honest zero.
     averageOrderValue: paidOrders > 0 ? total.dividedBy(paidOrders).toFixed(2) : '0.00',
+
+    /* ── Profit (F1.2) — partial by construction, see above ───────────── */
+    cogs: money(cogs),
+    grossProfit: money(grossProfit),
+    // Margin AGAINST THE COSTED SUBSET's own revenue, not total revenue —
+    // the only denominator that makes this a real percentage.
+    grossMarginPercent: costedRevenue.greaterThan(0)
+      ? Number(grossProfit.dividedBy(costedRevenue).toFixed(4))
+      : null,
+    // Revenue the profit figure above actually covers, so the UI can say
+    // "based on X of Y" instead of presenting a partial figure as complete.
+    costedRevenue: money(costedRevenue),
+    costCoverage: {
+      costedLines: costedLineCount,
+      totalLines: totalLineCount,
+    },
   };
 }
 
@@ -1177,12 +1256,22 @@ export async function getPaymentMethodBreakdown(params: RangeParams) {
 
 /**
  * Product margin / profitability (C3.5) — revenue, cost of goods sold and
- * gross margin per product over the window, for products with a recorded
- * `cost` ONLY. `Product.cost` is nullable by design (see its own schema
- * comment: NULL means "not tracked yet", never a fabricated 0) — a product
- * with no cost is EXCLUDED here, not shown with a false 100% margin, and
- * counted separately so the gap itself is visible rather than silently
- * shrinking the report.
+ * gross margin per product over the window, for order lines with a recorded
+ * cost ONLY.
+ *
+ * ─── COGS COMES FROM THE ORDER LINE, NOT THE PRODUCT (F1.1) ───────────
+ * This used to join `products.cost` live, which meant a supplier price
+ * change silently rewrote the recorded profit on every order already in the
+ * book — the exact drift `OrderItem.price` exists to prevent on the revenue
+ * side. `OrderItem.cost` is the snapshot taken at sale time, so a historical
+ * order's margin is now fixed once it is written.
+ *
+ * Both columns are nullable by design (NULL means "not recorded", never a
+ * fabricated 0). A line with no recorded cost is EXCLUDED here, not shown at
+ * a false 100% margin, and counted separately so the gap is visible rather
+ * than silently shrinking the report. Orders placed before the snapshot
+ * column existed fall into that count permanently — they were never
+ * backfilled, on purpose.
  */
 export async function getProductMargin(params: RangeParams) {
   const { start, end } = resolveRange(params);
@@ -1199,26 +1288,37 @@ export async function getProductMargin(params: RangeParams) {
   >`
     SELECT p.id AS productId, p.name AS name, p.sku AS sku,
            SUM(oi.price * oi.quantity) AS revenue,
-           SUM(p.cost * oi.quantity) AS cogs,
+           SUM(oi.cost * oi.quantity) AS cogs,
            SUM(oi.quantity) AS units
     FROM order_items oi
     JOIN orders o ON o.id = oi.order_id
     JOIN products p ON p.id = oi.product_id
     WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
       AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
-      AND p.cost IS NOT NULL
+      AND oi.cost IS NOT NULL
     GROUP BY p.id, p.name, p.sku
-    ORDER BY (SUM(oi.price * oi.quantity) - SUM(p.cost * oi.quantity)) ASC
+    ORDER BY (SUM(oi.price * oi.quantity) - SUM(oi.cost * oi.quantity)) ASC
   `;
 
+  /**
+   * Counted in LINES, not distinct products — deliberately different from
+   * the pre-F1.1 version, which counted products.
+   *
+   * Cost now lives on the line, so one product can legitimately have some
+   * lines with a recorded cost and some without (sold before the snapshot
+   * existed, then sold again after). Counting products would put that
+   * product in BOTH the table above and the excluded count, reading as a
+   * contradiction. A line count has no such overlap: every line is either
+   * measured or excluded, and the two sum to the window's total.
+   */
   const untracked = await prisma.$queryRaw<{ count: bigint }[]>`
-    SELECT COUNT(DISTINCT p.id) AS count
+    SELECT COUNT(*) AS count
     FROM order_items oi
     JOIN orders o ON o.id = oi.order_id
     JOIN products p ON p.id = oi.product_id
     WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
       AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
-      AND p.cost IS NULL
+      AND oi.cost IS NULL
   `;
 
   return {
@@ -1238,11 +1338,15 @@ export async function getProductMargin(params: RangeParams) {
         units: Number(row.units),
       };
     }),
-    // A count, not a list — the untracked products are just every OTHER
-    // product sold in the window; the point is to make the gap visible
-    // ("N products sold here have no cost recorded"), not to duplicate the
-    // catalogue's own product list.
-    productsWithoutCost: Number(untracked[0]?.count ?? 0),
+    // A count, not a list — the point is to make the gap visible ("N order
+    // lines here have no cost recorded"), not to duplicate the catalogue's
+    // own product list.
+    //
+    // Renamed from `productsWithoutCost` with F1.1: the unit genuinely
+    // changed from products to lines (see the query's own note), and a field
+    // whose name still said "products" while counting lines would be a
+    // quieter bug than the one this whole item exists to fix.
+    orderLinesWithoutCost: Number(untracked[0]?.count ?? 0),
   };
 }
 
