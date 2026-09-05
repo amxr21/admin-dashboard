@@ -15,9 +15,12 @@ import { defaultRange, fetchProductMargin, type DateRange, type ProductMargin } 
 
 /**
  * Product margin (C3.5) — revenue, COGS and gross margin per product, for
- * products with a recorded `cost` ONLY. `productsWithoutCost` states the
+ * order lines with a recorded cost ONLY. `orderLinesWithoutCost` states the
  * gap explicitly rather than letting the table's shorter-than-expected
  * length imply it silently — see `getProductMargin`'s own comment.
+ *
+ * COGS reads the per-line cost SNAPSHOT (F1.1), not the product's live cost,
+ * so a supplier price change no longer rewrites past profit.
  */
 export function ProductMarginView() {
   const t = useTranslations('reports.productMargin');
@@ -67,9 +70,9 @@ export function ProductMarginView() {
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : (
         <>
-          {data && data.productsWithoutCost > 0 ? (
+          {data && data.orderLinesWithoutCost > 0 ? (
             <p className="text-muted-foreground text-sm">
-              {t('productsWithoutCost', { count: data.productsWithoutCost })}
+              {t('orderLinesWithoutCost', { count: data.orderLinesWithoutCost })}
             </p>
           ) : null}
 

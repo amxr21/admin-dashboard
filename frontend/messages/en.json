@@ -1628,9 +1628,9 @@
     "productMargin": {
       "title": "Product margin",
       "description": "Revenue, cost of goods sold and gross margin per product.",
-      "subtitle": "Only for products with a recorded cost — a product with no cost is excluded, never shown with a fabricated 100% margin.",
-      "productsWithoutCost": "{count, plural, one {# other product sold in this window has no recorded cost, and is not shown here.} other {# other products sold in this window have no recorded cost, and are not shown here.}}",
-      "empty": "No products with a recorded cost sold in this period.",
+      "subtitle": "Only for order lines with a cost recorded at the time of sale — a line with no recorded cost is excluded, never shown with a fabricated 100% margin. Cost comes from the order line, so editing a product's cost today does not change past profit.",
+      "orderLinesWithoutCost": "{count, plural, one {# order line in this window has no recorded cost, and is not included above.} other {# order lines in this window have no recorded cost, and are not included above.}}",
+      "empty": "No order lines with a recorded cost in this period.",
       "columns": {
         "product": "Product",
         "revenue": "Revenue",
@@ -1638,7 +1638,8 @@
         "margin": "Margin",
         "marginPercent": "Margin %",
         "units": "Units"
-      }
+      },
+      "productsWithoutCost": "{count, plural, one {# other product sold in this window has no recorded cost, and is not shown here.} other {# other products sold in this window have no recorded cost, and are not shown here.}}"
     },
     "productReviewSummary": {
       "title": "Product review summary",

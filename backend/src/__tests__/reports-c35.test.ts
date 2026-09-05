@@ -105,7 +105,7 @@ beforeAll(async () => {
       status: OrderStatus.DELIVERED,
       customerId: customerA,
       paymentMethod: 'card',
-      items: { create: [{ productId: productWithCost, quantity: 1, price: new Prisma.Decimal('50.00') }] },
+      items: { create: [{ productId: productWithCost, quantity: 1, price: new Prisma.Decimal('50.00'), cost: new Prisma.Decimal('20.00') }] },
     },
     include: { items: true },
   });
@@ -129,7 +129,7 @@ beforeAll(async () => {
       status: OrderStatus.DELIVERED,
       customerId: customerB,
       paymentMethod: 'card',
-      items: { create: [{ productId: productWithCost, quantity: 1, price: new Prisma.Decimal('80.00') }] },
+      items: { create: [{ productId: productWithCost, quantity: 1, price: new Prisma.Decimal('80.00'), cost: new Prisma.Decimal('20.00') }] },
     },
   });
   // Guest order — no customerId.
@@ -300,11 +300,11 @@ describe('payment method breakdown', () => {
 });
 
 describe('product margin', () => {
-  it('computes revenue, COGS and margin only for products WITH a recorded cost', async () => {
+  it('computes revenue, COGS and margin only for order lines WITH a recorded cost', async () => {
     const body = (await get(`/reports/product-margin?from=${FROM}&to=${TO}`)).body as {
       data: {
         products: { productId: string; revenue: string; cogs: string; margin: string; marginPercent: number }[];
-        productsWithoutCost: number;
+        orderLinesWithoutCost: number;
       };
     };
 
@@ -317,7 +317,42 @@ describe('product margin', () => {
 
     // productNoCost sold in this window but must NOT appear in `products`.
     expect(body.data.products.some((p) => p.productId === productNoCost)).toBe(false);
-    expect(body.data.productsWithoutCost).toBeGreaterThanOrEqual(1);
+    expect(body.data.orderLinesWithoutCost).toBeGreaterThanOrEqual(1);
+  });
+
+  /**
+   * The regression guard for F1.1. Before the snapshot existed, COGS joined
+   * `products.cost` live, so editing a product's cost silently rewrote the
+   * profit recorded against orders already in the book. The margin here must
+   * not move when the product's cost changes underneath it.
+   */
+  it('does not change a past order COGS when the product cost is edited afterwards', async () => {
+    const before = (await get(`/reports/product-margin?from=${FROM}&to=${TO}`)).body as {
+      data: { products: { productId: string; cogs: string; margin: string }[] };
+    };
+    const rowBefore = before.data.products.find((p) => p.productId === productWithCost);
+    expect(rowBefore?.cogs).toBe('40.00');
+
+    // A supplier price rise, long after those orders were placed.
+    await prisma.product.update({
+      where: { id: productWithCost },
+      data: { cost: new Prisma.Decimal('45.00') },
+    });
+
+    const after = (await get(`/reports/product-margin?from=${FROM}&to=${TO}`)).body as {
+      data: { products: { productId: string; cogs: string; margin: string }[] };
+    };
+    const rowAfter = after.data.products.find((p) => p.productId === productWithCost);
+
+    // Unchanged: the snapshot on the line is what COGS reads.
+    expect(rowAfter?.cogs).toBe('40.00');
+    expect(rowAfter?.margin).toBe('90.00');
+
+    // Restore, so ordering between tests in this file cannot matter.
+    await prisma.product.update({
+      where: { id: productWithCost },
+      data: { cost: new Prisma.Decimal('20.00') },
+    });
   });
 });
 
