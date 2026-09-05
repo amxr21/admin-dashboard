@@ -177,6 +177,28 @@ describe('drill-down link', () => {
   });
 });
 
+/**
+ * A metric that cannot be computed must not borrow zero's appearance
+ * (F1.2). Gross margin over zero costed lines is "unknown", and "0%" is a
+ * different — and wrong — claim.
+ */
+describe('unavailable values', () => {
+  it('renders an em dash instead of a zero when the value is null', () => {
+    render(<StatTile labelKey="grossMarginPercent" value={null} />);
+
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('0')).not.toBeInTheDocument();
+  });
+
+  it('still renders a real zero as zero', () => {
+    // The dash is for "not knowable", never for a genuine, measured 0.
+    render(<StatTile labelKey="canceledOrders" value={0} />);
+
+    expect(screen.getByText('0')).toBeInTheDocument();
+    expect(screen.queryByText('—')).not.toBeInTheDocument();
+  });
+});
+
 describe('localisation', () => {
   it('renders Arabic labels', () => {
     render(<StatTile labelKey="totalRevenue" value={100} />, { locale: 'ar' });
