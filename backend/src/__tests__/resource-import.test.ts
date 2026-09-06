@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { waitFor } from './helpers/wait-for.js';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { StaffRole } from '@prisma/client';
@@ -298,22 +299,25 @@ describe('apply — no silent partial writes', () => {
     // write products.import audit rows, and audit() is fire-and-forget, so
     // "most recent by createdAt" is not reliably this test's own entry.
     const createdIdSet = new Set(created.map((p) => p.id));
-    let entry: { changes: unknown } | null = null;
-    for (let attempt = 0; attempt < 10 && !entry; attempt += 1) {
+
+    // 10s via the shared helper, not 200ms hand-rolled. The scoping logic
+    // below is right; only the patience was wrong, and CI is slower than a
+    // laptop — same fix as the other fire-and-forget audit assertions.
+    const entry = await waitFor(async () => {
       const candidates = await prisma.auditLog.findMany({
         where: { action: 'products.import' },
         orderBy: { createdAt: 'desc' },
         take: 10,
       });
-      entry =
+      return (
         candidates.find((candidate) => {
           const ids = (candidate.changes as { ids?: unknown } | null)?.ids;
           return Array.isArray(ids) && ids.some((id) => createdIdSet.has(String(id)));
-        }) ?? null;
-      if (!entry) await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-    expect(entry).not.toBeNull();
-    expect((entry?.changes as { rowCount?: number } | null)?.rowCount).toBe(2);
+        }) ?? null
+      );
+    });
+
+    expect((entry.changes as { rowCount?: number } | null)?.rowCount).toBe(2);
   });
 
   it('imports NOTHING when even one row in the file is invalid', async () => {
