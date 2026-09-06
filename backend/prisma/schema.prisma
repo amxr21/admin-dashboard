@@ -758,7 +758,20 @@ model Customer {
 }
 
 model Order {
-  id            String      @id @default(cuid())
+  id String @id @default(cuid())
+
+  /// Which branch took this order (F8.3).
+  ///
+  /// Nullable so the migration can backfill rather than demand a default, and
+  /// because an order outlives the branch that took it — a closed shop's
+  /// orders still explain last year's revenue. Reports treat a null branch as
+  /// UNATTRIBUTED and say so, rather than silently folding it into whichever
+  /// branch happens to sort first.
+  ///
+  /// A plain id, not a relation, for the same reason `AuditLog.actorId` is:
+  /// history has to survive the thing it points at being removed.
+  branchId String? @map("branch_id") @db.VarChar(64)
+
   /// Human-facing reference shown to customers and couriers, e.g. "ORD-1024".
   orderNumber   String      @unique @map("order_number") @db.VarChar(40)
   /// Denormalised on purpose: the order total must not change if a product's

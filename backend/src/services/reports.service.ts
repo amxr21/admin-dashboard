@@ -65,6 +65,49 @@ export interface RangeParams {
   /** Inclusive, YYYY-MM-DD. */
   from: string;
   to: string;
+  /**
+   * Restrict to one branch (F8.3). Omitted means EVERY branch — "how is the
+   * business doing" is a real question and the unscoped call is how it is
+   * asked, so this is a filter and never a required key.
+   *
+   * Lives on `RangeParams` rather than being threaded through each report
+   * because every report already takes this shape: one place to add it, and
+   * `branchWhere()`/`branchSql()` below are the only two ways to apply it, so
+   * a new report cannot invent a third that forgets the filter.
+   */
+  branchId?: string | undefined;
+}
+
+/**
+ * The branch filter for a Prisma `where` on ORDERS.
+ *
+ * Returns `{}` when no branch is asked for, so spreading it is always safe.
+ *
+ * An order with a NULL branch is deliberately excluded from a branch-scoped
+ * query: null means "unattributed", and folding it into whichever branch was
+ * asked for would invent revenue for that branch. It still appears in the
+ * unscoped total, where it belongs.
+ */
+function branchWhere(params: RangeParams) {
+  return params.branchId ? { branchId: params.branchId } : {};
+}
+
+/**
+ * The same filter for a raw SQL block, as a `Prisma.Sql` fragment.
+ *
+ * Raw queries cannot spread a `where` object, and hand-writing `AND
+ * o.branch_id = ...` at each of ~25 call sites is exactly how one gets
+ * forgotten. Interpolated through `Prisma.sql` so the id is a bound
+ * parameter, never string-concatenated into the statement.
+ *
+ * `alias` names the orders table in that query — most use `o`, a few use
+ * `orders`.
+ */
+function branchSql(params: RangeParams, alias = 'o'): Prisma.Sql {
+  if (!params.branchId) return Prisma.empty;
+  return alias === 'o'
+    ? Prisma.sql` AND o.branch_id = ${params.branchId}`
+    : Prisma.sql` AND orders.branch_id = ${params.branchId}`;
 }
 
 /** Parsed, validated and turned into the half-open interval the queries use. */
@@ -121,7 +164,10 @@ function money(value: Prisma.Decimal | null | undefined): string {
 export async function getOverview(params: RangeParams) {
   const { start, end } = resolveRange(params);
 
-  const inRange = { placedAt: { gte: start, lt: end } };
+  // Branch filter folded into the SHARED base, so every query below inherits
+  // it — revenue, order counts and units sold are three different queries and
+  // scoping one while forgetting another is the likely half-done state.
+  const inRange = { placedAt: { gte: start, lt: end }, ...branchWhere(params) };
   const revenueWhere = {
     ...inRange,
     status: { notIn: EXCLUDED_FROM_REVENUE },
@@ -252,6 +298,8 @@ export async function getRevenueSeries(params: RevenueSeriesParams) {
   const format = DATE_FORMAT[params.granularity];
 
   const excluded = EXCLUDED_FROM_REVENUE;
+  // Unaliased `orders` in both blocks below, so the fragment names the table.
+  const branch = branchSql(params, 'orders');
 
   const rows =
     params.granularity === 'week'
@@ -261,7 +309,7 @@ export async function getRevenueSeries(params: RevenueSeriesParams) {
                  COUNT(*)   AS orders
           FROM orders
           WHERE placed_at >= ${start} AND placed_at < ${end}
-            AND status NOT IN (${Prisma.join(excluded)})
+            AND status NOT IN (${Prisma.join(excluded)})${branch}
           GROUP BY bucket
           ORDER BY bucket ASC
         `
@@ -271,7 +319,7 @@ export async function getRevenueSeries(params: RevenueSeriesParams) {
                  COUNT(*)   AS orders
           FROM orders
           WHERE placed_at >= ${start} AND placed_at < ${end}
-            AND status NOT IN (${Prisma.join(excluded)})
+            AND status NOT IN (${Prisma.join(excluded)})${branch}
           GROUP BY bucket
           ORDER BY bucket ASC
         `;
@@ -549,7 +597,7 @@ export async function getStatusBreakdown(params: RangeParams) {
 
   const rows = await prisma.order.groupBy({
     by: ['status'],
-    where: { placedAt: { gte: start, lt: end } },
+    where: { placedAt: { gte: start, lt: end }, ...branchWhere(params) },
     _count: { _all: true },
     _sum: { total: true },
   });
