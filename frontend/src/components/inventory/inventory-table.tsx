@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
-import { History, Search, SlidersHorizontal } from 'lucide-react';
+import { Boxes, FilterX, History, PackagePlus, Search, SearchX, SlidersHorizontal } from 'lucide-react';
 
 import { DataTable, type Column } from '@/components/data-table';
+import { EmptyState } from '@/components/empty-state';
+import { Link, useRouter } from '@/i18n/navigation';
+import { useResourceSchema } from '@/components/providers/schema-provider';
 import { MovementLogSheet } from '@/components/inventory/movement-log-sheet';
 import { StockAdjustSheet } from '@/components/inventory/stock-adjust-sheet';
 import { Button } from '@/components/ui/button';
@@ -28,6 +31,19 @@ import {
  * Rows arrive with `isLow` already computed and the response carries the
  * `threshold` that produced it. Nothing here re-implements the comparison, so
  * the badge and the filter can never disagree with each other or with the API.
+ *
+ * ─── WHY THIS PAGE LINKS OUT TO PRODUCTS (F3.1) ──────────────────────
+ * Adding stock and adding a PRODUCT are different acts, and this page could
+ * only ever do the first. Someone arriving here to "add an item" previously
+ * hit a dead end: no button, and nothing saying the answer lives on another
+ * page under a different nav group.
+ *
+ * The fix is a link, never a second create form. Product creation has one
+ * home — the generic resource form — and forking a private copy here would
+ * mean two surfaces drifting apart on validation, required fields and
+ * permissions. `canCreateProducts` comes from the SAME permission-filtered
+ * schema that gates the real form, so this cannot offer an action the
+ * destination would then refuse.
  */
 
 export function InventoryTable() {
@@ -37,6 +53,14 @@ export function InventoryTable() {
   const translateError = useTranslatedApiError();
   const { tablePageSize } = useAppSettings();
   const searchParams = useSearchParams();
+  const { resources } = useResourceSchema();
+  const router = useRouter();
+
+  // Undefined while the schema is still loading, and absent entirely for a
+  // role the API filtered `products` out of — both correctly mean "don't
+  // offer creation", with no optimistic flash of a button that would 403.
+  const canCreateProducts =
+    resources.find((resource) => resource.resource === 'products')?.permissions.create === true;
 
   const [result, setResult] = useState<InventoryListResult | null>(null);
   const [page, setPage] = useState(1);
@@ -194,6 +218,18 @@ export function InventoryTable() {
         >
           {t('filters.lowOnly')}
         </Button>
+
+        {/* F3.1: the missing entry point. Deliberately a link to the one
+            product-creation surface, not a create form of its own — see the
+            note at the top of this file. */}
+        {canCreateProducts ? (
+          <Button asChild>
+            <Link href="/admin/r/products?new=1">
+              <PackagePlus className="size-4" aria-hidden />
+              {t('actions.addProduct')}
+            </Link>
+          </Button>
+        ) : null}
       </div>
 
       {notice ? (
@@ -210,8 +246,69 @@ export function InventoryTable() {
         isLoading={isLoading}
         error={error}
         onRetry={() => void load()}
+        /**
+         * F3.3 — three genuinely different situations that used to render as
+         * three interchangeable one-line strings.
+         *
+         * The distinction that matters: "nothing matched" must NOT offer
+         * "add a product". The rows exist, a filter is hiding them, and
+         * offering creation as the only way out is how someone ends up
+         * creating a duplicate of a product they already have. Same rule
+         * `resource-table.tsx` already follows.
+         */
         emptyMessage={
-          lowOnly ? t('emptyLow') : search ? tTable('noResults') : t('empty')
+          lowOnly ? (
+            <EmptyState
+              icon={Boxes}
+              title={t('emptyLow')}
+              description={t('emptyLowHint')}
+              action={{
+                label: t('filters.showAll'),
+                onClick: () => {
+                  setLowOnly(false);
+                  setPage(1);
+                },
+                icon: FilterX,
+              }}
+            />
+          ) : search ? (
+            <EmptyState
+              icon={SearchX}
+              title={tTable('noResults')}
+              description={t('emptySearchHint')}
+              action={{
+                label: t('search.clear'),
+                onClick: () => {
+                  setSearchInput('');
+                  setSearch('');
+                  setPage(1);
+                },
+                icon: FilterX,
+              }}
+            />
+          ) : (
+            // The only genuinely-empty case, and the only one where creating
+            // a product is the right next step.
+            <EmptyState
+              icon={Boxes}
+              title={t('empty')}
+              description={
+                canCreateProducts ? t('emptyHint') : t('emptyHintReadOnly')
+              }
+              action={
+                canCreateProducts
+                  ? {
+                      // `EmptyState.action` is onClick-only, so this
+                      // navigates via the router rather than widening a
+                      // shared component (7 consumers) for one caller.
+                      label: t('actions.addProduct'),
+                      onClick: () => router.push('/admin/r/products?new=1'),
+                      icon: PackagePlus,
+                    }
+                  : undefined
+              }
+            />
+          )
         }
       />
 

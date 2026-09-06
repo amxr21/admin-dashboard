@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { waitFor } from './helpers/wait-for.js';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { OrderStatus, Prisma, ReturnResolution, ReturnStatus, ReviewStatus, StaffRole } from '@prisma/client';
@@ -974,11 +975,23 @@ describe('staff activity (C3.5)', () => {
       .set(auth(ownerToken))
       .send({ zone: 'Marina' });
 
+    /**
+     * `audit()` is fire-and-forget — it must never fail the write it records —
+     * so the row lands independently of the response returning. This read the
+     * report immediately and passed locally only because the write happened to
+     * win the race; on CI it lost, failing as "actual value must be number or
+     * bigint, received undefined" because the actor row was not there yet.
+     */
     const today = new Date().toISOString().slice(0, 10);
-    const body = (await get(`/reports/staff-activity?from=${today}&to=${today}`)).body as StaffActivityBody;
+    const email = `${RUN}-owner@example.test`;
 
-    const ownerRow = body.data.staff.find((row) => row.actorEmail === `${RUN}-owner@example.test`);
-    expect(ownerRow?.actionCount).toBeGreaterThan(0);
+    const ownerRow = await waitFor(async () => {
+      const body = (await get(`/reports/staff-activity?from=${today}&to=${today}`))
+        .body as StaffActivityBody;
+      return body.data.staff.find((row) => row.actorEmail === email);
+    });
+
+    expect(ownerRow.actionCount).toBeGreaterThan(0);
 
     await prisma.deliveryStaff.delete({ where: { id: courier.id } });
   });

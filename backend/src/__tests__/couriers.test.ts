@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { waitFor } from './helpers/wait-for.js';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import {
@@ -487,14 +488,23 @@ describe('updating a courier writes an audit row (C5.3)', () => {
 
     expect(res.status).toBe(200);
 
-    let entry: { changes: unknown; entity: string; entityId: string | null } | null = null;
-    for (let attempt = 0; attempt < 10 && !entry; attempt += 1) {
-      entry = await prisma.auditLog.findFirst({
+    /**
+     * `audit()` is fire-and-forget, so the row can land after the response.
+     * This polled already — but 10 attempts at 20ms is 200ms of patience,
+     * which passed locally and failed on CI where the runner is slower and
+     * the database is a container.
+     *
+     * Uses the shared `waitFor` (10s budget) rather than a longer hand-rolled
+     * loop: every other audit assertion in this suite already does, and it
+     * fails with "condition not met within 10000ms" instead of a bare
+     * "expected null not to be null".
+     */
+    const entry = await waitFor(() =>
+      prisma.auditLog.findFirst({
         where: { action: 'courier.updated', entityId: id },
         orderBy: { createdAt: 'desc' },
-      });
-      if (!entry) await new Promise((resolve) => setTimeout(resolve, 20));
-    }
+      }),
+    );
 
     expect(entry).not.toBeNull();
     expect(entry?.entity).toBe('couriers');
