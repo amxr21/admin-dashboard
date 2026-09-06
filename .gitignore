@@ -2,10 +2,12 @@
 node_modules/
 .pnpm-store/
 
-# Environment — never commit real values, only .env.example
+# Environment — NEVER committed, no exceptions and no template.
+# Env files are `.env` + `.env.local` per side, local only. There is
+# deliberately no `.env.example`: the setup is not shared with everyone who
+# can read this repo. Do not re-add a whitelist here.
 .env
 .env.*
-!.env.example
 
 # Build output
 dist/

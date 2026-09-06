@@ -3,21 +3,24 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * A required env var has to be declared in FOUR places, and three of them have
- * no local symptom when you forget.
+ * A required env var must be declared in CI, and forgetting has no local symptom.
  *
  * ─── THE BUG THIS EXISTS TO PREVENT ──────────────────────────────────
  * `DELIVERY_CODE_SECRET` was added to env.ts as required, and to `.env` — which
  * is gitignored. Everything passed locally. CI then failed every backend test
- * with `Invalid environment configuration`, and a Render deploy would have
- * failed to BOOT, because `env.ts` parses at import time and exits(1).
+ * with `Invalid environment configuration`, because `env.ts` parses at import
+ * time and exits(1).
  *
  * The local machine is the one place that cannot detect the mistake, because
  * it is the only one with the value.
  *
- * So: parse env.ts for required vars, and assert each is declared in
- * .env.example (so a human knows to set it), ci.yml (so tests can run) and
- * render.yaml (so production can boot).
+ * So: parse env.ts for required vars and assert each is set in ci.yml.
+ *
+ * This used to also check `.env.example` and `render.yaml`. Both are gone —
+ * env templates are deliberately never committed (see CLAUDE.md), and the
+ * project moved off Render to Hostinger/Coolify, where env vars live in the
+ * service's own settings rather than in a file in this repo. The deploy target
+ * is therefore no longer checkable from here; CI is.
  */
 
 const backend = resolve(process.cwd());
@@ -26,9 +29,7 @@ const repo = resolve(backend, '..');
 const read = (path: string) => readFileSync(path, 'utf8');
 
 const envSource = read(resolve(backend, 'src/config/env.ts'));
-const example = read(resolve(backend, '.env.example'));
 const ci = read(resolve(repo, '.github/workflows/ci.yml'));
-const render = read(resolve(backend, 'render.yaml'));
 
 /**
  * Vars with no `.default(...)` and no `.optional()` — the ones whose absence
@@ -61,20 +62,10 @@ describe('every required env var is declared everywhere it is needed', () => {
     expect(required).toContain('JWT_SECRET');
   });
 
-  it.each(requiredVars())('%s is documented in .env.example', (name) => {
-    // Otherwise nobody setting the project up knows it exists.
-    expect(example).toContain(name);
-  });
-
   it.each(requiredVars())('%s is set for CI in ci.yml', (name) => {
     // env.ts exits(1) at import, so a miss fails every backend test at once
     // with a message that does not name the file that caused it.
     expect(ci).toContain(name);
-  });
-
-  it.each(requiredVars())('%s is declared in render.yaml', (name) => {
-    // A miss here is not a degraded service — the process never boots.
-    expect(render).toContain(name);
   });
 });
 
