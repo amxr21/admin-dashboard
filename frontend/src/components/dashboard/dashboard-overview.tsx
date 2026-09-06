@@ -173,6 +173,33 @@ export function DashboardOverview() {
     overview && previousOverview
       ? deltaPercent(overview.canceledOrders, previousOverview.canceledOrders)
       : undefined;
+  const grossProfitDelta =
+    overview && previousOverview
+      ? deltaPercent(Number(overview.grossProfit), Number(previousOverview.grossProfit))
+      : undefined;
+
+  /**
+   * The coverage qualifier shared by both profit tiles (F1.2).
+   *
+   * Profit and margin are computed only over order lines that carry a cost
+   * snapshot, so presenting either as a plain figure would overstate what
+   * the number knows. This renders in the tile's `status` slot — the slot
+   * `stat-tile.tsx` defined for exactly this and had no caller for until now.
+   *
+   * Renders even at FULL coverage ("all lines"), rather than vanishing: an
+   * absent qualifier is indistinguishable from a forgotten one, and "is this
+   * number complete?" is precisely the question it exists to answer.
+   */
+  const costCoverageNote = overview ? (
+    <span className="text-muted-foreground/80 text-xs whitespace-nowrap">
+      {overview.costCoverage.costedLines === overview.costCoverage.totalLines
+        ? t('costCoverageAll')
+        : t('costCoverage', {
+            costed: overview.costCoverage.costedLines,
+            total: overview.costCoverage.totalLines,
+          })}
+    </span>
+  ) : null;
 
   // Names WHICH period a delta compares against — must track `comparison`,
   // never hardcode "previous period" while potentially showing a
@@ -256,10 +283,15 @@ export function DashboardOverview() {
        * the strip's row height even instead of ragged.
        *
        * `col-span-12` never changes per breakpoint — it means "full width"
-       * at any column count. Tiles go 12 → 6 → 3 (1-up → 2-up → 4-up) as the
+       * at any column count. Tiles go 12 → 6 → 4 (1-up → 2-up → 3-up) as the
        * breakpoint grows; widget pairs go 12 → 6 (1-up → 2-up) and stay
        * there. Driven entirely by Tailwind's breakpoint scale, no inline
        * pixel widths.
+       *
+       * 3-up, not the previous 4-up: adding gross profit (F1.2) makes SIX
+       * tiles, and six across a 12-column grid divides evenly only at 2-up
+       * or 3-up. At 4-up the last row would be a two-tile orphan. Three
+       * columns keeps both rows full at every breakpoint.
        */}
       <div className="grid grid-cols-12 items-stretch gap-4">
         {/* `contents`: a semantic landmark for the KPI strip that does NOT
@@ -269,14 +301,15 @@ export function DashboardOverview() {
             happens to share its column count." */}
         <section className="contents" aria-label={t('title')}>
           {isLoading || !overview ? (
-            Array.from({ length: 4 }, (_, index) => (
-              <Skeleton key={index} className="col-span-12 h-28 w-full sm:col-span-6 lg:col-span-3" />
+            Array.from({ length: 6 }, (_, index) => (
+              <Skeleton key={index} className="col-span-12 h-28 w-full sm:col-span-6 lg:col-span-4" />
             ))
           ) : (
             <>
-              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-3">
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-4">
                 <StatTile
                   labelKey="totalRevenue"
+                  definition={t('definitions.totalRevenue')}
                   value={Number(overview.revenue)}
                   format="currency"
                   deltaPercent={revenueDelta}
@@ -284,9 +317,51 @@ export function DashboardOverview() {
                   icon="revenue"
                 />
               </Reveal>
-              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-3" delay={0.03}>
+              {/* Gross profit + margin (F1.2). Both are computed ONLY over
+                  order lines carrying a cost snapshot, so both carry the
+                  same coverage qualifier — a margin over a third of the
+                  lines is not the store's margin, and a bare percentage
+                  here would be the most prominent wrong number in the app.
+                  `costCoverage` drives that note; when every line is costed
+                  it says so instead of disappearing, so the reader never
+                  has to wonder whether the qualifier is missing or just
+                  not applicable. */}
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-4" delay={0.03}>
+                <StatTile
+                  labelKey="grossProfit"
+                  definition={t('definitions.grossProfit')}
+                  value={Number(overview.grossProfit)}
+                  format="currency"
+                  deltaPercent={grossProfitDelta}
+                  comparisonLabel={comparisonLabel}
+                  icon="profit"
+                  status={costCoverageNote}
+                />
+              </Reveal>
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-4" delay={0.06}>
+                {/* No delta: a margin PERCENTAGE that itself moves is best
+                    read as a level, and a percent-change-of-a-percent is
+                    the classic misread (3 points is not "up 10%"). The
+                    delta slot still renders, per the tile anatomy. */}
+                <StatTile
+                  labelKey="grossMarginPercent"
+                  definition={t('definitions.grossMarginPercent')}
+                  // Null stays null — the tile renders a dash, never a
+                  // fabricated 0% for a margin that cannot be computed.
+                  value={overview.grossMarginPercent === null ? null : overview.grossMarginPercent * 100}
+                  icon="profit"
+                  noDeltaReason={
+                    overview.grossMarginPercent === null
+                      ? t('noCostRecorded')
+                      : t('marginLevelNote')
+                  }
+                  status={costCoverageNote}
+                />
+              </Reveal>
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-4" delay={0.09}>
                 <StatTile
                   labelKey="totalOrders"
+                  definition={t('definitions.totalOrders')}
                   value={overview.orders}
                   deltaPercent={ordersDelta}
                   comparisonLabel={comparisonLabel}
@@ -294,9 +369,10 @@ export function DashboardOverview() {
                   href="/admin/orders"
                 />
               </Reveal>
-              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-3" delay={0.06}>
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-4" delay={0.12}>
                 <StatTile
                   labelKey="canceledOrders"
+                  definition={t('definitions.canceledOrders')}
                   value={overview.canceledOrders}
                   deltaPercent={canceledDelta}
                   comparisonLabel={comparisonLabel}
@@ -307,7 +383,7 @@ export function DashboardOverview() {
                   href="/admin/orders?status=CANCELED"
                 />
               </Reveal>
-              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-3" delay={0.09}>
+              <Reveal className="col-span-12 sm:col-span-6 lg:col-span-4" delay={0.15}>
                 {/* No deltaPercent here on purpose: low-stock is a live
                     snapshot (`stock <= threshold` right now), not scoped to
                     the selected date range on the backend — a period-over-
@@ -317,6 +393,7 @@ export function DashboardOverview() {
                     tiles. */}
                 <StatTile
                   labelKey="lowStockProducts"
+                  definition={t('definitions.lowStockProducts')}
                   value={overview.lowStockProducts}
                   icon="inventory"
                   noDeltaReason={t('liveSnapshot')}

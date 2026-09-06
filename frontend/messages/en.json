@@ -266,6 +266,13 @@
     "vsSameLastYear": "vs same period last year",
     "noComparison": "No comparison available",
     "liveSnapshot": "Live snapshot, not period-scoped",
+    "grossProfit": "Gross profit",
+    "grossMarginPercent": "Gross margin",
+    "costCoverage": "Based on {costed} of {total} order lines",
+    "costCoverageAll": "All order lines costed",
+    "noCostRecorded": "No cost recorded in this period",
+    "marginLevelNote": "A level, not a trend",
+    "valueUnavailable": "Not available",
     "totalRevenue": "Total revenue",
     "totalOrders": "Orders",
     "totalCustomers": "Customers",
@@ -318,6 +325,14 @@
       "lowStock": "View low stock",
       "auditTrail": "Audit trail",
       "orderHistory": "Order history"
+    },
+    "definitions": {
+      "totalRevenue": "Total money taken from orders placed in this period. Canceled orders are excluded — they never took money. Returned orders are NOT excluded: the money moved and then came back, which is a different fact from a sale that never happened. Each order contributes the total recorded when it was placed, so editing a price today never rewrites past revenue.",
+      "grossProfit": "Revenue minus cost of goods sold, over the order lines that have a cost recorded. Lines with no recorded cost are left out entirely rather than counted as pure profit, so this is a partial figure — the note underneath says how much of the period it covers. Cost is the one captured at the time of sale, not the product's cost today.",
+      "grossMarginPercent": "Gross profit as a share of revenue, measured only over the order lines that have a recorded cost — including revenue from uncosted lines would inflate it. Shown as a dash when no line in this period has a cost recorded, because that is unknown, not zero.",
+      "totalOrders": "Every order placed in this period, INCLUDING canceled ones. An order that was placed and then canceled did happen; it simply realized no money, which is why it still counts here but not in Revenue.",
+      "canceledOrders": "Orders canceled in this period. They are counted in Orders but excluded from Revenue, so these two tiles can legitimately move in opposite directions.",
+      "lowStockProducts": "Products at or below the low-stock threshold RIGHT NOW. Unlike the other tiles, this ignores the selected date range — stock has a current level, not a history. Uses the threshold set in Settings, so it always agrees with the Inventory page."
     }
   },
   "products": {
