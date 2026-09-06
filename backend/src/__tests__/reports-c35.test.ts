@@ -554,7 +554,10 @@ describe('CSV export — every new route', () => {
     ['product-margin', 'Product,SKU,Revenue,COGS,Margin,Margin %,Units'],
     ['product-review-summary', 'Product,Reviews,Average rating,1 star,2 star,3 star,4 star,5 star'],
     ['stock-adjustment-reasons', 'Reason,Movements,Net units'],
-    ['variant-stock-movement', 'Product,Variant,SKU,Current stock,Units sold,Units received'],
+    // "(all branches)" is deliberate: `sold`/`received` are branch-scoped
+    // under a branch filter and this column is not, so the header carries the
+    // scope rather than leaving a CSV reader to assume they match.
+    ['variant-stock-movement', 'Product,Variant,SKU,Current stock (all branches),Units sold,Units received'],
     ['return-resolution-breakdown', 'Resolution,Count,Refunded value'],
     ['return-reasons', 'RMA,Status,Reason,Requested at'],
     ['courier-performance', 'Courier,Total assignments,Delivered,Out for delivery,Canceled,Returned'],

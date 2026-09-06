@@ -110,6 +110,69 @@ function branchSql(params: RangeParams, alias = 'o'): Prisma.Sql {
     : Prisma.sql` AND orders.branch_id = ${params.branchId}`;
 }
 
+/**
+ * The branch filter for a Prisma `where` on something that reaches its branch
+ * THROUGH an order — a `DeliveryAssignment` or a `Return`.
+ *
+ * ─── WHY THESE HAVE NO `branchId` OF THEIR OWN ───────────────────────
+ * Both carry a required `orderId`, and the order already records the branch.
+ * Giving them their own copy would create a second answer to one question,
+ * free to drift from the first the moment an order is corrected — the same
+ * reason `ReturnItem` reads its price through the order line instead of
+ * copying it.
+ *
+ * The cost is a join instead of a column read. That is the right trade here:
+ * these are report queries over a window, not hot paths, and a wrong number
+ * is far more expensive than a slower one.
+ *
+ * Returns `{}` when no branch is asked for, so spreading it is always safe.
+ */
+function orderBranchWhere(params: RangeParams) {
+  return params.branchId ? { order: { branchId: params.branchId } } : {};
+}
+
+/**
+ * The same order-derived filter as a raw SQL fragment, for the delivery
+ * queries that hand-write their joins.
+ *
+ * `alias` names the DELIVERY ASSIGNMENT table in that query — the join to
+ * `orders` is added here rather than expected in the caller's FROM clause, so
+ * a query that never mentioned orders cannot forget to join one.
+ *
+ * The alias is a UNION of literals, not `string`, because it is the one part
+ * of this fragment that goes through `Prisma.raw` and so is NOT a bound
+ * parameter. Typing it this way means a caller cannot pass a variable here
+ * even by accident; the branch id beside it stays bound, as everywhere else.
+ * An EXISTS subquery rather than a JOIN so the fragment can be appended to a
+ * WHERE clause without touching the caller's FROM or its GROUP BY.
+ */
+type AssignmentAlias = 'a' | 'da';
+
+function orderBranchSql(params: RangeParams, alias: AssignmentAlias): Prisma.Sql {
+  if (!params.branchId) return Prisma.empty;
+  return Prisma.sql` AND EXISTS (
+      SELECT 1 FROM orders bo
+      WHERE bo.id = ${Prisma.raw(alias)}.order_id AND bo.branch_id = ${params.branchId}
+    )`;
+}
+
+/**
+ * The branch filter for a Prisma `where` on `StockMovement`.
+ *
+ * Unlike delivery and returns, a movement carries its OWN `branchId` (F8.2):
+ * stock moves at a PLACE, and plenty of movements (a delivery of supplies, a
+ * breakage) have no order to inherit a branch from. So this is a plain column
+ * filter, and deliberately a third helper rather than a parameter on the
+ * first — three call shapes that look alike but read different columns is how
+ * one ends up filtering the wrong table and still returning rows.
+ *
+ * A movement with a NULL branch is excluded from a scoped query, the same
+ * "unattributed is not yours" rule `branchWhere` states for orders.
+ */
+function movementBranchWhere(params: RangeParams) {
+  return params.branchId ? { branchId: params.branchId } : {};
+}
+
 /** Parsed, validated and turned into the half-open interval the queries use. */
 function resolveRange(params: RangeParams): { start: Date; end: Date } {
   const start = new Date(`${params.from}T00:00:00.000Z`);
@@ -1033,7 +1096,12 @@ export async function getInventoryTurnover(params: RangeParams) {
 
   const rows = await prisma.stockMovement.groupBy({
     by: ['productId'],
-    where: { reason: 'SOLD', createdAt: { gte: start, lt: end }, productId: { not: null } },
+    where: {
+      reason: 'SOLD',
+      createdAt: { gte: start, lt: end },
+      productId: { not: null },
+      ...movementBranchWhere(params),
+    },
     // SOLD movements are negative deltas — summing gives a negative number,
     // negated below to report a positive "units sold" count.
     _sum: { delta: true },
@@ -1046,12 +1114,37 @@ export async function getInventoryTurnover(params: RangeParams) {
     select: { id: true, name: true, sku: true, stock: true },
   });
 
+  /**
+   * `stock` has to follow the same scope as `unitsSold`, or this table mixes
+   * two scopes in one row.
+   *
+   * `Product.stock` is the ALL-BRANCH total (F8.2). Left as-is under a branch
+   * filter, a row would read "sold 2 at Marina, 400 in stock" — where the 400
+   * is everywhere, most of it at another branch. `deadStock` below compares
+   * those two numbers directly, so it would call a product dead at a branch on
+   * the strength of stock that branch does not hold.
+   *
+   * `BranchStock` is the per-branch running total that exists for exactly
+   * this. A product with no row there holds nothing at that branch: 0, which
+   * is a real measured zero, not a missing value.
+   */
+  const branchQuantities = params.branchId
+    ? new Map(
+        (
+          await prisma.branchStock.findMany({
+            where: { branchId: params.branchId, productId: { in: products.map((p) => p.id) } },
+            select: { productId: true, quantity: true },
+          })
+        ).map((row) => [row.productId, row.quantity]),
+      )
+    : null;
+
   const turnover = products
     .map((product) => ({
       productId: product.id,
       name: product.name,
       sku: product.sku,
-      stock: product.stock,
+      stock: branchQuantities ? (branchQuantities.get(product.id) ?? 0) : product.stock,
       unitsSold: soldByProduct.get(product.id) ?? 0,
     }))
     .sort((a, b) => b.unitsSold - a.unitsSold);
@@ -1573,7 +1666,7 @@ export async function getStockAdjustmentReasons(params: RangeParams) {
 
   const rows = await prisma.stockMovement.groupBy({
     by: ['reason'],
-    where: { createdAt: { gte: start, lt: end } },
+    where: { createdAt: { gte: start, lt: end }, ...movementBranchWhere(params) },
     _sum: { delta: true },
     _count: { _all: true },
   });
@@ -1599,13 +1692,33 @@ export async function getStockAdjustmentReasons(params: RangeParams) {
  * `ProductVariant` via `StockMovement.variantId` — a genuinely separate
  * ledger from the product-level one (`variants.service.ts` writes real
  * movement rows keyed by variant, exactly parallel to the product path).
+ *
+ * ─── ONE HONEST LIMIT UNDER A BRANCH FILTER (F8.3) ───────────────────
+ * `sold`/`received` ARE branch-scoped: they come from `StockMovement`, which
+ * carries its own `branchId`.
+ *
+ * `stockAllBranches` is NOT, and is named so it cannot be misread. F8.2 gave
+ * per-branch totals to PRODUCTS (`BranchStock` is keyed on `productId`) and
+ * not to variants, so there is no per-branch number to report here. The
+ * choice was between renaming the field and silently returning an all-branch
+ * total beside two branch-scoped ones — a row reading "sold 2 at Marina, 400
+ * in stock" where the 400 is everywhere.
+ *
+ * Reporting the all-branch figure under an accurate name is the truthful
+ * option: the number is real, it is simply answering a wider question, and
+ * the name now says so. Giving `BranchStock` a variant dimension is the real
+ * fix and belongs with F8.2's model, not smuggled into a report.
  */
 export async function getVariantStockMovement(params: RangeParams) {
   const { start, end } = resolveRange(params);
 
   const rows = await prisma.stockMovement.groupBy({
     by: ['variantId', 'reason'],
-    where: { createdAt: { gte: start, lt: end }, variantId: { not: null } },
+    where: {
+      createdAt: { gte: start, lt: end },
+      variantId: { not: null },
+      ...movementBranchWhere(params),
+    },
     _sum: { delta: true },
   });
 
@@ -1618,7 +1731,16 @@ export async function getVariantStockMovement(params: RangeParams) {
 
   const byVariant = new Map<
     string,
-    { variantId: string; name: string; productName: string; sku: string | null; stock: number; sold: number; received: number }
+    {
+      variantId: string;
+      name: string;
+      productName: string;
+      sku: string | null;
+      /** All-branch total — see this function's doc comment. */
+      stockAllBranches: number;
+      sold: number;
+      received: number;
+    }
   >();
 
   for (const row of rows) {
@@ -1630,7 +1752,7 @@ export async function getVariantStockMovement(params: RangeParams) {
       name: variant.name,
       productName: variant.product.name,
       sku: variant.sku,
-      stock: variant.stock,
+      stockAllBranches: variant.stock,
       sold: 0,
       received: 0,
     };
@@ -1659,13 +1781,13 @@ export async function getReturnResolutionBreakdown(params: RangeParams) {
   const [byResolution, byStatus] = await Promise.all([
     prisma.return.groupBy({
       by: ['resolution'],
-      where: { createdAt: { gte: start, lt: end } },
+      where: { createdAt: { gte: start, lt: end }, ...orderBranchWhere(params) },
       _count: { _all: true },
       _sum: { refundAmount: true },
     }),
     prisma.return.groupBy({
       by: ['status'],
-      where: { createdAt: { gte: start, lt: end } },
+      where: { createdAt: { gte: start, lt: end }, ...orderBranchWhere(params) },
       _count: { _all: true },
     }),
   ]);
@@ -1693,7 +1815,7 @@ export async function getReturnReasons(params: RangeParams) {
   const { start, end } = resolveRange(params);
 
   const returns = await prisma.return.findMany({
-    where: { createdAt: { gte: start, lt: end } },
+    where: { createdAt: { gte: start, lt: end }, ...orderBranchWhere(params) },
     select: { rmaNumber: true, reason: true, status: true, createdAt: true },
     orderBy: { createdAt: 'desc' },
   });
@@ -1723,7 +1845,7 @@ export async function getCourierPerformance(params: RangeParams) {
 
   const rows = await prisma.deliveryAssignment.groupBy({
     by: ['driverId', 'status'],
-    where: { createdAt: { gte: start, lt: end } },
+    where: { createdAt: { gte: start, lt: end }, ...orderBranchWhere(params) },
     _count: { _all: true },
   });
 
@@ -1773,7 +1895,7 @@ export async function getDeliveryZoneBreakdown(params: RangeParams) {
            SUM(COALESCE(a.total, 0)) AS total
     FROM delivery_assignments a
     JOIN delivery_staff d ON d.id = a.driver_id
-    WHERE a.created_at >= ${start} AND a.created_at < ${end}
+    WHERE a.created_at >= ${start} AND a.created_at < ${end}${orderBranchSql(params, 'a')}
     GROUP BY d.zone, d.region
     ORDER BY assignments DESC
   `;
@@ -1807,9 +1929,9 @@ export async function getDeliveryCycleTime(params: RangeParams) {
   // here (not `number`) — must be converted before any arithmetic/sort.
   const rows = await prisma.$queryRaw<{ hours: bigint }[]>`
     SELECT TIMESTAMPDIFF(HOUR, created_at, updated_at) AS hours
-    FROM delivery_assignments
-    WHERE status = 'DELIVERED'
-      AND created_at >= ${start} AND created_at < ${end}
+    FROM delivery_assignments da
+    WHERE da.status = 'DELIVERED'
+      AND da.created_at >= ${start} AND da.created_at < ${end}${orderBranchSql(params, 'da')}
   `;
 
   const hours = rows.map((r) => Number(r.hours)).sort((a, b) => a - b);
