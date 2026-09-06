@@ -150,7 +150,14 @@ export async function seedDemoData() {
   );
 
   /* ── Products ───────────────────────────────────────────────────── */
-  const products: { id: string; price: Prisma.Decimal; stock: number }[] = [];
+  const products: {
+    id: string;
+    price: Prisma.Decimal;
+    // Null for a deliberate minority of demo products — see the note where
+    // this is generated. Margin reporting must have both cases to show.
+    cost: Prisma.Decimal | null;
+    stock: number;
+  }[] = [];
   let sku = 1;
 
   for (const [index, category] of categories.entries()) {
@@ -158,6 +165,22 @@ export async function seedDemoData() {
 
     for (const name of PRODUCT_NAMES[slug] ?? []) {
       const price = money(random.int(1500, 45_000) / 100);
+      /**
+       * Cost is 45-75% of price, so gross margin lands in a believable
+       * 25-55% band rather than a uniform figure that makes the margin
+       * report look computed rather than real.
+       *
+       * 15% are left with NO cost on purpose. `Product.cost` is nullable
+       * by design ("not tracked yet", never a fabricated 0) and the margin
+       * report's excluded-lines count exists precisely to surface that gap
+       * — seeding every product with a cost would leave that path with
+       * nothing to show and let a regression in it go unnoticed.
+       */
+      // Decimal arithmetic via .times()/.dividedBy(), never `*` — see the
+      // money convention at the top of schema.prisma.
+      const cost = random.chance(0.15)
+        ? null
+        : price.times(random.int(45, 75)).dividedBy(100).toDecimalPlaces(2);
       // A deliberate spread: some healthy, some low, a couple at zero — so the
       // low-stock view and the zero-stock styling both have something to show.
       const stock = random.chance(0.15) ? random.int(0, 4) : random.int(12, 240);
@@ -168,6 +191,7 @@ export async function seedDemoData() {
           sku: DEMO.sku(sku),
           description: `${name} — demo catalogue item.`,
           price,
+          cost,
           stock,
           status: random.chance(0.1) ? ProductStatus.DRAFT : ProductStatus.ACTIVE,
           categoryId: category.id,
@@ -185,7 +209,7 @@ export async function seedDemoData() {
         },
       });
 
-      products.push({ id: product.id, price, stock });
+      products.push({ id: product.id, price, cost, stock });
       sku += 1;
     }
   }
@@ -312,6 +336,10 @@ export async function seedDemoData() {
             quantity: line.quantity,
             // Price AT TIME OF ORDER. Editing a product later must not move this.
             price: line.product.price,
+            // Cost AT TIME OF ORDER, same rule (F1.1). Null where the product
+            // has no cost tracked — never substituted with 0, which would
+            // report the sale as pure profit.
+            cost: line.product.cost,
           })),
         },
       },

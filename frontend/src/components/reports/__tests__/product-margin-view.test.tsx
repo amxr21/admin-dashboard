@@ -49,7 +49,7 @@ describe('product margin view (C3.5)', () => {
       products: [
         { productId: 'p1', name: 'Widget', sku: 'W-1', revenue: '100.00', cogs: '40.00', margin: '60.00', marginPercent: 0.6, units: 5 },
       ],
-      productsWithoutCost: 0,
+      orderLinesWithoutCost: 0,
     });
 
     render(<ProductMarginView />);
@@ -57,16 +57,16 @@ describe('product margin view (C3.5)', () => {
     expect(await screen.findByText('Widget')).toBeInTheDocument();
   });
 
-  it('states the count of products excluded for having no recorded cost', async () => {
+  it('states the count of order lines excluded for having no recorded cost', async () => {
     fetchProductMargin.mockResolvedValue({
       range: { from: '2026-01-01', to: '2026-01-31' },
       products: [],
-      productsWithoutCost: 3,
+      orderLinesWithoutCost: 3,
     });
 
     render(<ProductMarginView />);
 
-    expect(await screen.findByText(/3 other products/i)).toBeInTheDocument();
+    expect(await screen.findByText(/3 order lines/i)).toBeInTheDocument();
   });
 
   it('surfaces a load failure', async () => {
