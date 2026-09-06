@@ -80,6 +80,15 @@
 - **Where**: `backend/src/routes/v1/reports.route.ts`, `frontend/src/components/reports/`.
 - **Notes**: cancelled orders excluded from revenue but counted as orders; returned orders are NOT
   excluded (the money moved and came back). Revenue reads the order-line snapshot, never live prices.
+  **These definitions are the single most valuable thing to surface in the UI** — they are
+  genuinely non-obvious, two of them make otherwise-identical-looking numbers legitimately
+  disagree, and today they exist only as comments in `reports.service.ts`. That is `MASTER_TODO.md`
+  F4.1, and it is the core of the owner's "reports are vague and unclear" complaint.
+  **2026-09-05 (F1)**: profitability now reads a per-line COST snapshot (`OrderItem.cost`), the
+  same discipline revenue already had — a supplier price change no longer rewrites past profit.
+  Margin figures are PARTIAL BY CONSTRUCTION (only lines with a recorded cost) and every surface
+  showing one must state its coverage; a bare margin percentage over an unstated subset is the
+  most dangerous number this app can render.
   **2026-08-01**: dashboard home page (`/admin`) redesigned — a headline revenue figure
   (`RevenueHero`) now read as the centerpiece next to the chart, and two widgets (Top Products,
   Status Breakdown) were added using report endpoints that existed but were previously unused on
@@ -171,7 +180,15 @@
   → received → inspected → resolved) is a separate, larger, not-yet-started piece of work.
 
 ### Password reset (admin-issued)
-- **Status**: shipped end-to-end as of 2026-08-07 (backend since 2026-07-31, frontend 2026-08-07)
+- **Status**: 🔴 **BACKEND ONLY on this branch — the redemption page is MISSING.** Verified
+  2026-09-05: `find frontend/src/app -ipath "*reset*"` returns nothing, and the only copy of
+  `/[locale]/reset-password/` lives in unmerged checkpoint `a9c350b`. `POST /auth/reset-password`
+  and `frontend/src/lib/auth-api.ts`'s caller both exist — only the page is gone.
+  **This also breaks the staff INVITE flow**, which hands a new manager a 24h token pointing at
+  a 404, so an invited person cannot sign in at all. Tracked as `MASTER_TODO.md` **F5.1**.
+  The 2026-08-07 note below is kept because it explains the intended design, but its "shipped
+  end-to-end" claim is FALSE for this branch — this is the second time this entry has
+  overstated the frontend's existence, so verify with `find` before trusting it again.
 - **What**: An admin issues a single-use, 30-minute token (`POST /staff/:id/reset-token`); the
   locked-out user redeems it themselves (`POST /auth/reset-password`) to set a new password without
   the admin ever learning it.
@@ -336,77 +353,68 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **2026-08-12 — the ~47k-line uncommitted backlog is now split into 14 reviewed PRs.** Everything
-  described in this file's Feature sections is committed; nothing is "uncommitted" any more. See
-  the 2026-08-12 Changelog entry for the branch/PR map and the four structural findings that
-  reshaped the split. **Two things still need a human:** (1) `settings/page.tsx` mounts most panels
-  but the 2FA / sessions / API-key panels from the auth-stack PR are built and reachable by route
-  but not yet linked from the settings page — a small follow-up; (2) `order-detail.test.tsx` has
-  one `it.skip` (`includes the chosen category when one is selected`) that needs unskipping once
-  both the orders PR and the return-taxonomy PR are on `dev` — the skip is commented in place.
-- **`MASTER_TODO.md` is the master task list — read it, not this file, for what's open.** Three
-  schema-gated items shipped 2026-08-11 (courier failed-attempt path, invoice tax/subtotal,
-  return-reason taxonomy) plus the business-specific nav-label-renaming feature — see their own
-  Feature entries above and the 2026-08-11 Changelog entry for the full writeup. Same session:
-  audited every planning doc in the repo — `TODO.md` (the older ordered backlog) was fully
-  absorbed and **deleted** (its P0 tier had already gone entirely stale — polling, `markAllRead`,
-  and an invalid-nesting fix all already existed in the code — and its handful of still-open
-  items were folded directly into `MASTER_TODO.md`'s Track B/A); `archive/GAPS.md`,
-  `archive/SPEC_GAP.md`, `archive/TODO_SPEC.md` were archived as superseded/orphaned duplicates.
-  Schema-gated work still open — see `MASTER_TODO.md`'s Track D §S7 (S7.1 Address model, S7.3
+- **`MASTER_TODO.md` is the master task list — read it, not this file, for what's open.** This
+  file describes what the system IS; that file says what is LEFT. Start at its **Track F**.
+- **2026-09-05 — Track F opened: four gaps the owner raised directly.** (1) revenue vs. cost,
+  (2) login history, (3) how to add items and stock, (4) reports are vague and unclear. Recon
+  found **three of the four were already partly built**, so most of the work is surfacing and
+  explaining what exists rather than building from zero — each item in `MASTER_TODO.md` states
+  what already exists before what is missing, specifically so nothing gets rebuilt twice.
+  **F1 (revenue vs. cost) is done**; F2/F3/F4 are open. See the 2026-09-05 Changelog entry.
+- **2026-09-05 — the profit bug worth remembering.** `getProductMargin` joined `products.cost`
+  LIVE, so a supplier price change silently rewrote the recorded profit on every order already
+  in the book — the exact drift `OrderItem.price` exists to prevent, on the other half of the
+  equation. Fixed by snapshotting `OrderItem.cost` at sale time. **Generalise the lesson**: any
+  figure describing a past event must read a snapshot, never a live lookup. `Order.total`,
+  `OrderItem.price`, `Order.subtotal`/`taxAmount` and now `OrderItem.cost` all follow this rule;
+  a new one should be checked against it before it ships.
+- **Still needs a human (unchanged from 2026-08-12):** (1) `settings/page.tsx` mounts most panels
+  but the 2FA / sessions / API-key panels are built and route-reachable yet not linked from the
+  settings page — a small follow-up; (2) `order-detail.test.tsx` has one `it.skip`
+  (`includes the chosen category when one is selected`) to unskip once both the orders PR and the
+  return-taxonomy PR are on `dev` — the skip is commented in place.
+- **Schema-gated work still open** — `MASTER_TODO.md` Track D §S7: S7.1 Address model, S7.3
   payment/transaction model, S7.4 split status axis, S7.5 Location model, S7.6 Category tree,
-  S7.8 fuller ReturnStatus lifecycle, S7.9 tags — none started). Non-schema work lives in
-  `MASTER_TODO.md`'s Tracks A (2 items left) and E (the recovered Settings/Sidebar redesign
-  checklist).
-- **dev → main G-GATE** (separate track from the Design Fix Checklist below — see ROADMAP.md
-  §G-GATE): this session (2026-08-04) confirmed 2 of 4 remaining items are operational facts only
-  the user can answer, not things inferable from the repo. **Render redeploy status: unknown** —
-  user hasn't checked whether the live Render backend has the auth routes; this alone should block
-  a `main` push until confirmed. **Sentry DSN in prod: skipped** — the user's Sentry trial ended,
-  so RUN-layer Sentry work is on hold, not just unconfigured. **E2E**: re-wired `.github/workflows/
-  e2e.yml` for Option A (a persistent dev Render backend via `RENDER_DEV_BACKEND_URL` secret,
-  dropping the old "wait for Render preview" step entirely) but a real dev backend, while it
-  exists, currently only has a **local-only database** — so the `pull_request` trigger stays
-  commented out; flipping it on now would just red every check without proving anything. **Arabic
-  review**: generated a filterable, flagged en/ar review sheet (744 keys, 18 flagged by heuristics
-  — mostly correctly-untranslated loanwords like SKU/CSV, not real errors) as a Claude Artifact for
-  the user's own review pass — not self-certified as reviewed. Branch:
-  `chore/e2e-arabic-review-gate` off `dev`.
-- **Design Fix Checklist** (a phased dashboard/settings/shell redesign, run session-by-session):
-  Phase 0 (recon) approved. Phases 1-5 built, verified, PR'd:
-  **#80** `fix(shell)`: Phase 1 — scroll-model rebuild, global search, solid topbar (MERGED) →
-  **#82** `feat(dashboard)`: Phase 2 — title into top bar, date-range presets, comparison selector
-  (MERGED) →
-  **#83** `feat(dashboard)`: Phase 3 — one 12-col grid, Revenue folded into the KPI strip,
-  full-width chart row (MERGED) →
-  **#84** `feat(dashboard)`: Phase 4 — real time-scale revenue chart, honest gaps, period
-  comparison overlay (MERGED) →
-  **#85** `feat(dashboard)`: Phase 5 — metric semantics & data integrity fixes (base `dev`, OPEN).
-  Phases 6-7 remain (full Settings rebuild, sidebar IA regrouping) — each has its own STOP-and-ask
-  gate written into the original checklist; the full text of Phases 6-7 isn't transcribed anywhere
-  in this repo, only in the conversation that pasted it — ask the user to re-paste before starting
-  Phase 6. (Older #65-68 from an earlier session are merged.) **#86** `feat(ui)`: a real Tooltip
-  primitive (base `dev`, OPEN) — NOT part of the 7-phase checklist, picked up from the older backlog
-  while Phase 6-7 waited on the re-paste; applied to the collapsed sidebar rail, which had a stopgap
-  `title`-attribute comment marking exactly this gap.
-- **In progress**: none — everything this session opened is PR'd. The six-skill pass requested
-  on 2026-07-31 (`project-foundations`, `project-docs`, `project-error-log`, `project-ship`,
-  `project-test-gen`, `ux-animation-reviewer`) is still outstanding.
-- **Next step**: Design Fix Checklist Phase 6 (Settings rebuild) — needs the checklist text
-  re-pasted first (its 6.41 stop gate needs the original numbered items to act on). Four standing
-  user notes from 2026-08-03 are earmarked for it: a field change must surface a dirty-state signal
-  before Save, not just after; some notification types need an icon, not colour alone (the Tooltip
-  primitive from #86 is unrelated groundwork, not this note — this one is about the Toaster);
-  drawer/modal (Sheet/AlertDialog) conversions are NOT a blanket rule, judge per-surface; some
-  fields (e.g. review content) must stay read-only for integrity even though the resource engine
-  would otherwise allow editing them (this last one is really Phase 8's recon to identify, Phase 6
-  just shouldn't contradict it). Separately, rest of §U (ROADMAP.md): the one remaining
-  in-flight-state gap (`staff-password-panel.tsx`), optimistic row updates, bulk-action progress,
-  and the loading-overlay-blur / nav-transition-smoothness items noted below. The nav-hover-guide
-  item is likely already covered by #86 as a side effect — re-verify before treating it as separate
-  remaining work.
-- **Blockers**: none currently. Setup/Schema wizard remains blocked on an architecture decision
-  (compiled-TS config vs. a DB-backed override layer) — not started, not in scope.
+  S7.8 fuller ReturnStatus lifecycle, S7.9 tags. None started. (F1.1's `OrderItem.cost` was a
+  Track-D-shaped migration but is recorded under Track F, where the work actually happened.)
+- **dev → main G-GATE** — **the Render item is void, not open**: Render is gone (2026-09-03).
+  What genuinely remains: **Sentry DSN in prod** is on hold, not merely unconfigured — the user's
+  trial ended. **E2E** — `.github/workflows/e2e.yml` is still written around Vercel preview URLs
+  and `RENDER_DEV_BACKEND_URL`; it is disabled so it breaks nothing, but it needs rewriting for
+  Coolify before the `pull_request` trigger can come back. **Arabic review** — 1459 keys, en/ar
+  parity holds at 1459/1459, but the MSA is machine/self-translated and unreviewed; a
+  native-speaker pass still blocks any client demo. It is NOT self-certifiable.
+- **Design Fix Checklist** (phased dashboard/settings/shell redesign): Phases 1-5 built and PR'd
+  (#80, #82, #83, #84 merged; #85 open), plus #86 (Tooltip primitive, open — not part of the
+  checklist). **Phases 6-7 remain** (full Settings rebuild, sidebar IA regrouping) and are
+  **blocked**: the text of Phases 6-7 was never transcribed into this repo, only into the
+  conversation that pasted it, and Phase 6's own 6.41 stop-gate needs the original numbered
+  items. **Ask the user to re-paste before starting Phase 6** — do not reconstruct it from
+  memory. Four standing user notes from 2026-08-03 are earmarked for it: a field change must
+  surface a dirty-state signal BEFORE Save, not just after; some notification types need an icon,
+  not colour alone (this is about the Toaster — #86's Tooltip is unrelated groundwork);
+  drawer/modal conversions are NOT a blanket rule, judge per-surface; some fields (e.g. review
+  content) must stay read-only for integrity even though the resource engine would allow editing
+  (really Phase 8's recon to identify — Phase 6 just must not contradict it).
+- **In progress**: nothing uncommitted-and-unreviewed. The six-skill pass requested on 2026-07-31
+  (`project-foundations`, `project-docs`, `project-error-log`, `project-ship`, `project-test-gen`,
+  `ux-animation-reviewer`) is still outstanding.
+- **Next step**: `MASTER_TODO.md` Track F, batch 2 — **F3.1-F3.3 + F4.1**. Highest value per line
+  changed, no schema dependency, independently shippable. F4.1 (put each metric's definition on
+  screen) is the core of the "reports are vague" complaint; a definition-tooltip pattern already
+  exists in exactly one place (`reports-view.tsx`, the `averageOrderValue` tile) — extract that
+  rather than writing a second. Then F2 (login history, self-contained), then F1.3.
+  Also still open, from §U (ROADMAP.md): the one remaining in-flight-state gap
+  (`staff-password-panel.tsx`), optimistic row updates, bulk-action progress, and the
+  loading-overlay-blur / nav-transition-smoothness items. The nav-hover-guide item is likely
+  already covered by #86 as a side effect — re-verify before treating it as remaining work.
+- **Blockers**: three, all waiting on the user, none blocking Track F.
+  (1) **Design Fix Checklist Phase 6** — needs its original text re-pasted (see above).
+  (2) **Setup/Schema wizard** — blocked on an architecture decision (compiled-TS config vs. a
+  DB-backed override layer); not started, not in scope.
+  (3) **Two Track F items need a decision before they start** — F1.4's landed-cost question
+  (should receiving stock capture that batch's unit cost, and if so FIFO or weighted average?)
+  and F3.5's bulk receive. Both are flagged in `MASTER_TODO.md` rather than guessed at.
 - **Context to remember**:
   - **New 2026-09-03 rule — env files: `.env` + `.env.local` per side. NOTHING is committed.**
     No `.env.example`, and no `.env.fluffy`/`.env.dev`/`.env.staging` per-target variants (a
@@ -467,6 +475,62 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-09-05 (Track F, batch 1)** — Four gaps raised directly by the owner became `MASTER_TODO.md`'s
+  **Track F**: revenue vs. cost, login history, adding items/stock, and reports being vague.
+  Recon found **three of the four already partly built** — 34 report endpoints and 27 pages
+  already exist, stock adjustment and product creation both work, logins are already audited and
+  a `Session` model already exists — so the track is written as surfacing/explaining work, with
+  each item stating what exists before what is missing. **F1 shipped:**
+  (a) **A real correctness bug fixed** — `getProductMargin` joined `products.cost` LIVE, so
+  editing a supplier price silently rewrote the recorded profit on every past order. Now
+  snapshotted on the order line (`OrderItem.cost`, migration
+  `20260905000000_add_order_item_cost_snapshot`, additive + nullable + deliberately never
+  backfilled, since inventing a past cost is exactly what the column exists to prevent). A
+  regression test edits a product's cost and asserts past COGS does not move.
+  (b) `productsWithoutCost` → **`orderLinesWithoutCost`** — the unit genuinely changed, because
+  one product can now have both costed and uncosted lines, and counting products would place it
+  in the table AND in the excluded count simultaneously.
+  (c) **Gross profit + gross margin on the dashboard**, each carrying a "Based on N of M order
+  lines" coverage note. Margin is measured against the costed subset's OWN revenue — subtracting
+  partial COGS from total revenue would invent profit on every uncosted line. The KPI strip went
+  4-up → 3-up (six tiles divide evenly at three, not four).
+  (d) `StatTile.value` now accepts `null` and renders an em dash, so a margin that cannot be
+  computed never renders as a fabricated `0%`; a genuine measured `0` still renders as `0`, and
+  both cases are tested.
+  Also this session: **every planning doc rewritten against actual repo state** — `SETUP_TODO.md`
+  still named Aiven/Render/Vercel and told you to set `DATABASE_URL`/`CORS_ORIGINS`/
+  `NEXT_PUBLIC_API_URL`, none of which exist after the mode split, so following it would have
+  produced a backend that refuses to boot; `MASTER_TODO.md`'s handoff header pointed new sessions
+  at Track A with test counts four weeks stale; `.claude-workbook/NEXT-STEP.md` still called
+  itself "the one file to read before doing anything" while having been empty for a month.
+  Verification: backend 817/817 (37 files), frontend 986/986 + 1 skipped (108 files), tsc and
+  eslint clean both sides, en/ar parity 1459/1459.
+- **2026-09-05** — Backend `APP_MODE` env split, mirroring the frontend's 2026-08-23 API-URL rule
+  (see the Context-to-remember entry above for the full contract). New
+  `backend/src/config/app-mode.ts` resolves `DATABASE_URL`/`CORS_ORIGINS` from an explicit mode
+  with no fallback and a both-directions host guard; `env.ts` resolves before the Zod parse and
+  writes the result back into `process.env` so Prisma cannot end up on a different database than
+  the app; new `backend/scripts/with-db-url.mjs` puts every `db:*`/`demo:*` script behind the same
+  guards, since the Prisma CLI never runs app code. `backend/.env` moved from one `DATABASE_URL`
+  with alternatives commented out to per-mode variables.
+  **Two real findings, neither of which was the thing being worked on:**
+  1. **Local backend test runs were hitting the PRODUCTION database.** (Recorded first as "the
+     shared dev database"; the owner clarified on 2026-09-05 that the Coolify MySQL *is*
+     production and no dev database exists — so this was a P0, not a P1.) `vitest.setup.ts`
+     loads `.env` before applying its `??=` CI fallbacks, so the fallback never fired — the real
+     `DATABASE_URL` won every time. Closed with a hard `APP_MODE = 'local'` pin. Worth assuming
+     this had been true for as long as that file has had a `.env` to load.
+  2. The wrapper's `shell: true` on Windows resolves via `PATH`, which excludes
+     `node_modules/.bin` — so `prisma`/`tsx` worked under pnpm but a hand-run failed with
+     "'tsx' is not recognized", which reads like a missing dependency. The wrapper now prepends
+     that directory itself. Reported by a parallel session that hit it live.
+  Verified: 817/817 backend tests, `tsc` + `eslint` clean, all 12 resolver branches exercised
+  (including refusing local→remote, and parsing a raw `@` inside a password, which naive
+  string-splitting gets wrong). Ran alongside a second session doing the F1 revenue-vs-cost work;
+  file sets were disjoint and confirmed so by direct exchange. That session applied its
+  cost-snapshot migration *through* this wrapper, which printed
+  `[with-db-url] APP_MODE=local → localhost:3306/admin_dashboard` before the `ALTER TABLE` — the
+  first real use of the guard, and it did its job.
 - **2026-08-12** — Split ~47k uncommitted lines (145 modified files + 230 new paths, roughly a
   week of work) into 14 reviewed PRs. Merged: #99 deps/config, #100 table-infrastructure,
   #101 auth-stack, #102 delivery-failed-attempt. Opened: #103 schema+order-enhancements,
