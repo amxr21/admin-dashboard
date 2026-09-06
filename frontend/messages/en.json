@@ -1444,6 +1444,8 @@
       "pdf": "PDF"
     },
     "catalogue": {
+      "startHere": "Start here",
+      "startHereHint": "If you only look at a few, look at these — what came in, what you kept of it, what is selling, what is going back, and what is about to run out.",
       "title": "Reports",
       "subtitle": "Every report, grouped by domain.",
       "openExplorer": "Explore",
