@@ -125,6 +125,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Returns first: ReturnItem -> OrderItem is onDelete: Restrict, so a
+  // surviving return blocks its order's delete. Tests that create a return
+  // clean up their own, but only if their assertions passed — without this,
+  // any failure there resurfaces as an FK error here that masks the real one.
+  await prisma.return.deleteMany({ where: { orderId: { in: orderIds } } });
   // Items and history cascade from the order.
   await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
   await prisma.product.deleteMany({ where: { id: productId } });
@@ -1157,12 +1162,17 @@ describe('timeline merges every real source (C5.4)', () => {
       .set(auth(ownerToken))
       .send({ resolution: 'STORE_CREDIT', restock: false });
 
-    // The return-approval audit write is fire-and-forget — poll the
-    // timeline until the event lands rather than racing it.
+    // The return-approval audit write is fire-and-forget — poll the timeline
+    // until the event lands rather than racing it. The event itself is built
+    // from the Return row, so it appears the instant approval returns; it is
+    // the ACTOR that comes from the audit row, so wait on that specifically.
+    // Polling for the bare event would return on the first tick with
+    // actorName still null.
     const returnEvent = await waitFor(async () => {
       const res = await request(app).get(`/api/v1/orders/${id}/timeline`).set(auth(ownerToken));
       const events = (res.body as TimelineBody).data.events;
-      return events.find((e) => e.kind === 'return') ?? null;
+      const found = events.find((e) => e.kind === 'return');
+      return found?.actorName ? found : null;
     });
 
     expect(returnEvent).toBeDefined();
