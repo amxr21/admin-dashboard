@@ -82,6 +82,29 @@ type ExportFormat = 'csv' | 'xlsx' | 'pdf';
  * report's CSV/XLSX/PDF are guaranteed to list the same fields in the same
  * order rather than three hand-maintained lists that could drift apart.
  */
+/**
+ * Builds the download filename (F7.7).
+ *
+ * `product-margin.csv` told you nothing: exporting the same report for August
+ * and for September produced two identically-named files, and the browser
+ * silently appended "(1)". Which one was which became unanswerable the moment
+ * they left the downloads folder.
+ *
+ * The range goes in the NAME rather than inside the CSV, deliberately. A
+ * metadata block above the header row is the obvious alternative and it is
+ * worse: every spreadsheet and every parser expects row 1 to be the header,
+ * so a title line breaks `pandas.read_csv`, Excel's "first row as header",
+ * and this app's own import. XLSX and PDF already carry `title` internally
+ * because those formats have somewhere to put it; CSV does not.
+ *
+ * Falls back to the bare name for a report with no range (live snapshots
+ * like courier workload), rather than inventing dates it does not have.
+ */
+function exportFilename(baseFilename: string, range?: { from?: string; to?: string }): string {
+  if (!range?.from || !range.to) return baseFilename;
+  return `${baseFilename}_${range.from}_${range.to}`;
+}
+
 async function sendExport<T>(
   res: Response,
   format: ExportFormat,
@@ -89,12 +112,15 @@ async function sendExport<T>(
   baseFilename: string,
   rows: readonly T[],
   columns: readonly CsvColumn<T>[],
+  range?: { from?: string; to?: string },
 ): Promise<void> {
+  const filename = exportFilename(baseFilename, range);
+
   if (format === 'csv') {
     res
       .status(200)
       .type('text/csv')
-      .set('Content-Disposition', `attachment; filename="${baseFilename}.csv"`)
+      .set('Content-Disposition', `attachment; filename="${filename}.csv"`)
       .send(toCsv(rows, columns));
     return;
   }
@@ -104,7 +130,7 @@ async function sendExport<T>(
     res
       .status(200)
       .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-      .set('Content-Disposition', `attachment; filename="${baseFilename}.xlsx"`)
+      .set('Content-Disposition', `attachment; filename="${filename}.xlsx"`)
       .send(buffer);
     return;
   }
@@ -113,7 +139,7 @@ async function sendExport<T>(
   res
     .status(200)
     .type('application/pdf')
-    .set('Content-Disposition', `attachment; filename="${baseFilename}.pdf"`)
+    .set('Content-Disposition', `attachment; filename="${filename}.pdf"`)
     .send(buffer);
 }
 
@@ -145,7 +171,7 @@ reportsRouter.get('/reports/overview', ...guard, async (req, res) => {
       { header: 'Low stock products', value: (r) => r.lowStockProducts },
       { header: 'Units sold', value: (r) => r.unitsSold },
       { header: 'Average order value', value: (r) => r.averageOrderValue },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -163,7 +189,7 @@ reportsRouter.get('/reports/revenue', ...guard, async (req, res) => {
       { header: 'Date', value: (r) => r.date },
       { header: 'Revenue', value: (r) => r.revenue },
       { header: 'Orders', value: (r) => r.orders },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -184,7 +210,7 @@ reportsRouter.get('/reports/top-products', ...guard, async (req, res) => {
       { header: 'Name', value: (r) => r.name ?? '(deleted product)' },
       { header: 'Quantity', value: (r) => r.quantity },
       { header: 'Revenue', value: (r) => r.revenue },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -202,7 +228,7 @@ reportsRouter.get('/reports/fulfillment-health', ...guard, async (req, res) => {
       { header: 'Order', value: (r) => r.orderNumber },
       { header: 'Status', value: (r) => r.status },
       { header: 'Hours in status', value: (r) => r.hoursInStatus },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -221,7 +247,7 @@ reportsRouter.get('/reports/returns-summary', ...guard, async (req, res) => {
       { header: 'Name', value: (r) => r.name ?? '(deleted product)' },
       { header: 'Units returned', value: (r) => r.unitsReturned },
       { header: 'Returns', value: (r) => r.returnCount },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -245,6 +271,7 @@ reportsRouter.get('/reports/order-value-distribution', ...guard, async (req, res
         { header: 'Range', value: (r) => r.label },
         { header: 'Orders', value: (r) => r.count },
       ],
+      { from: parsed.data.from, to: parsed.data.to },
     );
     return;
   }
@@ -282,7 +309,7 @@ reportsRouter.get('/reports/status-breakdown', ...guard, async (req, res) => {
         header: 'Counts toward revenue',
         value: (r) => (EXCLUDED_FROM_REVENUE.some((status) => status === r.status) ? 'No' : 'Yes'),
       },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -314,7 +341,7 @@ reportsRouter.get('/reports/staff-activity', ...guard, async (req, res) => {
       { header: 'Role', value: (r) => r.actorRole ?? '' },
       { header: 'Actions', value: (r) => r.actionCount },
       { header: 'Denied attempts', value: (r) => r.deniedCount },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -332,7 +359,7 @@ reportsRouter.get('/reports/category-breakdown', ...guard, async (req, res) => {
       { header: 'Category', value: (r) => r.categoryName },
       { header: 'Units', value: (r) => r.units },
       { header: 'Revenue', value: (r) => r.revenue },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -351,7 +378,7 @@ reportsRouter.get('/reports/refund-rate-trend', ...guard, async (req, res) => {
       { header: 'Revenue', value: (r) => r.revenue },
       { header: 'Refunded', value: (r) => r.refunded },
       { header: 'Refund rate', value: (r) => (r.refundRate * 100).toFixed(2) + '%' },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -383,7 +410,7 @@ reportsRouter.get('/reports/explorer', ...guard, async (req, res) => {
       { header: 'Units', value: (r) => r.units },
       { header: 'Orders', value: (r) => r.orders },
       { header: 'Average order value', value: (r) => r.averageOrderValue },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -402,7 +429,7 @@ reportsRouter.get('/reports/inventory-turnover', ...guard, async (req, res) => {
       { header: 'SKU', value: (r) => r.sku ?? '' },
       { header: 'Current stock', value: (r) => r.stock },
       { header: 'Units sold', value: (r) => r.unitsSold },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -423,7 +450,7 @@ reportsRouter.get('/reports/customer-geography', ...guard, async (req, res) => {
       { header: 'Country', value: (r) => r.country },
       { header: 'Revenue', value: (r) => r.revenue },
       { header: 'Orders', value: (r) => r.orders },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -449,6 +476,7 @@ reportsRouter.get('/reports/customer-new-vs-returning', ...guard, async (req, re
         { header: 'Returning — revenue', value: (r) => r.returning.revenue },
         { header: 'Returning — orders', value: (r) => r.returning.orders },
       ],
+      { from: parsed.data.from, to: parsed.data.to },
     );
     return;
   }
@@ -505,6 +533,7 @@ reportsRouter.get('/reports/customer-order-frequency', ...guard, async (req, res
         { header: 'Orders placed', value: (r) => r.label },
         { header: 'Customers', value: (r) => r.customers },
       ],
+      { from: parsed.data.from, to: parsed.data.to },
     );
     return;
   }
@@ -524,7 +553,7 @@ reportsRouter.get('/reports/guest-vs-registered', ...guard, async (req, res) => 
       { header: 'Guest — orders', value: (r) => r.guest.orders },
       { header: 'Registered — revenue', value: (r) => r.registered.revenue },
       { header: 'Registered — orders', value: (r) => r.registered.orders },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -542,7 +571,7 @@ reportsRouter.get('/reports/payment-method-breakdown', ...guard, async (req, res
       { header: 'Payment method', value: (r) => r.paymentMethod },
       { header: 'Revenue', value: (r) => r.revenue },
       { header: 'Orders', value: (r) => r.orders },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -564,7 +593,7 @@ reportsRouter.get('/reports/product-margin', ...guard, async (req, res) => {
       { header: 'Margin', value: (r) => r.margin },
       { header: 'Margin %', value: (r) => (r.marginPercent * 100).toFixed(2) + '%' },
       { header: 'Units', value: (r) => r.units },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -587,7 +616,7 @@ reportsRouter.get('/reports/product-review-summary', ...guard, async (req, res) 
       { header: '3 star', value: (r) => r.distribution[3] },
       { header: '4 star', value: (r) => r.distribution[4] },
       { header: '5 star', value: (r) => r.distribution[5] },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -614,6 +643,7 @@ reportsRouter.get('/reports/review-moderation-throughput', ...guard, async (req,
         { header: 'Pending', value: (r) => r.pending },
         { header: 'Avg. hours to moderation', value: (r) => r.averageHoursToModeration?.toFixed(1) ?? '' },
       ],
+      { from: parsed.data.from, to: parsed.data.to },
     );
     return;
   }
@@ -666,7 +696,7 @@ reportsRouter.get('/reports/stock-adjustment-reasons', ...guard, async (req, res
       { header: 'Reason', value: (r) => r.reason },
       { header: 'Movements', value: (r) => r.movements },
       { header: 'Net units', value: (r) => r.netUnits },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -687,7 +717,7 @@ reportsRouter.get('/reports/variant-stock-movement', ...guard, async (req, res) 
       { header: 'Current stock', value: (r) => r.stock },
       { header: 'Units sold', value: (r) => r.sold },
       { header: 'Units received', value: (r) => r.received },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -714,6 +744,7 @@ reportsRouter.get('/reports/return-resolution-breakdown', ...guard, async (req, 
         { header: 'Count', value: (r) => r.count },
         { header: 'Refunded value', value: (r) => r.refundedValue },
       ],
+      { from: parsed.data.from, to: parsed.data.to },
     );
     return;
   }
@@ -733,7 +764,7 @@ reportsRouter.get('/reports/return-reasons', ...guard, async (req, res) => {
       { header: 'Status', value: (r) => r.status },
       { header: 'Reason', value: (r) => r.reason },
       { header: 'Requested at', value: (r) => r.createdAt },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -756,7 +787,7 @@ reportsRouter.get('/reports/courier-performance', ...guard, async (req, res) => 
       { header: 'Out for delivery', value: (r) => r.byStatus['OUT_FOR_DELIVERY'] ?? 0 },
       { header: 'Canceled', value: (r) => r.byStatus['CANCELED'] ?? 0 },
       { header: 'Returned', value: (r) => r.byStatus['RETURNED'] ?? 0 },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -775,7 +806,7 @@ reportsRouter.get('/reports/delivery-zone-breakdown', ...guard, async (req, res)
       { header: 'Region', value: (r) => r.region },
       { header: 'Assignments', value: (r) => r.assignments },
       { header: 'Collectible value', value: (r) => r.collectibleValue },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -793,7 +824,7 @@ reportsRouter.get('/reports/delivery-cycle-time', ...guard, async (req, res) => 
       { header: 'Delivered count', value: (r) => r.deliveredCount },
       { header: 'Average hours', value: (r) => r.averageHours?.toFixed(1) ?? '' },
       { header: 'Median hours', value: (r) => r.medianHours ?? '' },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -822,7 +853,7 @@ reportsRouter.get('/reports/audit-outcome-trend', ...guard, async (req, res) => 
       { header: 'Success', value: (r) => r.success },
       { header: 'Denied', value: (r) => r.denied },
       { header: 'Error', value: (r) => r.error },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 
@@ -840,7 +871,7 @@ reportsRouter.get('/reports/audit-activity-by-entity', ...guard, async (req, res
       { header: 'Entity', value: (r) => r.entity },
       { header: 'Action', value: (r) => r.action },
       { header: 'Count', value: (r) => r.count },
-    ]);
+    ], { from: parsed.data.from, to: parsed.data.to });
     return;
   }
 

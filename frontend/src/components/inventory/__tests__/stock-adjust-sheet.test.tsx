@@ -42,6 +42,61 @@ beforeEach(() => {
   });
 });
 
+/**
+ * F7.1 — the reason DECIDES the direction, it does not merely suggest it.
+ *
+ * Before this, choosing RECEIVED preselected "in" and then left the toggle
+ * clickable, so "received, direction out" was recordable: a movement claiming
+ * stock arrived while subtracting it. The log is append-only, so such an entry
+ * stands permanently and needs a second compensating movement to undo.
+ */
+describe('the reason fixes the direction', () => {
+  it('locks the toggle once a one-way reason is chosen, and says why', async () => {
+    const user = userEvent.setup();
+    render(
+      <StockAdjustSheet product={product()} open onOpenChange={vi.fn()} onAdjusted={vi.fn()} />,
+    );
+
+    await user.click(screen.getByRole('combobox', { name: /reason/i }));
+    await user.click(await screen.findByRole('option', { name: /damaged/i }));
+
+    // Both buttons disabled — the direction is a statement now, not a choice.
+    expect(screen.getByRole('button', { name: /^add$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^remove$/i })).toBeDisabled();
+    // A disabled control with no explanation reads as broken, not decided.
+    expect(screen.getByText(/set by the reason/i)).toBeInTheDocument();
+  });
+
+  it('leaves the toggle usable for CORRECTION, which genuinely goes both ways', async () => {
+    const user = userEvent.setup();
+    render(
+      <StockAdjustSheet product={product()} open onOpenChange={vi.fn()} onAdjusted={vi.fn()} />,
+    );
+
+    await user.click(screen.getByRole('combobox', { name: /reason/i }));
+    await user.click(await screen.findByRole('option', { name: /correction/i }));
+
+    expect(screen.getByRole('button', { name: /^add$/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^remove$/i })).toBeEnabled();
+  });
+
+  it('sends a NEGATIVE delta for an outgoing reason, never a positive one', async () => {
+    const user = userEvent.setup();
+    render(
+      <StockAdjustSheet product={product()} open onOpenChange={vi.fn()} onAdjusted={vi.fn()} />,
+    );
+
+    await user.click(screen.getByRole('combobox', { name: /reason/i }));
+    await user.click(await screen.findByRole('option', { name: /damaged/i }));
+    await user.type(screen.getByLabelText(/amount/i), '3');
+    await user.click(screen.getByRole('button', { name: /record/i }));
+
+    // The payload is derived from the IMPLIED direction, so it cannot
+    // contradict the reason even if component state drifted.
+    expect(adjustStock).toHaveBeenCalledWith('p1', expect.objectContaining({ delta: -3 }));
+  });
+});
+
 describe('unit cost is offered only where stock arrives', () => {
   it('shows the field once RECEIVED is chosen', async () => {
     const user = userEvent.setup();

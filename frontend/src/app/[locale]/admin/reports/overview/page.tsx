@@ -22,15 +22,22 @@ export default async function ReportsOverviewPage({
 
   return (
     <div className="space-y-6">
+      {/*
+        * F7.3 — this used `t('title')`, which is `reports.title` ("Reports"),
+        * so the trail read "Reports > Reports" and the heading repeated the
+        * section name. Both now name the REPORT — `reports.overview.title`
+        * ("Revenue overview") — which is what tells a reader this is one
+        * report among several rather than the section landing page.
+        */}
       <Breadcrumb
         segments={[
           { label: t('catalogue.title'), href: '/admin/reports' },
-          { label: t('title') },
+          { label: t('overview.title') },
         ]}
       />
       <div>
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
-        <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
+        <h1 className="text-2xl font-semibold">{t('overview.title')}</h1>
+        <p className="text-muted-foreground mt-1 text-sm">{t('overview.description')}</p>
       </div>
 
       <ReportsView />

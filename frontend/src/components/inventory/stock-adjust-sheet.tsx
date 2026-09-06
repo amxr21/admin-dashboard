@@ -79,7 +79,22 @@ const PRESET_REASON: Record<StockSheetVariant, StockMovementReason | null> = {
 
 type Direction = 'in' | 'out';
 
-/** Reasons that only make sense in one direction. */
+/**
+ * Reasons that only make sense in one direction.
+ *
+ * This map used to only PRESELECT the direction, leaving the toggle clickable
+ * afterwards — so "RECEIVED, direction out" was recordable: a movement saying
+ * stock arrived while subtracting it. The log is append-only, so that lands
+ * permanently and has to be corrected with a second compensating entry.
+ *
+ * A reason listed here now FIXES the direction rather than suggesting it. The
+ * toggle still renders — the consequence has to stay visible, and hiding it
+ * would leave the reader guessing which way the amount applies — but it is a
+ * statement, not a control.
+ *
+ * `CORRECTION` is deliberately absent: it is the one reason that genuinely
+ * goes either way, which is the whole point of it existing.
+ */
 const DIRECTION_FOR: Partial<Record<StockMovementReason, Direction>> = {
   RECEIVED: 'in',
   RETURNED: 'in',
@@ -160,17 +175,26 @@ export function StockAdjustSheet({
     cancel: isOpening ? t('openingSkip') : t('cancel'),
   };
 
+  /** Set by the reason, when the reason only makes sense one way. */
+  const impliedDirection = reason === '' ? undefined : DIRECTION_FOR[reason];
+
   const parsed = Number(amount);
   const isValidAmount = Number.isInteger(parsed) && parsed > 0;
-  const delta = direction === 'in' ? parsed : -parsed;
+  // Derived from the IMPLIED direction where there is one, so the value sent
+  // cannot contradict the reason even if state drifted — a guard, not the
+  // primary mechanism (the toggle above is disabled), because this one is
+  // what actually reaches the database.
+  const effectiveDirection = impliedDirection ?? direction;
+  const delta = effectiveDirection === 'in' ? parsed : -parsed;
   const resulting = product.stock + (isValidAmount ? delta : 0);
   // Mirrors the server's check so the consequence is visible before submitting.
   const wouldGoNegative = isValidAmount && resulting < 0;
 
   function chooseReason(next: StockMovementReason) {
     setReason(next);
-    // A reason that only makes sense one way sets the direction with it —
-    // "damaged" adding stock is almost always a mis-click.
+    // "Damaged" adding stock is almost always a mis-click, so the reason
+    // decides — and, unlike before, KEEPS deciding: the toggle below is
+    // disabled while an implied direction is in force.
     const implied = DIRECTION_FOR[next];
     if (implied) setDirection(implied);
   }
@@ -256,6 +280,10 @@ export function StockAdjustSheet({
                   // aria-pressed, not just colour — a toggle's state has to be
                   // announced, not only shown.
                   aria-pressed={direction === value}
+                  // Locked once the reason implies a direction: "received" can
+                  // only add and "damaged" can only remove, and the log is
+                  // append-only so a contradictory entry stands forever.
+                  disabled={impliedDirection !== undefined}
                   onClick={() => setDirection(value)}
                   className="flex-1"
                 >
@@ -264,6 +292,13 @@ export function StockAdjustSheet({
                 </Button>
               ))}
             </div>
+            {/* Says WHY it is locked. A disabled control with no explanation
+                reads as broken rather than as decided. */}
+            {impliedDirection !== undefined ? (
+              <p className="text-muted-foreground text-xs">
+                {t('directionLocked', { reason: tReason(reason as StockMovementReason) })}
+              </p>
+            ) : null}
           </fieldset>
 
           <div className="space-y-2">
