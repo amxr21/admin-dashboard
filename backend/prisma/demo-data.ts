@@ -30,6 +30,20 @@ export const DEMO = {
   categorySlug: (slug: string) => `${DEMO_TAG}-${slug}`,
   /** Discounts: `code` is unique. */
   discountCode: (code: string) => `${DEMO_TAG}-${code}`,
+  /**
+   * Businesses and branches: `name` carries the tag because neither model has
+   * another unique text column that teardown could match on. `Branch.code` is
+   * unique per business, not globally, so it cannot be the handle.
+   */
+  businessName: (name: string) => `${DEMO_TAG} ${name}`,
+  branchName: (name: string) => `${DEMO_TAG} ${name}`,
+  /** Staff: same `.invalid` email handle as customers, different prefix. */
+  staffEmail: (slug: string) => `staff-${slug}@${DEMO_TAG}.invalid`,
+  /** Returns: `rmaNumber` is unique. */
+  rmaNumber: (n: number) => `${DEMO_TAG}-RMA-${String(n).padStart(4, '0')}`,
+  /** Variants: `sku` is unique, same column as products. */
+  variantSku: (n: number, suffix: string) =>
+    `${DEMO_TAG}-VAR-${String(n).padStart(4, '0')}-${suffix}`,
 } as const;
 
 /**
