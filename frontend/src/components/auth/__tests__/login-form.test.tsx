@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
+import { createElement, type ReactNode } from 'react';
 
 import { render, screen } from '@/test/render';
 import { LoginForm } from '../login-form';
@@ -21,6 +22,9 @@ vi.mock('@/hooks/useAuth', () => ({
 
 vi.mock('@/i18n/navigation', () => ({
   useRouter: () => ({ replace: (...args: unknown[]) => replace(...args) }),
+  // The form links to /reset-password — the only discoverable route to it.
+  Link: ({ href, children, ...props }: Record<string, unknown>) =>
+    createElement('a', { href, ...props }, children as ReactNode),
 }));
 
 beforeEach(() => {

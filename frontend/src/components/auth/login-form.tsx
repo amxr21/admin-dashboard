@@ -1,14 +1,15 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useState, type FormEvent } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Suspense, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { CheckCircle2, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/useAuth';
-import { useRouter } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 import { ApiError } from '@/lib/api';
 
 /**
@@ -28,6 +29,35 @@ import { ApiError } from '@/lib/api';
  * The backend deliberately returns the SAME message for unknown-email and
  * wrong-password (user enumeration), so this does not try to distinguish them.
  */
+/**
+ * The one thing on this page that reads the URL (`?reset=1`, set by the reset
+ * form after a successful redemption).
+ *
+ * Split into its own component so the `useSearchParams()` bailout is confined
+ * to it. Without the notice, someone who just set a password lands on a bare
+ * sign-in form with no acknowledgement — which reads as "it didn't work" in
+ * the one flow where the user is already anxious about being locked out.
+ * Redemption revokes every session server-side, so arriving here IS the
+ * success path.
+ */
+function ResetSuccessNotice({ suppressed }: { suppressed: boolean }) {
+  const t = useTranslations('auth');
+  const justReset = useSearchParams().get('reset') === '1';
+
+  if (!justReset || suppressed) return null;
+
+  return (
+    <div
+      role="status"
+      className="flex items-start gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400"
+    >
+      {/* Icon AND colour — never colour alone, per the app-wide rule. */}
+      <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <span>{t('reset.done')}</span>
+    </div>
+  );
+}
+
 export function LoginForm() {
   const t = useTranslations('auth');
   const tStates = useTranslations('states.error');
@@ -38,6 +68,8 @@ export function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+
 
   function messageFor(caught: unknown): string {
     if (!(caught instanceof ApiError)) {
@@ -87,6 +119,21 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      {/* Suppressed once an error exists: the failure is the newer and more
+          actionable fact, and stacking "password set" above "that password
+          isn't right" is actively confusing.
+
+          Inside <Suspense> because it reads `useSearchParams()`, which opts
+          the whole subtree out of static prerendering unless a boundary
+          contains it — without one, `next build` fails outright on
+          /[locale]/login. Wrapping only the BANNER rather than the page keeps
+          the form itself statically rendered: the fallback is null because a
+          missing success note for one frame is invisible, where a suspended
+          sign-in form would be a blank page. */}
+      <Suspense fallback={null}>
+        <ResetSuccessNotice suppressed={error !== null} />
+      </Suspense>
+
       {error ? (
         // role=alert so it is announced immediately — a sighted user sees the
         // message appear, a screen-reader user would otherwise get nothing.
@@ -143,6 +190,18 @@ export function LoginForm() {
           t('signIn')
         )}
       </Button>
+
+      {/* The ONLY discoverable route to the reset page. Without this, someone
+          locked out has to be sent the URL by hand — and the admin-issued
+          token they were given would have nowhere to go. */}
+      <p className="text-muted-foreground text-center text-sm">
+        <Link
+          href="/reset-password"
+          className="hover:text-foreground underline underline-offset-4"
+        >
+          {t('haveResetCode')}
+        </Link>
+      </p>
     </form>
   );
 }
