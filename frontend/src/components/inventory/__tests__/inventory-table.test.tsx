@@ -42,7 +42,10 @@ function makeRow(overrides: Partial<InventoryRow> = {}): InventoryRow {
     imageUrl: null,
     category: { id: 'c1', name: 'Home' },
     cost: null,
+    lowStockThreshold: null,
+    storageLocation: null,
     isLow: false,
+    effectiveThreshold: 5,
     ...overrides,
   };
 }
@@ -68,7 +71,11 @@ describe('the low-stock rule belongs to the server', () => {
   it('flags a row because the API said so, not by recomputing', async () => {
     // stock 40 with isLow true would be nonsense under any local rule — which
     // is exactly why it proves the UI is not applying one.
-    resolveWith([makeRow({ stock: 40, isLow: true })], 50);
+    //
+    // The badge now names the row's OWN effective threshold (F7.8), not the
+    // response-level default, so a product with a bespoke alarm shows the
+    // number that actually explains why it is flagged.
+    resolveWith([makeRow({ stock: 40, isLow: true, effectiveThreshold: 50 })], 50);
 
     render(<InventoryTable />);
 

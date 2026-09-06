@@ -1068,7 +1068,13 @@ export function ResourceTable({ schema }: ResourceTableProps) {
                 status: String(saved.status ?? ''),
                 imageUrl: null,
                 category: null,
+                // A brand-new product has no override yet, so the store
+                // default applies — the sheet only needs enough of the row to
+                // record an opening movement.
+                lowStockThreshold: null,
+                storageLocation: null,
                 isLow: false,
+                effectiveThreshold: 0,
               });
             }
           }}

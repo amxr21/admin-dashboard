@@ -423,6 +423,29 @@ model Product {
   status      ProductStatus @default(ACTIVE)
   stock       Int           @default(0)
 
+  /// Per-product low-stock threshold, overriding `inventory.lowStockThreshold`
+  /// (the store-wide setting) for THIS product.
+  ///
+  /// NULL means "use the store default" — not zero, and not "never warn". A
+  /// business selling both espresso beans and espresso machines cannot have
+  /// one sensible number for both, which is what the single global setting
+  /// forced.
+  lowStockThreshold Int?     @map("low_stock_threshold")
+
+  /// Where this product is normally kept, as FREE TEXT for now (F7.8).
+  ///
+  /// Deliberately a string and not a relation: there is no `Location` model
+  /// yet, and inventing one as a side effect of adding a label would commit
+  /// the schema to a design nobody has scoped (multi-branch stock, per-branch
+  /// counts, transfers between them — see MASTER_TODO F7.9). A string answers
+  /// "which shelf/room is this on" today and migrates cleanly to a relation
+  /// later, because a real Location will need a name anyway.
+  ///
+  /// This is the DEFAULT for the product. A specific batch can say otherwise
+  /// on its own movement — same relationship as `cost` (the product's usual
+  /// cost) versus `StockMovement.unitCost` (what one delivery actually cost).
+  storageLocation String? @map("storage_location") @db.VarChar(120)
+
   /// EAN/UPC/GTIN — distinct from `sku` (that's this business's own catalogue
   /// code; a barcode is the globally-scannable one printed on the unit).
   barcode         String?  @unique @db.VarChar(64)
