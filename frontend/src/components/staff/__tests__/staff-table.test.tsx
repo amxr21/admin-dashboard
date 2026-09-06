@@ -90,6 +90,8 @@ function makeStaff(overrides: Partial<StaffMember> = {}): StaffMember {
     isActive: true,
     accessExpiresAt: null,
     lastLoginAt: null,
+    lastSeenAt: null,
+    recentFailedLogins: 0,
     lockedUntil: null,
     createdAt: '2026-08-01T00:00:00.000Z',
     ...overrides,

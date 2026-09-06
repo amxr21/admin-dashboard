@@ -5,6 +5,7 @@ import { Prisma, StaffRole } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { canAssignRole, outranks } from '../config/roles.js';
+import { countRecentFailuresByEmail, lastSeenFor } from './login-history.service.js';
 import { createResetToken } from './password-reset.service.js';
 
 /**
@@ -110,8 +111,30 @@ export async function listStaff(params: StaffListParams) {
     prisma.user.count({ where }),
   ]);
 
+  /**
+   * Last-seen and recent failed sign-ins, joined on (F2.4, F2.5).
+   *
+   * Two extra queries for the whole page, not per row — both take the page's
+   * ids/emails in one go, so this stays O(1) queries regardless of page size.
+   *
+   * `lastSeenAt` answers "who is actually using this dashboard", which the
+   * staff list could never answer before, and the data already existed.
+   * `recentFailedLogins` is a SIGNAL only — deliberately not wired to any
+   * automatic lockout, because this app already has one
+   * (`LOGIN_MAX_ATTEMPTS`) and two mechanisms disagreeing about whether an
+   * account is locked is worse than either alone.
+   */
+  const [lastSeen, failures] = await Promise.all([
+    lastSeenFor(rows.map((row) => row.id)),
+    countRecentFailuresByEmail(rows.map((row) => row.email)),
+  ]);
+
   return {
-    staff: rows.map(serialise),
+    staff: rows.map((row) => ({
+      ...serialise(row),
+      lastSeenAt: lastSeen.get(row.id) ?? null,
+      recentFailedLogins: failures.get(row.email.toLowerCase()) ?? 0,
+    })),
     total,
     page,
     pageSize,
@@ -124,6 +147,19 @@ async function activeOwnerCount(): Promise<number> {
   return prisma.user.count({
     where: { role: StaffRole.OWNER, isActive: true },
   });
+}
+
+/**
+ * Rule 3 on its own, for callers that act on a staff member without writing
+ * to the `User` row — session revocation and login history (F2).
+ *
+ * Exported rather than reimplemented at those call sites: "nobody reaches
+ * upward" has to mean the same thing everywhere, and a second copy is a
+ * second place for it to drift. Reading someone's sign-in history and killing
+ * their sessions are exactly as privileged as editing them.
+ */
+export async function assertCanActOn(actor: Actor, id: string) {
+  return loadSubject(actor, id);
 }
 
 /** Loads the subject and applies rules 2 and 3 before anything is written. */

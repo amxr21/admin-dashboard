@@ -6,6 +6,7 @@ import {
   Database,
   FolderTree,
   History,
+  LogIn,
   LayoutDashboard,
   Package,
   RotateCcw,
@@ -78,6 +79,9 @@ export const NAVIGATION: readonly NavGroup[] = [
       { href: '/admin/reports', labelKey: 'reports', icon: ChartColumn, area: 'reports' },
       { href: '/admin/staff', labelKey: 'staff', icon: UsersRound, area: 'staff' },
       { href: '/admin/audit', labelKey: 'audit', icon: History, area: 'staff' },
+      // Same `staff` area as Audit — it names who has been failing to sign
+      // in, which is personnel data, not a business metric.
+      { href: '/admin/login-history', labelKey: 'loginHistory', icon: LogIn, area: 'staff' },
     ],
   },
 ];
