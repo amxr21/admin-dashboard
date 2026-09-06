@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { KeyRound } from 'lucide-react';
+import { KeyRound, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -118,9 +118,23 @@ export function StaffPasswordPanel({ member, onDone }: StaffPasswordPanelProps) 
             disabled={password.length < MIN_LENGTH || isSaving}
             onClick={() => void submit()}
           >
-            {t('password.confirm')}
+            {isSaving ? (
+              <>
+                {/* Disabling alone is not feedback: the label does not move,
+                    so a slow save is indistinguishable from a dead button and
+                    the natural response is to click again. Same spinner +
+                    changed-label pattern as the login form. */}
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+                {t('password.confirming')}
+              </>
+            ) : (
+              t('password.confirm')
+            )}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => onDone(null)}>
+          {/* Disabled mid-save too: the request is already in flight and
+              cannot be recalled, so closing here would hide the outcome of a
+              write that still lands — including its error. */}
+          <Button variant="outline" size="sm" disabled={isSaving} onClick={() => onDone(null)}>
             {t('password.cancel')}
           </Button>
         </div>
