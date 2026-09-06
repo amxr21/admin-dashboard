@@ -85,6 +85,7 @@ export function StockAdjustSheet({
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState<StockMovementReason | ''>('');
   const [note, setNote] = useState('');
+  const [unitCost, setUnitCost] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,6 +100,7 @@ export function StockAdjustSheet({
     // asked from scratch when the answer is obvious.
     setReason(isOpening ? 'RECEIVED' : '');
     setNote('');
+    setUnitCost('');
     setError(null);
   }, [open, product?.id, isOpening]);
 
@@ -107,6 +109,17 @@ export function StockAdjustSheet({
   // Captured after the guard: the narrowing above does not survive into the
   // async closure below, because `product` is a prop that could change.
   const target = product;
+
+  /**
+   * A unit cost only means something where stock ARRIVES (F1.4a).
+   *
+   * DAMAGED/LOST/SOLD have no acquisition cost, and the server refuses one
+   * there rather than ignoring it — so the field is hidden rather than
+   * disabled, and the value is dropped on submit if the reason changed after
+   * it was typed. CORRECTION is excluded too: it reconciles a count, it does
+   * not represent a purchase.
+   */
+  const showsUnitCost = reason === 'RECEIVED' || reason === 'RETURNED';
 
   const parsed = Number(amount);
   const isValidAmount = Number.isInteger(parsed) && parsed > 0;
@@ -134,6 +147,10 @@ export function StockAdjustSheet({
         delta,
         reason,
         ...(note.trim() ? { note: note.trim() } : {}),
+        // Only sent where it applies — the server REFUSES a cost on an
+        // outgoing movement, so sending a stale value after switching the
+        // reason would turn a valid adjustment into a 400.
+        ...(showsUnitCost && unitCost.trim() ? { unitCost: unitCost.trim() } : {}),
       });
 
       onAdjusted(
@@ -245,6 +262,24 @@ export function StockAdjustSheet({
               </p>
             )}
           </div>
+
+          {showsUnitCost ? (
+            <div className="space-y-2">
+              <Label htmlFor="adjust-unit-cost">{t('unitCost')}</Label>
+              <Input
+                id="adjust-unit-cost"
+                // `inputMode` rather than type=number: a spinner on a money
+                // field invites scroll-wheel edits, and type=number would also
+                // localise the decimal separator inconsistently.
+                inputMode="decimal"
+                className="force-ltr"
+                value={unitCost}
+                onChange={(event) => setUnitCost(event.target.value)}
+                placeholder={t('unitCostPlaceholder')}
+              />
+              <p className="text-muted-foreground text-xs">{t('unitCostHint')}</p>
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="adjust-note">{t('note')}</Label>

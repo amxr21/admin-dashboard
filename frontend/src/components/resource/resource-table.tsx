@@ -1061,6 +1061,10 @@ export function ResourceTable({ schema }: ResourceTableProps) {
                 // by definition — not read from the response, which would
                 // make this depend on the create endpoint's select shape.
                 stock: 0,
+                // Read from the created row when the resource has a cost
+                // field; null means "not tracked", which is truthful for a
+                // product created without one.
+                cost: typeof saved.cost === 'string' ? saved.cost : null,
                 status: String(saved.status ?? ''),
                 imageUrl: null,
                 category: null,

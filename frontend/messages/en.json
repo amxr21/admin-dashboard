@@ -716,7 +716,8 @@
       "product": "Product",
       "category": "Category",
       "stock": "In stock",
-      "actions": "Actions"
+      "actions": "Actions",
+      "cost": "Unit cost"
     },
     "search": {
       "label": "Search",
@@ -758,7 +759,10 @@
       "openingTitle": "Opening stock for {name}",
       "openingHint": "{name} was created. Record how many you have on hand — or skip, and it stays at zero until you do.",
       "openingRecord": "Record opening stock",
-      "openingSkip": "Skip for now"
+      "openingSkip": "Skip for now",
+      "unitCost": "Unit cost (optional)",
+      "unitCostPlaceholder": "e.g. 12.50",
+      "unitCostHint": "What one unit in this batch cost you. Leave blank if you are not tracking it — blank means \"not recorded\", which is different from zero."
     },
     "log": {
       "title": "Stock history",
@@ -775,7 +779,8 @@
     "emptyHint": "Products are created in the catalogue — stock is recorded against them here.",
     "emptyHintReadOnly": "Nothing has been added to the catalogue yet. Ask an owner or manager to add a product.",
     "emptyLowHint": "Every product is above its low-stock threshold.",
-    "emptySearchHint": "No product matches that name or SKU. Check the spelling, or clear the search to see everything."
+    "emptySearchHint": "No product matches that name or SKU. Check the spelling, or clear the search to see everything.",
+    "noCost": "Not tracked"
   },
   "stockReason": {
     "RECEIVED": "Received",

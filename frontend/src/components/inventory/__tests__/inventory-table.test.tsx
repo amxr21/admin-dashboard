@@ -41,6 +41,7 @@ function makeRow(overrides: Partial<InventoryRow> = {}): InventoryRow {
     status: 'ACTIVE',
     imageUrl: null,
     category: { id: 'c1', name: 'Home' },
+    cost: null,
     isLow: false,
     ...overrides,
   };

@@ -292,6 +292,68 @@ describe('a stock movement is auditable, not just logged', () => {
   });
 });
 
+/**
+ * F1.4a — per-batch acquisition cost.
+ *
+ * Records what a given delivery cost, so cost drift over time is visible
+ * rather than collapsed into the product's single current `cost`. It is NOT
+ * consumed by profit reporting: COGS reads `OrderItem.cost`, the snapshot
+ * taken at sale time.
+ */
+describe('a received batch can record what it cost', () => {
+  it('stores the unit cost on the movement, as a 2dp string', async () => {
+    const id = await makeProduct(0);
+
+    const res = await adjust(id, { delta: 10, reason: 'RECEIVED', unitCost: '4.25' });
+
+    expect(res.status).toBe(201);
+    expect((res.body as { data: { movement: { unitCost: string | null } } }).data.movement.unitCost)
+      .toBe('4.25');
+  });
+
+  it('leaves unitCost null when none was given — not zero', async () => {
+    // "Not recorded" and "cost nothing" are different facts, and only one of
+    // them is true of a batch nobody priced.
+    const id = await makeProduct(0);
+
+    await adjust(id, { delta: 5, reason: 'RECEIVED' });
+
+    const movement = await prisma.stockMovement.findFirst({ where: { productId: id } });
+    expect(movement?.unitCost).toBeNull();
+  });
+
+  it('accepts a genuine zero, which is not the same as absent', async () => {
+    // Free stock — a supplier sample, a warranty replacement — is a real
+    // acquisition at a real cost of nothing.
+    const id = await makeProduct(0);
+
+    const res = await adjust(id, { delta: 2, reason: 'RECEIVED', unitCost: '0' });
+
+    expect(res.status).toBe(201);
+    const movement = await prisma.stockMovement.findFirst({ where: { productId: id } });
+    expect(movement?.unitCost?.toFixed(2)).toBe('0.00');
+  });
+
+  it('refuses a unit cost on an OUTGOING movement', async () => {
+    // A DAMAGED/LOST/SOLD movement has no acquisition cost. Accepting one
+    // would store a number nothing can interpret; ignoring it silently would
+    // lose data the user believed they had entered.
+    const id = await makeProduct(10);
+
+    const res = await adjust(id, { delta: -2, reason: 'DAMAGED', unitCost: '4.25' });
+
+    expect(res.status).toBe(400);
+    expect(await prisma.stockMovement.count({ where: { productId: id } })).toBe(0);
+  });
+
+  it('rejects a malformed amount rather than rounding it', async () => {
+    const id = await makeProduct(0);
+
+    expect((await adjust(id, { delta: 1, reason: 'RECEIVED', unitCost: '4.256' })).status).toBe(400);
+    expect((await adjust(id, { delta: 1, reason: 'RECEIVED', unitCost: 'free' })).status).toBe(400);
+  });
+});
+
 describe('a refused adjustment leaves nothing behind', () => {
   it('will not let stock go negative', async () => {
     const id = await makeProduct(3);
