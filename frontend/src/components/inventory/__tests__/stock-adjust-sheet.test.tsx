@@ -29,7 +29,10 @@ function product(overrides: Partial<InventoryRow> = {}): InventoryRow {
     imageUrl: null,
     category: null,
     cost: null,
+    lowStockThreshold: null,
+    storageLocation: null,
     isLow: false,
+    effectiveThreshold: 5,
     ...overrides,
   };
 }

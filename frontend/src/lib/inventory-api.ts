@@ -49,8 +49,19 @@ export interface InventoryRow {
    * rather than wrong in it, which is harder to notice.
    */
   cost: string | null;
+  /** Per-product override of the store-wide low-stock threshold (F7.8).
+   *  Null means "use the store default" — never zero. */
+  lowStockThreshold: number | null;
+  /** Where this is normally kept. Free text for now; becomes a relation when
+   *  a Location model exists (MASTER_TODO F7.9). */
+  storageLocation: string | null;
   /** Computed server-side so the UI never re-implements the rule. */
   isLow: boolean;
+  /** The threshold that actually applied to THIS row — the product's own if
+   *  set, the store default otherwise. Sent so the badge can name the real
+   *  number rather than the global one, which would be wrong for any product
+   *  carrying an override. */
+  effectiveThreshold: number;
 }
 
 export interface InventoryListResult {

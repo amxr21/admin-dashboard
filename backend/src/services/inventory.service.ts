@@ -58,15 +58,51 @@ export async function listInventory(params: InventoryListParams) {
   const threshold = await resolveThreshold(params.threshold);
 
   const where: Prisma.ProductWhereInput = {
-    ...(params.search
-      ? {
-          OR: [
-            { name: { contains: params.search } },
-            { sku: { contains: params.search } },
-          ],
-        }
-      : {}),
-    ...(params.lowStock ? { stock: { lte: threshold } } : {}),
+    // AND, not two sibling ORs: search and low-stock BOTH want an OR at this
+    // level, and spreading them side by side would silently let the second
+    // overwrite the first — the search would stop applying whenever the
+    // low-stock filter was on.
+    AND: [
+      ...(params.search
+        ? [
+            {
+              OR: [
+                { name: { contains: params.search } },
+                { sku: { contains: params.search } },
+              ],
+            },
+          ]
+        : []),
+    /**
+     * Low stock, per product (F7.8).
+     *
+     * A product may override the store-wide threshold — a cafe cannot use one
+     * number for both espresso beans and espresso machines. So "low" is
+     * either `stock <= its own threshold` (when it has one) or
+     * `stock <= the store default` (when it does not).
+     *
+     * Expressed as an OR rather than a raw query so it stays composable with
+     * the search filter above and with Prisma's own pagination; the
+     * `lowStockThreshold: null` half is what makes the two branches exclusive
+     * rather than double-counting a product that has an override.
+     */
+      ...(params.lowStock
+        ? [
+            {
+              OR: [
+                { lowStockThreshold: null, stock: { lte: threshold } },
+                {
+                  lowStockThreshold: { not: null },
+                  // Column-to-column comparison: `stock <= low_stock_threshold`
+                  // on the same row, which is the whole point of a per-product
+                  // override.
+                  stock: { lte: prisma.product.fields.lowStockThreshold },
+                },
+              ],
+            },
+          ]
+        : []),
+    ],
   };
 
   // One transaction so the count cannot disagree with the page it describes.
@@ -85,6 +121,8 @@ export async function listInventory(params: InventoryListParams) {
         stock: true,
         status: true,
         imageUrl: true,
+        lowStockThreshold: true,
+        storageLocation: true,
         // Surfaced so the list can flag "no cost recorded" (F1.4b). Profit
         // reporting excludes uncosted lines entirely, so a product nobody has
         // priced is silently absent from margin — this is where that becomes
@@ -101,7 +139,12 @@ export async function listInventory(params: InventoryListParams) {
       ...row,
       // Decimal → 2dp string; null stays null and means "not tracked", never 0.
       cost: row.cost === null ? null : row.cost.toFixed(2),
-      isLow: row.stock <= threshold,
+      // Per-row: the product's own threshold when it has one, the store
+      // default otherwise. Must match the `where` above exactly, or the
+      // low-stock FILTER and the low-stock BADGE would disagree on the same
+      // page — the class of bug this file's header warns about.
+      isLow: row.stock <= (row.lowStockThreshold ?? threshold),
+      effectiveThreshold: row.lowStockThreshold ?? threshold,
     })),
     total,
     page,
@@ -202,7 +245,7 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
   const result = await prisma.$transaction(async (tx) => {
     const product = await tx.product.findUnique({
       where: { id: productId },
-      select: { id: true, name: true, stock: true },
+      select: { id: true, name: true, stock: true, lowStockThreshold: true },
     });
 
     if (!product) throw AppError.notFound('Product not found');
@@ -256,7 +299,12 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
       // Crossing INTO low stock, not merely being low — otherwise every
       // further movement on an already-low product renotifies, and the one
       // crossing that mattered disappears into that noise.
-      crossedIntoLowStock: product.stock > threshold && next <= threshold,
+      // The product's own threshold decides, so a bespoke limit actually
+      // fires the alert rather than being a number nothing reads.
+      crossedIntoLowStock:
+        product.stock > (product.lowStockThreshold ?? threshold) &&
+        next <= (product.lowStockThreshold ?? threshold),
+      effectiveThreshold: product.lowStockThreshold ?? threshold,
     };
   });
 
@@ -264,7 +312,7 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
     notify({
       type: 'inventory.low-stock',
       title: result.product.name,
-      body: `${String(result.product.stock)} left — at or below the threshold of ${String(threshold)}.`,
+      body: `${String(result.product.stock)} left — at or below the threshold of ${String(result.effectiveThreshold)}.`,
       link: '/admin/inventory',
     });
   }

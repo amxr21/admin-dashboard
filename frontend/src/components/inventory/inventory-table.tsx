@@ -160,7 +160,10 @@ export function InventoryTable() {
             // The badge states WHY it's flagged, using the server's threshold —
             // a bare colour leaves the reader guessing at the rule.
             <span className="ms-2 text-xs font-normal">
-              {t('lowBadge', { threshold: formatter.number(result?.threshold ?? 0) })}
+              {/* The threshold that applied to THIS row, not the store-wide
+                  one — a product with its own alarm would otherwise show a
+                  number that does not explain why it is flagged. */}
+              {t('lowBadge', { threshold: formatter.number(row.effectiveThreshold) })}
             </span>
           ) : null}
         </span>

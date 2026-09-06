@@ -59,8 +59,19 @@ export const NAVIGATION: readonly NavGroup[] = [
   {
     items: [{ href: '/admin', labelKey: 'dashboard', icon: LayoutDashboard }],
   },
+  /**
+   * ─── ONE GROUP FOR THE SHOP, NOT TWO ─────────────────────────────
+   * There used to be a hand-written "Commerce" group (orders, inventory,
+   * returns) AND a config-driven "Catalogue" group (products, categories,
+   * discounts). Nothing distinguished them: Products and Inventory are the
+   * same items seen two ways, so an owner looking for a product had two
+   * plausible tabs and no rule for choosing. They are merged under `catalogue`
+   * — the key the resource engine already assigns — so the bespoke pages and
+   * the generic ones land in the same place. See `sidebar-nav.tsx`, which
+   * merges groups by `labelKey`.
+   */
   {
-    labelKey: 'commerce',
+    labelKey: 'catalogue',
     items: [
       { href: '/admin/orders', labelKey: 'orders', icon: ShoppingCart, area: 'orders' },
       { href: '/admin/inventory', labelKey: 'inventory', icon: Boxes, area: 'inventory' },
@@ -68,6 +79,8 @@ export const NAVIGATION: readonly NavGroup[] = [
     ],
   },
   {
+    // Couriers. `people` also receives Customers and Reviews from the resource
+    // engine — see the label, which names what they have in common.
     labelKey: 'people',
     items: [
       { href: '/admin/delivery', labelKey: 'delivery', icon: Truck, area: 'delivery' },

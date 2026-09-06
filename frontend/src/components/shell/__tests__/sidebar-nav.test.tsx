@@ -240,7 +240,11 @@ describe('localisation', () => {
     render(<SidebarNav role="OWNER" />, { locale: 'ar' });
 
     expect(screen.getByRole('link', { name: 'الطلبات' })).toBeInTheDocument();
-    expect(screen.getByText('التجارة')).toBeInTheDocument();
+    // "المتجر" (Shop), not "التجارة" (Commerce): the hand-written Commerce
+    // group and the config-driven Catalogue group were merged, because
+    // Products and Inventory are the same items seen two ways and having both
+    // gave an owner two plausible tabs with no rule for choosing.
+    expect(screen.getByText('المتجر')).toBeInTheDocument();
   });
 });
 
@@ -335,10 +339,13 @@ describe('groups from both sources are merged, not duplicated', () => {
   it('puts hand-written and schema entries under the same heading', () => {
     const { container } = render(<SidebarNav role="OWNER" />);
 
-    // Find the block whose heading is People, then check BOTH kinds of entry
-    // live inside it rather than in two separate blocks.
+    // Find the people block, then check BOTH kinds of entry live inside it
+    // rather than in two separate blocks. Matched on "couriers" because the
+    // heading is now "Customers & couriers" — the old bare "People" said
+    // nothing about what it held, and it also received Reviews, which are not
+    // people at all.
     const block = [...container.querySelectorAll('div')].find((el) =>
-      /people/i.test(el.querySelector('h2')?.textContent ?? ''),
+      /couriers/i.test(el.querySelector('h2')?.textContent ?? ''),
     );
 
     expect(block).toBeTruthy();

@@ -119,6 +119,27 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       // "not tracked", never as free — see the schema comment on Product.cost.
       { name: 'cost', label: 'Cost', type: 'money', inList: false },
       { name: 'stock', label: 'Stock', type: 'number', sortable: true },
+      /**
+       * Per-product stock defaults (F7.8). Both `inList: false` — they are
+       * setup values you fill in once, not columns worth a place in a list
+       * that already carries name/SKU/stock/cost.
+       *
+       * Blank on either means FALL BACK, never zero: an empty threshold uses
+       * the store-wide `inventory.lowStockThreshold`, and an empty location
+       * means "not recorded".
+       */
+      {
+        name: 'lowStockThreshold',
+        label: 'Low stock alert at',
+        type: 'number',
+        inList: false,
+      },
+      {
+        name: 'storageLocation',
+        label: 'Stored at',
+        type: 'text',
+        inList: false,
+      },
       {
         name: 'categoryId',
         label: 'Category',
