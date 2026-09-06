@@ -327,7 +327,12 @@
       "unitsReturned": "Units returned",
       "deletedProduct": "(deleted product)",
       "units": "{count, plural, one {# unit} other {# units}}",
-      "none": "No returns in this period."
+      "none": "No returns in this period.",
+      "definitions": {
+        "returnRate": "Returns as a share of orders PLACED in this period — both halves counted the same way, so it agrees with the RETURNED count in Order outcomes. A cohort rate: of what was ordered here, how much came back.",
+        "refundValue": "Refunds that flowed out DURING this period, whenever the order was placed. A deliberately different window from Return rate above — 'what did we pay out this month' and 'how much of this month's orders came back' are different questions, and one figure cannot answer both.",
+        "unitsReturned": "Items received back during this period, on the same window as Refund value. Counts units, not orders — one return of three items counts as three."
+      }
     },
     "orderValue": {
       "title": "Order value distribution"

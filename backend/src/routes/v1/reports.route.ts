@@ -8,6 +8,7 @@ import { toCsv, type CsvColumn } from '../../lib/csv.js';
 import { toXlsx } from '../../lib/xlsx.js';
 import { toPdf } from '../../lib/pdf.js';
 import {
+  EXCLUDED_FROM_REVENUE,
   getAuditActivityByEntity,
   getAuditOutcomeTrend,
   getCategoryBreakdown,
@@ -258,10 +259,29 @@ reportsRouter.get('/reports/status-breakdown', ...guard, async (req, res) => {
   const breakdown = await getStatusBreakdown(parsed.data);
 
   if (parsed.data.format && parsed.data.format !== 'json') {
+    /**
+     * "Order value", not "Total" (F4.3).
+     *
+     * This report INCLUDES canceled orders — it has to, or the statuses would
+     * not sum to the order count, which is the entire point of a breakdown.
+     * But that means the money column is order VALUE, not revenue: the
+     * CANCELED row is money that was never collected.
+     *
+     * Named "Total" in a spreadsheet, the obvious thing to do is sum the
+     * column — which on the current demo data overstates revenue by 33%, and
+     * disagrees with every revenue report in the app. The header now says
+     * what the number is, and the extra column says which rows are excluded
+     * from revenue, so the CSV carries its own caveat rather than relying on
+     * whoever opens it remembering this rule.
+     */
     await sendExport(res, parsed.data.format, 'Order outcomes', 'status-breakdown', breakdown.statuses, [
       { header: 'Status', value: (r) => r.status },
       { header: 'Orders', value: (r) => r.orders },
-      { header: 'Total', value: (r) => r.total },
+      { header: 'Order value', value: (r) => r.total },
+      {
+        header: 'Counts toward revenue',
+        value: (r) => (EXCLUDED_FROM_REVENUE.some((status) => status === r.status) ? 'No' : 'Yes'),
+      },
     ]);
     return;
   }
