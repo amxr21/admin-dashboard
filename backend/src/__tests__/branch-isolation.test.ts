@@ -2,7 +2,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Prisma, OrderStatus } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
-import { getOverview, getRevenueSeries, getStatusBreakdown } from '../services/reports.service.js';
+import {
+  getCategoryBreakdown,
+  getOrderValueDistribution,
+  getOverview,
+  getPaymentMethodBreakdown,
+  getRevenueSeries,
+  getStatusBreakdown,
+} from '../services/reports.service.js';
 
 /**
  * Branch isolation — the test that has to exist BEFORE the queries are scoped.
@@ -108,6 +115,38 @@ describe('a report scoped to one branch never reports another branch', () => {
 
     const total = a.points.reduce((sum, point) => sum + Number(point.revenue), 0);
     expect(total).toBe(150);
+  });
+
+  /**
+   * A sweep, not a sample. The three reports above were scoped by hand and
+   * verified; the other ~14 were changed in bulk, which is exactly where a
+   * missed filter hides. These cover the shapes that differ — an unaliased
+   * `FROM orders`, a bucketing query, and one joining order_items — because a
+   * regex that matched the common `o.` alias would silently skip them.
+   */
+  it('the order-value distribution is scoped (unaliased FROM orders)', async () => {
+    const a = await getOrderValueDistribution({ from: FROM, to: TO, branchId: branchA });
+
+    // 100 and 50 both fall in 100-250 and 50-100 respectively; branch B's 900
+    // must not appear in 500-1000.
+    const highBucket = a.buckets.find((bucket) => bucket.label === '500-1000');
+    expect(highBucket?.count).toBe(0);
+  });
+
+  it('the payment-method breakdown is scoped', async () => {
+    const b = await getPaymentMethodBreakdown({ from: FROM, to: TO, branchId: branchB });
+
+    const total = b.methods.reduce((sum, row) => sum + Number(row.revenue), 0);
+    expect(total).toBe(900);
+  });
+
+  it('the category breakdown is scoped (joins order_items)', async () => {
+    // No order items in this fixture, so the assertion is that it returns
+    // branch A's empty result rather than branch B's rows — a missing filter
+    // on the JOIN would still leak the other branch's lines.
+    const a = await getCategoryBreakdown({ from: FROM, to: TO, branchId: branchA });
+
+    expect(a.categories.every((row) => Number(row.revenue) <= 150)).toBe(true);
   });
 
   it('the status breakdown is scoped', async () => {

@@ -231,7 +231,7 @@ export async function getOverview(params: RangeParams) {
     FROM order_items oi
     JOIN orders o ON o.id = oi.order_id
     WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
       AND oi.cost IS NOT NULL
   `;
 
@@ -244,7 +244,7 @@ export async function getOverview(params: RangeParams) {
     FROM order_items oi
     JOIN orders o ON o.id = oi.order_id
     WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
       AND oi.cost IS NOT NULL
   `;
 
@@ -359,7 +359,7 @@ export async function getTopProducts(params: RangeParams & { limit?: number }) {
     JOIN orders o ON o.id = oi.order_id
     LEFT JOIN products p ON p.id = oi.product_id
     WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
     GROUP BY oi.product_id, p.name
     ORDER BY revenue DESC
     LIMIT ${limit}
@@ -437,7 +437,7 @@ export async function getFulfillmentHealth(params: RangeParams) {
     FROM orders
     WHERE status = 'PENDING'
       AND placed_at < ${new Date(Date.now() - PENDING_SLA_HOURS * 3_600_000)}
-      AND placed_at >= ${start} AND placed_at < ${end}
+      AND placed_at >= ${start} AND placed_at < ${end}${branchSql(params, 'orders')}
     ORDER BY placed_at ASC
     LIMIT 50
   `;
@@ -455,7 +455,7 @@ export async function getFulfillmentHealth(params: RangeParams) {
     ) h ON h.order_id = o.id
     WHERE o.status = 'CONFIRMED'
       AND h.enteredAt < ${new Date(Date.now() - CONFIRMED_SLA_HOURS * 3_600_000)}
-      AND o.placed_at >= ${start} AND o.placed_at < ${end}
+      AND o.placed_at >= ${start} AND o.placed_at < ${end}${branchSql(params)}
     ORDER BY h.enteredAt ASC
     LIMIT 50
   `;
@@ -510,7 +510,9 @@ export async function getReturnsSummary(params: RangeParams) {
   const { start, end } = resolveRange(params);
 
   const inRange = { createdAt: { gte: start, lt: end } };
-  const orderInRange = { placedAt: { gte: start, lt: end } };
+  // Scoped by the order's branch, not the return's — a return has no branch of
+  // its own, it belongs wherever the order was taken.
+  const orderInRange = { placedAt: { gte: start, lt: end }, ...branchWhere(params) };
 
   const [returnCount, orderCount, refundAgg, unitsAgg, byProduct] = await prisma.$transaction([
     prisma.return.count({ where: { order: orderInRange } }),
@@ -578,7 +580,7 @@ export async function getOrderValueDistribution(params: RangeParams) {
       COUNT(*) AS count
     FROM orders
     WHERE placed_at >= ${start} AND placed_at < ${end}
-      AND status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params, 'orders')}
     GROUP BY bucket
   `;
 
@@ -828,7 +830,7 @@ export async function getCategoryBreakdown(params: RangeParams) {
     LEFT JOIN products p ON p.id = oi.product_id
     LEFT JOIN categories c ON c.id = p.category_id
     WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
     GROUP BY c.id, c.name
     ORDER BY revenue DESC
   `;
@@ -936,7 +938,7 @@ export async function getExplorerRows(
       LEFT JOIN products p ON p.id = oi.product_id
       LEFT JOIN categories c ON c.id = p.category_id
       WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-        AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+        AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
     ) x
     GROUP BY bucketKey, bucketLabel
     ORDER BY revenue DESC
@@ -982,7 +984,7 @@ export async function getRefundRateTrend(params: RangeParams) {
       SELECT DATE_FORMAT(o.placed_at, '%Y-%m-01') AS bucket, SUM(o.total) AS revenue
       FROM orders o
       WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-        AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+        AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
       GROUP BY bucket
     `,
     prisma.$queryRaw<{ bucket: string; refunded: Prisma.Decimal }[]>`
@@ -1092,7 +1094,7 @@ export async function getCustomerGeography(params: RangeParams) {
     FROM orders o
     LEFT JOIN customers c ON c.id = o.customer_id
     WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
     GROUP BY c.city, c.country
     ORDER BY revenue DESC
   `;
@@ -1134,7 +1136,7 @@ export async function getCustomerNewVsReturning(params: RangeParams) {
       COUNT(*) AS orders
     FROM orders o
     WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
     GROUP BY bucket
   `;
 
@@ -1159,7 +1161,12 @@ export async function getCustomerNewVsReturning(params: RangeParams) {
  * products). `isRangeScoped: false` in the registry for the same reason
  * `getNeedsAttention` is — nothing here would change meaning on a schedule.
  */
-export async function getCustomerLifetimeValue(limit = 20) {
+/**
+ * All-time customer ranking. Takes `limit`, not `RangeParams` — it is
+ * deliberately unwindowed, which is why the branch filter is a separate
+ * argument here rather than riding along on the params object.
+ */
+export async function getCustomerLifetimeValue(limit = 20, branchId?: string) {
   const rows = await prisma.$queryRaw<
     { customerId: string; name: string; email: string; revenue: Prisma.Decimal; orders: bigint }[]
   >`
@@ -1168,7 +1175,7 @@ export async function getCustomerLifetimeValue(limit = 20) {
            COUNT(*) AS orders
     FROM orders o
     JOIN customers c ON c.id = o.customer_id
-    WHERE o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+    WHERE o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql({ from: '', to: '', branchId })}
     GROUP BY c.id, c.name, c.email
     ORDER BY revenue DESC
     LIMIT ${Math.min(100, Math.max(1, limit))}
@@ -1207,7 +1214,7 @@ export async function getCustomerOrderFrequency(params: RangeParams) {
     SELECT COUNT(*) AS orderCount
     FROM orders o
     WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
       AND o.customer_id IS NOT NULL
     GROUP BY o.customer_id
   `;
@@ -1253,7 +1260,7 @@ export async function getGuestVsRegistered(params: RangeParams) {
            COUNT(*) AS orders
     FROM orders o
     WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
     GROUP BY bucket
   `;
 
@@ -1287,7 +1294,7 @@ export async function getPaymentMethodBreakdown(params: RangeParams) {
            COUNT(*) AS orders
     FROM orders o
     WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
     GROUP BY o.payment_method
     ORDER BY revenue DESC
   `;
@@ -1342,7 +1349,7 @@ export async function getProductMargin(params: RangeParams) {
     JOIN orders o ON o.id = oi.order_id
     JOIN products p ON p.id = oi.product_id
     WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
       AND oi.cost IS NOT NULL
     GROUP BY p.id, p.name, p.sku
     ORDER BY (SUM(oi.price * oi.quantity) - SUM(oi.cost * oi.quantity)) ASC
@@ -1365,7 +1372,7 @@ export async function getProductMargin(params: RangeParams) {
     JOIN orders o ON o.id = oi.order_id
     JOIN products p ON p.id = oi.product_id
     WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})
+      AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
       AND oi.cost IS NULL
   `;
 
