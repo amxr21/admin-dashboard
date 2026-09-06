@@ -1365,11 +1365,17 @@
       "revenue": "Revenue",
       "orders": "Orders",
       "averageOrderValue": "Average order",
-      "averageOrderValueDefinitionLabel": "What counts as average order value",
-      "averageOrderValueDefinition": "Revenue ÷ orders, excluding canceled orders. The Orders tile above counts every order including canceled ones, so the two intentionally use different denominators.",
       "newCustomers": "New customers",
       "canceledOrders": "Canceled",
-      "lowStockProducts": "Low stock"
+      "lowStockProducts": "Low stock",
+      "definitions": {
+        "revenue": "Total money taken from orders placed in this period. Canceled orders are excluded — they never took money. Returned orders are NOT excluded: the money moved and then came back, which is a different fact from a sale that never happened. Each order contributes the total recorded at the time it was placed, so editing a product's price today never changes past revenue.",
+        "orders": "Every order placed in this period, INCLUDING canceled ones. This deliberately differs from the denominator behind Average order — an order that was placed and then canceled did happen, it just realized no money.",
+        "averageOrderValue": "Revenue ÷ orders, excluding canceled orders. The Orders tile counts every order including canceled ones, so the two intentionally use different denominators. Averaging in orders that realized nothing would understate what a real order is worth.",
+        "newCustomers": "Customers whose record was created in this period — first-time customers, not everyone who ordered. A returning customer who ordered twice this month is not counted here at all.",
+        "canceledOrders": "Orders canceled in this period. These are counted in Orders above but excluded from Revenue, which is why the two tiles can move in opposite directions.",
+        "lowStockProducts": "Products at or below the low-stock threshold RIGHT NOW. Unlike every other tile here, this is a live snapshot and ignores the selected date range — stock has no history in a report sense, only a current level. The threshold is the one set in Settings, so this always agrees with the Inventory page."
+      }
     },
     "topProducts": "Best sellers",
     "showTop": "Show top",
@@ -1826,7 +1832,8 @@
         "action": "Action",
         "count": "Count"
       }
-    }
+    },
+    "definitionLabel": "What {label} means"
   },
   "imageUpload": {
     "upload": "Upload",
