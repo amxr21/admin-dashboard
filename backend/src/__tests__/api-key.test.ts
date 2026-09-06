@@ -6,6 +6,7 @@ import { StaffRole } from '@prisma/client';
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { signToken } from '../services/auth.service.js';
+import { waitFor } from './helpers/wait-for.js';
 
 /**
  * API keys (B3.2).
@@ -210,11 +211,25 @@ describe('a key authenticates as its OWNER, exactly', () => {
 
     await request(app).get('/api/v1/auth/me').set(auth(key));
 
-    const listRes = await request(app).get('/api/v1/auth/me/api-keys').set(auth(token));
-    const body = listRes.body as ListBody;
-    const found = body.data.find((k) => k.name === 'Tracks last used');
+    /**
+     * `lastUsedAt` is written fire-and-forget — `void prisma.apiKey.update(...)`
+     * in api-key.service.ts, so authentication is never delayed or failed by
+     * bookkeeping. That means the row can land AFTER the request that
+     * triggered it has already returned.
+     *
+     * Reading the list immediately therefore races the write, and won locally
+     * only because the machine is fast; on CI it lost and failed as "expected
+     * null to be truthy". Same cause as the audit-log races fixed alongside
+     * this — three tests, one pattern.
+     */
+    const found = await waitFor(async () => {
+      const listRes = await request(app).get('/api/v1/auth/me/api-keys').set(auth(token));
+      const body = listRes.body as ListBody;
+      const row = body.data.find((k) => k.name === 'Tracks last used');
+      return row?.lastUsedAt ? row : null;
+    });
 
-    expect(found?.lastUsedAt).toBeTruthy();
+    expect(found.lastUsedAt).toBeTruthy();
   });
 });
 
