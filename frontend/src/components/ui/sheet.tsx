@@ -99,14 +99,14 @@ function SheetContent({
             ? // Centering via translate is direction-agnostic (unlike a slide-in
               // translateX, which is NOT — see the RTL note above), so this is
               // safe to do with a physical transform in both directions.
-              'top-1/2 left-1/2 max-h-[85vh] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border p-4'
+              'top-1/2 left-1/2 max-h-[85vh] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border p-4 pe-12'
             : cn(
                 // Block axis never flips with direction, so plain physical
                 // top/bottom is correct here — there is no "inset-block-*"
                 // Tailwind utility (that name doesn't exist; Tailwind's own
                 // logical utilities are `start-*`/`end-*`, mirroring `ps-*`/
                 // `pe-*`), and it silently generated no CSS at all.
-                'top-0 bottom-0 h-full w-3/4 max-w-sm border-e p-4',
+                'top-0 bottom-0 h-full w-3/4 max-w-sm border-e p-4 pe-12',
                 // Anchored logically via Tailwind's real `start-*`/`end-*`
                 // inset utilities — mirrors automatically, no transform.
                 side === 'start' ? 'start-0' : 'end-0 border-s border-e-0',
@@ -154,16 +154,28 @@ function SheetContent({
 
         {children}
 
+        {/*
+          * ALWAYS at the reading-end corner (`end-4`), never `start-4`.
+          *
+          * It used to follow the panel's far edge — which for a drawer
+          * opening from `end` (the default, and what every create/edit form
+          * uses) put the X at the START corner: exactly where the heading
+          * text begins. The two overlapped in every drawer in the app.
+          *
+          * `end-4` is also where a close button is conventionally looked for,
+          * and because it is a logical property it still mirrors correctly in
+          * RTL — the X lands top-left in Arabic and top-right in English,
+          * opposite the text either way rather than on top of it.
+          *
+          * The panel adds `pe-12` on top of its uniform padding (below), which
+          * is what actually reserves the room — the X is a SIBLING of
+          * `children`, so no consumer can know to avoid it on its own. Without
+          * that, a long title still runs underneath.
+          */}
         <SheetPrimitive.Close
           className={cn(
-            'absolute top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100',
+            'absolute top-4 end-4 rounded-sm opacity-70 transition-opacity hover:opacity-100',
             'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-            variant === 'modal'
-              ? 'end-4'
-              : // The close button follows the panel's far edge, so it mirrors too.
-                side === 'start'
-                ? 'end-4'
-                : 'start-4',
           )}
         >
           {/* An X is symmetric — never .icon-directional. */}

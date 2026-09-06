@@ -404,7 +404,9 @@ describe('CSV export', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/text\/csv/);
-    expect(res.headers['content-disposition']).toContain('overview.csv');
+    // F7.7: the filename carries the range, so two periods of the same report
+    // no longer download as identical names the browser suffixes "(1)".
+    expect(res.headers['content-disposition']).toContain(`overview_${FROM}_${TO}.csv`);
 
     const [header, row] = res.text.trim().split('\r\n');
     expect(header).toBe(
@@ -487,7 +489,7 @@ describe('XLSX and PDF export (C3.4)', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/spreadsheetml/);
-    expect(res.headers['content-disposition']).toContain('overview.xlsx');
+    expect(res.headers['content-disposition']).toContain(`overview_${FROM}_${TO}.xlsx`);
     // The XLSX container is a ZIP archive — "PK" is its real magic number,
     // proof this is not just the CSV bytes served under a different header.
     const body = res.body as Buffer;
@@ -503,7 +505,7 @@ describe('XLSX and PDF export (C3.4)', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/application\/pdf/);
-    expect(res.headers['content-disposition']).toContain('revenue.pdf');
+    expect(res.headers['content-disposition']).toContain(`revenue_${FROM}_${TO}.pdf`);
     const body = res.body as Buffer;
     expect(body.subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });
@@ -518,7 +520,7 @@ describe('XLSX and PDF export (C3.4)', () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.headers['content-disposition']).toContain('explorer.xlsx');
+    expect(res.headers['content-disposition']).toContain(`explorer_${FROM}_${TO}.xlsx`);
   });
 });
 

@@ -771,7 +771,8 @@
       "unitCostPlaceholder": "e.g. 12.50",
       "unitCostHint": "What one unit in this batch cost you. Leave blank if you are not tracking it — blank means \"not recorded\", which is different from zero.",
       "receiveTitle": "Receive stock for {name}",
-      "receiveRecord": "Record delivery"
+      "receiveRecord": "Record delivery",
+      "directionLocked": "Set by the reason — \"{reason}\" can only go one way."
     },
     "log": {
       "title": "Stock history",
