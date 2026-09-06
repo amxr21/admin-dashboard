@@ -17,15 +17,16 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage --passWithNoTests",
-    "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy",
-    "db:studio": "prisma studio",
+    "db:migrate": "node scripts/with-db-url.mjs prisma migrate dev",
+    "db:deploy": "node scripts/with-db-url.mjs prisma migrate deploy",
+    "db:studio": "node scripts/with-db-url.mjs prisma studio",
     "db:generate": "prisma generate",
-    "db:seed": "tsx prisma/seed.ts",
-    "demo:seed": "tsx prisma/demo-seed.ts",
-    "demo:teardown": "tsx prisma/demo-teardown.ts",
-    "demo:check": "tsx prisma/demo-teardown.ts --dry-run"
+    "db:seed": "node scripts/with-db-url.mjs tsx prisma/seed.ts",
+    "demo:seed": "node scripts/with-db-url.mjs tsx prisma/demo-seed.ts",
+    "demo:teardown": "node scripts/with-db-url.mjs tsx prisma/demo-teardown.ts",
+    "demo:check": "node scripts/with-db-url.mjs tsx prisma/demo-teardown.ts --dry-run"
   },
+  "//db-scripts": "Every script that CONNECTS to a database goes through scripts/with-db-url.mjs, which resolves DATABASE_URL from APP_MODE and refuses a local/remote mismatch. `db:generate` (and `build`'s `prisma generate`) deliberately does NOT: it only reads schema.prisma and writes the client, so wrapping it would make a build fail on a machine that legitimately has no database URL.",
   "//prisma": "Prisma 6 reads the seed command from here. It warns that this is deprecated and moves to prisma.config.ts in Prisma 7 — do that as part of the Prisma 7 upgrade (Dependabot PR pending), not before: the config file format is not supported by 6.x.",
   "prisma": {
     "seed": "tsx prisma/seed.ts"

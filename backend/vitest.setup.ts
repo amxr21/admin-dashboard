@@ -19,8 +19,20 @@ config({ path: fileURLToPath(new URL('./.env', import.meta.url)) });
 process.env.NODE_ENV ??= 'test';
 process.env.LOG_LEVEL ??= 'error'; // keep test output readable
 
+// The test run always targets a LOCAL database — never the shared dev one.
+// Pinned with `=` rather than `??=` on purpose: this is the one variable a
+// stray `APP_MODE=dev` in backend/.env (loaded just above) could use to point
+// the whole suite, including any `migrate`/reset it performs, at shared data.
+// Every other value here is a `??=` fallback; this one is a hard override.
+process.env.APP_MODE = 'local';
+
 // Fallbacks only apply when no .env is present at all (e.g. a fresh CI
 // container with its own MySQL service) — see .github/workflows/ci.yml.
+//
+// DATABASE_URL/CORS_ORIGINS are resolved by src/config/app-mode.ts, which
+// prefers the `_LOCAL` suffix but accepts the unsuffixed variable. The
+// unsuffixed form is set here so a real backend/.env's DATABASE_URL_LOCAL
+// still wins, and a bare CI environment still boots.
 process.env.DATABASE_URL ??= 'mysql://root:test@127.0.0.1:3306/admin_dashboard_test';
 process.env.CORS_ORIGINS ??= 'http://localhost:3000';
 
