@@ -22,6 +22,7 @@ import { variantsRouter } from './variants.route.js';
 import { productImagesRouter } from './product-images.route.js';
 import { publicRouter } from './public.route.js';
 import { resourceRouter } from './resource.route.js';
+import { branchesRouter } from './branches.route.js';
 
 /**
  * The v1 API surface. app.ts mounts this at '/api/v1'.
@@ -43,6 +44,7 @@ v1Router.use(couriersRouter);
 v1Router.use(courierRouter);
 v1Router.use(staffRouter);
 v1Router.use(settingsRouter);
+v1Router.use(branchesRouter);
 v1Router.use(diagnosticsRouter);
 v1Router.use(reportsRouter);
 v1Router.use(demoDataRouter);

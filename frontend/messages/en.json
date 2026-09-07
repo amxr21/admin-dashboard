@@ -175,6 +175,10 @@
     },
     "loginHistory": "Sign-in history"
   },
+  "branches": {
+    "switcherLabel": "Active branch",
+    "allBranches": "All branches"
+  },
   "roles": {
     "DEVELOPER": "Developer",
     "OWNER": "Owner",

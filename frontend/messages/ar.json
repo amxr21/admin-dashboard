@@ -175,6 +175,10 @@
     },
     "loginHistory": "سجل تسجيل الدخول"
   },
+  "branches": {
+    "switcherLabel": "الفرع النشط",
+    "allBranches": "كل الفروع"
+  },
   "roles": {
     "DEVELOPER": "مطوّر",
     "OWNER": "مالك",
