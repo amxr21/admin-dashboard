@@ -9,6 +9,7 @@ import { BreadcrumbHost, useBreadcrumbSegments } from '@/components/shell/breadc
 import { CommandPalette } from '@/components/shell/command-palette';
 import { DiagnosticsBar } from '@/components/shell/diagnostics-bar';
 import { BranchSwitcher } from '@/components/shell/branch-switcher';
+import { ShiftControl } from '@/components/shell/shift-control';
 import { GlobalSearch } from '@/components/shell/global-search';
 import { NotificationsBell } from '@/components/shell/notifications-bell';
 import { OnboardingWelcome } from '@/components/shell/onboarding-welcome';
@@ -265,6 +266,12 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
                 pretend-role control first would suggest the two are the same
                 kind of thing. Renders nothing on a single-branch install. */}
             <BranchSwitcher />
+
+            {/* Next to the branch switcher because they answer the same kind
+                of question — WHERE you are working and WHETHER you are on
+                the clock. In the shell rather than buried in Settings (F6.3):
+                you clock on when you arrive, not by going looking for it. */}
+            <ShiftControl />
 
             {canPreview ? (
               <ViewAsSwitcher

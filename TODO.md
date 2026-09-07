@@ -561,13 +561,32 @@ that staleness is why these are consolidated here.
       them); READING other people's is behind `staff`, like the audit trail.
       16 tests, both critical rules watched failing. **This also unblocks O5's
       till session — same object.**
-- [ ] **F6.3** Open/close shift UI in the shell (not buried in Settings), with
-      elapsed time. Must survive a reload and a second tab — the open shift
-      lives on the server, never in `localStorage`
+- [x] **F6.3 — DONE 2026-09-08.** `ShiftControl` in the topbar beside the
+      branch switcher (they answer the same kind of question: where you are
+      working, and whether you are on the clock). The open shift is read from
+      `GET /shifts/me` on every mount and NOTHING is written to
+      `localStorage` — a test asserts that, since two tabs could otherwise
+      disagree and a cleared cache would lose worked hours. Elapsed time is
+      RECOMPUTED from `startedAt` each tick rather than incremented, so a
+      backgrounded tab (where timers are throttled) shows the truth the moment
+      it is looked at. Clamped at zero: a clock skew or a start corrected into
+      the future would otherwise render "-1:00". 7 tests
 - [ ] **F6.4** "My shift" summary — a time-bounded `AuditLog` query, no new
       logging needed
-- [ ] **F6.5** Shift history + who is on now. **Share a surface with F2's login
-      history** rather than building two near-identical staff-activity pages
+- [x] **F6.5 — DONE 2026-09-08.** Shared, as the item asked. `/admin/
+      login-history` became **Staff activity** with three tabs: On now ·
+      Shifts · Sign-ins. **Not merged into one table** — a sign-in is an
+      instant the system recorded, a shift is a span the person declared, and
+      interleaving them would imply a relationship that does not exist.
+      "On now" is its own TAB rather than a filter, because it is the question
+      a manager actually walks up to the page to ask and a non-default filter
+      value is not discoverable. A corrected shift is marked as corrected,
+      with who and why — the point of keeping the original times is lost if
+      the table renders clocked and edited hours identically.
+      **Found while doing it**: the existing sidebar tests queried the Staff
+      link by `/staff/i`, which the new "Staff activity" label also matched.
+      Anchored to `/^staff$/i` — the tests were right, the label made them
+      ambiguous
 - [ ] **F6.6** ⚠️ Do NOT conflate shifts with payroll or time-clock compliance.
       A note, not a task — if the owner wants payroll that is its own project
       with real legal questions
