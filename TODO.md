@@ -139,20 +139,34 @@ per-branch roles become testable against a real roster.
       deactivating the default hands the flag to a branch that is still open
       (an inactive default is the same problem in a quieter form)
 
-#### Stage 2 — Assign people to branches (`UserBranch` writes)
-*This is what unlocks the org shapes the owner described.*
-- [ ] 2.1 `POST /branches/:id/staff` — `{ userId, role }`, upsert on the
-      `[userId, branchId]` pair so re-assigning changes the role
-- [ ] 2.2 `DELETE /branches/:id/staff/:userId` — they keep their global role
-- [ ] 2.3 `GET /branches/:id/staff` — the roster with effective roles
-- [ ] 2.4 **Mirror the four staff rules** (`staff.service.ts` already enforces
-      them globally): no self-promotion · no granting above your rank
-      (`canAssignRole`) · no touching someone who outranks you (`outranks`) ·
-      last OWNER protected. **Not optional** — a per-branch grant that skips
-      them is an escalation path AROUND the global rules
-- [ ] 2.5 Refuse OWNER/DEVELOPER as a branch role — the resolver ignores those
-      rows, so accepting one would silently do nothing
-- [ ] 2.6 Audit assignment changes with both old and new role
+#### Stage 2 — Assign people to branches (`UserBranch` writes) ✅ COMPLETE 2026-09-08
+*This is what unlocks the org shapes the owner described — a branch manager
+with cashiers under them, or branches of cashiers the owner runs directly.
+Both now expressible: `UserBranch` was read-only until this stage.*
+- [x] 2.1 **DONE 2026-09-08.** Upsert on the unique pair; re-posting for
+      someone already placed returns 200 and changes their role rather than
+      409ing, since "make Sara a manager here instead" is the same intent
+- [x] 2.2 **DONE 2026-09-08.** Removal is "no longer placed here", never a
+      demotion — a test asserts `resolveRoleAtBranch` falls back to the global
+      role afterwards
+- [x] 2.3 **DONE 2026-09-08.** Returns `role` (here) AND `globalRole`
+      (everywhere else). Showing only the first would make a SUPPORT-globally/
+      MANAGER-here person read as a manager outright
+- [x] 2.4 **DONE 2026-09-08.** `canAssignRole`/`outranks` are IMPORTED from
+      `config/roles.ts`, not reimplemented, so the two paths cannot drift.
+      **All four watched failing first** — disabling them turns exactly the
+      four guard tests red. Rule 4 (last OWNER) needs no branch equivalent: a
+      branch role never removes anyone's global role, so no write here can
+      remove the final owner. The existing 93-test staff suite still passes,
+      confirming the shared helpers were reused rather than altered
+- [x] 2.5 **DONE 2026-09-08.** 400 naming the field. Refusing beats
+      accepting: `resolveRoleAtBranch` short-circuits on business-wide roles
+      before it reads the table, so the row would show the owner a grant on
+      screen that has no effect anywhere
+- [x] 2.6 **DONE 2026-09-08.** `branch.staff.assigned` /
+      `branch.staff.role_changed` / `branch.staff.removed`, each carrying
+      `{ from, to }` — "was FULFILLMENT here, now MANAGER" is the whole
+      question a reviewer asks, and `to` alone cannot answer it
 
 #### Stage 3 — UI
 - [ ] 3.1 `/admin/branches` — list grouped by business: name, code, city,
@@ -175,8 +189,9 @@ per-branch roles become testable against a real roster.
       guard tests red. "Nobody grants above their own rank" belongs to stage 2
       and is still open
 - [x] 4.2 **DONE 2026-09-08.** Both directions asserted
-- [ ] 4.3 A role at one branch does not change it at another (the F8.4
-      contract, now through the write path)
+- [x] 4.3 **DONE 2026-09-08.** Asserted through the write path for the first
+      time — the read path was tested in F8.4, but nothing could create a row
+      to test it with until this stage. Also asserts unscoped stays global
 - [ ] 4.4 Frontend: create → appears in the switcher without a reload
 
 *Full version with the reasoning behind each item: `O7-PLAN.md`.*
