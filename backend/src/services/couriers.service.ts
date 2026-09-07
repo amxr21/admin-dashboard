@@ -489,34 +489,60 @@ const COURIER_TRANSITIONS: Readonly<Partial<Record<DeliveryStatus, readonly Deli
 };
 
 /** Fields a courier needs to actually make the delivery, and nothing else —
- *  no other couriers, no other customers' data beyond what this job needs. */
+ *  no other couriers, no other customers' data beyond what this job needs.
+ *
+ *  ONE constant, shared by every endpoint that returns an assignment to a
+ *  courier. It is not a tidiness preference: the portal patches a status and
+ *  splices the response into the list it already holds, so a narrower select
+ *  on the write path replaces a complete row with a stub and the card renders
+ *  blank. Two selects drifted exactly that way once (O6). Widening this is
+ *  safe; narrowing it for one caller is the bug. */
+const COURIER_ASSIGNMENT_SELECT = {
+  id: true,
+  status: true,
+  customerName: true,
+  customerPhone: true,
+  address: true,
+  area: true,
+  city: true,
+  total: true,
+  paymentMethod: true,
+  note: true,
+  attemptCount: true,
+  failureReason: true,
+  createdAt: true,
+  order: { select: { id: true, orderNumber: true } },
+} as const;
+
+type CourierAssignmentRow = Prisma.DeliveryAssignmentGetPayload<{
+  select: typeof COURIER_ASSIGNMENT_SELECT;
+}>;
+
+/**
+ * The single serialiser for a courier-facing assignment.
+ *
+ * `total` is a Prisma `Decimal`, which `res.json` renders as a bare number and
+ * loses trailing zeros on — the client type has always declared `string | null`.
+ * Converting here, once, keeps the wire shape honest on both paths rather than
+ * relying on `Number(value)` at the call site to absorb whichever type arrives.
+ */
+function toCourierAssignment(assignment: CourierAssignmentRow) {
+  return {
+    ...assignment,
+    total: assignment.total === null ? null : assignment.total.toString(),
+    createdAt: assignment.createdAt.toISOString(),
+  };
+}
+
 export async function listOwnAssignments(courierId: string) {
   const assignments = await prisma.deliveryAssignment.findMany({
     where: { driverId: courierId },
     orderBy: { createdAt: 'desc' },
     take: 50,
-    select: {
-      id: true,
-      status: true,
-      customerName: true,
-      customerPhone: true,
-      address: true,
-      area: true,
-      city: true,
-      total: true,
-      paymentMethod: true,
-      note: true,
-      attemptCount: true,
-      failureReason: true,
-      createdAt: true,
-      order: { select: { id: true, orderNumber: true } },
-    },
+    select: COURIER_ASSIGNMENT_SELECT,
   });
 
-  return assignments.map((assignment) => ({
-    ...assignment,
-    createdAt: assignment.createdAt.toISOString(),
-  }));
+  return assignments.map(toCourierAssignment);
 }
 
 /**
@@ -561,6 +587,9 @@ export async function updateAssignmentStatus(
     });
   }
 
+  // Same select as the list endpoint — the portal splices this response
+  // straight into the array it already has, so anything missing here renders
+  // as an emptied card until the next refresh.
   const updated = await prisma.deliveryAssignment.update({
     where: { id: assignmentId },
     data: {
@@ -569,13 +598,7 @@ export async function updateAssignmentStatus(
         ? { attemptCount: { increment: 1 }, failureReason: failureReason!.trim() }
         : {}),
     },
-    select: {
-      id: true,
-      status: true,
-      attemptCount: true,
-      failureReason: true,
-      order: { select: { id: true, orderNumber: true } },
-    },
+    select: COURIER_ASSIGNMENT_SELECT,
   });
 
   // A courier is not a `User` and has no email — `courierName` fills the
@@ -595,7 +618,7 @@ export async function updateAssignmentStatus(
     actor: { id: courierId, email: courierName, role: 'COURIER' },
   });
 
-  return updated;
+  return toCourierAssignment(updated);
 }
 
 export async function unassignOrder(assignmentId: string) {
