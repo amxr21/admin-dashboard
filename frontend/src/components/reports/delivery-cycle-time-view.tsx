@@ -64,6 +64,19 @@ export function DeliveryCycleTimeView() {
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : (
+        /**
+         * F4.5 — deliberately NO empty branch here, unlike the other five
+         * reports in that change.
+         *
+         * This view already handled it honestly: `averageHours`/`medianHours`
+         * are nullable at the API and render an em dash, so an empty period
+         * shows "0 delivered, — avg, — median". That is a truthful statement
+         * of a real fact (nothing was delivered) rather than a fabricated
+         * measurement, and a test already asserted it.
+         *
+         * Replacing it with an EmptyState lost information: the reader could
+         * no longer see that the delivered COUNT is a real, measured zero.
+         */
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="bg-card rounded-lg border p-4">
             <p className="text-muted-foreground text-sm font-medium">{t('deliveredCount')}</p>
