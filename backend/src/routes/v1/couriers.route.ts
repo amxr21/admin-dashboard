@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import {
   assignOrder,
   createCourier,
@@ -29,7 +30,7 @@ import {
 
 export const couriersRouter = Router();
 
-const guard = [authenticate, requireArea('delivery')] as const;
+const guard = [authenticate, withBranchContext, requireArea('delivery')] as const;
 
 const listQuery = z.object({
   page: z.coerce.number().int().positive().optional(),

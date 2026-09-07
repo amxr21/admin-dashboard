@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import type { StaffRole } from '@prisma/client';
 
 import { AppError } from '../errors/AppError.js';
 import { getAuthenticatedUser, verifyToken, type SafeUser } from '../services/auth.service.js';
@@ -32,6 +33,21 @@ declare global {
       /// comment) — routes that need "the current session" must handle
       /// undefined, not assume it's always there.
       sessionId?: string;
+      /// The branch this request is acting on (F8.4), from the `X-Branch-Id`
+      /// header. `null` means "all branches", which is a real request — the
+      /// unscoped reports answer exactly that — and never means "denied".
+      ///
+      /// Set by `withBranchContext`, which also resolves `branchRole` below.
+      /// A route without that middleware sees `undefined`, not `null`, so the
+      /// two states stay distinguishable: "no branch asked for" versus "this
+      /// request never went through branch resolution at all".
+      branchId?: string | null;
+      /// The role this user holds AT `branchId` — their global `user.role`
+      /// when they have no assignment there, or when no branch was named.
+      ///
+      /// This is what authorisation reads. `user.role` remains the
+      /// business-wide role and is NOT the effective one on a scoped request.
+      branchRole?: StaffRole;
     }
   }
 }

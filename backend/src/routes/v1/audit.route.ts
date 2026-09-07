@@ -6,6 +6,7 @@ import { AppError } from '../../errors/AppError.js';
 import { toCsv } from '../../lib/csv.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import {
   audit,
   listAudit,
@@ -50,7 +51,7 @@ const listQuery = z.object({
   format: z.enum(['json', 'csv']).optional(),
 });
 
-auditRouter.get('/audit', authenticate, requireArea('staff'), async (req, res) => {
+auditRouter.get('/audit', authenticate, withBranchContext, requireArea('staff'), async (req, res) => {
   const parsed = listQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid query', parsed.error.flatten());
 
@@ -113,10 +114,10 @@ auditRouter.get('/audit', authenticate, requireArea('staff'), async (req, res) =
 
 // Ahead of `/audit/:id`-shaped routes that do not exist yet, but named so it
 // never collides if one is added later.
-auditRouter.get('/audit/entities', authenticate, requireArea('staff'), async (_req, res) => {
+auditRouter.get('/audit/entities', authenticate, withBranchContext, requireArea('staff'), async (_req, res) => {
   res.json({ data: await listAuditEntities() });
 });
 
-auditRouter.get('/audit/actions', authenticate, requireArea('staff'), async (_req, res) => {
+auditRouter.get('/audit/actions', authenticate, withBranchContext, requireArea('staff'), async (_req, res) => {
   res.json({ data: await listAuditActions() });
 });

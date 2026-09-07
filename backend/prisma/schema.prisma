@@ -279,6 +279,8 @@ model Branch {
   isDefault Boolean @default(false) @map("is_default")
 
   stock BranchStock[]
+  /// Who works here, and in what capacity (F8.4).
+  staff UserBranch[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -348,10 +350,74 @@ model User {
   sessions             Session[]
   twoFactorBackupCodes TwoFactorBackupCode[]
   apiKeys              ApiKey[]
+  branchRoles          UserBranch[]
 
   @@index([role])
   @@index([createdAt])
   @@map("users")
+}
+
+/// What role a person holds AT ONE BRANCH (F8.4).
+///
+/// ─── WHY A JOIN AND NOT A COLUMN ─────────────────────────────────────
+/// The owner's question was "what if we have different ppl in different
+/// branches". The natural extension is that the SAME person is a barista at
+/// Marina and a manager at Downtown — one person, two roles, decided by where
+/// they are working. A second column on `User` cannot express that; only a row
+/// per (person, branch) can.
+///
+/// ─── `User.role` IS KEPT, AND STILL MEANS SOMETHING ──────────────────
+/// It is the BUSINESS-WIDE role, and it remains the only role for anyone who
+/// has no row here. That is deliberate on three counts:
+///
+///   1. OWNER and DEVELOPER are not branch-scoped concepts. An owner does not
+///      stop being the owner by looking at another branch, and scoping them
+///      would mean an owner could lock themselves out of their own business by
+///      deleting a row.
+///   2. Every existing user keeps working unchanged. This migration grants
+///      nothing and revokes nothing — a person with no `UserBranch` row is
+///      exactly as privileged as they were before it existed.
+///   3. It is the floor, never the ceiling. The resolver takes the branch role
+///      when one exists and the global role otherwise; it never ADDS the two
+///      together, because a union of grants would let a Marina-only manager
+///      reach Downtown's data by holding any global role at all.
+///
+/// ─── WHY THE ROLE IS NOT NULLABLE ────────────────────────────────────
+/// A row here means "this person works at this branch, in this capacity". A
+/// row with no role would have to mean either "works here with their global
+/// role" (which is what having NO row already means) or "works here with no
+/// permissions" (which is what `isActive: false` on the user already means).
+/// Both readings already have a representation, so a null would be a third
+/// spelling of an existing state — and the kind that gets read the wrong way.
+model UserBranch {
+  id String @id @default(cuid())
+
+  userId String @map("user_id")
+  /// Cascade: a role assignment has no meaning without the person. Removing a
+  /// user removes where they worked; the AUDIT of what they did survives, in
+  /// `AuditLog`, which references actors by plain id for exactly this reason.
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  branchId String @map("branch_id")
+  /// Cascade for the same reason: closing a branch removes its roster, not the
+  /// history of what happened there.
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  /// The role this person holds AT THIS BRANCH. Same enum as `User.role` —
+  /// deliberately not a separate one, because "manager" has to mean the same
+  /// set of areas wherever it is granted, or `ROLE_AREAS` stops being the
+  /// single source of truth it says it is.
+  role StaffRole
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// One role per person per branch. The pair is the identity: two rows would
+  /// make "what can they do here" ambiguous, and the resolver would have to
+  /// pick one — silently, and differently depending on row order.
+  @@unique([userId, branchId])
+  @@index([branchId])
+  @@map("user_branches")
 }
 
 /// One row per issued token — what "Sessions & devices" reads, and what a

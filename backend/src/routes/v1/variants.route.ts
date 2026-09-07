@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import {
   adjustVariantStock,
   createVariant,
@@ -29,8 +30,8 @@ import {
 
 export const variantsRouter = Router();
 
-const catalogueGuard = [authenticate, requireArea('products')] as const;
-const stockGuard = [authenticate, requireArea('inventory')] as const;
+const catalogueGuard = [authenticate, withBranchContext, requireArea('products')] as const;
+const stockGuard = [authenticate, withBranchContext, requireArea('inventory')] as const;
 
 const MONEY_PATTERN = /^-?\d{1,8}(\.\d{1,2})?$/;
 
