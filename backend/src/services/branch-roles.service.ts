@@ -1,6 +1,8 @@
 import { StaffRole } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
+import { AppError } from '../errors/AppError.js';
+import { canAssignRole, outranks } from '../config/roles.js';
 
 /**
  * Which role a person actually holds while acting on a given branch (F8.4).
@@ -94,4 +96,202 @@ export async function listBranchRoles(userId: string) {
     },
     orderBy: { branch: { name: 'asc' } },
   });
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * WRITES (O7 stage 2) — putting people at branches
+ *
+ * F8.4 resolves a per-branch role correctly and there was NO WAY TO CREATE
+ * ONE: this service only ever read. So the feature answering "different
+ * people in different branches" could not actually be used, and every row in
+ * the table had been put there by a migration or the seeder.
+ *
+ * This is what unlocks the shapes an owner actually described: a branch
+ * manager with two or three cashiers under them, OR branches of cashiers with
+ * the owner managing all of them directly — both, in the same install.
+ *
+ * ─── WHY THE STAFF RULES ARE IMPORTED, NOT REIMPLEMENTED ─────────────
+ * `staff.service.ts` enforces four rules on every global role change: nobody
+ * grants above their own rank, nobody changes their own role, nobody touches
+ * someone who outranks them, the last owner survives.
+ *
+ * A per-branch grant that skipped them would not be a smaller version of the
+ * same feature — it would be an escalation path AROUND the global rules. A
+ * SUPPORT user who could assign themselves MANAGER at a branch has escalated,
+ * whatever the global table says. So the same helpers are called here, rather
+ * than a second copy of the logic that can drift from the first.
+ * ───────────────────────────────────────────────────────────────────── */
+
+export interface RosterActor {
+  id: string;
+  role: StaffRole;
+}
+
+/**
+ * Rules 1-3, applied to a branch grant.
+ *
+ * Rule 4 (the last owner) does not apply: a branch role never removes
+ * anyone's global role, so no branch write can remove the final OWNER. Rule 5
+ * below is this stage's own addition.
+ */
+async function assertCanAssign(actor: RosterActor, userId: string, role: StaffRole) {
+  // Rule 2 — nobody changes their own role, at any scope. Self-assignment at
+  // a branch is the same act as self-promotion globally, just quieter.
+  if (actor.id === userId) {
+    throw AppError.forbidden('You cannot change your own role');
+  }
+
+  // Rule 1 — nobody grants above their own rank.
+  if (!canAssignRole(actor.role, role)) {
+    throw AppError.forbidden('You cannot grant a role with more access than your own', {
+      field: 'role',
+    });
+  }
+
+  // Rule 5 (this stage) — OWNER and DEVELOPER are business-wide and
+  // `resolveRoleAtBranch` short-circuits on them before it ever reads this
+  // table. Accepting such a row would write something that silently does
+  // nothing, which is worse than refusing: the owner would see the grant on
+  // screen and believe it took effect.
+  if (isBusinessWideRole(role)) {
+    throw AppError.badRequest(
+      'OWNER and DEVELOPER apply across the whole business and cannot be granted per branch',
+      { field: 'role' },
+    );
+  }
+
+  // Rule 3 — nobody modifies someone who outranks them. Loaded here rather
+  // than trusted from the request, because the subject's rank is the thing
+  // being checked.
+  const subject = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, name: true, email: true },
+  });
+
+  if (!subject) throw AppError.notFound('Staff member not found');
+
+  if (outranks(subject.role, actor.role)) {
+    throw AppError.forbidden('You cannot modify someone with more access than you');
+  }
+
+  return subject;
+}
+
+async function requireBranch(branchId: string) {
+  const branch = await prisma.branch.findUnique({
+    where: { id: branchId },
+    select: { id: true, name: true },
+  });
+
+  if (!branch) throw AppError.notFound('Branch not found');
+
+  return branch;
+}
+
+/**
+ * Put someone at a branch, or change the role they hold there.
+ *
+ * An upsert on the `[userId, branchId]` pair, which is the unique constraint:
+ * re-assigning somebody who is already there changes their role rather than
+ * failing, because "make Sara a manager here instead" is the same intent as
+ * "put Sara here as a manager" and an owner should not have to remove her
+ * first.
+ */
+export async function assignUserToBranch(
+  actor: RosterActor,
+  branchId: string,
+  userId: string,
+  role: StaffRole,
+) {
+  const [branch, subject] = await Promise.all([
+    requireBranch(branchId),
+    assertCanAssign(actor, userId, role),
+  ]);
+
+  const existing = await prisma.userBranch.findUnique({
+    where: { userId_branchId: { userId, branchId } },
+    select: { role: true },
+  });
+
+  const assignment = await prisma.userBranch.upsert({
+    where: { userId_branchId: { userId, branchId } },
+    create: { userId, branchId, role },
+    update: { role },
+    include: { user: { select: { id: true, name: true, email: true, role: true } } },
+  });
+
+  return { assignment, branch, subject, previousRole: existing?.role ?? null };
+}
+
+/**
+ * Take someone off a branch's roster.
+ *
+ * They keep their GLOBAL role — removing the row means "no longer placed
+ * here", not "demoted". `resolveRoleAtBranch` falls back to `User.role` with
+ * no row present, which is the same state as someone who was never assigned.
+ */
+export async function removeUserFromBranch(
+  actor: RosterActor,
+  branchId: string,
+  userId: string,
+) {
+  const existing = await prisma.userBranch.findUnique({
+    where: { userId_branchId: { userId, branchId } },
+    select: { role: true },
+  });
+
+  if (!existing) throw AppError.notFound('That person is not assigned to this branch');
+
+  // Rule 3 again, on the way out: removing someone from a branch is modifying
+  // them, and reaching upward is no more acceptable here than on the way in.
+  const subject = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, email: true },
+  });
+
+  if (!subject) throw AppError.notFound('Staff member not found');
+
+  if (actor.id === userId) {
+    throw AppError.forbidden('You cannot change your own role');
+  }
+
+  if (outranks(subject.role, actor.role)) {
+    throw AppError.forbidden('You cannot modify someone with more access than you');
+  }
+
+  await prisma.userBranch.delete({ where: { userId_branchId: { userId, branchId } } });
+
+  return { removedRole: existing.role, subject };
+}
+
+/**
+ * Who works at this branch, and in what capacity.
+ *
+ * Returns both roles on purpose. `role` is what they hold HERE and `globalRole`
+ * is what they hold everywhere else — showing only the first would make a
+ * SUPPORT-globally / MANAGER-here person look like a manager outright, which
+ * is the exact confusion F8.4's replacement rule exists to avoid.
+ */
+export async function listBranchStaff(branchId: string) {
+  await requireBranch(branchId);
+
+  const rows = await prisma.userBranch.findMany({
+    where: { branchId },
+    include: {
+      user: {
+        select: { id: true, name: true, email: true, role: true, isActive: true },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  return rows.map((row) => ({
+    userId: row.user.id,
+    name: row.user.name,
+    email: row.user.email,
+    isActive: row.user.isActive,
+    role: row.role,
+    globalRole: row.user.role,
+    assignedAt: row.createdAt.toISOString(),
+  }));
 }

@@ -7,6 +7,11 @@ import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea, requireRole } from '../../middleware/authorize.js';
 import { effectiveRole, withBranchContext } from '../../middleware/branch-context.js';
 import {
+  assignUserToBranch,
+  listBranchStaff,
+  removeUserFromBranch,
+} from '../../services/branch-roles.service.js';
+import {
   createBranch,
   createBusiness,
   getBranch,
@@ -327,5 +332,114 @@ branchesRouter.patch(
     });
 
     res.status(200).json({ data: updated });
+  },
+);
+
+/* ─────────────────────────────────────────────────────────────────────
+ * BRANCH ROSTER (O7 stage 2)
+ *
+ * Same OWNER/DEVELOPER guard as the stage-1 writes, for a stronger reason:
+ * this endpoint hands out ROLES. `assignUserToBranch` additionally applies
+ * the four staff rules, so even a DEVELOPER cannot use it to grant above
+ * their own rank or edit themselves — the route guard says who may reach the
+ * roster at all, the service says what they may do once there.
+ * ───────────────────────────────────────────────────────────────────── */
+
+const rosterSchema = z.object({
+  userId: z.string().trim().min(1),
+  role: z.nativeEnum(StaffRole),
+});
+
+/** GET /api/v1/branches/:id/staff — the roster, with both roles per person. */
+branchesRouter.get(
+  '/branches/:id/staff',
+  authenticate,
+  withBranchContext,
+  requireArea('settings'),
+  async (req, res) => {
+    res.status(200).json({ data: await listBranchStaff(String(req.params.id)) });
+  },
+);
+
+/**
+ * POST /api/v1/branches/:id/staff — place someone here, or change their role.
+ *
+ * An upsert, so re-posting for somebody already on the roster changes their
+ * role instead of 409ing. "Make Sara a manager here instead" is the same
+ * intent as "put Sara here as a manager".
+ */
+branchesRouter.post(
+  '/branches/:id/staff',
+  authenticate,
+  withBranchContext,
+  requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  async (req, res) => {
+    const parsed = rosterSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      throw AppError.badRequest('Invalid assignment', parsed.error.flatten());
+    }
+
+    const user = requireUser(req);
+    const branchId = String(req.params.id);
+
+    const { assignment, subject, previousRole } = await assignUserToBranch(
+      { id: user.id, role: user.role },
+      branchId,
+      parsed.data.userId,
+      parsed.data.role,
+    );
+
+    // Both roles recorded: "was FULFILLMENT here, now MANAGER" is the whole
+    // question a reviewer asks of a permission change, and `to` alone cannot
+    // answer it.
+    audit(req, {
+      action: previousRole ? 'branch.staff.role_changed' : 'branch.staff.assigned',
+      entity: 'branch',
+      entityId: branchId,
+      changes: {
+        role: { from: previousRole, to: parsed.data.role },
+        user: { from: null, to: subject.email },
+      },
+    });
+
+    res.status(previousRole ? 200 : 201).json({ data: assignment });
+  },
+);
+
+/**
+ * DELETE /api/v1/branches/:id/staff/:userId — take someone off the roster.
+ *
+ * They keep their global role. No row means `resolveRoleAtBranch` falls back
+ * to `User.role`, the same state as someone never assigned — removal is "no
+ * longer placed here", not a demotion.
+ */
+branchesRouter.delete(
+  '/branches/:id/staff/:userId',
+  authenticate,
+  withBranchContext,
+  requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  async (req, res) => {
+    const user = requireUser(req);
+    const branchId = String(req.params.id);
+    const targetId = String(req.params.userId);
+
+    const { removedRole, subject } = await removeUserFromBranch(
+      { id: user.id, role: user.role },
+      branchId,
+      targetId,
+    );
+
+    audit(req, {
+      action: 'branch.staff.removed',
+      entity: 'branch',
+      entityId: branchId,
+      changes: {
+        role: { from: removedRole, to: null },
+        user: { from: subject.email, to: null },
+      },
+    });
+
+    res.status(204).send();
   },
 );
