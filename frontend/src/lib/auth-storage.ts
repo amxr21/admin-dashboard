@@ -26,6 +26,19 @@ import type { StaffRole } from '@/config/areas';
 
 const TOKEN_KEY = 'admin-dashboard:token';
 const USER_KEY = 'admin-dashboard:user';
+/**
+ * The active branch (F8.5).
+ *
+ * Per-browser, like the sidebar collapse state and unlike anything in the
+ * settings registry: "which shop am I standing in" is a property of this
+ * person at this machine, not of the organisation. Storing it server-side
+ * would mean opening a second tab to check another branch changed the first.
+ *
+ * It is NOT a credential and grants nothing on its own — the server resolves
+ * what the header allows (see `withBranchContext`), so a tampered value can
+ * only ever narrow access or be ignored.
+ */
+const BRANCH_KEY = 'admin-dashboard:branch';
 
 export interface SessionUser {
   id: string;
@@ -80,7 +93,31 @@ export function clearSession(): void {
   try {
     window.localStorage.removeItem(TOKEN_KEY);
     window.localStorage.removeItem(USER_KEY);
+    // The branch goes too: the next person to sign in on this machine must
+    // not inherit where the last one was working.
+    window.localStorage.removeItem(BRANCH_KEY);
   } catch {
     // Nothing useful to do — the caller is signing out regardless.
+  }
+}
+
+/** The active branch id, or null for "all branches". */
+export function readBranchId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = window.localStorage.getItem(BRANCH_KEY);
+    return value && value.trim() !== '' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Passing null clears it, which means "all branches" — a real choice. */
+export function writeBranchId(branchId: string | null): void {
+  try {
+    if (branchId) window.localStorage.setItem(BRANCH_KEY, branchId);
+    else window.localStorage.removeItem(BRANCH_KEY);
+  } catch {
+    // Same reasoning as writeSession: the choice still applies to this tab.
   }
 }

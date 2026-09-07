@@ -13,7 +13,7 @@
  */
 
 import { API_BASE_URL } from '@/lib/api-config';
-import { readToken } from '@/lib/auth-storage';
+import { readBranchId, readToken } from '@/lib/auth-storage';
 
 const API_URL = API_BASE_URL;
 
@@ -54,12 +54,27 @@ export async function apiFetch<T>(
   // constant would capture the token at import time and keep sending a stale
   // one after sign-out.
   const token = readToken();
+  /**
+   * The active branch (F8.5), attached here for exactly the reason the token
+   * is: no call site can forget it.
+   *
+   * As a per-request argument it would have to be threaded through every
+   * fetch in the app, and the one that got missed would silently fall back to
+   * "all branches" — the WIDEST answer, which is the wrong direction for a
+   * missed scope to fail.
+   *
+   * Omitted entirely when null, so an unscoped request looks exactly as it
+   * always did rather than sending an empty header the server has to special-
+   * case.
+   */
+  const branchId = readBranchId();
 
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(branchId ? { 'X-Branch-Id': branchId } : {}),
       ...init.headers,
     },
     // Send cookies too, so a future move to httpOnly cookie auth needs no
@@ -106,11 +121,18 @@ export async function apiFetch<T>(
  */
 export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
   const token = readToken();
+  // Carried here too, so an upload is authorised against the same branch as
+  // every other request from this tab. Leaving it off would make this the one
+  // path where `requireArea` sees the global role.
+  const branchId = readBranchId();
 
   const response = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     body: formData,
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(branchId ? { 'X-Branch-Id': branchId } : {}),
+    },
     credentials: 'include',
   });
 
@@ -147,9 +169,16 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
  */
 export async function apiDownload(path: string, fallbackFilename: string): Promise<void> {
   const token = readToken();
+  // Exports must match what is on screen: a CSV downloaded while scoped to
+  // one branch that quietly contained every branch is the F4.3 problem again,
+  // in a file that outlives the page it came from.
+  const branchId = readBranchId();
 
   const response = await fetch(`${API_URL}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(branchId ? { 'X-Branch-Id': branchId } : {}),
+    },
     credentials: 'include',
   });
 

@@ -8,6 +8,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { BreadcrumbHost, useBreadcrumbSegments } from '@/components/shell/breadcrumb';
 import { CommandPalette } from '@/components/shell/command-palette';
 import { DiagnosticsBar } from '@/components/shell/diagnostics-bar';
+import { BranchSwitcher } from '@/components/shell/branch-switcher';
 import { GlobalSearch } from '@/components/shell/global-search';
 import { NotificationsBell } from '@/components/shell/notifications-bell';
 import { OnboardingWelcome } from '@/components/shell/onboarding-welcome';
@@ -258,6 +259,13 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
           {/* ms-auto, not ml-auto — pushes controls to the reading-end edge in
               both directions. */}
           <div className="ms-auto flex items-center gap-1">
+            {/* Before "view as": this is real CONTEXT (where you are working,
+                which changes what every query returns and what you may do),
+                whereas the role preview is a cosmetic overlay. Putting the
+                pretend-role control first would suggest the two are the same
+                kind of thing. Renders nothing on a single-branch install. */}
+            <BranchSwitcher />
+
             {canPreview ? (
               <ViewAsSwitcher
                 actualRole={user.role}

@@ -23,6 +23,25 @@ const Select = SelectPrimitive.Root;
 const SelectGroup = SelectPrimitive.Group;
 const SelectValue = SelectPrimitive.Value;
 
+/**
+ * A heading inside a `SelectGroup`.
+ *
+ * Radix renders it with the right ARIA wiring, so the group is announced as a
+ * group rather than the label being read as a selectable option — which is
+ * what a plain styled `<div>` in the list would do.
+ *
+ * `ps-8` aligns it with the item text, which is indented to leave room for
+ * the checkmark; a flush-left label reads as a broken row.
+ */
+function SelectLabel({ className, ...props }: ComponentProps<typeof SelectPrimitive.Label>) {
+  return (
+    <SelectPrimitive.Label
+      className={cn('text-muted-foreground px-2 py-1.5 ps-8 text-xs font-medium', className)}
+      {...props}
+    />
+  );
+}
+
 function SelectTrigger({
   className,
   children,
@@ -118,4 +137,12 @@ function SelectItem({
   );
 }
 
-export { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue };
+export {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+};

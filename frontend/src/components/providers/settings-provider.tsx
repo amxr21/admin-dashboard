@@ -12,6 +12,8 @@ import {
 
 import { applyAppearance, cacheAppearance, readAppearance } from '@/lib/apply-appearance';
 import { fetchSettings } from '@/lib/settings-api';
+import { fetchBrand, type ResolvedBrand } from '@/lib/branches-api';
+import { readBranchId } from '@/lib/auth-storage';
 
 /**
  * Fetches the settings registry and shares it — same reasoning as
@@ -137,6 +139,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [byKey, setByKey] = useState<Record<string, Value>>({});
   const [overrides, setOverrides] = useState<Record<string, Value>>({});
 
+  /**
+   * The brand resolved against the ACTIVE branch (F8.5), or null before it
+   * loads / on an install with no branches.
+   *
+   * Fetched alongside the settings rather than merged from them here: the
+   * fallback chain (branch -> business -> store setting) lives on the server
+   * so there is ONE implementation of it. Duplicating it in the client would
+   * mean the copy that drifts prints a wrong tax id on an invoice with
+   * nothing failing.
+   */
+  const [brand, setBrand] = useState<ResolvedBrand | null>(null);
+
   const load = useCallback(async () => {
     setIsLoading(true);
 
@@ -144,6 +158,35 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       const settings = await fetchSettings();
       setByKey(Object.fromEntries(settings.map((setting) => [setting.key, setting.value])));
       setOverrides({});
+
+      /**
+       * Only fetched when a branch is actually active.
+       *
+       * With no active branch the endpoint returns the store-wide settings
+       * that were just loaded above, so the request buys nothing — one extra
+       * round trip on every page load of every single-branch install, which
+       * is every install today.
+       *
+       * It also stopped an unrelated CI failure: an unconditional fetch here
+       * fires in every test that renders this provider, most of which mock
+       * `fetchSettings` and know nothing about brands. Those requests resolved
+       * AFTER the test finished, and the late re-render reached GSAP once the
+       * jsdom environment was already torn down — surfacing as
+       * `ReferenceError: requestAnimationFrame is not defined`, an unhandled
+       * error that failed the run while all 1016 tests passed.
+       *
+       * Separate try: a brand-resolution failure must not lose the settings
+       * that already arrived.
+       */
+      if (readBranchId()) {
+        try {
+          setBrand(await fetchBrand());
+        } catch {
+          setBrand(null);
+        }
+      } else {
+        setBrand(null);
+      }
     } catch {
       // Swallowed on purpose, same as SchemaProvider: the shell must still
       // render with the CSS defaults and the hardcoded page size rather than
@@ -190,7 +233,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   // code, and this setting is display-only regardless — see its own
   // description). This only guards against a malformed/missing value
   // reaching the formatter, not against an unlisted-but-valid currency.
-  const rawCurrency = effective['store.currency'];
+  //
+  // Branch-resolved first (F8.5): a business in another country prices in its
+  // own currency, and showing its orders in the install's currency would be a
+  // wrong NUMBER, not just a wrong symbol. Same three-letter guard applies to
+  // both sources — a malformed value from either must not reach the
+  // formatter.
+  const rawCurrency = brand?.storeCurrency || effective['store.currency'];
   const storeCurrency =
     typeof rawCurrency === 'string' && /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : 'AED';
 
@@ -212,13 +261,25 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     defaultInviteRole: String(effective['staff.defaultInviteRole'] ?? 'SUPPORT'),
     editPanelMode: effective['ui.editPanelMode'] === 'modal' ? 'modal' : 'drawer',
     sidebarMode: effective['ui.sidebarMode'] === 'floating' ? 'floating' : 'sticky',
-    logoUrl: String(effective['store.logoUrl'] ?? ''),
-    storeName: appearance.storeName,
+    /**
+     * Brand fields prefer the branch-resolved value (F8.5) and fall back to
+     * the store-wide setting.
+     *
+     * `brand?.x || setting` rather than `??`: the server returns an empty
+     * string for "not set anywhere", and `??` would treat that empty string
+     * as a real answer and blank out a perfectly good store setting.
+     *
+     * `storeTagline` is deliberately NOT branch-resolved — it is marketing
+     * copy for the install, not a legal identity, and `Business` has no field
+     * for it. Adding one would invent a concept nobody asked for.
+     */
+    logoUrl: brand?.storeLogoUrl || String(effective['store.logoUrl'] ?? ''),
+    storeName: brand?.storeName || appearance.storeName,
     storeTagline: String(effective['store.tagline'] ?? ''),
-    storeAddress: String(effective['store.address'] ?? ''),
-    storeSupportEmail: String(effective['store.supportEmail'] ?? ''),
-    storeSupportPhone: String(effective['store.supportPhone'] ?? ''),
-    storeTaxId: String(effective['store.taxId'] ?? ''),
+    storeAddress: brand?.storeAddress || String(effective['store.address'] ?? ''),
+    storeSupportEmail: brand?.storeSupportEmail || String(effective['store.supportEmail'] ?? ''),
+    storeSupportPhone: brand?.storeSupportPhone || String(effective['store.supportPhone'] ?? ''),
+    storeTaxId: brand?.storeTaxId || String(effective['store.taxId'] ?? ''),
     storeCurrency,
     navLabels,
     refresh: load,
