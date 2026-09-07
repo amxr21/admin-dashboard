@@ -68,6 +68,19 @@
   0/`null` on reassignment to a new courier — a new courier starts clean, the prior failures stay
   visible in `AuditLog`. Courier portal has a "Report failed attempt" dialog; the admin
   order-detail page shows the attempt count and last reason.
+- **2026-09-08 (O6)**: fixed a real bug in the courier portal — tapping a status blanked the
+  card until a refresh. `PATCH /courier/assignments/:id/status` selected 5 fields where
+  `GET /courier/me/assignments` selects 14, and `courier-dashboard.tsx` splices the response into
+  the array it already holds, so a complete row was swapped for a stub with no customer, address
+  or total. Both paths now share ONE `COURIER_ASSIGNMENT_SELECT` and one `toCourierAssignment()`
+  serialiser, which also converts `total` from a Prisma `Decimal` to the string the client type
+  always declared. **Why nothing caught it**: `courierFetch` casts the JSON blindly, so the 14
+  declared fields were never compared to reality, and the jsdom tests mock a full object. The
+  regression test compares the two endpoints' KEY SETS — it fails whenever either select changes
+  without the other, which is the only way this recurs. Deliberately NOT fixed by making
+  `courierFetch` validate: `api.ts` casts the same way at two call sites and `zod` is
+  backend-only, so validating here alone would make the courier portal the one client with a
+  different contract. The cast is why the bug stayed invisible, not why it happened.
 - **Still missing**: no delivery board anywhere (only a courier roster — an admin cannot see
   today's deliveries or a failed queue without opening orders one by one), no courier performance
   metrics.
@@ -82,7 +95,7 @@
   excluded (the money moved and came back). Revenue reads the order-line snapshot, never live prices.
   **These definitions are the single most valuable thing to surface in the UI** — they are
   genuinely non-obvious, two of them make otherwise-identical-looking numbers legitimately
-  disagree, and today they exist only as comments in `reports.service.ts`. That is `MASTER_TODO.md`
+  disagree, and today they exist only as comments in `reports.service.ts`. That is `TODO.md`'s
   F4.1, and it is the core of the owner's "reports are vague and unclear" complaint.
   **2026-09-05 (F1)**: profitability now reads a per-line COST snapshot (`OrderItem.cost`), the
   same discipline revenue already had — a supplier price change no longer rewrites past profit.
@@ -107,6 +120,47 @@
   as a 3-column icon+count/label grid; seeded rows' `__demo__` tag no longer leaks into two
   dashboard widgets (display-only strip, `frontend/src/lib/demo.ts`); delta polarity (which metrics
   are "down is good") now centralized in `StatTile` instead of per-call-site props.
+
+### Businesses, branches and per-branch roles (multi-shop)
+- **Status**: shipped — engine F8 (2026-09-07), controls O7 (2026-09-08)
+- **What**: One install can run several businesses, each with several branches; a branch is
+  either a selling point or a warehouse (`isSellingPoint: false` — not a separate model). Stock,
+  orders, delivery, returns and all 18 order-based reports are scoped to the active branch,
+  chosen in a topbar switcher. A person can hold a DIFFERENT role at each branch.
+- **Where**: `backend/prisma/schema.prisma` (`Business`, `Branch`, `BranchStock`, `UserBranch`),
+  `backend/src/services/branches.service.ts`, `branch-roles.service.ts`,
+  `backend/src/middleware/branch-context.ts`, `backend/src/routes/v1/branches.route.ts`,
+  `frontend/src/components/shell/branch-switcher.tsx`,
+  `frontend/src/components/branches/`, `frontend/src/app/[locale]/admin/branches/`.
+- **The API**: `GET /branches` (what you may switch to — the list IS the authorisation, so it is
+  not behind `requireArea`), `GET /branches/_brand`, `GET|PATCH /branches/:id`,
+  `POST /branches`, `GET /businesses`, `POST /businesses`, `PATCH /businesses/:id`,
+  `GET|POST /branches/:id/staff`, `DELETE /branches/:id/staff/:userId`.
+- **Roles**: the branch role REPLACES the global one, never unions with it — a union would let a
+  Marina-only manager reach Downtown by holding any global role at all. OWNER and DEVELOPER are
+  business-wide and short-circuit before the roster is read, so they are REFUSED as a branch role
+  (a row that the resolver ignores would show an owner a grant that silently does nothing). No
+  row means the global role, unchanged — which is what made F8.4 a no-op on upgrade.
+- **Who may change the structure**: OWNER/DEVELOPER only, via `requireRole` — deliberately NOT
+  `requireArea('settings')`, which MANAGER holds. Reaching the settings page does not imply "may
+  open a shop": creating a branch decides where stock and revenue are attributed. READS stay on
+  `settings`, so a MANAGER can see the org chart and not change it.
+- **Notes**: the roster writes reuse `canAssignRole`/`outranks` from `config/roles.ts` rather
+  than reimplementing them — a per-branch grant that skipped the four staff rules would be an
+  escalation path AROUND the global rules, not a smaller version of the same feature.
+  `Branch.code` is unique PER BUSINESS (two businesses may both have a "MAIN"); a duplicate is a
+  409 naming the field, never an untranslated P2002 reaching the handler as a 500.
+  Deactivating is never deleting — stock, orders and audit history survive, and the last ACTIVE
+  branch of a business cannot be deactivated at all (mirrors the last-OWNER rule; otherwise
+  `defaultBranchId()` has nothing to fall back to and the failure surfaces at the point of sale).
+  Exactly one branch per business carries `isDefault`, cleared in the same transaction — two
+  defaults make `defaultBranchId()` order-dependent, the exact bug F8.2 replaced "oldest branch"
+  to fix. Delivery and returns deliberately have NO `branchId` column: both carry a required
+  `orderId` and the order already records the branch, so a second copy could drift from it.
+- **Still missing**: couriers have no branch of their own (`DeliveryStaff` has no `branchId`) —
+  they are filtered by where they have WORKED, so a newly hired courier with no assignments
+  disappears from every scoped list. Open question in `TODO.md` O2, not guessed at.
+  Inventory/returns/courier lists are scoped but show no branch COLUMN (`TODO.md` O1).
 
 ### Settings + Staff
 - **Status**: shipped, including all §N parity gaps (brand, theme accent, customization,
@@ -185,7 +239,7 @@
   `/[locale]/reset-password/` lives in unmerged checkpoint `a9c350b`. `POST /auth/reset-password`
   and `frontend/src/lib/auth-api.ts`'s caller both exist — only the page is gone.
   **This also breaks the staff INVITE flow**, which hands a new manager a 24h token pointing at
-  a 404, so an invited person cannot sign in at all. Tracked as `MASTER_TODO.md` **F5.1**.
+  a 404, so an invited person cannot sign in at all. Tracked as `TODO.md` **F5.1**.
   The 2026-08-07 note below is kept because it explains the intended design, but its "shipped
   end-to-end" claim is FALSE for this branch — this is the second time this entry has
   overstated the frontend's existence, so verify with `find` before trusting it again.
@@ -322,6 +376,28 @@ reused), `request-return-sheet.tsx`, `frontend/src/app/[locale]/admin/returns/`.
 **Failure modes**: order moved to a terminal state between request and approval → 400, nothing
 written; refund amount over the recorded line-item total → 400.
 
+### Opening a shop, and putting people in it
+1. `POST /businesses` (OWNER/DEVELOPER) — only `name` is required; an owner must not need a tax
+   id before they can add a product. Unfilled fields fall through to the store-wide settings on
+   an invoice, so a blank field is never a blank letterhead.
+2. `POST /branches` with that `businessId`. The FIRST branch of a business becomes its default
+   whether or not the caller asked, because a business with branches and no default sends
+   `defaultBranchId()` back to the ordering-dependent answer F8.2 removed.
+3. `POST /branches/:id/staff` with `{ userId, role }` — an upsert on the `[userId, branchId]`
+   pair, so re-assigning changes the role rather than failing.
+4. Every write calls `audit()` with a real field diff; the roster records BOTH the old and new
+   role, since "was FULFILLMENT here, now MANAGER" is the whole question a reviewer asks.
+5. The UI reloads after a create/rename — the topbar switcher is mounted in the shell and loads
+   once, so a local refetch would leave it stale, and a switcher missing a branch is one an owner
+   cannot scope to.
+
+**Files involved**: `branches.service.ts`, `branch-roles.service.ts`, `branches.route.ts`,
+`frontend/src/components/branches/`, `branch-switcher.tsx`.
+**Failure modes**: duplicate `code` within one business → 409 naming the field (the same code in
+a DIFFERENT business succeeds); deactivating the last active branch → 400; granting above your
+own rank, editing your own row, touching someone who outranks you, or naming OWNER/DEVELOPER as a
+branch role → 403/400 from the shared staff rules.
+
 ### Admin-issued password reset
 1. Admin (same rank rules as any other staff write) hits `POST /staff/:id/reset-token`, gets a
    one-time 12-character token back, hands it over out of band (chat/call).
@@ -353,12 +429,27 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **`MASTER_TODO.md` is the master task list — read it, not this file, for what's open.** This
-  file describes what the system IS; that file says what is LEFT. Start at its **Track F**.
+- **`TODO.md` is the master task list — read it, not this file, for what's open.** This
+  file describes what the system IS; that file says what is LEFT. **Every other task list has
+  been folded into it** — `MASTER_TODO.md`, `O7-PLAN.md`, `.claude-workbook/NEXT-STEP.md` and
+  the older `TODO.md` no longer exist, so a reference to any of them in an older doc is stale.
+  `SETUP_TODO.md` stays separate ON PURPOSE: it is config, secrets and hosting decisions only
+  the owner can make, and merging it would bury "generate fresh secrets" among eighty
+  engineering tasks. `.claude-workbook/ROADMAP.md` is the historical archive — read it for the
+  reasoning behind decisions already made, never for what is open.
+- **2026-09-08 — Track F, Track F8 and O7 are all DONE.** Latest work is O6 (a courier-portal
+  bug) and O7 (business/branch/roster CRUD, all four stages) — see the Changelog. Next open
+  items, in the order `TODO.md` recommends: **O1** (branch column on the inventory, returns,
+  courier and order lists — no decisions needed), then **O3/F5.3-5.4** (every role lands on the
+  same revenue-first dashboard), then the schema-gated tracks.
+- **Two questions are waiting on the owner and block real work**: **O2** — does a courier belong
+  to ONE branch or serve several (`branchId` on `DeliveryStaff` vs. a join table)? Everything
+  else in O2 waits on it. **O5.1/F6.1** — the `Shift` model's shape; a till session and a shift
+  are the SAME object, so answering it unblocks both the shifts track and the POS track.
 - **2026-09-05 — Track F opened: four gaps the owner raised directly.** (1) revenue vs. cost,
   (2) login history, (3) how to add items and stock, (4) reports are vague and unclear. Recon
   found **three of the four were already partly built**, so most of the work is surfacing and
-  explaining what exists rather than building from zero — each item in `MASTER_TODO.md` states
+  explaining what exists rather than building from zero — each item in `TODO.md` states
   what already exists before what is missing, specifically so nothing gets rebuilt twice.
   **F1 (revenue vs. cost) is done**; F2/F3/F4 are open. See the 2026-09-05 Changelog entry.
 - **2026-09-05 — the profit bug worth remembering.** `getProductMargin` joined `products.cost`
@@ -373,7 +464,7 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   settings page — a small follow-up; (2) `order-detail.test.tsx` has one `it.skip`
   (`includes the chosen category when one is selected`) to unskip once both the orders PR and the
   return-taxonomy PR are on `dev` — the skip is commented in place.
-- **Schema-gated work still open** — `MASTER_TODO.md` Track D §S7: S7.1 Address model, S7.3
+- **Schema-gated work still open** — `TODO.md` (was MASTER_TODO Track D §S7): S7.1 Address model, S7.3
   payment/transaction model, S7.4 split status axis, S7.5 Location model, S7.6 Category tree,
   S7.8 fuller ReturnStatus lifecycle, S7.9 tags. None started. (F1.1's `OrderItem.cost` was a
   Track-D-shaped migration but is recorded under Track F, where the work actually happened.)
@@ -381,8 +472,8 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   What genuinely remains: **Sentry DSN in prod** is on hold, not merely unconfigured — the user's
   trial ended. **E2E** — `.github/workflows/e2e.yml` is still written around Vercel preview URLs
   and `RENDER_DEV_BACKEND_URL`; it is disabled so it breaks nothing, but it needs rewriting for
-  Coolify before the `pull_request` trigger can come back. **Arabic review** — 1459 keys, en/ar
-  parity holds at 1459/1459, but the MSA is machine/self-translated and unreviewed; a
+  Coolify before the `pull_request` trigger can come back. **Arabic review** — 1630 keys, en/ar
+  parity holds at 1630/1630, but the MSA is machine/self-translated and unreviewed; a
   native-speaker pass still blocks any client demo. It is NOT self-certifiable.
 - **Design Fix Checklist** (phased dashboard/settings/shell redesign): Phases 1-5 built and PR'd
   (#80, #82, #83, #84 merged; #85 open), plus #86 (Tooltip primitive, open — not part of the
@@ -399,7 +490,7 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
 - **In progress**: nothing uncommitted-and-unreviewed. The six-skill pass requested on 2026-07-31
   (`project-foundations`, `project-docs`, `project-error-log`, `project-ship`, `project-test-gen`,
   `ux-animation-reviewer`) is still outstanding.
-- **Next step**: `MASTER_TODO.md` Track F, batch 2 — **F3.1-F3.3 + F4.1**. Highest value per line
+- **Next step**: see `TODO.md`. (This line named F3.1-F3.3 + F4.1, all since shipped.) Highest value per line
   changed, no schema dependency, independently shippable. F4.1 (put each metric's definition on
   screen) is the core of the "reports are vague" complaint; a definition-tooltip pattern already
   exists in exactly one place (`reports-view.tsx`, the `averageOrderValue` tile) — extract that
@@ -414,7 +505,7 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   DB-backed override layer); not started, not in scope.
   (3) **Two Track F items need a decision before they start** — F1.4's landed-cost question
   (should receiving stock capture that batch's unit cost, and if so FIFO or weighted average?)
-  and F3.5's bulk receive. Both are flagged in `MASTER_TODO.md` rather than guessed at.
+  and F3.5's bulk receive. Both are flagged in `TODO.md` rather than guessed at.
 - **Context to remember**:
   - **New 2026-09-03 rule — env files: `.env` + `.env.local` per side. NOTHING is committed.**
     No `.env.example`, and no `.env.fluffy`/`.env.dev`/`.env.staging` per-target variants (a
@@ -475,6 +566,40 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-09-08 (O6 + O7)** — The controls F8 never shipped. F8 built the multi-shop ENGINE
+  (businesses, branches, per-branch stock, query scoping, per-branch roles, a switcher) and left
+  every row creatable only by a migration or the seeder: `UserBranch` was read-only, there was no
+  `POST /branches` and no `POST /businesses`, so an owner could not open a second shop without a
+  developer running SQL, and the per-branch-role feature could not actually be used. Four stages,
+  40 new tests:
+  **Stage 1 (write API)** — `POST /businesses`, `PATCH /businesses/:id`, `POST /branches`,
+  `GET /businesses`; the pre-existing `PATCH /branches/:id` re-routed through the service so the
+  new guards apply to it too. Three guard decisions taken rather than defaulted, all as
+  recommended in the plan: OWNER/DEVELOPER only (not `requireArea('settings')` — MANAGER holds
+  it); the last active branch cannot be deactivated; a deactivated branch keeps its stock and
+  orders. Duplicate `code` → 409, `isDefault` cleared in the same transaction.
+  **Stage 2 (roster)** — `POST|GET /branches/:id/staff`, `DELETE /branches/:id/staff/:userId`.
+  The four staff rules are IMPORTED from `config/roles.ts`, not reimplemented: a per-branch grant
+  that skipped them would be an escalation path around the global rules. One rule added —
+  OWNER/DEVELOPER refused as a branch role, since the resolver ignores such a row and an owner
+  would see a grant on screen that does nothing.
+  **Stage 3 (UI)** — `/admin/branches` grouped by business, a Sheet for a branch and a full page
+  for a business (the drawer-vs-page convention judged per surface, not copied), a roster panel
+  showing BOTH roles per person, empty states that explain what a business IS, and 79 new keys
+  per locale (parity 1630/1630, Arabic using a real ICU plural with two/few/many).
+  **Stage 4 (tests)** — written alongside 1 and 2, not after. **Every guard was watched failing
+  before its code went in**: swapping `requireRole` for `requireArea`, disabling the last-branch
+  check, disabling the four staff rules, and removing the switcher reload each turn exactly the
+  intended tests red.
+  **One planned item was corrected rather than implemented**: 4.4 asked that a created branch
+  appear in the switcher "without a reload". The switcher is mounted in the shell ABOVE the page
+  and holds its own state, so a local refetch updates the list and leaves the switcher stale —
+  the deliberate full reload is the fix, and the test now asserts it.
+  **Also fixed: O6**, the courier card-blanking bug — see the Delivery section.
+  Verification: backend 890/890 (41 files), frontend 1027/1027 + 1 skipped (114 files), tsc and
+  eslint clean both sides, en/ar parity 1630/1630. `next build` was NOT run locally: a dev server
+  was live on :3000 and building into the same `.next` corrupts it, and no new component calls
+  `useSearchParams`/`useParams`, which is the hazard that check exists to catch.
 - **2026-09-05 (Track F, batch 1)** — Four gaps raised directly by the owner became `MASTER_TODO.md`'s
   **Track F**: revenue vs. cost, login history, adding items/stock, and reports being vague.
   Recon found **three of the four already partly built** — 34 report endpoints and 27 pages
