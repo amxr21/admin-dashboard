@@ -75,7 +75,9 @@ couriersRouter.get('/couriers', ...guard, async (req, res) => {
   const parsed = listQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid query', parsed.error.flatten());
 
-  res.json({ data: await listCouriers(parsed.data) });
+  res.json({
+    data: await listCouriers({ ...parsed.data, branchId: req.branchId ?? undefined }),
+  });
 });
 
 couriersRouter.get('/couriers/:id', ...guard, async (req, res) => {

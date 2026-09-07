@@ -54,6 +54,14 @@ export interface ReturnListParams {
   status?: ReturnStatus;
   /** Matches the RMA number or the order number. */
   search?: string;
+  /**
+   * Restrict to returns against orders taken at one branch (F8).
+   *
+   * A `Return` has no `branchId` of its own, deliberately: it carries a
+   * required `orderId` and the order already records the branch. A second
+   * copy could drift from the first the moment an order is corrected.
+   */
+  branchId?: string;
 }
 
 export async function listReturns(params: ReturnListParams) {
@@ -62,6 +70,7 @@ export async function listReturns(params: ReturnListParams) {
 
   const where: Prisma.ReturnWhereInput = {
     ...(params.status ? { status: params.status } : {}),
+    ...(params.branchId ? { order: { branchId: params.branchId } } : {}),
     ...(params.search
       ? {
           OR: [

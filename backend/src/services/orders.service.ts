@@ -254,6 +254,10 @@ export async function getOrder(id: string) {
       taxAmount: true,
       paymentMethod: true,
       placedAt: true,
+      // Which branch took it (F8). Selected so the detail page can SAY so —
+      // without it, two orders from different businesses look identical once
+      // opened, which is exactly the confusion branch scoping exists to end.
+      branchId: true,
       customer: {
         select: { id: true, name: true, email: true, phone: true, city: true, country: true },
       },
@@ -314,10 +318,26 @@ export async function getOrder(id: string) {
     : [];
   const changedByNames = new Map(staffUsers.map((u) => [u.id, u.name]));
 
+  /**
+   * Resolved separately because `Order.branchId` is a plain id, not a
+   * relation — history has to survive the branch being removed, the same
+   * reason `AuditLog.actorId` is a plain id.
+   *
+   * A missing branch (deleted, or never attributed) yields `null`, and the
+   * UI shows nothing rather than inventing a name.
+   */
+  const branch = order.branchId
+    ? await prisma.branch.findUnique({
+        where: { id: order.branchId },
+        select: { id: true, name: true, code: true },
+      })
+    : null;
+
   return {
     id: order.id,
     orderNumber: order.orderNumber,
     status: order.status,
+    branch,
     total: money(order.total),
     subtotal: money(order.subtotal),
     taxAmount: money(order.taxAmount),

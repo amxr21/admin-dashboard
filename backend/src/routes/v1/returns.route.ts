@@ -84,7 +84,9 @@ returnsRouter.get('/returns', ...guard, async (req, res) => {
   const parsed = listQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid query', parsed.error.flatten());
 
-  res.json({ data: await listReturns(parsed.data) });
+  res.json({
+    data: await listReturns({ ...parsed.data, branchId: req.branchId ?? undefined }),
+  });
 });
 
 returnsRouter.get('/returns/:id', ...guard, async (req, res) => {

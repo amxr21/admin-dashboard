@@ -101,7 +101,9 @@ inventoryRouter.get('/inventory', ...guard, async (req, res) => {
     throw AppError.badRequest('Invalid query', parsed.error.flatten());
   }
 
-  res.json({ data: await listInventory(parsed.data) });
+  res.json({
+    data: await listInventory({ ...parsed.data, branchId: req.branchId ?? undefined }),
+  });
 });
 
 inventoryRouter.get('/inventory/:productId/movements', ...guard, async (req, res) => {
@@ -112,7 +114,10 @@ inventoryRouter.get('/inventory/:productId/movements', ...guard, async (req, res
   }
 
   res.json({
-    data: await listMovements(String(req.params.productId), parsed.data),
+    data: await listMovements(String(req.params.productId), {
+      ...parsed.data,
+      branchId: req.branchId ?? undefined,
+    }),
   });
 });
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { ChevronLeft, ChevronRight, Printer, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Printer, RotateCcw, Store } from 'lucide-react';
 
 import { AssignCourierControl } from '@/components/orders/assign-courier-control';
 import { Breadcrumb } from '@/components/shell/breadcrumb';
@@ -252,6 +252,24 @@ export function OrderDetail({ id }: { id: string }) {
             {t('placedOn', {
               date: formatter.dateTime(new Date(order.placedAt), 'long'),
             })}
+            {/* Where it was taken (F8). Beside the date because "when and
+                where" is one fact, and because on "All branches" two orders
+                from different businesses are otherwise indistinguishable
+                once opened. Omitted entirely when unattributed — an order
+                that predates branches has no branch, and inventing one would
+                claim it belongs somewhere it does not. */}
+            {order.branch ? (
+              <>
+                {' · '}
+                <span className="inline-flex items-center gap-1">
+                  <Store className="size-3.5" aria-hidden />
+                  {order.branch.name}
+                  {order.branch.code ? (
+                    <span className="text-muted-foreground/80">({order.branch.code})</span>
+                  ) : null}
+                </span>
+              </>
+            ) : null}
           </p>
           {lastActivity ? (
             <div className="mt-1">
