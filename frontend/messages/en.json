@@ -173,11 +173,104 @@
       "audit": "A record of every change made here, and who made it.",
       "loginHistory": "Who signed in and who was refused"
     },
-    "loginHistory": "Sign-in history"
+    "loginHistory": "Sign-in history",
+    "branches": "Branches"
   },
   "branches": {
     "switcherLabel": "Active branch",
-    "allBranches": "All branches"
+    "allBranches": "All branches",
+    "manage": {
+      "title": "Branches",
+      "subtitle": "Your businesses and the shops that run under them.",
+      "loadFailed": "Could not load your businesses",
+      "addBusiness": "Add business",
+      "editBusiness": "Edit",
+      "addBranch": "Add branch",
+      "editBranchLabel": "Edit {name}",
+      "sellingPoint": "Shop",
+      "warehouse": "Warehouse",
+      "default": "Default",
+      "inactive": "Closed",
+      "staffCount": "{count, plural, =0 {No staff} one {# person} other {# people}}",
+      "noBranches": "This business has no branches yet. Add one before recording stock or taking orders.",
+      "emptyTitle": "No businesses yet",
+      "emptyDescription": "A business is the company that owns your shops — its name, address and tax id are what print on an invoice. Add one, then add the branches that trade under it."
+    },
+    "form": {
+      "createTitle": "Add branch",
+      "editTitle": "Edit branch",
+      "inBusiness": "In {name}",
+      "nameRequired": "A branch needs a name",
+      "codeHint": "A short code for labels and paperwork, like MAR or WH1. Unique within this business.",
+      "sellingPointHint": "Turn this off for a warehouse or prep kitchen — it holds stock but takes no orders.",
+      "defaultHint": "Where stock and orders are recorded when nothing names a branch. Only one branch can be the default.",
+      "activeHint": "Closing a branch hides it from the switcher. Its stock, orders and history are kept.",
+      "created": "{name} added",
+      "updated": "{name} saved",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "fields": {
+        "name": "Branch name",
+        "code": "Code",
+        "addressLine": "Address",
+        "city": "City",
+        "phone": "Phone",
+        "isSellingPoint": "Sells to customers",
+        "isDefault": "Use as the default branch",
+        "isActive": "Open"
+      }
+    },
+    "business": {
+      "createTitle": "Add business",
+      "createSubtitle": "The company that owns your shops. Only a name is required — the rest can wait.",
+      "editTitle": "Edit business",
+      "editSubtitle": "These details print on invoices and receipts.",
+      "notFound": "That business no longer exists",
+      "nameRequired": "A business needs a name",
+      "created": "Business added",
+      "updated": "Business saved",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "fields": {
+        "name": "Business name",
+        "legalName": "Legal name",
+        "kind": "Type of business",
+        "taxId": "Tax ID",
+        "email": "Email",
+        "phone": "Phone",
+        "addressLine": "Address",
+        "city": "City",
+        "country": "Country",
+        "currency": "Currency",
+        "timezone": "Time zone",
+        "logoUrl": "Logo URL",
+        "isActive": "Active"
+      },
+      "hints": {
+        "legalName": "The registered entity the tax ID belongs to. Printed on invoices in place of the trading name.",
+        "country": "Two letters, like AE or GB.",
+        "currency": "Three letters, like AED or USD. Left blank, your store-wide currency is used.",
+        "isActive": "Closing a business hides its branches. Nothing is deleted."
+      }
+    },
+    "roster": {
+      "title": "Who works at {name}",
+      "subtitle": "A role set here replaces the person's usual one, but only at this branch.",
+      "addTitle": "Add someone",
+      "person": "Person",
+      "choosePerson": "Choose someone…",
+      "roleHere": "Role at this branch",
+      "roleHint": "Owners and developers work across the whole business and cannot be set per branch.",
+      "add": "Add to branch",
+      "assigned": "Added to the branch",
+      "removed": "Removed from the branch",
+      "currentTitle": "On this branch",
+      "empty": "Nobody is assigned here yet. Everyone keeps whatever role they hold across the business.",
+      "rolePair": "{here} here · {global} elsewhere",
+      "removeLabel": "Remove {name} from this branch"
+    }
   },
   "roles": {
     "DEVELOPER": "Developer",
