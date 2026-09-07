@@ -45,6 +45,24 @@ export default tseslint.config(
     // type-checked ruleset is a parse error. Lint them syntactically instead.
     files: ['**/*.{js,mjs,cjs}'],
     ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      ...tseslint.configs.disableTypeChecked.languageOptions,
+      // Plain-JS files get no TypeScript lib, so `no-undef` (which is off for
+      // .ts, where the compiler already checks this) flags every Node builtin.
+      // Declared by hand rather than pulling in the `globals` package for one
+      // config block. Add to this list when a script needs another builtin.
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        URL: 'readonly',
+        Buffer: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        fetch: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+      },
+    },
   },
   {
     // Config files, migrations, scripts can bend the rules.
