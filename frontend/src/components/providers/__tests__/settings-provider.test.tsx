@@ -236,6 +236,25 @@ describe('live preview, before Save', () => {
     );
 
     await screen.findByText('mode:drawer');
+
+    /**
+     * Wait for the COMMITTED appearance to be cached before clearing it.
+     *
+     * `cacheAppearance` runs in an effect keyed on `[appearance, isLoading,
+     * hasPreview]`, so it lands asynchronously after the fetch resolves.
+     * Clearing the key the moment the first text appears raced that write:
+     * on a slow runner the effect fired afterwards, put the key back, and
+     * this assertion failed with the cached value instead of null — a
+     * flake, not a regression, and one that reported "the provider caches
+     * unsaved previews" when it does no such thing.
+     *
+     * Waiting for the write we expect, then removing it, means the only
+     * thing that can repopulate the key afterwards is the preview click
+     * below — which is exactly what this test is about.
+     */
+    await waitFor(() => {
+      expect(localStorage.getItem('admin.appearance')).not.toBeNull();
+    });
     localStorage.removeItem('admin.appearance');
 
     screen.getByText('preview modal').click();
