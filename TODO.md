@@ -1,0 +1,466 @@
+# TODO — the one list
+
+Updated 2026-09-07. **This is the only task list.** `MASTER_TODO.md`,
+`O7-PLAN.md` and the old `TODO.md` were merged into this file; `SETUP_TODO.md`
+stays separate on purpose (it is the OWNER's config/secrets checklist, not code
+work).
+
+**`SETUP_TODO.md` stays separate and is still live** — 13 open items there.
+It is config, secrets and hosting decisions only the owner can make; this file
+is code work. Merging them would bury "generate fresh secrets" among eighty
+engineering tasks. Two items appear in both by design, because each side owns
+half: the **Arabic review** (the native-speaker pass is the owner's; the wiring
+is done) and **E2E** (rewriting the workflow is code; providing a database is
+the owner's).
+
+Its highest-priority item: **`prod` has no database of its own** — `_PROD` and
+`_LOCAL` are not yet fully separated. Also two real gaps it tracks that are
+still true: `frontend/public/` **does not exist at all** (so every deployment
+serves a default favicon) and the browser tab title is still the literal
+placeholder `'admin-dashboard'`.
+
+`.claude-workbook/ROADMAP.md` remains the historical archive — read it for the
+reasoning behind decisions already made, not for what is open.
+
+---
+
+## 🔴 Blocking
+
+- [ ] **vitest cannot spawn workers on this machine (2026-09-07).**
+      Every run fails with `[vitest-pool]: Failed to start forks worker` /
+      `Timeout waiting for worker to respond`, even a single test file, even
+      with `--pool=threads`. The same suites passed 134/134 an hour earlier.
+      Ruled out: memory (7.5 GB free), process count (cleared to zero), node's
+      own `fork()` (works), the vite/vitest caches (deleted).
+      **Untried: a reboot** — this class of Windows worker-spawn failure
+      usually clears with one. Then antivirus scanning `node_modules`, then a
+      `pnpm store prune` + reinstall.
+      **Until fixed: verify with tsc + eslint + `next build`, and let CI run
+      the suites.** A local run reporting mass failures right now is
+      meaningless — it once reported "116 failed" from a run where no test
+      ever executed.
+
+## ✅ State of the tree
+
+**PR #155 is MERGED** (`cd46891`, merged 2026-09-07 19:00) — branch scoping is
+applied and on `dev`.
+
+`dev` is clean: tsc both sides, en/ar parity 1551/1551, 34 migrations, all four
+F8 tables present, local database seeded and verified (2 businesses, 4
+branches, 158 orders, per-branch stock agreeing with `Product.stock`).
+
+**Track F and Track F8 are DONE and merged** — #123–#137, #142–#148,
+#150–#152. Shipped today: F8.1–F8.5, F7.4, F1.3, F4.5, the APP_MODE split, the
+comprehensive seeder, and F4.4 (verified already satisfied — 26 of 27 report
+pages already shared one anatomy, closed without a rebuild).
+
+---
+
+## 📝 Raised by the owner 2026-09-07 — LISTED, NOT SCOPED
+
+The owner is enumerating issues, **not** requesting fixes. Do not start any of
+these without being asked. Recorded here so they are not lost.
+
+### ⭐ O7 — THE ADMIN CANNOT BUILD OR MODIFY THE STRUCTURE
+**Owner, 2026-09-07, stated as the priority: "I NEED THIS ONE THING: the admin
+should be able to build/modify the existing structure"** — add a branch, edit
+an existing one, add a warehouse, add a cashier, and so on.
+
+He also described the shapes it must support: a branch manager with 2-3
+cashiers under them; OR branches with only cashiers and the admin managing all
+of them directly. Both, in the same install.
+
+#### The audit — what exists today
+
+| Capability | API | UI |
+|---|---|---|
+| List branches | `GET /branches` | switcher only |
+| Read one branch | `GET /branches/:id` | — |
+| Edit a branch | `PATCH /branches/:id` | **none** |
+| **Create a branch** | **MISSING** | **none** |
+| **Create/edit a business** | **MISSING** | **none** |
+| Create staff | `POST /staff` | yes |
+| **Assign staff TO a branch** | **MISSING** | **none** |
+
+**`UserBranch` is READ-ONLY.** `branch-roles.service.ts` only ever calls
+`findUnique`/`findMany`. F8.4 resolves a per-branch role correctly and there is
+NO WAY TO CREATE ONE — so the feature answering "different people in different
+branches" cannot actually be used. Everything in the database today was put
+there by a migration or the seeder.
+
+**F8 built the ENGINE and none of the CONTROLS.** An owner cannot open a second
+shop without a developer running SQL.
+
+#### Why it is smaller than it sounds
+**No new models are needed.** `Business`, `Branch` and `UserBranch` all exist
+with the right columns. A warehouse is already modelled — `isSellingPoint:
+false`. This is CRUD over tables that are already there.
+**Size: comparable to ONE F8 stage, not all of F8.**
+**Dependencies: NONE.** Does not need the POS (O5), `Shift` (F6.1), or a
+decision on MANAGER's shape (O4) — though it makes O4 easier to answer, since
+per-branch roles become testable against a real roster.
+
+---
+
+#### Stage 1 — Business + Branch write API
+- [ ] 1.1 `POST /businesses` — `name` required, everything else optional (an
+      owner must not need a tax id before adding a product)
+- [ ] 1.2 `PATCH /businesses/:id` — same fields, never accepts `id`
+- [ ] 1.3 `POST /branches` — `businessId` + `name` required. **A warehouse is
+      `isSellingPoint: false`**, not a separate concept
+- [ ] 1.4 Expose the existing `PATCH /branches/:id` (built in F8.5, never
+      reachable from the UI)
+- [ ] 1.5 `Branch.code` is unique PER BUSINESS, not globally — a duplicate must
+      409, not 500
+- [ ] 1.6 Audit every write (`branch.created`, `business.updated`, ...) —
+      opening a shop is exactly what an audit trail is for
+
+**Guards to DECIDE, not default:**
+- [ ] 1.7 Who may create a branch? *Recommend OWNER/DEVELOPER only — MANAGER
+      reaching `settings` does not imply "may open a shop"*
+- [ ] 1.8 Can the last ACTIVE branch be deactivated? *Recommend NO, mirroring
+      the last-OWNER rule — `defaultBranchId()` would have nothing to fall back
+      to*
+- [ ] 1.9 What happens to a deactivated branch's stock and orders? They MUST
+      survive — orders are history
+- [ ] 1.10 **`isDefault` must stay unique** — setting it must clear it
+      elsewhere in the same transaction. Two defaults makes `defaultBranchId()`
+      order-dependent: the exact bug F8.2 fixed
+
+#### Stage 2 — Assign people to branches (`UserBranch` writes)
+*This is what unlocks the org shapes the owner described.*
+- [ ] 2.1 `POST /branches/:id/staff` — `{ userId, role }`, upsert on the
+      `[userId, branchId]` pair so re-assigning changes the role
+- [ ] 2.2 `DELETE /branches/:id/staff/:userId` — they keep their global role
+- [ ] 2.3 `GET /branches/:id/staff` — the roster with effective roles
+- [ ] 2.4 **Mirror the four staff rules** (`staff.service.ts` already enforces
+      them globally): no self-promotion · no granting above your rank
+      (`canAssignRole`) · no touching someone who outranks you (`outranks`) ·
+      last OWNER protected. **Not optional** — a per-branch grant that skips
+      them is an escalation path AROUND the global rules
+- [ ] 2.5 Refuse OWNER/DEVELOPER as a branch role — the resolver ignores those
+      rows, so accepting one would silently do nothing
+- [ ] 2.6 Audit assignment changes with both old and new role
+
+#### Stage 3 — UI
+- [ ] 3.1 `/admin/branches` — list grouped by business: name, code, city,
+      selling-point vs warehouse, active state, staff count
+- [ ] 3.2 Create/edit branch in a Sheet (per the drawer-vs-page convention — a
+      brief detour from a list)
+- [ ] 3.3 Create/edit business as a full page — more fields, a destination
+      worth its own URL
+- [ ] 3.4 Branch roster panel — add/remove a person, set their role here
+- [ ] 3.5 Real empty states — "add your second branch" must explain what a
+      branch IS, not just show a `+`
+- [ ] 3.6 i18n both locales, en/ar parity maintained
+- [ ] 3.7 **The switcher must refresh** after a create/rename — it currently
+      loads once on mount
+
+#### Stage 4 — Tests (written alongside 1 and 2, not after)
+- [ ] 4.1 Guard tests FIRST (the F8.3/F8.4 pattern): a MANAGER cannot create a
+      branch · nobody grants above their own rank · the last active branch
+      cannot be deactivated · two branches cannot both be `isDefault`
+- [ ] 4.2 Duplicate `code` in one business 409s; the SAME code in a different
+      business succeeds
+- [ ] 4.3 A role at one branch does not change it at another (the F8.4
+      contract, now through the write path)
+- [ ] 4.4 Frontend: create → appears in the switcher without a reload
+
+*Full version with the reasoning behind each item: `O7-PLAN.md`.*
+
+### O1 — Branch is invisible outside the order detail
+Orders now name their branch (PR #155). Inventory, returns and couriers are
+SCOPED but show no branch column, so on "All branches" rows from different
+places are indistinguishable — the same gap the order detail had.
+
+- [ ] O1.1 Add a branch column to the inventory list (only when unscoped — a
+      column repeating the same value on every row is noise)
+- [ ] O1.2 Same for the returns list, via `Return.order.branch`
+- [ ] O1.3 Same for the courier roster, or state plainly that a courier has no
+      single branch (depends on O2)
+- [ ] O1.4 Add a branch column to the ORDERS list too — #155 only did the
+      detail page
+- [ ] O1.5 Backend: these lists do not currently SELECT the branch; each needs
+      it added and resolved to a name, as `getOrder` now does
+
+### O6 — ✅ FIXED 2026-09-08 — courier status update blanked the card
+**Diagnosed 2026-09-07, fixed 2026-09-08.** All four items done; 47/47 courier
+tests pass and the key-set test was watched failing against the original code.
+
+The courier taps a status; the card empties. Refresh and it is back.
+
+`PATCH /courier/assignments/:id/status` returns **5** fields (id, status,
+attemptCount, failureReason, order). `GET /courier/me/assignments` returns
+**14**. `courier-dashboard.tsx` does
+`current.map(item => item.id === id ? updated : item)` — swapping a complete
+row for a stub. The card renders with no customer, address or total. It has
+not disappeared; it has been emptied.
+
+**Why nothing caught it:** `courierFetch` casts the JSON blindly, so
+`CourierAssignment`'s 14 declared fields are never compared to reality. The
+tests mock a full object, so they never see the real response.
+
+- [x] O6.1 **DONE 2026-09-08.** `COURIER_ASSIGNMENT_SELECT` — one `as const`
+      select shared by `listOwnAssignments` and `updateAssignmentStatus`, with
+      a comment saying why narrowing it for one caller is the bug
+- [x] O6.2 **DONE 2026-09-08.** One `toCourierAssignment()` serialiser on both
+      paths converts the `Decimal` to a string, so the wire shape finally
+      matches the `string | null` the client always declared
+- [x] O6.3 **DONE 2026-09-08.** Two tests in `courier.test.ts`: identical key
+      sets, and `total` a string on both endpoints. **Watched it fail first** —
+      reverting the select gives `7 keys vs 14`, the original bug exactly
+- [x] O6.4 **CONSIDERED, DECIDED NO 2026-09-08.** `api.ts` — the main client
+      behind every admin surface — casts the same way at two call sites, and
+      `zod` is a backend-only dependency. Validating in `courier-api.ts` alone
+      would make the courier portal the one client with a different contract
+      and ship a parser to every visitor, to catch drift that O6.3 now catches
+      server-side for free. The cast was why the bug stayed invisible, not why
+      it happened; O6.1 removes the cause
+
+### O2 — Couriers have no branch, only a work history
+`DeliveryStaff` has no `branchId`. PR #155 filters on "has an assignment for an
+order at this branch" — where they HAVE worked, not where they BELONG. A newly
+hired courier with no assignments disappears from every scoped list.
+
+- [ ] O2.1 **❓ OWNER DECISION: does a courier belong to ONE branch or serve
+      several?** `branchId` on `DeliveryStaff` vs. a join table. Everything
+      below waits on this
+- [ ] O2.2 Migration for whichever shape is chosen
+- [ ] O2.3 Replace the assignment-history filter with the real one
+- [ ] O2.4 Show the branch on the courier roster + the create/edit form
+
+### O3 — Every role lands on the same revenue-first dashboard
+FULFILLMENT and SUPPORT open to a revenue chart they may have no `reports`
+access to interpret. It is the first thing every non-owner sees on login.
+This is F5.4. **No schema change needed.**
+
+- [ ] O3.1 **❓ DECISION: is the unit of customization the ROLE or the USER?**
+      *Recommend ROLE — matches `ROLE_AREAS`, keeps one owner in control, needs
+      no per-user table.* (The owner said "add the ROLE feature", which reads
+      as ROLE — confirm before building.) This is F5.3
+- [ ] O3.2 Per-role landing route: FULFILLMENT → today's orders, SUPPORT →
+      open returns/reviews, OWNER → the current dashboard
+- [ ] O3.3 Per-role dashboard widgets — hide what the role cannot open rather
+      than showing tiles that 403 on click
+- [ ] O3.4 Redirect on login to the role's landing page
+
+### O4 — `MANAGER` is the wrong shape for a shop manager
+Today MANAGER = every area except `staff` — an OPERATIONS manager. A shop
+manager who counts stock also gets `settings` (theme, tax rate, maintenance
+mode) and `discounts`: more authority than the job needs.
+
+- [ ] O4.1 **❓ OWNER DECISION: narrow MANAGER, or add a distinct role?**
+      *Do not add a role reflexively — every new role multiplies the permission
+      matrix, which `roles.ts` warns about in its own comment.* Easier to
+      answer AFTER O7 stage 2, when per-branch roles are testable against a
+      real roster
+- [ ] O4.2 If narrowing: which areas leave MANAGER, and does anything break
+- [ ] O4.3 If adding: the role, its rank in `ROLE_ORDER`, its `ROLE_AREAS`
+      entry, i18n label, and the permissions matrix row
+
+### O5 — POS / till: the cashier who scans items and prints a receipt
+**Clarified by the owner 2026-09-07:** not a permissions question. He means a
+person standing in the shop who **scans or selects items, takes payment, and
+prints a receipt** — a point-of-sale terminal.
+
+The missing piece is not authorisation: **nothing in this app creates an
+order.** `prisma.order.create` appears only in tests and `demo-seed.ts`.
+
+#### Already exists and gets reused — more than expected
+`Product.barcode` (a real unique EAN/UPC column, already searchable) ·
+`Product.price` · per-branch stock + `adjustStock()` with a `SOLD` reason ·
+**the receipt math**, but only inside `demo-seed.ts` (~lines 472-490:
+subtotal → `store.taxRate` → total) · `Order.subtotal`/`taxAmount` columns ·
+the invoice/print view, already branch-aware for the letterhead · F8 gives the
+till its branch for free.
+
+#### Stage A — schema (nothing works before this)
+- [ ] O5.1 **❓ OWNER DECISION: the `Shift` model's shape** — this IS F6.1, and
+      a till session and a shift are the same object. Can a manager open one
+      for someone who forgot to clock in (→ needs `openedById` separate from
+      `userId`)? Editable after closing, or corrected only by a compensating
+      entry (*recommend the latter — matches `StockMovement`*)? Per-branch is
+      already answered: give it a `branchId` from the start
+- [ ] O5.2 `Payment` model — amount, method, tendered, change, paidAt, and the
+      order it belongs to. Without it "did the drawer balance?" is
+      unanswerable BY CONSTRUCTION; `Order.paymentMethod` is free text
+- [ ] O5.3 `Shift`/till session — opener, opening float, closing count,
+      variance
+
+#### Stage B — checkout
+- [ ] O5.4 **Move the receipt math out of the seeder** into a shared service —
+      CLAUDE.md already flags that a real checkout must call the SAME math
+- [ ] O5.5 Cart state: scan/select → add line → quantity → subtotal/tax/total
+- [ ] O5.6 Barcode lookup endpoint (the column exists; nothing queries it yet)
+- [ ] O5.7 Create the order + its `OrderItem`s with price AND cost snapshotted
+      (the F1.1 rule), decrement per-branch stock with a `SOLD` movement, and
+      record the `Payment` — all in ONE transaction
+- [ ] O5.8 Refuse a sale that would take branch stock negative, or decide
+      deliberately that it is allowed
+
+#### Stage C — receipt + role
+- [ ] O5.9 Thermal receipt renderer (58/80mm) — the invoice is A4; different
+      layout, likely a different component
+- [ ] O5.10 `CASHIER` role: `ROLE_AREAS` entry, rank in `ROLE_ORDER`, i18n
+      label, permissions-matrix row. **Trivial, and LAST** — adding it first
+      grants screens that cannot take money
+- [ ] O5.11 Open/close-shift UI in the shell, with elapsed time — must survive
+      a reload and a second tab (the open shift lives on the server, never in
+      `localStorage`)
+
+**Ordering matters:** role first → screens that cannot take money. Checkout
+without `Payment` → sales nobody can reconcile.
+**Size: its own track, comparable to all of F8.** Start at O5.1.
+
+## 📦 Carried over from `MASTER_TODO.md`
+
+Everything below was open there and is still genuinely open. **Six items it
+listed as open had in fact shipped** (F1.3, F4.4, F4.5, F7.4, F8.4, F8.5) —
+that staleness is why these are consolidated here.
+
+### Returns — the fuller lifecycle
+- [ ] **B4.7** Per-line approve/reject on returns — needs `ReturnItem.status`.
+      Batch with B4.8
+- [ ] **B4.8** Partial returns — per-item quantity is already accepted on
+      REQUEST; approval is what ignores it
+- [ ] **B4.10** Refund without a return — needs a standalone model,
+      independent of the RMA flow
+- [ ] **B4.11** Policy window check, restocking fees, exchange linkage — the
+      biggest of the five
+- [ ] **S7.8** `ReturnStatus` 3 → ~8 values (label sent → in transit →
+      received → inspected → resolved)
+
+### Catalogue
+- [ ] **A5.8** Per-locale product content (EN/AR) + a completeness indicator
+- [ ] **A5.9** Version history with restore; bulk import; vendor / collections
+      / related products
+- [ ] **S7.6** `Category.parentId` → the category tree (nesting, reparent,
+      delete guard)
+- [ ] **S7.9** Tags — tag columns, filters, bulk-tag on every list page. No
+      model or field exists yet
+
+### Schema, still unstarted
+- [ ] **S7.1** `Address` model → order shipping/billing, customer addresses,
+      delivery zones, tax by region
+- [ ] **S7.5** ~~`Location` model~~ — **SUPERSEDED by F8's `Branch`.** One
+      model, not two. Kept here only so nobody re-adds it
+- [ ] **F7.9** `Supplier` model — the real remaining half of S7.5's idea.
+      **Unblocks F7.6 and F7.8**
+- [ ] **F7.6** Supplier reorder email, sent on admin approval. Needs F7.9
+- [ ] **F7.8 (rest)** Receipt / delivery date / purchase date — these belong
+      on `StockMovement` (properties of a BATCH arriving), beside `unitCost`
+      and a `supplierId`. **Not on `Product`** — loose columns there would
+      have to be undone
+- [ ] **F3.5** Bulk receive — import is create-only
+      (`assertPermitted(config, 'create')`), so this is real work, not wiring
+
+### Shifts (F6) — all gated on one decision
+- [ ] **F6.1** 🚫 **the `Shift` model's shape** — see "Waiting on the owner".
+      **This is the same object as O5's till session**; answering it unblocks
+      both tracks
+- [ ] **F6.3** Open/close shift UI in the shell (not buried in Settings), with
+      elapsed time. Must survive a reload and a second tab — the open shift
+      lives on the server, never in `localStorage`
+- [ ] **F6.4** "My shift" summary — a time-bounded `AuditLog` query, no new
+      logging needed
+- [ ] **F6.5** Shift history + who is on now. **Share a surface with F2's login
+      history** rather than building two near-identical staff-activity pages
+- [ ] **F6.6** ⚠️ Do NOT conflate shifts with payroll or time-clock compliance.
+      A note, not a task — if the owner wants payroll that is its own project
+      with real legal questions
+
+### Already built — verify and tell the owner, do not rebuild
+- [ ] **F7.5** Low-stock alerts already exist, **including email**.
+      `adjustStock` fires `notify()` on CROSSING into low stock, gated on
+      `notifications.lowStockAlerts`; `notify()` writes the in-app row AND
+      calls `sendAlertEmail`. **It works; it is almost certainly just
+      unconfigured.** Confirm the three email settings and check one arrives.
+      Do not build a second path
+
+### Older, from §U / the G-GATE
+- [ ] Optimistic row updates with rollback
+- [ ] Bulk-action progress
+- [ ] Loading-overlay blur / nav-transition smoothness
+- [ ] **Design Fix Checklist Phases 6-7** — blocked: the text was never
+      transcribed into the repo. **Ask the owner to re-paste**; do not
+      reconstruct from memory
+- [ ] **Arabic review** — parity holds, but the MSA is machine-translated and
+      unreviewed. Blocks any client demo. NOT self-certifiable
+- [ ] **E2E** — `.github/workflows/e2e.yml` is still written around Vercel
+      preview URLs + `RENDER_DEV_BACKEND_URL`. Disabled, so it breaks nothing,
+      but needs rewriting for Coolify
+- [ ] **Sentry prod DSN** — on hold, the owner's trial ended
+
+---
+
+## ⏳ Waiting on the owner — do not guess
+
+1. **F6.1 — the `Shift` model's shape.** Can a manager open a shift for someone who forgot to
+   clock in (→ needs `openedById` distinct from `userId`)? Editable after closing, or corrected
+   only by a compensating entry (**recommend the latter** — matches `StockMovement`; a timesheet
+   that can be silently rewritten is worth less than one that cannot)? Per-branch is already
+   answered: give it a `branchId` from the start.
+2. **F7.8 — QR vs serial.** A printable shelf label using the existing `barcode` (small job), or
+   a serial per individual unit (**a different inventory model** — a count plus a movement log
+   cannot express it)?
+3. **Pre-push `next build`.** It has cost a round trip twice. (a) add it to pre-push (~60–90s
+   every push); (b) leave CI as the guard; (c) run it by hand when touching
+   `useSearchParams`/`useParams`.
+4. **F7.10 — re-seed the demo data.** Best done once the local DB exists. The seeder now covers
+   businesses, branches, per-branch stock, staff, returns, variants and order notes.
+5. **F5.5 — cashiering.** There is **no checkout/order-creation flow at all** — nothing creates
+   an `Order` but the seeder and tests. A real POS needs order creation, payment capture and a
+   till concept. **Scope it as its own project**; do not let it arrive disguised as a dashboard
+   tweak.
+
+---
+
+## ⚠️ Rules that were learned the expensive way
+
+**Stacked-PR conflicts are usually FAKE.** PRs are squash-merged, which rewrites SHAs, so each
+stacked branch still carries pre-squash copies of everything below it and git reports conflicts
+on byte-identical content. `#133` looked like 12 conflict hunks; `git rebase origin/dev` skipped
+10 already-applied commits and produced **zero**. Recipe:
+```bash
+git log --oneline origin/dev..origin/<branch>          # how many are REALLY new?
+git merge-tree --write-tree origin/<branch> origin/dev | head -20
+git rebase origin/dev && git push --force-with-lease origin <branch>
+```
+`merge-tree` prints the tree hash first and CONFLICTs after — `grep -c CONFLICT` gives a false
+"clean". `gh pr edit --base` is refused mid-stack; bases retarget themselves as each PR below
+merges. GitHub's own stack-rebase reports conflicts when the merge is clean.
+
+**Never add a branch to fix a red stack.** PR #140 was created to fix stack-wide CI failures and
+was dropped by the very next rebase as *"patch contents already upstream"* — the fix was already
+reaching `dev`. Check `origin/dev..origin/<branch>` first.
+
+**Verify the database target before any backend test or migration.**
+```bash
+grep -nE 'DATABASE_URL' backend/.env | sed -E 's#(mysql://[^:]+:)[^@]*(@)#\1***\2#'
+```
+`DATABASE_URL=... npx vitest` does **NOT** protect you — dotenv loads `.env` afterwards and
+overwrites it. The Coolify MySQL **is** production; there is no dev database.
+
+**Uncommitted infrastructure is a trap.** `app-mode.ts` worked on one machine, was invisible to
+CI and every other checkout, and vanished the moment it was stashed — taking the backend with it.
+
+**`next build` is the only check that catches a missing Suspense boundary.** A
+`useSearchParams()` without one broke the build on eleven stacked PRs while typecheck and 1006
+unit tests stayed green. jsdom never prerenders. Wrap the smallest component that reads it, never
+the page, or a suspended form renders as a blank screen.
+
+**Never run `next build` while a dev server is live** in the same `frontend/.next` — stop it,
+`rm -rf frontend/.next`, build, clear again before restarting.
+
+**Fire-and-forget writes race tests.** `audit()`, `notify()`, `lastUsedAt`, `touchSession()`. A
+test reading one immediately after a request passes locally and fails on CI. Use the shared
+`waitFor` helper, never a longer sleep.
+
+**Any figure describing a PAST event must read a snapshot, never a live lookup.** `Order.total`,
+`OrderItem.price`, `Order.subtotal`/`taxAmount`, `OrderItem.cost`. It is what F1.1 fixed; check
+the next new metric against it before it ships.
+
+**A green test suite does not prove the UI renders.** jsdom computes no layout.
+
+---
+

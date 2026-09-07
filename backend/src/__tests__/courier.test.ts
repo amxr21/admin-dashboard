@@ -169,6 +169,90 @@ describe('GET /courier/me/assignments', () => {
   });
 });
 
+describe('the two courier-facing assignment endpoints agree on their shape', () => {
+  /**
+   * O6: `PATCH .../status` used to select 5 fields where `GET
+   * /courier/me/assignments` selects 14. The portal splices the PATCH response
+   * into the list it already holds, so every card the courier touched lost its
+   * customer, address and total until a manual refresh — it looked like the
+   * card had vanished.
+   *
+   * Comparing key SETS is the assertion that actually holds: it fails whenever
+   * either select gains or loses a field without the other, which is the only
+   * way this recurs. Asserting values would pass right up until someone adds a
+   * 15th field to one side.
+   */
+  it('returns identical key sets from the list and the status update', async () => {
+    const courier = await makeCourierWithCode();
+    const orderId = await makeOrder();
+    const assigned = await request(app)
+      .post('/api/v1/assignments')
+      .set(auth(ownerToken))
+      .send({ orderId, driverId: courier.id, address: '12 Marina Walk', city: 'Dubai' });
+    const assignmentId = (assigned.body as { data: { assignment: { id: string } } }).data.assignment
+      .id;
+
+    const signIn = await request(app).post('/api/v1/courier/auth').send({ code: courier.code });
+    const token = (signIn.body as AuthBody).data.token;
+
+    const listed = await request(app).get('/api/v1/courier/me/assignments').set(auth(token));
+    const updated = await request(app)
+      .patch(`/api/v1/courier/assignments/${assignmentId}/status`)
+      .set(auth(token))
+      .send({ status: 'PICKED_UP' });
+
+    expect(listed.status).toBe(200);
+    expect(updated.status).toBe(200);
+
+    const fromList = (listed.body as { data: { assignments: Record<string, unknown>[] } }).data
+      .assignments.find((a) => a.id === assignmentId);
+    const fromUpdate = (updated.body as { data: { assignment: Record<string, unknown> } }).data
+      .assignment;
+
+    expect(fromList).toBeDefined();
+    expect(Object.keys(fromUpdate).sort()).toEqual(Object.keys(fromList!).sort());
+
+    // The fields the blanked card was missing must actually carry values,
+    // not just exist as keys — an all-null row would satisfy a key check.
+    expect(fromUpdate.address).toBe('12 Marina Walk');
+    expect(fromUpdate.city).toBe('Dubai');
+    expect(fromUpdate.total).toBe('25');
+  });
+
+  it('serialises `total` as a string on BOTH endpoints, never a bare number', async () => {
+    // `total` is a Prisma Decimal and the client type declares `string | null`.
+    // `res.json` renders a Decimal as a number, which silently drops trailing
+    // zeros — the same class of shape lie as the missing fields above, just
+    // one that `Number(value)` at the call site happened to absorb.
+    const courier = await makeCourierWithCode();
+    const orderId = await makeOrder();
+    const assigned = await request(app)
+      .post('/api/v1/assignments')
+      .set(auth(ownerToken))
+      .send({ orderId, driverId: courier.id });
+    const assignmentId = (assigned.body as { data: { assignment: { id: string } } }).data.assignment
+      .id;
+
+    const signIn = await request(app).post('/api/v1/courier/auth').send({ code: courier.code });
+    const token = (signIn.body as AuthBody).data.token;
+
+    const listed = await request(app).get('/api/v1/courier/me/assignments').set(auth(token));
+    const updated = await request(app)
+      .patch(`/api/v1/courier/assignments/${assignmentId}/status`)
+      .set(auth(token))
+      .send({ status: 'PICKED_UP' });
+
+    const fromList = (listed.body as { data: { assignments: Record<string, unknown>[] } }).data
+      .assignments.find((a) => a.id === assignmentId);
+
+    expect(typeof fromList!.total).toBe('string');
+    expect(
+      typeof (updated.body as { data: { assignment: Record<string, unknown> } }).data.assignment
+        .total,
+    ).toBe('string');
+  });
+});
+
 describe('PATCH /courier/assignments/:id/status', () => {
   it('lets a courier move their own assignment through a legal transition', async () => {
     const courier = await makeCourierWithCode();
