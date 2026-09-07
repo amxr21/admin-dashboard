@@ -62,13 +62,30 @@ function ResetSuccessNotice({ suppressed }: { suppressed: boolean }) {
 export function LoginForm() {
   const t = useTranslations('auth');
   const tStates = useTranslations('states.error');
-  const { signIn } = useAuth();
+  const { signIn, verifyTwoFactor } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  /**
+   * The second half of a 2FA login (O3b.1).
+   *
+   * ─── WHY THE PENDING TOKEN LIVES IN STATE AND NOWHERE ELSE ─────────
+   * It proves the password step already happened, which makes it a
+   * credential — a short-lived one, but one that skips the password if
+   * stolen. In `localStorage` it would outlive the tab and sit there for any
+   * script on the origin to read; in the URL it would reach history, the
+   * server's logs and any referrer. React state dies with the page, which is
+   * exactly the lifetime this needs.
+   *
+   * `null` means "no 2FA step in progress" and is what puts the password form
+   * back on screen, so there is one source of truth for which half we are in.
+   */
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const [code, setCode] = useState('');
 
 
 
@@ -106,13 +123,13 @@ export function LoginForm() {
     try {
       const result = await signIn(email, password);
 
-      // A 2FA account does not have a session yet — `signIn` returns
-      // TWO_FACTOR_REQUIRED and no token is written. There is no code-entry
-      // screen in this app yet, so redirecting would land them on a page
-      // their (nonexistent) session cannot load. Refusing here is the honest
-      // failure until that screen exists. Tracked in TODO.md.
+      // The password checked out but no session exists yet — `signIn` wrote
+      // nothing. Hand over to the code step rather than redirecting, which
+      // before O3b.1 sent them to /admin with no token at all.
       if (result.status === 'TWO_FACTOR_REQUIRED') {
-        setError(t('twoFactorUnavailable'));
+        setPendingToken(result.pendingToken);
+        // The password is spent either way; not keeping it around.
+        setPassword('');
         return;
       }
 
@@ -130,6 +147,104 @@ export function LoginForm() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function handleVerify(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (pendingToken === null) return;
+
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      const role = await verifyTwoFactor(pendingToken, code);
+      router.replace(landingFor(role));
+    } catch (caught) {
+      setError(messageFor(caught));
+      // The code is single-use and time-boxed, so a wrong one is always
+      // retyped rather than corrected — clearing it saves a select-all.
+      setCode('');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  /**
+   * The code step. A separate form, not a third field on the first one: the
+   * password is already spent, and re-rendering it would invite the browser
+   * to re-submit credentials that no longer prove anything.
+   */
+  if (pendingToken !== null) {
+    return (
+      <form onSubmit={handleVerify} className="space-y-4" noValidate>
+        <div className="space-y-1">
+          <h2 className="font-medium">{t('twoFactor.title')}</h2>
+          <p className="text-muted-foreground text-sm">{t('twoFactor.hint')}</p>
+        </div>
+
+        {error ? (
+          <div
+            role="alert"
+            className="bg-destructive/10 text-destructive border-destructive/20 rounded-md border px-3 py-2 text-sm"
+          >
+            {error}
+          </div>
+        ) : null}
+
+        <div className="space-y-2">
+          <Label htmlFor="totp-code">{t('twoFactor.code')}</Label>
+          <Input
+            id="totp-code"
+            name="code"
+            // A backup code is alphanumeric, so this cannot be type=number —
+            // and inputMode/autoComplete still give phones the numeric pad
+            // and the OS its one-time-code autofill for the TOTP case.
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+            // force-ltr: a code is a code, and must not reorder in Arabic.
+            className="force-ltr"
+            maxLength={16}
+            required
+            autoFocus
+            disabled={isSubmitting}
+            aria-invalid={error !== null}
+          />
+          <p className="text-muted-foreground text-xs">{t('twoFactor.backupHint')}</p>
+        </div>
+
+        <Button type="submit" className="w-full" disabled={isSubmitting || code.trim() === ''}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+              {t('signingIn')}
+            </>
+          ) : (
+            t('twoFactor.verify')
+          )}
+        </Button>
+
+        {/* A way back that does not require closing the tab: the pending
+            token is dropped, so this genuinely restarts the sign-in rather
+            than hiding a half-finished one. */}
+        <p className="text-muted-foreground text-center text-sm">
+          <button
+            type="button"
+            onClick={() => {
+              setPendingToken(null);
+              setCode('');
+              setError(null);
+            }}
+            className="hover:text-foreground underline underline-offset-4"
+          >
+            {t('twoFactor.startOver')}
+          </button>
+        </p>
+      </form>
+    );
   }
 
   return (
