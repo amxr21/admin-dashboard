@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import {
   createScheduledReport,
   deleteScheduledReport,
@@ -20,7 +21,7 @@ import {
  */
 export const scheduledReportsRouter = Router();
 
-const guard = [authenticate, requireArea('reports')] as const;
+const guard = [authenticate, withBranchContext, requireArea('reports')] as const;
 
 const scheduleBody = z
   .object({

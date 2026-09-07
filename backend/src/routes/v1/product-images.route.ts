@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import {
   addImage,
   deleteImage,
@@ -20,7 +21,7 @@ import {
 
 export const productImagesRouter = Router();
 
-const guard = [authenticate, requireArea('products')] as const;
+const guard = [authenticate, withBranchContext, requireArea('products')] as const;
 
 // Alt text is capped well short of the column's 255 — a description that
 // long stops being alt text and starts being a caption; screen readers read

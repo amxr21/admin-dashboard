@@ -4,6 +4,7 @@ import { prisma } from '../../db/prisma.js';
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import {
   SETTINGS,
   isSettingKey,
@@ -75,7 +76,7 @@ settingsRouter.get('/settings', authenticate, async (_req, res) => {
  * Errors are collected per key rather than thrown on the first, so someone
  * editing six settings sees all six problems at once.
  */
-settingsRouter.patch('/settings', authenticate, requireArea('settings'), async (req, res) => {
+settingsRouter.patch('/settings', authenticate, withBranchContext, requireArea('settings'), async (req, res) => {
   const body: unknown = req.body;
 
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {

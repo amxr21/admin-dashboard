@@ -6,6 +6,7 @@ import { AppError } from '../../errors/AppError.js';
 import { toCsv } from '../../lib/csv.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import { audit } from '../../services/audit.service.js';
 import {
   addOrderNote,
@@ -34,7 +35,7 @@ import {
 
 export const ordersRouter = Router();
 
-const guard = [authenticate, requireArea('orders')] as const;
+const guard = [authenticate, withBranchContext, requireArea('orders')] as const;
 
 // Only columns selected directly on the Order row — never `_count.items` or
 // a relation field, neither of which Prisma can sort a flat `orderBy` by.

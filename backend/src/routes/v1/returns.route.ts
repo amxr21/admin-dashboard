@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import {
   approveReturn,
   createReturn,
@@ -23,7 +24,7 @@ import {
 
 export const returnsRouter = Router();
 
-const guard = [authenticate, requireArea('returns')] as const;
+const guard = [authenticate, withBranchContext, requireArea('returns')] as const;
 
 const listQuery = z.object({
   page: z.coerce.number().int().positive().optional(),

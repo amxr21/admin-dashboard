@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import { toCsv, type CsvColumn } from '../../lib/csv.js';
 import { toXlsx } from '../../lib/xlsx.js';
 import { toPdf } from '../../lib/pdf.js';
@@ -59,7 +60,7 @@ import {
 
 export const reportsRouter = Router();
 
-const guard = [authenticate, requireArea('reports')] as const;
+const guard = [authenticate, withBranchContext, requireArea('reports')] as const;
 
 /** Date-only, so a caller cannot smuggle a timezone in and shift the range. */
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');

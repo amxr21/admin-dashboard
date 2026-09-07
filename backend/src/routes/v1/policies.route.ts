@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import { audit, diff } from '../../services/audit.service.js';
 import {
   listPolicies,
@@ -22,7 +23,7 @@ import {
  */
 export const policiesRouter = Router();
 
-const guard = [authenticate, requireArea('settings')] as const;
+const guard = [authenticate, withBranchContext, requireArea('settings')] as const;
 
 const typeParam = z.nativeEnum(PolicyType);
 const localeParam = z.string().trim().min(2).max(8);

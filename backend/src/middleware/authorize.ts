@@ -7,6 +7,7 @@ import { getSettingValue } from '../services/settings.service.js';
 import { auditDenied } from '../services/audit.service.js';
 import { isIpAllowed, parseAllowlist } from '../lib/ip-allowlist.js';
 import { requireUser } from './authenticate.js';
+import { effectiveRole } from './branch-context.js';
 
 /**
  * Authorisation middleware. Always mounted AFTER `authenticate`.
@@ -46,11 +47,31 @@ export function assertCanWrite(req: Request): void {
   // No user means a public route — nothing to restrict.
   if (!user) return;
 
-  if (READ_METHODS.has(req.method) || !isReadOnlyRole(user.role)) return;
+  /**
+   * Read-only is checked against BOTH roles (F8.4), and either one blocking
+   * is enough.
+   *
+   * This runs inside `authenticate`, which is BEFORE `withBranchContext` has
+   * resolved the branch role — so on the first pass `req.branchRole` is
+   * undefined and only the global role is known. `requireArea` re-checks with
+   * the resolved role afterwards, and the branch guard below catches a
+   * DEMO-at-this-branch that the global role would have let through.
+   *
+   * Deliberately an OR rather than "the branch role wins": read-only is a
+   * restriction, and a restriction from either direction must hold. A global
+   * DEMO promoted to MANAGER at one branch is still a demo ACCOUNT — the one
+   * handed to prospective clients — and letting a branch assignment unlock
+   * writes for it would turn a roster entry into a way around that.
+   */
+  const branchRole = req.branchRole;
+  const isReadOnly = isReadOnlyRole(user.role) || (branchRole ? isReadOnlyRole(branchRole) : false);
+
+  if (READ_METHODS.has(req.method) || !isReadOnly) return;
 
   req.log.warn({
     event: 'authz.write.blocked',
     role: user.role,
+    branchRole: branchRole ?? null,
     method: req.method,
     path: req.path,
   });
@@ -58,7 +79,12 @@ export function assertCanWrite(req: Request): void {
   auditDenied(req, {
     action: 'authz.write.blocked',
     entity: 'authz',
-    changes: { role: user.role, method: req.method, path: req.path },
+    changes: {
+      role: user.role,
+      branchRole: branchRole ?? null,
+      method: req.method,
+      path: req.path,
+    },
   });
 
   throw AppError.forbidden('This is a read-only demo account. Changes are disabled.');
@@ -239,11 +265,26 @@ export function requireArea(area: Area) {
   return function areaGuard(req: Request, _res: Response, next: NextFunction): void {
     try {
       const user = requireUser(req);
+      /**
+       * The role AT THE ACTIVE BRANCH (F8.4), not the global one.
+       *
+       * `effectiveRole` returns the global role when no branch context is
+       * present, so a route that never mounted `withBranchContext` behaves
+       * exactly as it did before. Reading `user.role` directly here is the
+       * bug this helper exists to prevent — it would silently restore
+       * business-wide access on a branch-scoped request.
+       */
+      const role = effectiveRole(req);
 
-      if (!canAccessArea(user.role, area)) {
+      if (!canAccessArea(role, area)) {
         req.log.warn({
           event: 'authz.area.denied',
-          role: user.role,
+          role,
+          // The global role too: "denied as SUPPORT" is confusing to debug
+          // when the account is a MANAGER everywhere else, and the branch is
+          // the whole explanation.
+          globalRole: user.role,
+          branchId: req.branchId ?? null,
           area,
           method: req.method,
           path: req.path,
@@ -253,7 +294,14 @@ export function requireArea(area: Area) {
           action: 'authz.area.denied',
           entity: 'authz',
           entityId: area,
-          changes: { role: user.role, area, method: req.method, path: req.path },
+          changes: {
+            role,
+            globalRole: user.role,
+            branchId: req.branchId ?? null,
+            area,
+            method: req.method,
+            path: req.path,
+          },
         });
 
         // 403, not 404. The caller is authenticated and this resource exists —

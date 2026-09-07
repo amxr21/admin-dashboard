@@ -4,7 +4,8 @@ import { parse as parseCsvSync } from 'csv-parse/sync';
 
 import { AppError } from '../../errors/AppError.js';
 import { toCsv } from '../../lib/csv.js';
-import { authenticate, requireUser } from '../../middleware/authenticate.js';
+import { authenticate } from '../../middleware/authenticate.js';
+import { effectiveRole, withBranchContext } from '../../middleware/branch-context.js';
 import { canAccessArea } from '../../config/roles.js';
 import { ADMIN_RESOURCES } from '../../config/admin.config.js';
 import { audit } from '../../services/audit.service.js';
@@ -42,9 +43,12 @@ export const resourceRouter = Router();
  */
 function guardArea(req: Request): void {
   const config = requireResource(String(req.params.resource));
-  const user = requireUser(req);
 
-  if (!canAccessArea(user.role, config.permissionArea)) {
+  // `effectiveRole`, never `user.role` (F8.4). This is the generic engine, so
+  // reading the global role here would exempt EVERY config-driven resource
+  // from per-branch authorisation in one place — the widest possible version
+  // of the mistake, and invisible because each individual route looks fine.
+  if (!canAccessArea(effectiveRole(req), config.permissionArea)) {
     throw AppError.forbidden('You do not have access to this resource');
   }
 }
@@ -56,11 +60,13 @@ function guardArea(req: Request): void {
  * what they can actually open. This is a convenience, not a control: every
  * request is authorised independently.
  */
-resourceRouter.get('/r/_schema', authenticate, (req, res) => {
-  const user = requireUser(req);
-
+resourceRouter.get('/r/_schema', authenticate, withBranchContext, (req, res) => {
+  // Branch-aware too (F8.4): the sidebar has to match what this person can
+  // open AT THE BRANCH THEY ARE IN. Filtering by the global role would show a
+  // Marina-only fulfillment user the whole Downtown navigation and let every
+  // click 403 — technically safe, and unusable.
   const resources = ADMIN_RESOURCES.filter((config) =>
-    canAccessArea(user.role, config.permissionArea),
+    canAccessArea(effectiveRole(req), config.permissionArea),
   ).map((config) => ({
     resource: config.resource,
     label: config.label,
@@ -76,7 +82,7 @@ resourceRouter.get('/r/_schema', authenticate, (req, res) => {
 });
 
 // GET /api/v1/r/:resource
-resourceRouter.get('/r/:resource', authenticate, async (req, res) => {
+resourceRouter.get('/r/:resource', authenticate, withBranchContext, async (req, res) => {
   guardArea(req);
   const config = requireResource(String(req.params.resource));
 
@@ -111,7 +117,7 @@ resourceRouter.get('/r/:resource', authenticate, async (req, res) => {
  * the audit trail's own CSV export: the audit log doubles as export HISTORY
  * (`entity=<resource>&action=<resource>.export`), no new model needed.
  */
-resourceRouter.get('/r/:resource/export', authenticate, async (req, res) => {
+resourceRouter.get('/r/:resource/export', authenticate, withBranchContext, async (req, res) => {
   guardArea(req);
   const config = requireResource(String(req.params.resource));
 
@@ -164,7 +170,7 @@ resourceRouter.get('/r/:resource/export', authenticate, async (req, res) => {
  * A header-only file, deliberately: a filled example row invites copy-paste
  * of placeholder data into a real import.
  */
-resourceRouter.get('/r/:resource/import-template', authenticate, (req, res) => {
+resourceRouter.get('/r/:resource/import-template', authenticate, withBranchContext, (req, res) => {
   guardArea(req);
   const config = requireResource(String(req.params.resource));
 
@@ -241,6 +247,7 @@ function parseImportFile(req: Request): Record<string, string>[] {
 resourceRouter.post(
   '/r/:resource/import',
   authenticate,
+  withBranchContext,
   parseImportUpload,
   async (req, res) => {
     guardArea(req);
@@ -276,7 +283,7 @@ resourceRouter.post(
 );
 
 // GET /api/v1/r/:resource/_relations/:field — options for a relation picker.
-resourceRouter.get('/r/:resource/_relations/:field', authenticate, async (req, res) => {
+resourceRouter.get('/r/:resource/_relations/:field', authenticate, withBranchContext, async (req, res) => {
   guardArea(req);
   const config = requireResource(String(req.params.resource));
 
