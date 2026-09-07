@@ -85,7 +85,8 @@
       "rateLimited": "Too many attempts from this address. Try again shortly.",
       "backToLogin": "Back to sign in",
       "done": "Password set. Sign in with your new password."
-    }
+    },
+    "twoFactorUnavailable": "Two-factor sign-in is not available yet. Ask an owner to turn it off for your account."
   },
   "courier": {
     "login": {
@@ -458,7 +459,10 @@
       "totalOrders": "Every order placed in this period, INCLUDING canceled ones. An order that was placed and then canceled did happen; it simply realized no money, which is why it still counts here but not in Revenue.",
       "canceledOrders": "Orders canceled in this period. They are counted in Orders but excluded from Revenue, so these two tiles can legitimately move in opposite directions.",
       "lowStockProducts": "Products at or below the low-stock threshold RIGHT NOW. Unlike the other tiles, this ignores the selected date range — stock has a current level, not a history. Uses the threshold set in Settings, so it always agrees with the Inventory page."
-    }
+    },
+    "noReportsTitle": "Your work is elsewhere",
+    "noReportsBody": "This page shows revenue and business performance, which your role doesn't cover. Everything you need is one click away.",
+    "noReportsAction": "Go to my work"
   },
   "products": {
     "title": "Products",

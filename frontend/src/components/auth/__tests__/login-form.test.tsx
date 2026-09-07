@@ -41,7 +41,7 @@ async function submit(email = 'a@b.com', password = 'secret123') {
 
 describe('successful sign-in', () => {
   it('signs in and navigates to the dashboard', async () => {
-    signIn.mockResolvedValue(undefined);
+    signIn.mockResolvedValue({ status: 'SIGNED_IN', role: 'OWNER' });
     render(<LoginForm />);
 
     await submit('admin@example.com', 'correct-password');
@@ -49,6 +49,30 @@ describe('successful sign-in', () => {
     expect(signIn).toHaveBeenCalledWith('admin@example.com', 'correct-password');
     // replace, not push — Back must not return to a passed login form.
     expect(replace).toHaveBeenCalledWith('/admin');
+  });
+
+  it('lands a role on its own work rather than the revenue dashboard (O3.4)', async () => {
+    // FULFILLMENT has no `reports` grant, so `/admin` is a page built to
+    // answer a question they may not ask — and every widget on it 403s.
+    signIn.mockResolvedValue({ status: 'SIGNED_IN', role: 'FULFILLMENT' });
+    render(<LoginForm />);
+
+    await submit('picker@example.com', 'correct-password');
+
+    expect(replace).toHaveBeenCalledWith('/admin/orders');
+  });
+
+  it('refuses rather than redirecting when 2FA is required', async () => {
+    // `signIn` can return TWO_FACTOR_REQUIRED and no session is written.
+    // There is no code-entry screen yet, so redirecting would land them on a
+    // page their nonexistent session cannot load.
+    signIn.mockResolvedValue({ status: 'TWO_FACTOR_REQUIRED', pendingToken: 'pending' });
+    render(<LoginForm />);
+
+    await submit('twofa@example.com', 'correct-password');
+
+    expect(replace).not.toHaveBeenCalled();
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
 });
 

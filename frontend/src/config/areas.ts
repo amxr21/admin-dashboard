@@ -89,3 +89,43 @@ export function canAccessArea(role: StaffRole, area: Area): boolean {
 export function isReadOnlyRole(role: StaffRole): boolean {
   return role === 'DEMO';
 }
+
+/**
+ * Where each role lands after signing in (O3.2 / F5.4).
+ *
+ * ─── WHY THE DASHBOARD IS THE WRONG DEFAULT FOR MOST ROLES ───────────
+ * `/admin` opens on a revenue chart. Revenue is the OWNER's question. A
+ * FULFILLMENT user has no `reports` grant at all, so the first screen they
+ * see on every login is one built to answer something they are not allowed
+ * to ask — and their actual work (today's orders) is a click away behind a
+ * sidebar they have to learn first.
+ *
+ * ─── FIXED IN CODE, NOT CONFIGURABLE ─────────────────────────────────
+ * The owner's decision, 2026-09-08. Per-USER would need a preferences table
+ * that does not exist and would take away central control of what a new hire
+ * sees first; a Settings panel would be one setting per role for a choice
+ * that has one sensible answer per role. Making it configurable later needs
+ * no migration, so this is not a door that closes.
+ *
+ * ─── EVERY DESTINATION IS INSIDE THE ROLE'S OWN GRANT ────────────────
+ * Guarded by a test rather than by care: landing somebody on a page their
+ * role cannot open would replace a confusing first screen with a 403, which
+ * is worse. `ROLE_AREAS` above is the authority, so the two cannot drift.
+ */
+export const ROLE_LANDING: Record<StaffRole, string> = {
+  // Sees everything; the dashboard is genuinely their overview.
+  DEVELOPER: '/admin',
+  OWNER: '/admin',
+  // Runs the business day to day and does hold `reports`.
+  MANAGER: '/admin',
+  // Picks, packs and dispatches. Today's orders IS the job.
+  FULFILLMENT: '/admin/orders',
+  // Answers customers: returns and complaints, not revenue.
+  SUPPORT: '/admin/returns',
+  // A guided tour — the dashboard is the most representative first screen.
+  DEMO: '/admin',
+};
+
+export function landingFor(role: StaffRole): string {
+  return ROLE_LANDING[role] ?? '/admin';
+}
