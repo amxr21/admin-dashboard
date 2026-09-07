@@ -544,7 +544,9 @@ that staleness is why these are consolidated here.
 - [ ] **F3.5** Bulk receive — import is create-only
       (`assertPermitted(config, 'create')`), so this is real work, not wiring
 
-### Shifts (F6) — all gated on one decision
+### Shifts (F6) — ✅ COMPLETE 2026-09-08
+All five items done. The gating decision (F6.1's shape) was answered by the
+owner on 2026-09-08 and the whole track followed the same day.
 - [x] **F6.1 — DONE 2026-09-08.** `Shift` model + service + routes, migration
       `20260908010000_add_shifts` (additive, one table). Built to the owner's
       definition: a period of WORK (user · branch · start · end), distinct
@@ -571,8 +573,19 @@ that staleness is why these are consolidated here.
       backgrounded tab (where timers are throttled) shows the truth the moment
       it is looked at. Clamped at zero: a clock skew or a start corrected into
       the future would otherwise render "-1:00". 7 tests
-- [ ] **F6.4** "My shift" summary — a time-bounded `AuditLog` query, no new
-      logging needed
+- [x] **F6.4 — DONE 2026-09-08.** `GET /shifts/:id/summary` over the existing
+      `AuditLog`; no second activity log, which would be two records of one
+      fact free to disagree. **Deliberately NOT `auditWhere`**: its `from`/`to`
+      are CALENDAR DATES snapped to midnight, and a shift is a timestamp range
+      inside a day — rounding it would attribute the night shift's work to the
+      morning one, with nothing looking wrong, just a plausible number against
+      the wrong name. Watched that exact bug fail the boundary test. An OPEN
+      shift summarises up to now. **Your own is always readable without
+      `staff`** — "what did I do today" is a question about your own work.
+      The panel STATES that it counts changes, not busyness: reads are not
+      audited, so a shift spent answering questions records little, and a bare
+      count next to somebody's name invites the wrong reading before a
+      conversation about their work. 5 tests
 - [x] **F6.5 — DONE 2026-09-08.** Shared, as the item asked. `/admin/
       login-history` became **Staff activity** with three tabs: On now ·
       Shifts · Sign-ins. **Not merged into one table** — a sign-in is an
@@ -587,9 +600,10 @@ that staleness is why these are consolidated here.
       link by `/staff/i`, which the new "Staff activity" label also matched.
       Anchored to `/^staff$/i` — the tests were right, the label made them
       ambiguous
-- [ ] **F6.6** ⚠️ Do NOT conflate shifts with payroll or time-clock compliance.
-      A note, not a task — if the owner wants payroll that is its own project
-      with real legal questions
+- [x] **F6.6 — HONOURED 2026-09-08** (a note, never a task). Nothing built
+      carries a pay rate, an overtime rule or any jurisdiction-specific
+      rounding, and the `Shift` model says so in its own comment. If payroll
+      is ever wanted it is its own project with real legal questions.
 
 ### Already built — verify and tell the owner, do not rebuild
 - [ ] **F7.5** Low-stock alerts already exist, **including email**.

@@ -10,9 +10,11 @@ import {
   editShift,
   endShift,
   getOpenShift,
+  getShiftSummary,
   listShifts,
   startShift,
 } from '../../services/shifts.service.js';
+import { canAccessArea } from '../../config/roles.js';
 
 /**
  * Shifts — a period of work (F6).
@@ -181,4 +183,28 @@ shiftsRouter.get('/shifts', authenticate, withBranchContext, requireArea('staff'
   });
 
   res.status(200).json({ data: result });
+});
+
+/**
+ * GET /api/v1/shifts/:id/summary — what happened during one shift (F6.4).
+ *
+ * ─── YOUR OWN IS ALWAYS READABLE ─────────────────────────────────────
+ * Not behind `staff` for the shift's own owner: "what did I do today" is a
+ * question about your own work, and a cashier reviewing their own shift is
+ * not reading personnel data about anybody else. Somebody ELSE's needs
+ * `staff`, like the rest of this file.
+ *
+ * Checked here rather than in the service because it is an authorisation
+ * question about the CALLER, and the service is also reachable from places
+ * where there is no request to authorise.
+ */
+shiftsRouter.get('/shifts/:id/summary', authenticate, async (req, res) => {
+  const user = requireUser(req);
+  const summary = await getShiftSummary(String(req.params.id));
+
+  if (summary.shift.user.id !== user.id && !canAccessArea(user.role, 'staff')) {
+    throw AppError.forbidden("You cannot view someone else's shift");
+  }
+
+  res.status(200).json({ data: summary });
 });

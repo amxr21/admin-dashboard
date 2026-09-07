@@ -2264,7 +2264,17 @@
       "emptyTitle": "No shifts recorded yet",
       "emptyBody": "A shift is recorded when someone clocks on from the top bar. Nothing here yet.",
       "emptyOpenTitle": "Nobody is on shift",
-      "emptyOpenBody": "When someone clocks on, they appear here until they clock off."
+      "emptyOpenBody": "When someone clocks on, they appear here until they clock off.",
+      "summaryFor": "View what {name} did"
+    },
+    "summary": {
+      "title": "Shift summary",
+      "subtitle": "{name} at {branch}",
+      "changesLabel": "Changes recorded",
+      "changesCaveat": "Counts what was changed, not time spent — a shift spent answering questions records little and is no less work.",
+      "breakdown": "What was done",
+      "recent": "Most recent",
+      "empty": "Nothing was changed during this shift."
     }
   },
   "staffActivity": {

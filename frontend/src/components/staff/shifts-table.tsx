@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { PencilLine } from 'lucide-react';
+import { PencilLine, ScrollText } from 'lucide-react';
 
 import { DataTable, type Column } from '@/components/data-table';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,8 @@ import { TablePagination } from '@/components/table-pagination';
 import { EmptyState } from '@/components/empty-state';
 import { ErrorSection } from '@/components/errors/error-section';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { Button } from '@/components/ui/button';
+import { ShiftSummarySheet } from '@/components/staff/shift-summary-sheet';
 import { fetchShifts, type Shift, type ShiftListResult } from '@/lib/shifts-api';
 
 /**
@@ -42,6 +44,7 @@ export function ShiftsTable({ openOnly = false }: ShiftsTableProps) {
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [summaryFor, setSummaryFor] = useState<Shift | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -112,6 +115,20 @@ export function ShiftsTable({ openOnly = false }: ShiftsTableProps) {
       cell: (shift) => <span className="tabular-nums">{duration(shift)}</span>,
     },
     {
+      id: 'summary',
+      header: '',
+      cell: (shift) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setSummaryFor(shift)}
+          aria-label={t('summaryFor', { name: shift.user.name ?? shift.user.email })}
+        >
+          <ScrollText className="size-4" aria-hidden />
+        </Button>
+      ),
+    },
+    {
       id: 'edited',
       header: t('edited'),
       cell: (shift) =>
@@ -166,6 +183,14 @@ export function ShiftsTable({ openOnly = false }: ShiftsTableProps) {
           onPageChange={setPage}
         />
       ) : null}
+
+      <ShiftSummarySheet
+        shift={summaryFor}
+        open={summaryFor !== null}
+        onOpenChange={(next) => {
+          if (!next) setSummaryFor(null);
+        }}
+      />
     </div>
   );
 }

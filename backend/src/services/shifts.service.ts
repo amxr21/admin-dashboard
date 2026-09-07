@@ -305,3 +305,71 @@ export async function listShifts(params: ShiftListParams) {
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
   };
 }
+
+/**
+ * What somebody did during one shift (F6.4).
+ *
+ * ─── NO NEW LOGGING ──────────────────────────────────────────────────
+ * Every write in this app already reaches `AuditLog` with an actor and a
+ * timestamp. A shift is a person plus a time span, so "what happened on that
+ * shift" is a query over data that already exists — adding a second, parallel
+ * activity log would be two records of one fact, free to disagree.
+ *
+ * ─── WHY NOT `auditWhere` ────────────────────────────────────────────
+ * That helper's `from`/`to` are CALENDAR DATES (`YYYY-MM-DD`, snapped to the
+ * day's start and end). A shift is a timestamp range inside a day — "since
+ * 09:02" — and rounding it to midnight would attribute the night shift's work
+ * to the morning one. The range here is exact.
+ *
+ * An OPEN shift is summarised up to now, which is the honest reading: the
+ * person is still working, and the count is what they have done so far.
+ */
+export async function getShiftSummary(shiftId: string) {
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: SHIFT_SELECT,
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+
+  const until = shift.endedAt ?? new Date();
+
+  const where = {
+    actorId: shift.user.id,
+    createdAt: { gte: shift.startedAt, lte: until },
+  } as const;
+
+  // `groupBy` is issued outside the transaction array on purpose: inside it,
+  // Prisma widens `_count` to `true` and the typed shape is lost. These are
+  // three reads over an append-only table, so they cannot disagree anyway.
+  const [total, recent] = await prisma.$transaction([
+    prisma.auditLog.count({ where }),
+    prisma.auditLog.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: { id: true, action: true, entity: true, entityId: true, createdAt: true },
+    }),
+  ]);
+
+  const byAction = await prisma.auditLog.groupBy({
+    by: ['action'],
+    where,
+    _count: { action: true },
+    orderBy: { _count: { action: 'desc' } },
+    take: 10,
+  });
+
+  return {
+    shift: serialise(shift),
+    /** Total audited writes in the window. Reads are not audited, so this is
+     *  "what they CHANGED", never "how busy they were" — a distinction the
+     *  UI has to state rather than let a big number imply. */
+    totalActions: total,
+    byAction: byAction.map((row) => ({ action: row.action, count: row._count.action })),
+    recent: recent.map((entry) => ({
+      ...entry,
+      createdAt: entry.createdAt.toISOString(),
+    })),
+  };
+}
