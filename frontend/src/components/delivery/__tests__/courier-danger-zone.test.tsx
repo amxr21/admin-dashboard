@@ -40,6 +40,7 @@ function makeCourier(overrides: Partial<CourierDetail> = {}): CourierDetail {
     createdAt: '2026-07-01T00:00:00.000Z',
     hasAccessCode: true,
     activeAssignments: 0,
+  branches: [],
     assignments: [],
     ...overrides,
   };

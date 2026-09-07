@@ -13,13 +13,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { fetchBranches, type BranchSummary } from '@/lib/branches-api';
 import { ApiError } from '@/lib/api';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
   COURIER_STATUSES,
   createCourier,
+  setCourierBranches,
   updateCourier,
   type Courier,
   type CourierInput,
@@ -72,6 +75,9 @@ export function CourierSheet({ courier, open, onOpenChange, onSaved }: CourierSh
   const { editPanelMode } = useAppSettings();
 
   const [values, setValues] = useState<Values>(() => initial(courier));
+  /** Which branches this courier serves (O2). Several is normal. */
+  const [allBranches, setAllBranches] = useState<BranchSummary[]>([]);
+  const [picked, setPicked] = useState<string[]>(() => (courier?.branches ?? []).map((b) => b.id));
   const [error, setError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -81,8 +87,16 @@ export function CourierSheet({ courier, open, onOpenChange, onSaved }: CourierSh
   useEffect(() => {
     if (!open) return;
     setValues(initial(courier));
+    setPicked((courier?.branches ?? []).map((branch) => branch.id));
     setError(null);
     setNameError(null);
+
+    // A failure here leaves the picker empty rather than blocking the form:
+    // every other field still saves, and an unset roster means "any branch",
+    // which is the pre-O2 behaviour.
+    void fetchBranches()
+      .then(setAllBranches)
+      .catch(() => setAllBranches([]));
   }, [open, courier]);
 
   function set(field: string, value: string) {
@@ -117,6 +131,13 @@ export function CourierSheet({ courier, open, onOpenChange, onSaved }: CourierSh
       const saved = isEdit
         ? await updateCourier(courier.id, payload())
         : await createCourier(payload());
+
+      // A separate call on purpose: the roster is its own endpoint (a full
+      // replace), and folding it into the courier body would make saving a
+      // phone number able to silently rewrite where someone works.
+      if (allBranches.length > 0) {
+        await setCourierBranches(saved.id, picked);
+      }
 
       onSaved(t(isEdit ? 'updated' : 'created', { name: saved.name }));
       onOpenChange(false);
@@ -204,6 +225,36 @@ export function CourierSheet({ courier, open, onOpenChange, onSaved }: CourierSh
               <p className="text-muted-foreground text-sm">{t('inactiveNote')}</p>
             ) : null}
           </div>
+
+          {allBranches.length > 0 ? (
+            <div className="space-y-2 border-t pt-4">
+              <Label>{t('fields.branches')}</Label>
+              {/* Unticking everything is a real choice, not an empty form:
+                  it means "any branch", which is how every courier behaved
+                  before O2 and how one predating it still behaves. */}
+              <p className="text-muted-foreground text-xs">{t('branchesHint')}</p>
+              <div className="space-y-2">
+                {allBranches.map((branch) => (
+                  <div key={branch.id} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`courier-branch-${branch.id}`}
+                      checked={picked.includes(branch.id)}
+                      onCheckedChange={(checked) =>
+                        setPicked((current) =>
+                          checked === true
+                            ? [...current, branch.id]
+                            : current.filter((id) => id !== branch.id),
+                        )
+                      }
+                    />
+                    <Label htmlFor={`courier-branch-${branch.id}`} className="font-normal">
+                      {branch.name}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="flex justify-end gap-2 border-t pt-4">
             <Button variant="outline" onClick={() => onOpenChange(false)}>

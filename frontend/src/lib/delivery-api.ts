@@ -33,6 +33,13 @@ export interface Courier {
   /** Whether one exists — never the code itself. */
   hasAccessCode: boolean;
   activeAssignments: number;
+  /**
+   * Which branches this courier serves (O2). A courier can serve several.
+   *
+   * EMPTY means "not placed yet", never "belongs nowhere" — every courier
+   * predating O2 has an empty list and still appears on every scoped roster.
+   */
+  branches: { id: string; name: string }[];
 }
 
 export interface CourierListResult {
@@ -196,4 +203,30 @@ export async function updateAssignment(
     body: JSON.stringify(input),
   });
   return body.assignment;
+}
+
+/** The branches a courier serves (O2). */
+export async function fetchCourierBranches(
+  id: string,
+): Promise<{ id: string; name: string; code: string | null; isActive: boolean }[]> {
+  const result = await apiFetch<{
+    branches: { id: string; name: string; code: string | null; isActive: boolean }[];
+  }>(`/couriers/${id}/branches`);
+  return result.branches;
+}
+
+/**
+ * Replaces the whole set, deliberately — the form edits it as checkboxes, and
+ * a diff computed against a stale client is how a branch nobody touched gets
+ * dropped.
+ */
+export async function setCourierBranches(
+  id: string,
+  branchIds: string[],
+): Promise<{ id: string; name: string }[]> {
+  const result = await apiFetch<{ branches: { id: string; name: string }[] }>(
+    `/couriers/${id}/branches`,
+    { method: 'PUT', body: JSON.stringify({ branchIds }) },
+  );
+  return result.branches;
 }

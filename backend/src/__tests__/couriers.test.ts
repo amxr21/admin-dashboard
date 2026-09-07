@@ -529,3 +529,144 @@ describe('updating a courier writes an audit row (C5.3)', () => {
     expect(entries).toHaveLength(1);
   });
 });
+
+describe('which branches a courier serves (O2)', () => {
+  /**
+   * The owner's answer, 2026-09-08: a courier can serve one branch AND
+   * another. So the roster filters on where they BELONG, replacing #155's
+   * "has an assignment for an order at this branch" — which filtered on where
+   * they had WORKED and hid a newly hired courier from every scoped list
+   * until their first delivery.
+   */
+  let o2Business = '';
+  let o2Marina = '';
+  let o2Downtown = '';
+
+  beforeAll(async () => {
+    const business = await prisma.business.create({ data: { name: `${RUN} o2 business` } });
+    o2Business = business.id;
+
+    const [a, b] = await Promise.all([
+      prisma.branch.create({ data: { businessId: o2Business, name: `${RUN} o2 Marina` } }),
+      prisma.branch.create({ data: { businessId: o2Business, name: `${RUN} o2 Downtown` } }),
+    ]);
+    o2Marina = a.id;
+    o2Downtown = b.id;
+  });
+
+  afterAll(async () => {
+    await prisma.branch.deleteMany({ where: { businessId: o2Business } });
+    await prisma.business.deleteMany({ where: { id: o2Business } });
+  });
+
+  it('lets one courier serve two branches', async () => {
+    const created = await request(app)
+      .post('/api/v1/couriers')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} multi-branch` });
+    const id = (created.body as { data: { courier: { id: string } } }).data.courier.id;
+    courierIds.push(id);
+
+    const res = await request(app)
+      .put(`/api/v1/couriers/${id}/branches`)
+      .set(auth(ownerToken))
+      .send({ branchIds: [o2Marina, o2Downtown] });
+
+    expect(res.status).toBe(200);
+    expect((res.body as { data: { branches: { id: string }[] } }).data.branches).toHaveLength(2);
+  });
+
+  it('replaces the whole set rather than merging into it', async () => {
+    // The UI edits this as checkboxes. Merging would make unticking a box do
+    // nothing, which reads as the save having silently failed.
+    const created = await request(app)
+      .post('/api/v1/couriers')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} replace-set` });
+    const id = (created.body as { data: { courier: { id: string } } }).data.courier.id;
+    courierIds.push(id);
+
+    await request(app)
+      .put(`/api/v1/couriers/${id}/branches`)
+      .set(auth(ownerToken))
+      .send({ branchIds: [o2Marina, o2Downtown] });
+
+    const res = await request(app)
+      .put(`/api/v1/couriers/${id}/branches`)
+      .set(auth(ownerToken))
+      .send({ branchIds: [o2Marina] });
+
+    const branches = (res.body as { data: { branches: { id: string }[] } }).data.branches;
+    expect(branches).toHaveLength(1);
+    expect(branches[0]!.id).toBe(o2Marina);
+  });
+
+  it('a courier assigned elsewhere is filtered out of a scoped list', async () => {
+    const created = await request(app)
+      .post('/api/v1/couriers')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} downtown-only` });
+    const id = (created.body as { data: { courier: { id: string } } }).data.courier.id;
+    courierIds.push(id);
+
+    await request(app)
+      .put(`/api/v1/couriers/${id}/branches`)
+      .set(auth(ownerToken))
+      .send({ branchIds: [o2Downtown] });
+
+    const res = await request(app)
+      .get('/api/v1/couriers?pageSize=100')
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', o2Marina);
+
+    const ids = (res.body as { data: { couriers: { id: string }[] } }).data.couriers.map(
+      (courier) => courier.id,
+    );
+    expect(ids).not.toContain(id);
+  });
+
+  it('a courier with NO branches recorded still appears everywhere', async () => {
+    // Every courier that existed before O2 has no rows here. An empty relation
+    // matching nothing would have emptied every scoped roster the moment this
+    // deployed — a migration that silently hides a screenful of people. "No
+    // branches" means "not placed yet", the same direction as UserBranch's
+    // "no row means the global role".
+    const created = await request(app)
+      .post('/api/v1/couriers')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} unplaced` });
+    const id = (created.body as { data: { courier: { id: string } } }).data.courier.id;
+    courierIds.push(id);
+
+    const res = await request(app)
+      .get('/api/v1/couriers?pageSize=100')
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', o2Marina);
+
+    const ids = (res.body as { data: { couriers: { id: string }[] } }).data.couriers.map(
+      (courier) => courier.id,
+    );
+    expect(ids).toContain(id);
+  });
+
+  it('refuses a branch that does not exist, without partially applying', async () => {
+    const created = await request(app)
+      .post('/api/v1/couriers')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} bad-branch` });
+    const id = (created.body as { data: { courier: { id: string } } }).data.courier.id;
+    courierIds.push(id);
+
+    const res = await request(app)
+      .put(`/api/v1/couriers/${id}/branches`)
+      .set(auth(ownerToken))
+      .send({ branchIds: [o2Marina, 'no-such-branch'] });
+
+    expect(res.status).toBe(400);
+
+    // Nothing applied — a partially saved roster is harder to notice than a
+    // rejected one.
+    const after = await prisma.deliveryStaffBranch.count({ where: { courierId: id } });
+    expect(after).toBe(0);
+  });
+});

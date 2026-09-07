@@ -215,11 +215,11 @@ Both now expressible: `UserBranch` was read-only until this stage.*
 
 *Full version with the reasoning behind each item: `O7-PLAN.md`.*
 
-### O1 — ✅ DONE 2026-09-08 except O1.3 (blocked on O2)
+### O1 — ✅ FULLY DONE 2026-09-08 (O1.3 unblocked by O2 the same day)
 Orders, returns and stock movements now name their branch, shown only when the
 switcher is on "All branches" — with one selected, every row is from it and the
-column would just repeat. The courier roster (O1.3) genuinely cannot be done
-until O2 is answered.
+column would just repeat. The courier roster (O1.3) landed once O2 gave a
+courier real branches to name.
 
 **Original entry:**
 
@@ -233,11 +233,11 @@ places are indistinguishable — the same gap the order detail had.
       product across all branches, so a column there would repeat or mislead
 - [x] O1.2 **DONE 2026-09-08.** Reached through the order, as planned — a
       return deliberately has no `branchId` of its own
-- [ ] O1.3 **BLOCKED on O2, confirmed 2026-09-08.** `DeliveryStaff` has no
-      `branchId` — verified against the schema. There is no truthful value to
-      put in the column until the owner answers whether a courier belongs to
-      ONE branch or serves several. Showing "where they have worked" would
-      label a courier with a branch they do not belong to
+- [x] O1.3 **DONE 2026-09-08 — UNBLOCKED by O2 the same day.** Was blocked
+      because `DeliveryStaff` had no branch at all and the only available
+      value ("where they have worked") would have labelled a courier with a
+      branch they do not belong to. Now that O2 gives them real branches, the
+      roster names them
 - [x] O1.4 **DONE 2026-09-08.**
 - [x] O1.5 **DONE 2026-09-08.** One shared `resolveBranchLabels()` batch
       lookup rather than three copies. It is a batch lookup and NOT a Prisma
@@ -281,17 +281,48 @@ tests mock a full object, so they never see the real response.
       server-side for free. The cast was why the bug stayed invisible, not why
       it happened; O6.1 removes the cause
 
+### O2 — ✅ DONE 2026-09-08
+A courier now serves MANY branches (`DeliveryStaffBranch`), per the owner's
+answer. One courier record linked to several, not one record per branch — so
+their access code, phone and delivery history stay in one place. 5 tests.
+
+**Original entry:**
+
 ### O2 — Couriers have no branch, only a work history
 `DeliveryStaff` has no `branchId`. PR #155 filters on "has an assignment for an
 order at this branch" — where they HAVE worked, not where they BELONG. A newly
 hired courier with no assignments disappears from every scoped list.
 
-- [ ] O2.1 **❓ OWNER DECISION: does a courier belong to ONE branch or serve
-      several?** `branchId` on `DeliveryStaff` vs. a join table. Everything
-      below waits on this
-- [ ] O2.2 Migration for whichever shape is chosen
-- [ ] O2.3 Replace the assignment-history filter with the real one
-- [ ] O2.4 Show the branch on the courier roster + the create/edit form
+- [x] O2.1 **ANSWERED BY THE OWNER 2026-09-08: SEVERAL, via a join table.**
+      A courier can serve more than one branch — in his words, "he can serve
+      one branch and can serve another as well with 2 different profiles".
+      Clarified: that is ONE courier record linked to many branches, not two
+      unrelated rows. One access code, one phone, one delivery history that
+      can be filtered by branch — the same shape `UserBranch` already uses for
+      staff, so there is one idea of "who works where" and not two.
+      Two separate rows was considered and rejected: it would split a person's
+      work across timelines that can never be added up, and hand them a
+      different sign-in code per branch
+- [x] O2.2 **DONE 2026-09-08.** `DeliveryStaffBranch` join table, migration
+      `20260908000000_add_delivery_staff_branches`. Purely additive — one new
+      table, no ALTER on existing data, nothing backfilled. Applied to the
+      LOCAL db via `migrate diff` + `migrate deploy` per the CLAUDE.md recipe.
+      No `role` column, unlike `UserBranch`: a courier's capabilities do not
+      vary by branch — they deliver — and a column added "for symmetry" would
+      invite a meaning nobody has defined
+- [x] O2.3 **DONE 2026-09-08.** `courierBranchWhere()` replaces #155's
+      "has an assignment for an order at this branch". **The subtle part**: a
+      courier with NO branches recorded still appears on EVERY scoped roster.
+      Every courier predating O2 has an empty relation, and matching nothing
+      would have emptied every scoped list the moment this deployed — a
+      migration that silently hides a screenful of people. "No branches" means
+      "not placed yet", the same direction as `UserBranch`'s "no row means the
+      global role". Tested both ways
+- [x] O2.4 **DONE 2026-09-08.** Column on the roster (unscoped only) and a
+      checkbox set in the courier Sheet. Saved through its OWN endpoint
+      (`PUT /couriers/:id/branches`, a full replace) rather than folded into
+      the courier body — otherwise saving a phone number could silently
+      rewrite where somebody works. Empty renders "Any branch", not a blank
 
 ### O3 — Every role lands on the same revenue-first dashboard
 FULFILLMENT and SUPPORT open to a revenue chart they may have no `reports`
@@ -339,12 +370,20 @@ the invoice/print view, already branch-aware for the letterhead · F8 gives the
 till its branch for free.
 
 #### Stage A — schema (nothing works before this)
-- [ ] O5.1 **❓ OWNER DECISION: the `Shift` model's shape** — this IS F6.1, and
-      a till session and a shift are the same object. Can a manager open one
-      for someone who forgot to clock in (→ needs `openedById` separate from
-      `userId`)? Editable after closing, or corrected only by a compensating
-      entry (*recommend the latter — matches `StockMovement`*)? Per-branch is
-      already answered: give it a `branchId` from the start
+- [x] O5.1 **ANSWERED BY THE OWNER 2026-09-08.** His definition, which
+      settles the modelling: **a shift is a period of WORK** — an employee,
+      a branch, a start and an end, visible to the admin. It is NOT a
+      `Session`; a session is the backlog of activity inside the system
+      (already built, F2) and is written by the app, while a shift is declared
+      by the person and describes their working day.
+      Decided with him: (a) a manager CAN open or fix a shift for someone who
+      forgot to clock in, and the correction stays VISIBLE — the original
+      value is kept and the edit is attributed, the same discipline
+      `StockMovement` uses, so a timesheet cannot be silently rewritten;
+      (b) **actual worked time only** — no planned rota, no lateness
+      comparison. A rota is a separate, larger feature and is not in scope.
+      Needs `openedById` distinct from `userId` (who opened it vs. whose shift
+      it is) and a `branchId` from the start
 - [ ] O5.2 `Payment` model — amount, method, tendered, change, paidAt, and the
       order it belongs to. Without it "did the drawer balance?" is
       unanswerable BY CONSTRUCTION; `Order.paymentMethod` is free text
@@ -459,11 +498,10 @@ that staleness is why these are consolidated here.
 
 ## ⏳ Waiting on the owner — do not guess
 
-1. **F6.1 — the `Shift` model's shape.** Can a manager open a shift for someone who forgot to
-   clock in (→ needs `openedById` distinct from `userId`)? Editable after closing, or corrected
-   only by a compensating entry (**recommend the latter** — matches `StockMovement`; a timesheet
-   that can be silently rewritten is worth less than one that cannot)? Per-branch is already
-   answered: give it a `branchId` from the start.
+1. ~~**F6.1 — the `Shift` model's shape.**~~ **ANSWERED 2026-09-08 — see O5.1.**
+   A shift is a period of WORK (employee · branch · start · end), distinct from a `Session`,
+   which is system activity. A manager may correct one and the correction stays visible;
+   actual worked time only, no planned rota.
 2. **F7.8 — QR vs serial.** A printable shelf label using the existing `barcode` (small job), or
    a serial per individual unit (**a different inventory model** — a count plus a movement log
    cannot express it)?

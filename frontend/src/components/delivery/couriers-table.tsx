@@ -34,6 +34,7 @@ import {
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { useUrlState } from '@/hooks/useUrlState';
+import { useBranchColumn } from '@/hooks/useBranchColumn';
 import { FilterChips, type AppliedFilter } from '@/components/filter-chips';
 import { RowActions, type RowAction } from '@/components/row-actions';
 import { TablePagination } from '@/components/table-pagination';
@@ -65,6 +66,8 @@ const URL_DEFAULTS = { page: '1', search: '', status: ALL, pageSize: '' };
 
 export function CouriersTable() {
   const t = useTranslations('delivery');
+  const tBranch = useTranslations('branches.manage');
+  const showBranch = useBranchColumn();
   const tStatus = useTranslations('deliveryStaffStatus');
   const tTable = useTranslations('table');
   const formatter = useFormatter();
@@ -201,6 +204,24 @@ export function CouriersTable() {
       cell: (courier) => courier.zone ?? '—',
       sortValue: (courier) => courier.zone ?? null,
     },
+    ...(showBranch
+      ? [
+          {
+            // O1.3, unblocked by O2: a courier now HAS branches, so there is
+            // finally a truthful answer here. An empty list means "not placed
+            // yet" — such a courier appears on every scoped roster — and is
+            // said outright rather than left as a blank cell.
+            id: 'branches',
+            header: tBranch('columnHeader'),
+            cell: (courier: Courier) =>
+              courier.branches.length === 0 ? (
+                <span className="text-muted-foreground">{tBranch('anyBranch')}</span>
+              ) : (
+                courier.branches.map((branch) => branch.name).join(', ')
+              ),
+          },
+        ]
+      : []),
     {
       id: 'active',
       header: t('columns.active'),
