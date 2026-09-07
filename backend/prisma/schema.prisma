@@ -263,6 +263,23 @@ model Branch {
   isSellingPoint Boolean @default(true) @map("is_selling_point")
   isActive       Boolean @default(true) @map("is_active")
 
+  /// The branch a movement is attributed to when no branch is named.
+  ///
+  /// Explicit, NOT inferred from "oldest branch". Ordering by `createdAt`
+  /// looked equivalent and was not: this table's first row is written by a
+  /// migration using MySQL's `NOW(3)`, which records the SERVER's local time,
+  /// while every later row comes from Prisma in real UTC. On a machine four
+  /// hours ahead of UTC the seeded branch sorts AFTER branches created later,
+  /// so "oldest" silently returned the wrong one and stock landed at the
+  /// wrong place with nothing erroring.
+  ///
+  /// A flag cannot drift with a timezone. Exactly one branch should carry it;
+  /// the service falls back to any active branch if none does, rather than
+  /// refusing to record stock.
+  isDefault Boolean @default(false) @map("is_default")
+
+  stock BranchStock[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -601,6 +618,7 @@ model Product {
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
   stockMovements StockMovement[]
+  branchStock    BranchStock[]
 
   @@index([status])
   @@index([categoryId])
@@ -1157,6 +1175,54 @@ enum StockMovementReason {
   CORRECTION
 }
 
+/// How much of one product is at one branch (F8.2).
+///
+/// ─── WHY A TABLE AND NOT A COLUMN ────────────────────────────────────
+/// `Product.stock` is a single number, so "how much is at Marina" was not
+/// merely unbuilt — it was unanswerable. A column cannot hold one value per
+/// branch, and a JSON blob would put a number nothing can index or sum
+/// behind a shape no query can filter on.
+///
+/// ─── `Product.stock` IS KEPT, AND STILL MEANS SOMETHING ──────────────
+/// It becomes the ALL-BRANCH total: the sum of every row here for that
+/// product. It is not abandoned and it is not a duplicate — "how much do we
+/// own in total" is a real question (reorder decisions, valuation, the
+/// catalogue list) and answering it should not require summing a table per
+/// row, which is the same reasoning that made it denormalised in the first
+/// place.
+///
+/// So there are now two denormalised totals, each with its own truth:
+///   StockMovement (per branch)  ->  BranchStock.quantity  ->  Product.stock
+/// Every write moves all three inside one transaction. `reconcile()` checks
+/// the first link; a second check for the second link is worth adding when
+/// this ships.
+model BranchStock {
+  id String @id @default(cuid())
+
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  branchId String @map("branch_id")
+  /// Cascade: a branch's stock rows have no meaning without the branch. The
+  /// MOVEMENTS survive it (they are history, and reference the branch by a
+  /// plain id) — this row is only the running total.
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  /// Same denormalised-running-total contract as `Product.stock`: the
+  /// movements for this product AND branch are the truth, this is the sum so
+  /// a list does not have to compute it per row.
+  quantity Int @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// One row per product per branch — the pair is the identity, and the
+  /// unique constraint is what makes an upsert on it safe under concurrency.
+  @@unique([productId, branchId])
+  @@index([branchId])
+  @@map("branch_stock")
+}
+
 /// Stock as a LOG, not a number you overwrite.
 ///
 /// `product.stock` is a denormalised running total kept in step by the same
@@ -1168,6 +1234,19 @@ enum StockMovementReason {
 /// what actually happened, including the mistake.
 model StockMovement {
   id String @id @default(cuid())
+
+  /// Where this movement happened (F8.2).
+  ///
+  /// Nullable ONLY so the migration can add it and backfill every existing row
+  /// to the seeded branch. Left nullable rather than made required because a
+  /// NOT NULL with a hardcoded default would silently attribute a future
+  /// orphaned movement to whichever branch that default named.
+  ///
+  /// A plain id, not a relation, for the same reason `actorId` is: the trail
+  /// has to survive the thing it references being removed. The branch's
+  /// running total (`BranchStock`) cascades away with the branch; this record
+  /// of what actually happened does not.
+  branchId String? @map("branch_id") @db.VarChar(64)
 
   /// Signed. +50 received, -3 damaged. The sum of deltas for a product equals
   /// its stock — a test asserts exactly that.

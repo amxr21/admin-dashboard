@@ -205,10 +205,56 @@ export async function listMovements(
   };
 }
 
+/**
+ * The branch to attribute a movement to when the caller does not name one.
+ *
+ * Reads the EXPLICIT `isDefault` flag, not "the oldest branch".
+ *
+ * Ordering by `createdAt` was the first attempt and it was wrong in a way that
+ * only showed up with two branches: the seeded row is written by a migration
+ * using MySQL's `NOW(3)` (the SERVER's local time) while Prisma writes real
+ * UTC, so on a machine ahead of UTC the seeded branch sorted AFTER later ones.
+ * Stock recorded without an explicit branch then landed at the wrong place,
+ * silently. A flag cannot drift with a timezone.
+ *
+ * Throws rather than writing a null branch — a movement that belongs nowhere
+ * cannot be reconciled against any branch's total, which is the one thing the
+ * column exists to make possible.
+ */
+async function defaultBranchId(): Promise<string> {
+  // The flagged branch first; any active branch only as a fallback for an
+  // install where the flag was never set.
+  const branch =
+    (await prisma.branch.findFirst({
+      where: { isActive: true, isDefault: true },
+      select: { id: true },
+    })) ??
+    (await prisma.branch.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    }));
+
+  if (!branch) {
+    throw AppError.badRequest('No active branch exists to record this movement against');
+  }
+
+  return branch.id;
+}
+
 export interface AdjustStockInput {
   delta: number;
   reason: StockMovementReason;
   note?: string | undefined;
+  /**
+   * Which branch this movement happened at (F8.2).
+   *
+   * Optional so every existing caller keeps working — an install with one
+   * branch should not have to name it. Resolved to the default branch when
+   * omitted, rather than left null, or the per-branch total would drift away
+   * from the movement log the moment anyone used the old call shape.
+   */
+  branchId?: string | undefined;
   /**
    * Per-unit acquisition cost for THIS batch (F1.4a), as a decimal string —
    * money never crosses a boundary as a float in this codebase.
@@ -242,6 +288,10 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
   // correctness depends on.
   const threshold = await resolveThreshold(undefined);
 
+  // Resolved before the transaction: it is a lookup, not something the
+  // transaction's correctness depends on.
+  const branchId = input.branchId ?? (await defaultBranchId());
+
   const result = await prisma.$transaction(async (tx) => {
     const product = await tx.product.findUnique({
       where: { id: productId },
@@ -264,6 +314,7 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
     const movement = await tx.stockMovement.create({
       data: {
         productId,
+        branchId,
         delta: input.delta,
         reason: input.reason,
         note: input.note ?? null,
@@ -287,6 +338,23 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
       where: { id: productId },
       data: { stock: next },
       select: { id: true, name: true, sku: true, stock: true },
+    });
+
+    /**
+     * The per-branch total moves in the SAME transaction as the movement and
+     * the product total (F8.2). Three numbers, one write — if the branch
+     * total were updated separately it could survive a rolled-back movement
+     * and start claiming stock that was never received.
+     *
+     * `upsert` because a product may have no row for this branch yet: a
+     * branch opened after the product existed, or the first delivery of that
+     * item to that location. The unique constraint on (product, branch) is
+     * what makes it safe under concurrent adjustments.
+     */
+    await tx.branchStock.upsert({
+      where: { productId_branchId: { productId, branchId } },
+      create: { productId, branchId, quantity: input.delta },
+      update: { quantity: { increment: input.delta } },
     });
 
     return {
