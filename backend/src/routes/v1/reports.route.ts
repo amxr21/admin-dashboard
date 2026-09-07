@@ -714,7 +714,10 @@ reportsRouter.get('/reports/variant-stock-movement', ...guard, async (req, res) 
       { header: 'Product', value: (r) => r.productName },
       { header: 'Variant', value: (r) => r.name },
       { header: 'SKU', value: (r) => r.sku ?? '' },
-      { header: 'Current stock', value: (r) => r.stock },
+      // Header says "all branches" for the same reason F4.3 renamed the
+      // order-outcomes revenue column: a CSV column is read out of context,
+      // summed, and acted on, so the scope has to travel with the number.
+      { header: 'Current stock (all branches)', value: (r) => r.stockAllBranches },
       { header: 'Units sold', value: (r) => r.sold },
       { header: 'Units received', value: (r) => r.received },
     ], { from: parsed.data.from, to: parsed.data.to });

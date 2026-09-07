@@ -2,6 +2,8 @@ import 'dotenv/config';
 
 import { pathToFileURL } from 'node:url';
 
+import bcrypt from 'bcryptjs';
+
 import {
   DeliveryStaffStatus,
   DeliveryStatus,
@@ -10,7 +12,11 @@ import {
   Prisma,
   PrismaClient,
   ProductStatus,
+  ReturnCategory,
+  ReturnResolution,
+  ReturnStatus,
   ReviewStatus,
+  StaffRole,
   StockMovementReason,
 } from '@prisma/client';
 
@@ -111,11 +117,24 @@ function assertSafeEnvironment() {
     throw new Error('Could not determine the target database from DATABASE_URL.');
   }
 
-  // The template's live data lives in `defaultdb` on the SAME Aiven service.
-  // Naming it explicitly is cheap insurance against a copied .env.
-  if (database === 'defaultdb') {
+  /**
+   * Named databases this must never write to.
+   *
+   * `defaultdb` was Aiven's shared database, which held another project's live
+   * tables; Aiven is gone but the name is kept because a copied .env is
+   * exactly the accident this guards against, and the check costs nothing.
+   *
+   * `default` is the Coolify MySQL's database name and IS PRODUCTION for this
+   * app (owner, 2026-09-05 — there is no dev database). Seeding it would put
+   * `__demo__` rows into the real catalogue, which reads as a data-entry
+   * mistake rather than a script, and would double every figure in the
+   * owner's reports.
+   */
+  const FORBIDDEN_DATABASES = ['defaultdb', 'default'];
+
+  if (FORBIDDEN_DATABASES.includes(database)) {
     throw new Error(
-      'Refusing to seed: `defaultdb` holds another project\'s live tables.',
+      `Refusing to seed: \`${database}\` holds live data, not demo data.`,
     );
   }
 
@@ -135,6 +154,120 @@ export async function seedDemoData() {
         'seeding twice would double every figure in the reports.',
     );
   }
+
+  /* ── Businesses and branches (F8) ───────────────────────────────── */
+  /**
+   * TWO businesses, because one proves nothing.
+   *
+   * Business isolation is a security property, not a feature: a missed scope
+   * filter shows one owner another owner's revenue, and that failure is
+   * silent — nothing errors, the numbers are just wrong and confidential.
+   * With a single business every isolation bug is invisible, because there is
+   * no second business whose rows could leak into the first.
+   *
+   * The cafe gets THREE branches (two shops + a warehouse) so per-branch
+   * stock, the `isSellingPoint` distinction and the branch switcher all have
+   * something real to show. The restaurant gets one, and its own catalogue —
+   * it exists to be the thing that must never appear in the cafe's reports.
+   */
+  const cafe = await prisma.business.create({
+    data: {
+      name: DEMO.businessName('Rise & Grind Coffee'),
+      kind: 'cafe',
+      legalName: 'Rise & Grind Trading LLC',
+      taxId: 'TRN-100234567800003',
+      email: DEMO.email('cafe-contact'),
+      phone: '+971 4 555 0100',
+      addressLine: 'Unit 4, Marina Walk',
+      city: 'Dubai',
+      country: 'AE',
+      currency: 'AED',
+      timezone: 'Asia/Dubai',
+    },
+  });
+
+  const restaurant = await prisma.business.create({
+    data: {
+      name: DEMO.businessName('Olive Tree Kitchen'),
+      kind: 'restaurant',
+      legalName: 'Olive Tree Hospitality LLC',
+      taxId: 'TRN-100987654300003',
+      email: DEMO.email('kitchen-contact'),
+      phone: '+971 2 555 0200',
+      addressLine: '12 Corniche Road',
+      city: 'Abu Dhabi',
+      country: 'AE',
+      currency: 'AED',
+      timezone: 'Asia/Dubai',
+    },
+  });
+
+  /**
+   * `isDefault` is set EXPLICITLY on exactly one branch, never inferred from
+   * "oldest". Ordering by `createdAt` looked equivalent and was not: the
+   * seeded branch in the migration is written with MySQL `NOW(3)` (server
+   * local time) while Prisma writes real UTC, so on a UTC+4 machine the
+   * "oldest" branch sorted LAST and stock landed at the wrong branch with
+   * nothing erroring. A flag cannot drift with a timezone.
+   */
+  const marina = await prisma.branch.create({
+    data: {
+      businessId: cafe.id,
+      name: DEMO.branchName('Marina'),
+      code: 'MAR',
+      addressLine: 'Unit 4, Marina Walk',
+      city: 'Dubai',
+      phone: '+971 4 555 0101',
+      isSellingPoint: true,
+      isDefault: true,
+    },
+  });
+
+  const downtown = await prisma.branch.create({
+    data: {
+      businessId: cafe.id,
+      name: DEMO.branchName('Downtown'),
+      code: 'DTN',
+      addressLine: 'Boulevard Plaza, Downtown',
+      city: 'Dubai',
+      phone: '+971 4 555 0102',
+      isSellingPoint: true,
+    },
+  });
+
+  /**
+   * A warehouse is a branch that does not sell — `isSellingPoint: false`
+   * rather than a separate model that would duplicate every stock relation.
+   * It holds stock and takes no orders, so a report counting "shops" can
+   * filter on the flag instead of hard-coding a name convention.
+   */
+  const warehouse = await prisma.branch.create({
+    data: {
+      businessId: cafe.id,
+      name: DEMO.branchName('Al Quoz Warehouse'),
+      code: 'WH1',
+      addressLine: 'Warehouse 7, Al Quoz Industrial 3',
+      city: 'Dubai',
+      isSellingPoint: false,
+    },
+  });
+
+  /** The other business's single branch — the one that must never leak. */
+  const corniche = await prisma.branch.create({
+    data: {
+      businessId: restaurant.id,
+      name: DEMO.branchName('Corniche'),
+      code: 'CRN',
+      addressLine: '12 Corniche Road',
+      city: 'Abu Dhabi',
+      phone: '+971 2 555 0201',
+      isSellingPoint: true,
+      isDefault: true,
+    },
+  });
+
+  /** Selling branches only — a warehouse takes no orders. */
+  const cafeSellingBranches = [marina, downtown];
 
   /* ── Categories ─────────────────────────────────────────────────── */
   const categories = await Promise.all(
@@ -198,16 +331,43 @@ export async function seedDemoData() {
         },
       });
 
-      // An opening balance, so `/reconcile` agrees from the start rather than
-      // reporting drift on every demo product.
-      await prisma.stockMovement.create({
-        data: {
-          productId: product.id,
-          delta: stock,
-          reason: StockMovementReason.CORRECTION,
-          note: 'Opening balance (demo data)',
-        },
-      });
+      /**
+       * Opening balance, SPLIT ACROSS BRANCHES (F8.2).
+       *
+       * `Product.stock` stays the all-branch total, and `BranchStock` holds
+       * each branch's share — three numbers that must always agree:
+       *   movements (per branch) -> BranchStock.quantity -> Product.stock
+       *
+       * Seeding one unattributed movement would leave every per-branch view
+       * empty and `reconcile()` unable to prove the second link, so the split
+       * is real rather than cosmetic. The remainder goes to the warehouse,
+       * which is where unsold stock genuinely sits.
+       */
+      const atMarina = Math.round(stock * 0.4);
+      const atDowntown = Math.round(stock * 0.35);
+      const atWarehouse = stock - atMarina - atDowntown;
+
+      for (const [branch, quantity] of [
+        [marina, atMarina],
+        [downtown, atDowntown],
+        [warehouse, atWarehouse],
+      ] as const) {
+        if (quantity <= 0) continue;
+
+        await prisma.stockMovement.create({
+          data: {
+            productId: product.id,
+            branchId: branch.id,
+            delta: quantity,
+            reason: StockMovementReason.CORRECTION,
+            note: 'Opening balance (demo data)',
+          },
+        });
+
+        await prisma.branchStock.create({
+          data: { productId: product.id, branchId: branch.id, quantity },
+        });
+      }
 
       products.push({ id: product.id, price, cost, stock });
       sku += 1;
@@ -330,6 +490,18 @@ export async function seedDemoData() {
         paymentMethod: random.pick(['card', 'cash', 'transfer']),
         placedAt,
         customerId: customer.id,
+        /**
+         * Which branch took the order (F8.3). Selling branches only — a
+         * warehouse takes no orders.
+         *
+         * ~8% are left NULL deliberately. A null branch means UNATTRIBUTED,
+         * which is a real state (orders taken before branches existed) and a
+         * branch-scoped report must EXCLUDE them rather than folding them
+         * into whichever branch was asked for. Seeding every order with a
+         * branch would leave that path untested and let a regression that
+         * invents revenue for a branch go unnoticed.
+         */
+        branchId: random.chance(0.08) ? null : random.pick(cafeSellingBranches).id,
         items: {
           create: lines.map((line) => ({
             productId: line.product.id,
@@ -470,16 +642,338 @@ export async function seedDemoData() {
     ),
   );
 
+  /* ── Staff ──────────────────────────────────────────────────────── */
+  /**
+   * One person per role, so the permissions matrix, the "view as role"
+   * preview and the staff table all have real rows rather than a single
+   * OWNER talking to itself.
+   *
+   * DEVELOPER and OWNER are deliberately NOT seeded: the real admin comes
+   * from seed.ts (SEED_ADMIN_EMAIL), and a second account at that rank would
+   * be a genuine privilege surface in anything that outlives the demo.
+   *
+   * Every password is the same throwaway string and every account is tagged,
+   * so these can only sign in on a machine that has run the demo seeder, and
+   * teardown removes them. `lastLoginAt` is staggered so the F2 login-history
+   * and last-seen columns show a spread rather than one identical timestamp.
+   */
+  const staffPasswordHash = await bcrypt.hash('DemoStaff!2026', 10);
+
+  const staff = await Promise.all(
+    (
+      [
+        { slug: 'manager', name: 'Layla Nasser', role: StaffRole.MANAGER, daysSinceLogin: 0 },
+        { slug: 'fulfillment', name: 'Omar Haddad', role: StaffRole.FULFILLMENT, daysSinceLogin: 1 },
+        { slug: 'support', name: 'Sara Aziz', role: StaffRole.SUPPORT, daysSinceLogin: 3 },
+        { slug: 'viewer', name: 'Demo Viewer', role: StaffRole.DEMO, daysSinceLogin: 12 },
+      ] as const
+    ).map((person) =>
+      prisma.user.create({
+        data: {
+          email: DEMO.staffEmail(person.slug),
+          name: person.name,
+          phone: `+971 50 555 0${String(random.int(100, 999))}`,
+          passwordHash: staffPasswordHash,
+          role: person.role,
+          // One deactivated account, so the staff table's inactive styling and
+          // the "cannot sign in" path both have something to show.
+          isActive: person.role !== StaffRole.DEMO,
+          lastLoginAt: daysAgo(person.daysSinceLogin),
+        },
+      }),
+    ),
+  );
+
+  /* ── Product variants ───────────────────────────────────────────── */
+  /**
+   * Variants on a handful of products only. Every product having variants
+   * would be unrealistic and would hide the plain-product path, which is what
+   * most of the catalogue is.
+   *
+   * `ProductVariant.stock` is its OWN denormalised total with its own
+   * movement ledger (`variants.service.ts` writes rows keyed by variant) — it
+   * is not a slice of `Product.stock`, and `BranchStock` has no variant
+   * dimension, which is why `getVariantStockMovement` reports an all-branch
+   * figure and says so in its column name.
+   */
+  const variantProducts = products.slice(0, 6);
+  let variantSku = 1;
+
+  for (const product of variantProducts) {
+    for (const suffix of ['SM', 'MD', 'LG'] as const) {
+      const variantStock = random.int(4, 60);
+      const multiplier = suffix === 'SM' ? 90 : suffix === 'MD' ? 100 : 118;
+
+      const variant = await prisma.productVariant.create({
+        data: {
+          productId: product.id,
+          name: { SM: 'Small', MD: 'Medium', LG: 'Large' }[suffix],
+          sku: DEMO.variantSku(variantSku, suffix),
+          // Larger sizes cost more — a flat price across variants would make
+          // any per-variant revenue report look broken.
+          price: product.price.times(multiplier).dividedBy(100).toDecimalPlaces(2),
+          stock: variantStock,
+        },
+      });
+
+      await prisma.stockMovement.create({
+        data: {
+          variantId: variant.id,
+          branchId: marina.id,
+          delta: variantStock,
+          reason: StockMovementReason.CORRECTION,
+          note: 'Opening balance (demo data)',
+        },
+      });
+    }
+    variantSku += 1;
+  }
+
+  /* ── Returns ────────────────────────────────────────────────────── */
+  /**
+   * Returns against orders that actually reached DELIVERED — a return on a
+   * PENDING order is not a state the app can produce, and seeding one would
+   * make the returns report describe something impossible.
+   *
+   * All three statuses appear, and every resolution path, because the returns
+   * dashboard splits on exactly those. `rejectionReason` is set on every
+   * REJECTED row (the API requires it) and `refundAmount` only where the
+   * resolution is actually a refund.
+   */
+  const deliveredOrders = await prisma.order.findMany({
+    where: {
+      orderNumber: { startsWith: DEMO_TAG },
+      status: OrderStatus.DELIVERED,
+    },
+    select: {
+      id: true,
+      customerId: true,
+      total: true,
+      items: { select: { id: true, quantity: true } },
+    },
+    take: 14,
+  });
+
+  let rma = 1;
+
+  for (const order of deliveredOrders) {
+    const roll = random.next();
+    const status =
+      roll < 0.45
+        ? ReturnStatus.APPROVED
+        : roll < 0.75
+          ? ReturnStatus.REQUESTED
+          : ReturnStatus.REJECTED;
+
+    const resolution =
+      status === ReturnStatus.APPROVED
+        ? random.pick([
+            ReturnResolution.REFUND,
+            ReturnResolution.STORE_CREDIT,
+            ReturnResolution.REPLACEMENT,
+          ])
+        : ReturnResolution.NONE;
+
+    const created = await prisma.return.create({
+      data: {
+        rmaNumber: DEMO.rmaNumber(rma),
+        reason: random.pick([
+          'Arrived with a cracked lid',
+          'Wrong grind size sent',
+          'Not what the photo showed',
+          'Changed my mind after ordering',
+          'Delivered three days late',
+        ]),
+        category: random.pick([
+          ReturnCategory.DAMAGED,
+          ReturnCategory.WRONG_ITEM,
+          ReturnCategory.NOT_AS_DESCRIBED,
+          ReturnCategory.NO_LONGER_NEEDED,
+          ReturnCategory.ARRIVED_LATE,
+        ]),
+        status,
+        resolution,
+        // Half the order, so it is always within the cap the approve path
+        // enforces (the returned lines' recorded price, never the live total).
+        refundAmount:
+          resolution === ReturnResolution.REFUND
+            ? order.total.dividedBy(2).toDecimalPlaces(2)
+            : null,
+        restocked: resolution === ReturnResolution.REFUND,
+        rejectionReason:
+          status === ReturnStatus.REJECTED ? 'Outside the 14-day return window.' : null,
+        orderId: order.id,
+        customerId: order.customerId,
+        createdAt: daysAgo(random.int(1, 60)),
+      },
+    });
+
+    const line = order.items[0];
+    if (line) {
+      await prisma.returnItem.create({
+        data: {
+          returnId: created.id,
+          orderItemId: line.id,
+          quantity: Math.max(1, Math.min(line.quantity, random.int(1, 2))),
+        },
+      });
+    }
+
+    rma += 1;
+  }
+
+  /* ── Order notes ────────────────────────────────────────────────── */
+  /**
+   * A THREAD, not a single overwritable field — so the order detail page's
+   * note list has more than one entry to render and its ordering is actually
+   * exercised. Attributed to seeded staff, which is also what gives the audit
+   * and staff-activity views a non-OWNER actor to report.
+   */
+  const notableOrders = await prisma.order.findMany({
+    where: { orderNumber: { startsWith: DEMO_TAG } },
+    select: { id: true },
+    take: 10,
+  });
+
+  for (const order of notableOrders) {
+    const author = random.pick(staff);
+
+    for (const [index, body] of [
+      'Customer called to confirm the delivery window.',
+      'Rescheduled to the afternoon slot at their request.',
+    ].entries()) {
+      await prisma.orderNote.create({
+        data: {
+          orderId: order.id,
+          body: `${body} (${DEMO_TAG})`,
+          authorId: author.id,
+          createdAt: daysAgo(Math.max(1, random.int(2, 30) - index)),
+        },
+      });
+    }
+  }
+
+  /* ── The second business's own data (F8 isolation) ──────────────── */
+  /**
+   * The restaurant gets its OWN catalogue, its own stock and its own orders.
+   *
+   * This is the point of seeding two businesses at all. Business isolation is
+   * a security property: a missed scope filter shows one owner another
+   * owner's revenue, and the failure is SILENT — nothing errors, the numbers
+   * are just wrong and confidential. With only the cafe's rows in the
+   * database there is nothing that could leak, so every isolation bug would
+   * look exactly like correct behaviour.
+   *
+   * The figures are deliberately distinctive (a 4-item menu, round prices) so
+   * a leak is arithmetically obvious in a report rather than blending into
+   * the cafe's 140 orders. If "Mezze Platter" ever appears in a cafe report,
+   * a filter is missing.
+   */
+  const kitchenCategory = await prisma.category.create({
+    data: {
+      name: 'Kitchen',
+      slug: DEMO.categorySlug('kitchen'),
+      description: 'Second-business menu — must never appear in the cafe reports.',
+    },
+  });
+
+  const kitchenProducts = await Promise.all(
+    [
+      { name: 'Mezze Platter', price: 8500, cost: 3400 },
+      { name: 'Lamb Ouzi', price: 14_500, cost: 6800 },
+      { name: 'Fattoush', price: 3800, cost: 1400 },
+      { name: 'Knafeh', price: 4200, cost: 1600 },
+    ].map((item, index) =>
+      prisma.product.create({
+        data: {
+          name: item.name,
+          sku: DEMO.sku(900 + index),
+          description: `${item.name} — second-business menu item.`,
+          price: money(item.price / 100),
+          cost: money(item.cost / 100),
+          stock: 40,
+          status: ProductStatus.ACTIVE,
+          categoryId: kitchenCategory.id,
+        },
+      }),
+    ),
+  );
+
+  for (const product of kitchenProducts) {
+    await prisma.stockMovement.create({
+      data: {
+        productId: product.id,
+        branchId: corniche.id,
+        delta: 40,
+        reason: StockMovementReason.CORRECTION,
+        note: 'Opening balance (demo data)',
+      },
+    });
+
+    await prisma.branchStock.create({
+      data: { productId: product.id, branchId: corniche.id, quantity: 40 },
+    });
+  }
+
+  /**
+   * Orders on the OTHER business's branch. Every one of these must be absent
+   * from any cafe-scoped report — that is the assertion the whole two-business
+   * fixture exists to make checkable by eye.
+   */
+  for (let index = 0; index < 18; index += 1) {
+    const line = random.pick(kitchenProducts);
+    const quantity = random.int(1, 3);
+    const subtotal = line.price.times(quantity).toDecimalPlaces(2);
+    const taxAmount = subtotal.times(5).dividedBy(100).toDecimalPlaces(2);
+
+    await prisma.order.create({
+      data: {
+        orderNumber: DEMO.orderNumber(9000 + index),
+        total: subtotal.plus(taxAmount).toDecimalPlaces(2),
+        subtotal,
+        taxAmount,
+        status: OrderStatus.DELIVERED,
+        paymentMethod: random.pick(['card', 'cash']),
+        placedAt: daysAgo(random.int(1, DAYS_OF_HISTORY)),
+        branchId: corniche.id,
+        items: {
+          create: [
+            {
+              productId: line.id,
+              quantity,
+              price: line.price,
+              cost: line.cost,
+            },
+          ],
+        },
+      },
+    });
+  }
+
   /* ── Report ─────────────────────────────────────────────────────── */
-  const [orderCount, productCount, customerCount] = await Promise.all([
+  const [
+    orderCount,
+    productCount,
+    customerCount,
+    branchCount,
+    staffCount,
+    returnCount,
+    variantCount,
+  ] = await Promise.all([
     prisma.order.count({ where: { orderNumber: { startsWith: DEMO_TAG } } }),
     prisma.product.count({ where: { sku: { startsWith: DEMO_TAG } } }),
     prisma.customer.count({ where: { email: { contains: DEMO_TAG } } }),
+    prisma.branch.count({ where: { name: { startsWith: DEMO_TAG } } }),
+    prisma.user.count({ where: { email: { contains: DEMO_TAG } } }),
+    prisma.return.count({ where: { rmaNumber: { startsWith: DEMO_TAG } } }),
+    prisma.productVariant.count({ where: { sku: { startsWith: DEMO_TAG } } }),
   ]);
 
   process.stdout.write(
     `\n  seeded: ${String(productCount)} products, ${String(customerCount)} customers, ` +
       `${String(orderCount)} orders across ${String(DAYS_OF_HISTORY)} days\n` +
+      `          2 businesses, ${String(branchCount)} branches, ${String(staffCount)} staff, ` +
+      `${String(returnCount)} returns, ${String(variantCount)} variants\n` +
       `  every row is tagged "${DEMO_TAG}" — remove with prisma/demo-teardown.ts\n`,
   );
 }

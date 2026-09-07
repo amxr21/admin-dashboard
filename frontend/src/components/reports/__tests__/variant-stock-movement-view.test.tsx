@@ -47,7 +47,15 @@ describe('variant stock movement view (C3.5)', () => {
     fetchVariantStockMovement.mockResolvedValue({
       range: { from: '2026-01-01', to: '2026-01-31' },
       variants: [
-        { variantId: 'v1', name: 'Red / L', productName: 'T-Shirt', sku: 'TS-RL', stock: 10, sold: 5, received: 20 },
+        {
+          variantId: 'v1',
+          name: 'Red / L',
+          productName: 'T-Shirt',
+          sku: 'TS-RL',
+          stockAllBranches: 10,
+          sold: 5,
+          received: 20,
+        },
       ],
     });
 
@@ -55,6 +63,10 @@ describe('variant stock movement view (C3.5)', () => {
 
     expect(await screen.findByText('T-Shirt')).toBeInTheDocument();
     expect(screen.getByText('Red / L')).toBeInTheDocument();
+    // Asserted because the mock is untyped: this row rendered a blank stock
+    // cell while the field was still called `stock`, and both the suite and
+    // `tsc` stayed green. The count is what proves the rename landed.
+    expect(screen.getByText('10')).toBeInTheDocument();
   });
 
   it('surfaces a load failure', async () => {

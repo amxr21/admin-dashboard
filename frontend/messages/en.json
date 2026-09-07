@@ -1786,7 +1786,7 @@
         "product": "Product",
         "variant": "Variant",
         "sku": "SKU",
-        "stock": "Current stock",
+        "stockAllBranches": "Current stock (all branches)",
         "sold": "Units sold",
         "received": "Units received"
       }

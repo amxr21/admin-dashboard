@@ -76,7 +76,7 @@ export function VariantStockMovementView() {
                 <TableHead>{t('columns.product')}</TableHead>
                 <TableHead>{t('columns.variant')}</TableHead>
                 <TableHead>{t('columns.sku')}</TableHead>
-                <TableHead className="text-end">{t('columns.stock')}</TableHead>
+                <TableHead className="text-end">{t('columns.stockAllBranches')}</TableHead>
                 <TableHead className="text-end">{t('columns.sold')}</TableHead>
                 <TableHead className="text-end">{t('columns.received')}</TableHead>
               </TableRow>
@@ -87,7 +87,7 @@ export function VariantStockMovementView() {
                   <TableCell>{row.productName}</TableCell>
                   <TableCell>{row.name}</TableCell>
                   <TableCell className="force-ltr">{row.sku ?? '—'}</TableCell>
-                  <TableCell className="text-end tabular-nums">{formatter.number(row.stock)}</TableCell>
+                  <TableCell className="text-end tabular-nums">{formatter.number(row.stockAllBranches)}</TableCell>
                   <TableCell className="text-end tabular-nums">{formatter.number(row.sold)}</TableCell>
                   <TableCell className="text-end tabular-nums">{formatter.number(row.received)}</TableCell>
                 </TableRow>
