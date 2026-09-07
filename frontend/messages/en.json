@@ -562,7 +562,8 @@
       "description": "Anything still referenced elsewhere is archived rather than deleted, so existing history stays intact.",
       "confirm": "Delete",
       "cancel": "Cancel",
-      "working": "Deleting…"
+      "working": "Deleting…",
+      "progress": "Deleting {done} of {total}…"
     },
     "emptyFiltered": "No {label} match these filters.",
     "emptyFilteredHint": "Try removing a filter or searching for something else.",

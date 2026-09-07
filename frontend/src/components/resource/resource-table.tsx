@@ -313,6 +313,10 @@ export function ResourceTable({ schema }: ResourceTableProps) {
    */
   const [openingStockFor, setOpeningStockFor] = useState<InventoryRow | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
+  /** How many of a bulk delete have finished. Null when none is running. */
+  const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Mirrors assertPermitted() in resource.service.ts, which is DEFAULT-DENY:
@@ -517,9 +521,29 @@ export function ResourceTable({ schema }: ResourceTableProps) {
    */
   async function runDelete(ids: string[]) {
     setIsDeleting(true);
+    setDeleteProgress({ done: 0, total: ids.length });
 
+    /**
+     * Progress for a bulk action (§U item 6).
+     *
+     * The requests still all go out at once — serialising them to get a tidy
+     * counter would make deleting 50 rows genuinely slower for the sake of a
+     * label. Each one just reports as it lands, so the count reflects real
+     * completions rather than a simulated animation.
+     *
+     * Only shown for more than one row: a single delete resolves faster than
+     * the eye can read "1 of 1", and flashing a counter for it is noise.
+     */
     const outcomes = await Promise.allSettled(
-      ids.map(async (id) => (await deleteRow(schema.resource, id)).action),
+      ids.map(async (id) => {
+        try {
+          return (await deleteRow(schema.resource, id)).action;
+        } finally {
+          setDeleteProgress((current) =>
+            current ? { ...current, done: current.done + 1 } : current,
+          );
+        }
+      }),
     );
 
     const count = (action: 'deleted' | 'archived') =>
@@ -547,6 +571,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
     const wasWholePage = removed >= (result?.rows.length ?? 0);
 
     setIsDeleting(false);
+    setDeleteProgress(null);
     setPendingDelete(null);
     setSelectedIds(new Set());
 
@@ -768,7 +793,14 @@ export function ResourceTable({ schema }: ResourceTableProps) {
                 if (pendingDelete) void runDelete(pendingDelete);
               }}
             >
-              {isDeleting ? t('confirmDelete.working') : t('confirmDelete.confirm')}
+              {isDeleting
+                ? deleteProgress && deleteProgress.total > 1
+                  ? t('confirmDelete.progress', {
+                      done: deleteProgress.done,
+                      total: deleteProgress.total,
+                    })
+                  : t('confirmDelete.working')
+                : t('confirmDelete.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

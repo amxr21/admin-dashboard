@@ -477,6 +477,50 @@ describe('deleting tells the truth about what happened', () => {
     expect(notice).toHaveTextContent(/archived instead of deleted/i);
   });
 
+  it('counts progress through a bulk delete (§U item 6)', async () => {
+    // A bulk delete of many rows previously showed a static "Deleting…" with
+    // no sense of how far along it was, which on a slow connection is
+    // indistinguishable from being stuck.
+    //
+    // The requests still all go out at once — serialising them for a tidy
+    // counter would make deleting 50 rows genuinely slower for the sake of a
+    // label — so each reports as it lands and the count is real completions,
+    // never a simulated animation.
+    const second = { ...row, id: 'c2', name: 'Sara' };
+    resolveWith([row, second]);
+
+    let releaseFirst: (() => void) | undefined;
+    const firstDone = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    deleteRow
+      .mockImplementationOnce(async () => {
+        await firstDone;
+        return { row, action: 'deleted' };
+      })
+      .mockResolvedValueOnce({ row: second, action: 'deleted' });
+
+    render(
+      <>
+        <ResourceTable schema={schema} />
+        <Toaster />
+      </>,
+    );
+    await screen.findByText('Ali');
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /select all/i }));
+    await userEvent.click(screen.getByRole('button', { name: /delete selected/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    // The second row resolved immediately; the first is still held open.
+    expect(await screen.findByText(/deleting 1 of 2/i)).toBeInTheDocument();
+
+    releaseFirst?.();
+
+    await screen.findByText(/2 records deleted/i);
+  });
+
   it('still reports the successes when one row fails', async () => {
     // allSettled, not all: one failure must not hide four successes, and the
     // table has to reload either way.
