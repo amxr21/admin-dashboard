@@ -5,7 +5,6 @@ import { useFormatter, useTranslations } from 'next-intl';
 
 import { DateRangePresetField } from '@/components/reports/date-range-field';
 import { ExportButton } from '@/components/reports/export-button';
-import { EmptyState } from '@/components/empty-state';
 import { ErrorSection } from '@/components/errors/error-section';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
@@ -64,15 +63,20 @@ export function DeliveryCycleTimeView() {
         <Skeleton className="h-40 w-full" />
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
-      ) : (data?.deliveredCount ?? 0) === 0 ? (
-        /**
-         * F4.5 — an empty period must SAY it is empty, rather than falling
-         * through to tiles where `?? 0` renders a confident zero. A
-         * fabricated zero is indistinguishable from a measured one, so the
-         * reader cannot tell a quiet month from a broken report.
-         */
-        <EmptyState title={t('empty.title')} description={t('empty.description')} />
       ) : (
+        /**
+         * F4.5 — deliberately NO empty branch here, unlike the other five
+         * reports in that change.
+         *
+         * This view already handled it honestly: `averageHours`/`medianHours`
+         * are nullable at the API and render an em dash, so an empty period
+         * shows "0 delivered, — avg, — median". That is a truthful statement
+         * of a real fact (nothing was delivered) rather than a fabricated
+         * measurement, and a test already asserted it.
+         *
+         * Replacing it with an EmptyState lost information: the reader could
+         * no longer see that the delivered COUNT is a real, measured zero.
+         */
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="bg-card rounded-lg border p-4">
             <p className="text-muted-foreground text-sm font-medium">{t('deliveredCount')}</p>

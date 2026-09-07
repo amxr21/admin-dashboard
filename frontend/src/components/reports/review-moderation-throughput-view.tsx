@@ -67,12 +67,22 @@ export function ReviewModerationThroughputView() {
         <Skeleton className="h-40 w-full" />
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
-      ) : (data?.submitted ?? 0) + (data?.approved ?? 0) + (data?.rejected ?? 0) === 0 ? (
+      ) : (data?.submitted ?? 0) +
+          (data?.approved ?? 0) +
+          (data?.rejected ?? 0) +
+          (data?.pending ?? 0) ===
+        0 ? (
         /**
          * F4.5 — an empty period must SAY it is empty, rather than falling
          * through to tiles where `?? 0` renders a confident zero. A
          * fabricated zero is indistinguishable from a measured one, so the
          * reader cannot tell a quiet month from a broken report.
+         *
+         * `pending` is in the sum deliberately: reviews submitted but not yet
+         * moderated are real activity. Without it, "2 submitted, 0 moderated"
+         * would render as EMPTY, hiding a queue that needs attention — the
+         * opposite of the honesty this branch exists for. Empty here means
+         * nothing happened at all, not "nothing has been actioned yet".
          */
         <EmptyState title={t('empty.title')} description={t('empty.description')} />
       ) : (
