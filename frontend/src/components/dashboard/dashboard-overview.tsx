@@ -25,6 +25,8 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useAuth } from '@/hooks/useAuth';
+import { canAccessArea, landingFor } from '@/config/areas';
 import { fetchAudit, type AuditEntry } from '@/lib/audit-api';
 import {
   defaultRange,
@@ -75,6 +77,17 @@ type Comparison = 'previous' | 'sameLastYear' | 'none';
 
 export function DashboardOverview() {
   const t = useTranslations('dashboard');
+  const { user } = useAuth();
+  /**
+   * O3.3 — every widget on this page reads a `/reports/*` endpoint, and all of
+   * them sit behind `requireArea('reports')`. A FULFILLMENT or SUPPORT user
+   * has no such grant, so before this the dashboard did not merely show them
+   * the wrong question: every panel 403'd and the page rendered as an error.
+   *
+   * Gated once rather than per widget, because the dependency is the same for
+   * all of them — a per-widget check would be nine copies of one condition.
+   */
+  const canSeeReports = user ? canAccessArea(user.role, 'reports') : false;
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
 
@@ -101,6 +114,13 @@ export function DashboardOverview() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
+    // Not a request whose result is discarded — a role without the grant must
+    // not fire ten requests that all 403.
+    if (!canSeeReports) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -175,7 +195,7 @@ export function DashboardOverview() {
     } finally {
       setIsLoading(false);
     }
-  }, [range, comparison, translateError]);
+  }, [range, comparison, translateError, canSeeReports]);
 
   useEffect(() => {
     void load();
@@ -298,6 +318,26 @@ export function DashboardOverview() {
       ) : null}
 
       {/*
+        A role without `reports` gets a way into their OWN work instead of a
+        wall of widgets that would 403. Login already lands them elsewhere
+        (O3.4) — this is for the case where they navigate here anyway, by
+        bookmark, by the sidebar's Dashboard link, or by clicking the logo.
+      */}
+      {!canSeeReports ? (
+        <div className="rounded-lg border border-dashed px-6 py-10 text-center">
+          <p className="font-medium">{t('noReportsTitle')}</p>
+          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-sm">
+            {t('noReportsBody')}
+          </p>
+          {user ? (
+            <Button asChild className="mt-4">
+              <Link href={landingFor(user.role)}>{t('noReportsAction')}</Link>
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/*
        * ONE 12-column grid for the rest of the page (checklist Phase 3) —
        * every section below is a direct child of THIS grid, spanning a
        * whole number of its columns, rather than each section inventing its
@@ -316,6 +356,7 @@ export function DashboardOverview() {
        * or 3-up. At 4-up the last row would be a two-tile orphan. Three
        * columns keeps both rows full at every breakpoint.
        */}
+      {canSeeReports ? (
       <div className="grid grid-cols-12 items-stretch gap-4">
         {/* `contents`: a semantic landmark for the KPI strip that does NOT
             generate its own box — its children become direct items of the
@@ -474,6 +515,7 @@ export function DashboardOverview() {
           </div>
         </Reveal>
       </div>
+      ) : null}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/useAuth';
+import { landingFor } from '@/config/areas';
 import { Link, useRouter } from '@/i18n/navigation';
 import { ApiError } from '@/lib/api';
 
@@ -103,10 +104,24 @@ export function LoginForm() {
     setIsSubmitting(true);
 
     try {
-      await signIn(email, password);
+      const result = await signIn(email, password);
+
+      // A 2FA account does not have a session yet — `signIn` returns
+      // TWO_FACTOR_REQUIRED and no token is written. There is no code-entry
+      // screen in this app yet, so redirecting would land them on a page
+      // their (nonexistent) session cannot load. Refusing here is the honest
+      // failure until that screen exists. Tracked in TODO.md.
+      if (result.status === 'TWO_FACTOR_REQUIRED') {
+        setError(t('twoFactorUnavailable'));
+        return;
+      }
+
+      // Where they land depends on the job (O3.4). A FULFILLMENT user has no
+      // `reports` grant, so the revenue dashboard is a screen built to answer
+      // a question they are not allowed to ask.
       // replace, not push — Back must not return to a login form the user has
       // already passed.
-      router.replace('/admin');
+      router.replace(landingFor(result.role));
     } catch (caught) {
       setError(messageFor(caught));
       // Deliberately NOT clearing the email. Retyping it after a typo in the

@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import type { StaffRole } from '@/config/areas';
 import { apiFetch, ApiError } from '@/lib/api';
 import { logout } from '@/lib/auth-api';
 import {
@@ -37,7 +38,10 @@ import {
  * `signIn` alone — see `verifyTwoFactor`, the second half of that flow.
  */
 export type SignInResult =
-  | { status: 'SIGNED_IN' }
+  /** `role` so the caller can land them on the right page (O3.4) without
+   *  waiting for the context state to settle — `setUser` schedules a render,
+   *  it does not update `user` for the code that just called `signIn`. */
+  | { status: 'SIGNED_IN'; role: StaffRole }
   | { status: 'TWO_FACTOR_REQUIRED'; pendingToken: string };
 
 interface AuthContextValue {
@@ -48,7 +52,7 @@ interface AuthContextValue {
   /** Second step of a 2FA login — exchanges the pending token plus a code
    * (TOTP or backup) for a real session. Throws the same shaped errors as
    * `signIn` on a wrong/expired code. */
-  verifyTwoFactor: (pendingToken: string, code: string) => Promise<void>;
+  verifyTwoFactor: (pendingToken: string, code: string) => Promise<StaffRole>;
   signOut: () => void;
   /**
    * Seeds a NEW token for the CURRENT user, without re-authenticating.
@@ -153,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     writeSession(result.token, result.user);
     setUser(result.user);
-    return { status: 'SIGNED_IN' };
+    return { status: 'SIGNED_IN', role: result.user.role };
   }, []);
 
   const verifyTwoFactor = useCallback(async (pendingToken: string, code: string) => {
@@ -164,6 +168,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     writeSession(result.token, result.user);
     setUser(result.user);
+    // Returned for the same reason as `signIn`: a 2FA sign-in must land on
+    // the same page a password-only one would, and the caller cannot read it
+    // off `user` yet.
+    return result.user.role;
   }, []);
 
   const signOut = useCallback(() => {

@@ -24,6 +24,29 @@ reasoning behind decisions already made, not for what is open.
 
 ---
 
+## 📬 Open PRs — the 2026-09-08 stack
+
+Pushed 2026-09-08. **Each PR is based on the one below it**, so each shows only
+its own diff; merge bottom-up and GitHub retargets the rest as they land.
+
+| PR | Branch | Base | What |
+|---|---|---|---|
+| #156 | `stack/01-courier-response-shape` | `dev` | O6 — courier card blanking |
+| #157 | `stack/02-branch-write-api` | #156 | O7 §1 — business/branch writes |
+| #158 | `stack/03-branch-roster` | #157 | O7 §2 — people at branches |
+| #159 | `stack/04-branch-management-ui` | #158 | O7 §3 — the UI |
+| #160 | `stack/05-docs` | #159 | CLAUDE.md + workbook |
+| #161 | `stack/06-branch-on-lists` | #160 | O1 — branch named on lists |
+| #162 | `stack/07-courier-branches` | #161 | O2 — courier serves branches |
+
+**Conflicts on these are usually FAKE** — see the rules section below. PRs are
+squash-merged, which rewrites SHAs, so each branch still carries pre-squash
+copies of everything under it. `git rebase origin/dev` first; do not hand-resolve.
+
+`work/2026-09-08` holds all seven commits together if a combined view helps.
+
+---
+
 ## 🔴 Blocking
 
 **RESOLVED 2026-09-08.** vitest spawns workers again — the full backend suite
@@ -324,20 +347,71 @@ hired courier with no assignments disappears from every scoped list.
       the courier body — otherwise saving a phone number could silently
       rewrite where somebody works. Empty renders "Any branch", not a blank
 
+### O3 — ✅ DONE 2026-09-08
+Each role now lands on its own work, and `/admin` no longer 403s for roles
+without `reports`. 9 tests. **F5.3 and F5.4 are closed by this.**
+
+**Original entry:**
+
 ### O3 — Every role lands on the same revenue-first dashboard
 FULFILLMENT and SUPPORT open to a revenue chart they may have no `reports`
 access to interpret. It is the first thing every non-owner sees on login.
 This is F5.4. **No schema change needed.**
 
-- [ ] O3.1 **❓ DECISION: is the unit of customization the ROLE or the USER?**
-      *Recommend ROLE — matches `ROLE_AREAS`, keeps one owner in control, needs
-      no per-user table.* (The owner said "add the ROLE feature", which reads
-      as ROLE — confirm before building.) This is F5.3
-- [ ] O3.2 Per-role landing route: FULFILLMENT → today's orders, SUPPORT →
-      open returns/reviews, OWNER → the current dashboard
-- [ ] O3.3 Per-role dashboard widgets — hide what the role cannot open rather
-      than showing tiles that 403 on click
-- [ ] O3.4 Redirect on login to the role's landing page
+- [x] O3.1 **ANSWERED BY THE OWNER 2026-09-08: ROLE, fixed in code.**
+      Not per-user (needs a preferences table that does not exist, and loses
+      central control over what a new hire sees first) and not configurable in
+      Settings (a panel and one setting per role, for a choice that has one
+      sensible answer per role anyway). It is derived from `ROLE_AREAS`, which
+      already declares what each role may reach — so the landing page cannot
+      drift from the permission table. Configurability can be added later
+      WITHOUT a migration if it is ever wanted. This is F5.3
+- [x] O3.2 **DONE 2026-09-08.** `ROLE_LANDING` in `config/areas.ts`, next to
+      `ROLE_AREAS` so the two cannot drift. FULFILLMENT → orders, SUPPORT →
+      returns, everyone with a `reports` grant → the dashboard. **Guarded by a
+      test, not by care**: every destination is checked against the role's OWN
+      grant, so narrowing a role's areas without moving its landing page fails
+      at the source instead of on a real login. Watched failing
+- [x] O3.3 **DONE 2026-09-08 — and it was worse than "tiles that 403 on
+      click".** EVERY widget on `/admin` reads a `/reports/*` endpoint and all
+      of them sit behind `requireArea('reports')`, so for FULFILLMENT and
+      SUPPORT the page did not merely ask the wrong question — it fired ten
+      requests that all 403'd and rendered as an error. Now gated once (the
+      dependency is identical for all nine widgets, so a per-widget check
+      would be nine copies of one condition), the requests are not made at
+      all, and the page offers a route into their own work instead
+- [x] O3.4 **DONE 2026-09-08.** `signIn` now returns the role — `setUser`
+      only schedules a render, so the caller cannot read it off `user` yet.
+      `verifyTwoFactor` returns it too, so a 2FA sign-in lands identically.
+      **Found while wiring it**: `signIn` can return `TWO_FACTOR_REQUIRED` and
+      NOTHING in the UI handled it — a 2FA user was redirected to `/admin`
+      with no session at all. Out of O3's scope to build the code-entry
+      screen, so the form now refuses with a clear message instead of
+      redirecting into a broken state. See the new item below
+
+### O3b — 🔴 FOUND 2026-09-08: 2FA login has no code-entry screen
+Not a regression — pre-existing, surfaced while wiring O3.4.
+
+`signIn` can return `TWO_FACTOR_REQUIRED` with a `pendingToken` and no session
+written. A repo-wide grep found **zero** UI handling it: the login form awaited
+`signIn` and redirected to `/admin` regardless, so a user with 2FA enabled was
+sent to the admin shell with no token — every request 401s and they cannot sign
+in at all. The same shape as the F5.1 reset-password bug (a backend flow whose
+frontend half was never built).
+
+The 2FA/sessions/API-key SETTINGS panels have the same problem and are already
+noted in CLAUDE.md as built-but-not-linked, which is probably why nobody hit
+this: the feature cannot currently be switched on from the UI.
+
+**Mitigated, not fixed 2026-09-08:** the login form now refuses with a clear
+message rather than redirecting into a broken state.
+
+- [ ] O3b.1 Build the 2FA code-entry step (`verifyTwoFactor` already exists and
+      already returns the role for the landing redirect — only the screen is
+      missing)
+- [ ] O3b.2 Link the built-and-route-reachable 2FA / sessions / API-key panels
+      from the settings page (this is the long-standing "still needs a human"
+      item in CLAUDE.md)
 
 ### O4 — `MANAGER` is the wrong shape for a shop manager
 Today MANAGER = every area except `staff` — an OPERATIONS manager. A shop
