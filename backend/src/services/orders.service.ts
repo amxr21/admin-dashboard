@@ -49,12 +49,23 @@ export interface OrderListParams {
   search?: string;
   sort?: OrderSortField;
   dir?: 'asc' | 'desc';
+  /**
+   * Restrict to one branch (F8). Omitted means EVERY branch — "show me
+   * everything" is a real request and the unscoped call is how it is made.
+   *
+   * An order with a NULL branch is EXCLUDED from a scoped list, the same rule
+   * the reports follow: null means "unattributed", and showing it under
+   * whichever branch is selected would claim it belongs there.
+   */
+  branchId?: string;
 }
 
 function buildWhere(params: OrderListParams): Prisma.OrderWhereInput {
   const where: Prisma.OrderWhereInput = {};
 
   if (params.status) where.status = params.status;
+
+  if (params.branchId) where.branchId = params.branchId;
 
   if (params.from || params.to) {
     where.placedAt = {
@@ -157,7 +168,7 @@ export interface OrderExportResult {
  * what the export button was clicked while looking at.
  */
 export async function listOrdersForExport(
-  params: Pick<OrderListParams, 'status' | 'from' | 'to' | 'search' | 'sort' | 'dir'>,
+  params: Pick<OrderListParams, 'status' | 'from' | 'to' | 'search' | 'sort' | 'dir' | 'branchId'>,
 ): Promise<OrderExportResult> {
   const where = buildWhere(params);
 
@@ -211,7 +222,7 @@ export interface OrderNeighbor {
  */
 export async function getOrderNeighbors(
   id: string,
-  params: Pick<OrderListParams, 'status' | 'from' | 'to' | 'search' | 'sort' | 'dir'>,
+  params: Pick<OrderListParams, 'status' | 'from' | 'to' | 'search' | 'sort' | 'dir' | 'branchId'>,
 ): Promise<{ prev: OrderNeighbor | null; next: OrderNeighbor | null }> {
   const where = buildWhere(params);
 

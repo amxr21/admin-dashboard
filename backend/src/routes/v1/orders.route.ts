@@ -98,7 +98,7 @@ ordersRouter.get('/orders', ...guard, async (req, res) => {
   }
 
   if (parsed.data.format === 'csv') {
-    const { orders, truncated } = await listOrdersForExport(parsed.data);
+    const { orders, truncated } = await listOrdersForExport({ ...parsed.data, branchId: req.branchId ?? undefined });
 
     // Exporting the list is itself an auditable event — same reasoning as
     // audit.route.ts's own `audit.exported`: a copy of order data (customer
@@ -142,7 +142,7 @@ ordersRouter.get('/orders', ...guard, async (req, res) => {
     return;
   }
 
-  res.json({ data: await listOrders(parsed.data) });
+  res.json({ data: await listOrders({ ...parsed.data, branchId: req.branchId ?? undefined }) });
 });
 
 ordersRouter.get('/orders/:id', ...guard, async (req, res) => {
