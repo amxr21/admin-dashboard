@@ -1,5 +1,6 @@
 import { Prisma, type StockMovementReason } from '@prisma/client';
 import type { Request } from 'express';
+import { resolveBranchLabels } from './branches.service.js';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
@@ -233,6 +234,9 @@ export async function listMovements(
         note: true,
         unitCost: true,
         actorId: true,
+        // O1: unscoped, the log mixes every branch's movements and two rows
+        // for the same product are otherwise indistinguishable.
+        branchId: true,
         createdAt: true,
       },
     }),
@@ -241,10 +245,13 @@ export async function listMovements(
     }),
   ]);
 
+  const branches = await resolveBranchLabels(movements.map((movement) => movement.branchId));
+
   return {
     product,
     movements: movements.map((movement) => ({
       ...movement,
+      branch: movement.branchId ? (branches.get(movement.branchId) ?? null) : null,
       // Decimal → string, deliberately: JSON.stringify would emit it
       // inconsistently and a float would lose the cents. Null stays null —
       // "not recorded" is not "0.00".

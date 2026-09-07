@@ -1,4 +1,5 @@
 import { OrderStatus, Prisma } from '@prisma/client';
+import { resolveBranchLabels } from './branches.service.js';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
@@ -114,12 +115,17 @@ export async function listOrders(params: OrderListParams) {
         total: true,
         placedAt: true,
         paymentMethod: true,
+        // O1: named on the row, not only on the detail page. On "all
+        // branches" two rows from different shops are otherwise identical.
+        branchId: true,
         customer: { select: { id: true, name: true, email: true } },
         _count: { select: { items: true } },
       },
     }),
     prisma.order.count({ where }),
   ]);
+
+  const branches = await resolveBranchLabels(rows.map((row) => row.branchId));
 
   return {
     orders: rows.map((row) => ({
@@ -130,6 +136,9 @@ export async function listOrders(params: OrderListParams) {
       placedAt: row.placedAt.toISOString(),
       paymentMethod: row.paymentMethod,
       customer: row.customer,
+      // Null when the order predates branch scoping OR its branch was
+      // removed — the UI shows nothing rather than inventing a name.
+      branch: row.branchId ? (branches.get(row.branchId) ?? null) : null,
       itemCount: row._count.items,
     })),
     total,

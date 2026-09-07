@@ -194,7 +194,9 @@
       "staffCount": "{count, plural, =0 {No staff} one {# person} other {# people}}",
       "noBranches": "This business has no branches yet. Add one before recording stock or taking orders.",
       "emptyTitle": "No businesses yet",
-      "emptyDescription": "A business is the company that owns your shops — its name, address and tax id are what print on an invoice. Add one, then add the branches that trade under it."
+      "emptyDescription": "A business is the company that owns your shops — its name, address and tax id are what print on an invoice. Add one, then add the branches that trade under it.",
+      "columnHeader": "Branch",
+      "noBranch": "No branch recorded"
     },
     "form": {
       "createTitle": "Add branch",

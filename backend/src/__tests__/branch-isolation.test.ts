@@ -8,6 +8,9 @@ import {
 } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
+import { listOrders } from '../services/orders.service.js';
+import { listReturns } from '../services/returns.service.js';
+import { listMovements } from '../services/inventory.service.js';
 import {
   getCategoryBreakdown,
   getCourierPerformance,
@@ -209,6 +212,75 @@ afterAll(async () => {
   await prisma.branch.deleteMany({ where: { businessId } });
   await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.$disconnect();
+});
+
+
+describe('a list NAMES its branch, so unscoped rows are told apart (O1)', () => {
+  /**
+   * Scoping decides which rows appear; this decides whether a person can tell
+   * them apart once they do. On "All branches" two orders from different shops
+   * were previously identical on screen — the same gap the order DETAIL page
+   * closed in #155, still open on every list.
+   *
+   * The branch is resolved by a batch lookup rather than a Prisma `include`,
+   * because `Order.branchId` is a plain id with no relation: an order outlives
+   * the branch that took it, since a closed shop's orders still explain last
+   * year's revenue.
+   */
+  it('names the branch on each order', async () => {
+    // Scoped to the fixture window: the database carries unrelated orders and
+    // an unfiltered first page need not contain these two.
+    const listed = await listOrders({ pageSize: 100, from: FROM, to: TO });
+
+    const a = listed.orders.find((order) => order.id === orderA);
+    const b = listed.orders.find((order) => order.id === orderB);
+
+    expect(a?.branch?.id).toBe(branchA);
+    expect(b?.branch?.id).toBe(branchB);
+    expect(a?.branch?.name).toBeTruthy();
+  });
+
+  it('names the branch on a return, reached through its order', async () => {
+    // A return has no `branchId` of its own on purpose — it carries a required
+    // `orderId` and the order already records the branch, so a second copy
+    // could only drift from it.
+    const listed = await listReturns({ pageSize: 100 });
+    const mine = listed.returns.filter((row) => returnIds.includes(row.id));
+
+    expect(mine.length).toBeGreaterThan(0);
+    for (const row of mine) {
+      expect(row.branch).not.toBeUndefined();
+    }
+  });
+
+  it('names the branch on a stock movement', async () => {
+    const listed = await listMovements(productIds[0]!, { pageSize: 100 });
+    const ids = listed.movements.map((movement) => movement.branch?.id);
+
+    expect(ids).toContain(branchA);
+    expect(ids).toContain(branchB);
+  });
+
+  it('reports a missing branch as null rather than inventing one', async () => {
+    // Null means one of two REAL things — the row predates branch scoping, or
+    // its branch was removed. Neither is "belongs to whichever branch sorts
+    // first", which is what a fallback would silently assert.
+    const orphan = await prisma.order.create({
+      data: {
+        orderNumber: `${RUN}-orphan`,
+        status: OrderStatus.CONFIRMED,
+        total: new Prisma.Decimal('10.00'),
+        branchId: null,
+      },
+    });
+    orderIds.push(orphan.id);
+
+    const listed = await listOrders({ pageSize: 100, sort: 'placedAt', dir: 'desc' });
+    const found = listed.orders.find((order) => order.id === orphan.id);
+
+    expect(found).toBeDefined();
+    expect(found!.branch).toBeNull();
+  });
 });
 
 describe('a report scoped to one branch never reports another branch', () => {
