@@ -86,6 +86,20 @@ interface RevenueChartProps {
   /** Noun-phrase label for the comparison row in the tooltip, e.g. "Previous
    *  period" — must track whichever comparison the caller has selected. */
   comparisonLabel?: string;
+  /**
+   * Gross profit per bucket (F1.3), aligned INDEX-for-index with `data`.
+   *
+   * Opt-in: omit it and the chart is exactly what it was. `null` at a bucket
+   * means no line there has a recorded cost, and is drawn as a real gap —
+   * `connectNulls={false}`, the same rule revenue already follows.
+   *
+   * Measured over the costed lines only, which is why `profitCoverage` below
+   * is not optional when this is passed: a profit line over an unstated
+   * subset is the most misleading thing this chart could render.
+   */
+  profitData?: readonly (number | null)[] | null;
+  /** How much of the window the profit line actually covers. */
+  profitCoverage?: { costedLines: number; totalLines: number } | null;
   isLoading?: boolean;
   error?: string | null;
   /**
@@ -110,6 +124,8 @@ interface ChartDatum {
   isProvisional: boolean;
   comparisonDate?: string;
   comparisonRevenue?: number | null;
+  /** Gross profit over the costed lines; null is a real gap. */
+  profit?: number | null;
 }
 
 function toTimestamp(date: string): number {
@@ -164,14 +180,16 @@ function ChartLegend({
   hasComparison,
   hasProvisional,
   comparisonLabel,
+  profitCoverage,
 }: {
   hasComparison: boolean;
   hasProvisional: boolean;
   comparisonLabel?: string;
+  profitCoverage?: { costedLines: number; totalLines: number } | null;
 }) {
   const t = useTranslations('dashboard');
 
-  if (!hasComparison && !hasProvisional) return null;
+  if (!hasComparison && !hasProvisional && !profitCoverage) return null;
 
   return (
     <div className="text-muted-foreground mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
@@ -191,6 +209,28 @@ function ChartLegend({
         <span className="inline-flex items-center gap-1.5">
           <DashedSwatch color="var(--muted-foreground)" />
           {comparisonLabel ?? t('comparison.previousPeriod')}
+        </span>
+      ) : null}
+
+      {/**
+        * Profit ALWAYS carries its coverage — never the swatch alone.
+        *
+        * The line is drawn over the order lines that have a recorded cost,
+        * which is a subset, and a profit curve with no stated denominator is
+        * the most misleading thing this chart could show: it looks like the
+        * whole business and is not. Same rule the margin tiles follow.
+        */}
+      {profitCoverage ? (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-0.5 w-4 shrink-0" style={{ backgroundColor: 'var(--chart-2)' }} />
+          {t('revenueChart.profit')}
+          <span className="text-muted-foreground/80">
+            ·{' '}
+            {t('revenueChart.profitCoverage', {
+              costed: profitCoverage.costedLines,
+              total: profitCoverage.totalLines,
+            })}
+          </span>
         </span>
       ) : null}
     </div>
@@ -241,6 +281,17 @@ function ChartTooltip({ active, payload, comparisonLabel, drillDownEnabled }: Ch
         {datum.revenue === null ? '—' : formatCurrency(datum.revenue)}
       </p>
 
+      {/* Profit sits directly under revenue, before the comparison block:
+          they describe the SAME bucket, where the comparison describes a
+          different one. An em dash where nothing was costed, never a zero —
+          "not measured" and "made nothing" are different facts. */}
+      {datum.profit !== undefined ? (
+        <p className="tabular-nums" style={{ color: 'var(--chart-2)' }}>
+          {t('revenueChart.profit')}:{' '}
+          {datum.profit === null ? '—' : formatCurrency(datum.profit)}
+        </p>
+      ) : null}
+
       {hasComparison ? (
         <>
           <p className="text-muted-foreground tabular-nums">
@@ -290,6 +341,8 @@ export function RevenueChart({
   granularity,
   comparisonData = null,
   comparisonLabel,
+  profitData = null,
+  profitCoverage = null,
   isLoading = false,
   error = null,
   drillDownEnabled = false,
@@ -329,9 +382,14 @@ export function RevenueChart({
               comparisonRevenue: comparisonPoint?.revenue ?? null,
             }
           : {}),
+        // Index-aligned with `data`, same contract as the comparison series.
+        // `?? null` rather than `?? 0`: a bucket with no costed line is a gap,
+        // and a fabricated zero would read as "we made nothing" instead of
+        // "we did not measure".
+        ...(profitData ? { profit: profitData[index] ?? null } : {}),
       };
     });
-  }, [data, comparisonData, granularity]);
+  }, [data, comparisonData, profitData, granularity]);
 
   const hasAnyData = chartData.some((d) => d.revenue !== null || d.revenueTrailing !== null);
   const hasProvisional = chartData.some((d) => d.isProvisional);
@@ -399,6 +457,7 @@ export function RevenueChart({
             hasComparison={Boolean(comparisonData)}
             hasProvisional={hasProvisional}
             comparisonLabel={comparisonLabel}
+            profitCoverage={profitData ? profitCoverage : null}
           />
           <ResponsiveContainer width="100%" height={256}>
           <LineChart
@@ -512,6 +571,30 @@ export function RevenueChart({
               connectNulls={false}
               isAnimationActive={!reducedMotion}
             />
+
+            {profitData ? (
+              /**
+               * Gross profit (F1.3), in its own colour rather than a muted
+               * variant of revenue — it is a DIFFERENT measure, not a
+               * comparison of the same one, and the muted/dashed treatment is
+               * already spoken for by the period comparison.
+               *
+               * `connectNulls={false}` so a bucket with no costed line draws
+               * as a real break. Bridging it would imply a measured profit
+               * for a period nothing was measured in — the same rule the
+               * revenue series follows for a bucket with no orders.
+               */
+              <Line
+                type="monotone"
+                dataKey="profit"
+                stroke="var(--chart-2)"
+                strokeWidth={2}
+                dot={{ r: 3, fill: 'var(--chart-2)', strokeWidth: 0 }}
+                activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--card)' }}
+                connectNulls={false}
+                isAnimationActive={!reducedMotion}
+              />
+            ) : null}
 
             {/* The still-accumulating tail: same colour, dashed, no dots of
                 its own — a continuation of the line above, not a second
