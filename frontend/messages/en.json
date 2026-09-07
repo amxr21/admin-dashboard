@@ -181,7 +181,7 @@
       "audit": "A record of every change made here, and who made it.",
       "loginHistory": "Who signed in and who was refused"
     },
-    "loginHistory": "Sign-in history",
+    "loginHistory": "Staff activity",
     "branches": "Branches"
   },
   "branches": {
@@ -2239,6 +2239,42 @@
       "auth_login_2fa-failed": "Two-factor refused",
       "auth_logout": "Signed out",
       "auth_session_revoked": "Session revoked"
+    }
+  },
+  "shifts": {
+    "start": "Start shift",
+    "started": "Shift started",
+    "end": "End shift",
+    "ended": "Shift ended",
+    "endTitle": "End your shift?",
+    "endBody": "You have been on shift at {branch} for {elapsed}. This is what gets recorded.",
+    "endWithElapsed": "End shift — on for {elapsed}",
+    "cancel": "Keep working",
+    "table": {
+      "person": "Person",
+      "branch": "Branch",
+      "started": "Started",
+      "ended": "Ended",
+      "duration": "Hours",
+      "edited": "Record",
+      "onNow": "On now",
+      "corrected": "Corrected",
+      "editedBy": "Corrected by {name} — {reason}",
+      "loadFailed": "Could not load shifts",
+      "emptyTitle": "No shifts recorded yet",
+      "emptyBody": "A shift is recorded when someone clocks on from the top bar. Nothing here yet.",
+      "emptyOpenTitle": "Nobody is on shift",
+      "emptyOpenBody": "When someone clocks on, they appear here until they clock off."
+    }
+  },
+  "staffActivity": {
+    "title": "Staff activity",
+    "subtitle": "Who is on shift now, who worked when, and who has been signing in.",
+    "switchLabel": "Choose what to show",
+    "tabs": {
+      "onNow": "On now",
+      "shifts": "Shifts",
+      "logins": "Sign-ins"
     }
   }
 }

@@ -81,7 +81,7 @@ describe('permission-driven navigation', () => {
     render(<SidebarNav role="OWNER" />);
 
     expect(screen.getByRole('link', { name: /orders/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /staff/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^staff$/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /settings/i })).toBeInTheDocument();
   });
 
@@ -91,7 +91,7 @@ describe('permission-driven navigation', () => {
     render(<SidebarNav role="MANAGER" />);
 
     expect(screen.getByRole('link', { name: /orders/i })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /staff/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^staff$/i })).not.toBeInTheDocument();
   });
 
   it('shows support only its own areas', () => {
@@ -122,7 +122,7 @@ describe('permission-driven navigation', () => {
     render(<SidebarNav role="DEMO" />);
 
     expect(screen.getByRole('link', { name: /reports/i })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /staff/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^staff$/i })).not.toBeInTheDocument();
   });
 
   it('hides a group heading when the role can reach none of its items', () => {

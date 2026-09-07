@@ -99,7 +99,9 @@ export const NAVIGATION: readonly NavGroup[] = [
       { href: '/admin/branches', labelKey: 'branches', icon: Building2, area: 'settings' },
       { href: '/admin/audit', labelKey: 'audit', icon: History, area: 'staff' },
       // Same `staff` area as Audit — it names who has been failing to sign
-      // in, which is personnel data, not a business metric.
+      // in and who worked which hours, which is personnel data, not a
+      // business metric. Shifts share this page (F6.5) rather than adding a
+      // near-identical second one, so the label names the whole surface.
       { href: '/admin/login-history', labelKey: 'loginHistory', icon: LogIn, area: 'staff' },
     ],
   },
