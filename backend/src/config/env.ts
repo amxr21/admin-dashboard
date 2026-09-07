@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { z } from 'zod';
+import { type AppMode, resolveModeConfig } from './app-mode.js';
 
 /**
  * Validated environment.
@@ -16,6 +17,11 @@ import { z } from 'zod';
  * Adding a required variable: add it here, to backend/vitest.setup.ts and to
  * .github/workflows/ci.yml. Env files are never committed, so there is no
  * template to update; the variable list lives in CLAUDE.md.
+ *
+ * DATABASE_URL and CORS_ORIGINS are the exception to "read straight from
+ * process.env": both are mode-selected by `app-mode.ts`, which resolves
+ * APP_MODE → the matching `_LOCAL`/`_DEV`/`_PROD` value before this schema
+ * ever sees them. See that file for why.
  */
 
 const envSchema = z.object({
@@ -179,11 +185,55 @@ const envSchema = z.object({
   CUSTOMER_JWT_EXPIRES_IN: z.string().default('30d'),
 });
 
-const parsed = envSchema.safeParse(process.env);
-
-if (!parsed.success) {
+/**
+ * Fails the same way the schema does: one readable message, then exit. Used
+ * for the mode resolution, which runs BEFORE the schema and can throw for
+ * reasons Zod cannot express (a local mode pointed at a remote database).
+ */
+function failBoot(message: string): never {
   // This is the one place console is correct: the logger itself depends on
   // env, so it does not exist yet. Nothing has booted — fail loud and exit.
+  // eslint-disable-next-line no-console
+  console.error(
+    `Invalid environment configuration:\n  - ${message}\n\n` +
+      'Set the missing variables in backend/.env (see CLAUDE.md).',
+  );
+  process.exit(1);
+}
+
+let mode: AppMode;
+let databaseUrl: string;
+let corsOrigins: string;
+
+try {
+  ({ mode, databaseUrl, corsOrigins } = resolveModeConfig(process.env));
+} catch (error) {
+  failBoot(error instanceof Error ? error.message : String(error));
+}
+
+/**
+ * Prisma reads `process.env.DATABASE_URL` itself — it never sees the `env`
+ * object below — so the resolved value has to be written BACK here, before any
+ * module constructs a PrismaClient. Without this line the app would talk to
+ * the mode's database while Prisma talked to whatever the unsuffixed variable
+ * happened to hold, which is precisely the silent two-databases split this
+ * whole change exists to remove.
+ *
+ * `env.ts` is imported before `db.ts` everywhere in this codebase (app.ts and
+ * server.ts both import it first), but the assignment is at module scope
+ * rather than inside a function so import order alone guarantees it.
+ */
+process.env.DATABASE_URL = databaseUrl;
+
+const parsed = envSchema.safeParse({
+  ...process.env,
+  // Mode-selected, so the schema receives the RESOLVED values rather than the
+  // raw unsuffixed ones. Spread order matters: these must win.
+  DATABASE_URL: databaseUrl,
+  CORS_ORIGINS: corsOrigins,
+});
+
+if (!parsed.success) {
   // eslint-disable-next-line no-console
   console.error(
     'Invalid environment configuration:\n' +
@@ -195,7 +245,13 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const env = parsed.data;
+export const env = { ...parsed.data, APP_MODE: mode };
 
 export const isProduction = env.NODE_ENV === 'production';
 export const isDevelopment = env.NODE_ENV === 'development';
+
+/**
+ * Which environment's DATA this process is pointed at — a separate axis from
+ * `NODE_ENV` (how it BEHAVES). See `app-mode.ts` for why they are not merged.
+ */
+export const APP_MODE: AppMode = mode;
