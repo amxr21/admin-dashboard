@@ -94,6 +94,23 @@ export interface CourierListParams {
   pageSize?: number;
   search?: string;
   status?: DeliveryStaffStatus;
+  /**
+   * Restrict to couriers who have actually worked at one branch (F8).
+   *
+   * ─── WHAT THIS CAN AND CANNOT MEAN TODAY ─────────────────────────────
+   * `DeliveryStaff` has NO branch column. A courier reaches a branch only
+   * through the orders they have been assigned, so this filters on "has at
+   * least one assignment for an order taken at this branch" — a record of
+   * where they HAVE worked, not a roster of where they BELONG.
+   *
+   * The difference is real and shows up immediately: a newly added courier
+   * with no assignments yet matches no branch and disappears from every
+   * scoped list. That is the honest answer to the question the data can
+   * currently support, and it is why "should a courier belong to a branch"
+   * is a schema decision still open with the owner rather than something
+   * guessed at here.
+   */
+  branchId?: string;
 }
 
 export async function listCouriers(params: CourierListParams) {
@@ -102,6 +119,9 @@ export async function listCouriers(params: CourierListParams) {
 
   const where: Prisma.DeliveryStaffWhereInput = {
     ...(params.status ? { status: params.status } : {}),
+    ...(params.branchId
+      ? { assignments: { some: { order: { branchId: params.branchId } } } }
+      : {}),
     ...(params.search
       ? {
           OR: [

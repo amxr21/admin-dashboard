@@ -49,12 +49,23 @@ export interface OrderListParams {
   search?: string;
   sort?: OrderSortField;
   dir?: 'asc' | 'desc';
+  /**
+   * Restrict to one branch (F8). Omitted means EVERY branch — "show me
+   * everything" is a real request and the unscoped call is how it is made.
+   *
+   * An order with a NULL branch is EXCLUDED from a scoped list, the same rule
+   * the reports follow: null means "unattributed", and showing it under
+   * whichever branch is selected would claim it belongs there.
+   */
+  branchId?: string;
 }
 
 function buildWhere(params: OrderListParams): Prisma.OrderWhereInput {
   const where: Prisma.OrderWhereInput = {};
 
   if (params.status) where.status = params.status;
+
+  if (params.branchId) where.branchId = params.branchId;
 
   if (params.from || params.to) {
     where.placedAt = {
@@ -157,7 +168,7 @@ export interface OrderExportResult {
  * what the export button was clicked while looking at.
  */
 export async function listOrdersForExport(
-  params: Pick<OrderListParams, 'status' | 'from' | 'to' | 'search' | 'sort' | 'dir'>,
+  params: Pick<OrderListParams, 'status' | 'from' | 'to' | 'search' | 'sort' | 'dir' | 'branchId'>,
 ): Promise<OrderExportResult> {
   const where = buildWhere(params);
 
@@ -211,7 +222,7 @@ export interface OrderNeighbor {
  */
 export async function getOrderNeighbors(
   id: string,
-  params: Pick<OrderListParams, 'status' | 'from' | 'to' | 'search' | 'sort' | 'dir'>,
+  params: Pick<OrderListParams, 'status' | 'from' | 'to' | 'search' | 'sort' | 'dir' | 'branchId'>,
 ): Promise<{ prev: OrderNeighbor | null; next: OrderNeighbor | null }> {
   const where = buildWhere(params);
 
@@ -243,6 +254,10 @@ export async function getOrder(id: string) {
       taxAmount: true,
       paymentMethod: true,
       placedAt: true,
+      // Which branch took it (F8). Selected so the detail page can SAY so —
+      // without it, two orders from different businesses look identical once
+      // opened, which is exactly the confusion branch scoping exists to end.
+      branchId: true,
       customer: {
         select: { id: true, name: true, email: true, phone: true, city: true, country: true },
       },
@@ -303,10 +318,26 @@ export async function getOrder(id: string) {
     : [];
   const changedByNames = new Map(staffUsers.map((u) => [u.id, u.name]));
 
+  /**
+   * Resolved separately because `Order.branchId` is a plain id, not a
+   * relation — history has to survive the branch being removed, the same
+   * reason `AuditLog.actorId` is a plain id.
+   *
+   * A missing branch (deleted, or never attributed) yields `null`, and the
+   * UI shows nothing rather than inventing a name.
+   */
+  const branch = order.branchId
+    ? await prisma.branch.findUnique({
+        where: { id: order.branchId },
+        select: { id: true, name: true, code: true },
+      })
+    : null;
+
   return {
     id: order.id,
     orderNumber: order.orderNumber,
     status: order.status,
+    branch,
     total: money(order.total),
     subtotal: money(order.subtotal),
     taxAmount: money(order.taxAmount),

@@ -1,4 +1,4 @@
-import { Router, type Response } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 
 import { AppError } from '../../errors/AppError.js';
@@ -61,6 +61,28 @@ import {
 export const reportsRouter = Router();
 
 const guard = [authenticate, withBranchContext, requireArea('reports')] as const;
+
+/**
+ * Merges the request's active branch into a parsed query (F8.5).
+ *
+ * ─── WHY A HELPER AND NOT 30 EDITS ───────────────────────────────────
+ * Every handler here does `await getSomething(scoped(req, parsed.data))`. Adding
+ * `branchId: req.branchId` at each of the 30 call sites would work exactly
+ * once: the next report added copies a neighbouring handler, forgets it, and
+ * silently reports every branch under whichever branch is selected. That is
+ * the same silent-failure shape F8.3 exists to prevent, moved up one layer.
+ *
+ * `scoped(req, parsed.data)` is one thing to remember, and a report that
+ * forgets it is obvious in review because every sibling has it.
+ *
+ * `req.branchId` is `undefined` on a route without `withBranchContext` and
+ * `null` for an explicit "all branches" — both mean unscoped, and
+ * `RangeParams.branchId` is optional, so passing `undefined` restores exactly
+ * the pre-F8 behaviour.
+ */
+function scoped<T extends object>(req: Request, params: T): T & { branchId?: string } {
+  return req.branchId ? { ...params, branchId: req.branchId } : params;
+}
 
 /** Date-only, so a caller cannot smuggle a timezone in and shift the range. */
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
@@ -159,7 +181,7 @@ reportsRouter.get('/reports/overview', ...guard, async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const overview = await getOverview(parsed.data);
+  const overview = await getOverview(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Revenue overview', 'overview', [overview], [
@@ -183,7 +205,7 @@ reportsRouter.get('/reports/revenue', ...guard, async (req, res) => {
   const parsed = seriesQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const series = await getRevenueSeries(parsed.data);
+  const series = await getRevenueSeries(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Revenue over time', 'revenue', series.points, [
@@ -201,7 +223,7 @@ reportsRouter.get('/reports/top-products', ...guard, async (req, res) => {
   const parsed = topQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const top = await getTopProducts(parsed.data);
+  const top = await getTopProducts(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Best sellers', 'top-products', top.products, [
@@ -222,7 +244,7 @@ reportsRouter.get('/reports/fulfillment-health', ...guard, async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const health = await getFulfillmentHealth(parsed.data);
+  const health = await getFulfillmentHealth(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Fulfillment health', 'fulfillment-health', health.needsAttention, [
@@ -240,7 +262,7 @@ reportsRouter.get('/reports/returns-summary', ...guard, async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const summary = await getReturnsSummary(parsed.data);
+  const summary = await getReturnsSummary(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Returns summary', 'returns-summary', summary.topReturnedProducts, [
@@ -259,7 +281,7 @@ reportsRouter.get('/reports/order-value-distribution', ...guard, async (req, res
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const distribution = await getOrderValueDistribution(parsed.data);
+  const distribution = await getOrderValueDistribution(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(
@@ -284,7 +306,7 @@ reportsRouter.get('/reports/status-breakdown', ...guard, async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const breakdown = await getStatusBreakdown(parsed.data);
+  const breakdown = await getStatusBreakdown(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     /**
@@ -334,7 +356,7 @@ reportsRouter.get('/reports/staff-activity', ...guard, async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const activity = await getStaffActivity(parsed.data);
+  const activity = await getStaffActivity(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Staff activity', 'staff-activity', activity.staff, [
@@ -353,7 +375,7 @@ reportsRouter.get('/reports/category-breakdown', ...guard, async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const breakdown = await getCategoryBreakdown(parsed.data);
+  const breakdown = await getCategoryBreakdown(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Revenue by category', 'category-breakdown', breakdown.categories, [
@@ -371,7 +393,7 @@ reportsRouter.get('/reports/refund-rate-trend', ...guard, async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const trend = await getRefundRateTrend(parsed.data);
+  const trend = await getRefundRateTrend(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Refund rate trend', 'refund-rate-trend', trend.points, [
@@ -402,7 +424,7 @@ reportsRouter.get('/reports/explorer', ...guard, async (req, res) => {
   const parsed = explorerQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const explorer = await getExplorerRows(parsed.data);
+  const explorer = await getExplorerRows(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Report explorer', 'explorer', explorer.rows, [
@@ -422,7 +444,7 @@ reportsRouter.get('/reports/inventory-turnover', ...guard, async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const turnover = await getInventoryTurnover(parsed.data);
+  const turnover = await getInventoryTurnover(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Inventory turnover', 'inventory-turnover', turnover.turnover, [
@@ -443,7 +465,7 @@ reportsRouter.get('/reports/customer-geography', ...guard, async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const geography = await getCustomerGeography(parsed.data);
+  const geography = await getCustomerGeography(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Customer geography', 'customer-geography', geography.rows, [
@@ -462,7 +484,7 @@ reportsRouter.get('/reports/customer-new-vs-returning', ...guard, async (req, re
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const split = await getCustomerNewVsReturning(parsed.data);
+  const split = await getCustomerNewVsReturning(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(
@@ -494,7 +516,10 @@ reportsRouter.get('/reports/customer-lifetime-value', ...guard, async (req, res)
   const parsed = ltvQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid parameters', parsed.error.flatten());
 
-  const ltv = await getCustomerLifetimeValue(parsed.data.limit);
+  // Positional args, not a params object — `scoped()` cannot help here, so
+  // the branch is passed explicitly. This is the ONE report with a different
+  // signature (it is unwindowed: LTV is a running total by definition).
+  const ltv = await getCustomerLifetimeValue(parsed.data.limit, req.branchId ?? undefined);
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(
@@ -521,7 +546,7 @@ reportsRouter.get('/reports/customer-order-frequency', ...guard, async (req, res
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const frequency = await getCustomerOrderFrequency(parsed.data);
+  const frequency = await getCustomerOrderFrequency(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(
@@ -546,7 +571,7 @@ reportsRouter.get('/reports/guest-vs-registered', ...guard, async (req, res) => 
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const split = await getGuestVsRegistered(parsed.data);
+  const split = await getGuestVsRegistered(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Guest vs. registered orders', 'guest-vs-registered', [split], [
@@ -565,7 +590,7 @@ reportsRouter.get('/reports/payment-method-breakdown', ...guard, async (req, res
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const breakdown = await getPaymentMethodBreakdown(parsed.data);
+  const breakdown = await getPaymentMethodBreakdown(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Payment method breakdown', 'payment-method-breakdown', breakdown.methods, [
@@ -583,7 +608,7 @@ reportsRouter.get('/reports/product-margin', ...guard, async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const margin = await getProductMargin(parsed.data);
+  const margin = await getProductMargin(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Product margin', 'product-margin', margin.products, [
@@ -605,7 +630,7 @@ reportsRouter.get('/reports/product-review-summary', ...guard, async (req, res) 
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const summary = await getProductReviewSummary(parsed.data);
+  const summary = await getProductReviewSummary(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Product review summary', 'product-review-summary', summary.products, [
@@ -628,7 +653,7 @@ reportsRouter.get('/reports/review-moderation-throughput', ...guard, async (req,
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const throughput = await getReviewModerationThroughput(parsed.data);
+  const throughput = await getReviewModerationThroughput(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(
@@ -690,7 +715,7 @@ reportsRouter.get('/reports/stock-adjustment-reasons', ...guard, async (req, res
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const reasons = await getStockAdjustmentReasons(parsed.data);
+  const reasons = await getStockAdjustmentReasons(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Stock adjustment reasons', 'stock-adjustment-reasons', reasons.reasons, [
@@ -708,7 +733,7 @@ reportsRouter.get('/reports/variant-stock-movement', ...guard, async (req, res) 
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const movement = await getVariantStockMovement(parsed.data);
+  const movement = await getVariantStockMovement(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Variant stock movement', 'variant-stock-movement', movement.variants, [
@@ -734,7 +759,7 @@ reportsRouter.get('/reports/return-resolution-breakdown', ...guard, async (req, 
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const breakdown = await getReturnResolutionBreakdown(parsed.data);
+  const breakdown = await getReturnResolutionBreakdown(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(
@@ -760,7 +785,7 @@ reportsRouter.get('/reports/return-reasons', ...guard, async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const reasons = await getReturnReasons(parsed.data);
+  const reasons = await getReturnReasons(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Return reasons', 'return-reasons', reasons.returns, [
@@ -781,7 +806,7 @@ reportsRouter.get('/reports/courier-performance', ...guard, async (req, res) => 
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const performance = await getCourierPerformance(parsed.data);
+  const performance = await getCourierPerformance(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Courier performance', 'courier-performance', performance.couriers, [
@@ -802,7 +827,7 @@ reportsRouter.get('/reports/delivery-zone-breakdown', ...guard, async (req, res)
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const zones = await getDeliveryZoneBreakdown(parsed.data);
+  const zones = await getDeliveryZoneBreakdown(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Delivery zone breakdown', 'delivery-zone-breakdown', zones.zones, [
@@ -821,7 +846,7 @@ reportsRouter.get('/reports/delivery-cycle-time', ...guard, async (req, res) => 
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const cycleTime = await getDeliveryCycleTime(parsed.data);
+  const cycleTime = await getDeliveryCycleTime(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Delivery cycle time', 'delivery-cycle-time', [cycleTime], [
@@ -849,7 +874,7 @@ reportsRouter.get('/reports/audit-outcome-trend', ...guard, async (req, res) => 
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const trend = await getAuditOutcomeTrend(parsed.data);
+  const trend = await getAuditOutcomeTrend(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Audit outcome trend', 'audit-outcome-trend', trend.points, [
@@ -868,7 +893,7 @@ reportsRouter.get('/reports/audit-activity-by-entity', ...guard, async (req, res
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
-  const activity = await getAuditActivityByEntity(parsed.data);
+  const activity = await getAuditActivityByEntity(scoped(req, parsed.data));
 
   if (parsed.data.format && parsed.data.format !== 'json') {
     await sendExport(res, parsed.data.format, 'Audit activity by entity', 'audit-activity-by-entity', activity.rows, [

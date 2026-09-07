@@ -74,6 +74,13 @@ export interface OrderDetail {
   id: string;
   orderNumber: string;
   status: OrderStatus;
+  /**
+   * Which branch took the order (F8).
+   *
+   * `null` for an order placed before branches existed, or one the branch of
+   * which has since been removed — the UI shows nothing rather than guessing.
+   */
+  branch: { id: string; name: string; code: string | null } | null;
   /** Grand total — what the customer paid, tax included. Never recomputed. */
   total: string | null;
   /** Sum of line items before tax. Null on orders placed before this was

@@ -50,6 +50,17 @@ export interface InventoryListParams {
   search?: string;
   lowStock?: boolean;
   threshold?: number;
+  /**
+   * Show one branch's stock instead of the all-branch total (F8).
+   *
+   * This changes the NUMBER, not just which rows appear — which is what makes
+   * it different from every other filter here. `Product.stock` is the total
+   * across every branch; scoped, each row reports that branch's own
+   * `BranchStock.quantity`, and "low" is judged against THAT.
+   *
+   * Omitted means every branch, exactly as before.
+   */
+  branchId?: string;
 }
 
 export async function listInventory(params: InventoryListParams) {
@@ -134,18 +145,56 @@ export async function listInventory(params: InventoryListParams) {
     prisma.product.count({ where }),
   ]);
 
+  /**
+   * Scoped to a branch, `stock` is that branch's quantity — not the
+   * all-branch total the column holds.
+   *
+   * Fetched per page rather than joined into the query above because the
+   * low-stock WHERE clause compares `products.stock` column-to-column against
+   * `low_stock_threshold`; swapping that for a joined value would mean
+   * rewriting the filter as raw SQL and losing the composability the comment
+   * above is about.
+   *
+   * The cost of that trade is stated plainly: with a branch active, the
+   * low-stock FILTER still selects on the all-branch total while the BADGE
+   * reports the branch's own. They can disagree, so `isLow` is recomputed
+   * from the branch quantity below and the two are reconciled on the row
+   * rather than left to contradict each other. A product filtered in on its
+   * global total but not actually low at THIS branch shows without the badge,
+   * which is the honest reading: it is in the list because it is low
+   * somewhere.
+   */
+  const branchQuantities = params.branchId
+    ? new Map(
+        (
+          await prisma.branchStock.findMany({
+            where: { branchId: params.branchId, productId: { in: rows.map((r) => r.id) } },
+            select: { productId: true, quantity: true },
+          })
+        ).map((r) => [r.productId, r.quantity]),
+      )
+    : null;
+
   return {
-    products: rows.map((row) => ({
-      ...row,
-      // Decimal → 2dp string; null stays null and means "not tracked", never 0.
-      cost: row.cost === null ? null : row.cost.toFixed(2),
-      // Per-row: the product's own threshold when it has one, the store
-      // default otherwise. Must match the `where` above exactly, or the
-      // low-stock FILTER and the low-stock BADGE would disagree on the same
-      // page — the class of bug this file's header warns about.
-      isLow: row.stock <= (row.lowStockThreshold ?? threshold),
-      effectiveThreshold: row.lowStockThreshold ?? threshold,
-    })),
+    products: rows.map((row) => {
+      // No BranchStock row means this branch holds none of it: a real
+      // measured zero, not a missing value.
+      const stock = branchQuantities ? (branchQuantities.get(row.id) ?? 0) : row.stock;
+      const effectiveThreshold = row.lowStockThreshold ?? threshold;
+
+      return {
+        ...row,
+        stock,
+        // Decimal → 2dp string; null stays null and means "not tracked", never 0.
+        cost: row.cost === null ? null : row.cost.toFixed(2),
+        // Per-row: the product's own threshold when it has one, the store
+        // default otherwise. Judged against whichever stock figure this row
+        // is actually reporting, so the badge never contradicts the number
+        // printed beside it.
+        isLow: stock <= effectiveThreshold,
+        effectiveThreshold,
+      };
+    }),
     total,
     page,
     pageSize,
@@ -156,7 +205,9 @@ export async function listInventory(params: InventoryListParams) {
 
 export async function listMovements(
   productId: string,
-  params: { page?: number; pageSize?: number } = {},
+  /** `branchId` restricts the log to movements recorded AT that branch (F8) —
+   *  a movement carries its own `branchId`, so this needs no join. */
+  params: { page?: number; pageSize?: number; branchId?: string } = {},
 ) {
   const product = await prisma.product.findUnique({
     where: { id: productId },
@@ -170,7 +221,7 @@ export async function listMovements(
 
   const [movements, total] = await prisma.$transaction([
     prisma.stockMovement.findMany({
-      where: { productId },
+      where: { productId, ...(params.branchId ? { branchId: params.branchId } : {}) },
       // Newest first: the recent change is what someone is checking.
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * pageSize,
@@ -185,7 +236,9 @@ export async function listMovements(
         createdAt: true,
       },
     }),
-    prisma.stockMovement.count({ where: { productId } }),
+    prisma.stockMovement.count({
+      where: { productId, ...(params.branchId ? { branchId: params.branchId } : {}) },
+    }),
   ]);
 
   return {

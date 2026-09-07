@@ -89,6 +89,9 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     id: 'o1',
     orderNumber: 'ORD-1024',
     status: 'CONFIRMED',
+    // Null by default: most of these tests predate branches and should keep
+    // exercising the unattributed path. Individual tests override it.
+    branch: null,
     total: '59.98',
     subtotal: null,
     taxAmount: null,
@@ -970,5 +973,45 @@ describe('localisation', () => {
     render(<OrderDetail id="o1" />, { locale: 'ar' });
 
     expect(await screen.findByText('العميل')).toBeInTheDocument();
+  });
+});
+
+describe('which branch took the order (F8)', () => {
+  it('names the branch beside the placed-on date', async () => {
+    fetchOrder.mockResolvedValue(
+      makeOrder({ branch: { id: 'b1', name: 'Marina', code: 'MAR' } }),
+    );
+
+    render(<OrderDetail id="o1" />);
+
+    // On "All branches" two orders from different businesses are otherwise
+    // indistinguishable once opened — this line is the only thing that says
+    // where the order came from.
+    expect(await screen.findByText('Marina')).toBeInTheDocument();
+    expect(screen.getByText('(MAR)')).toBeInTheDocument();
+  });
+
+  it('shows nothing at all when the order is unattributed', async () => {
+    // An order placed before branches existed has no branch. Inventing one —
+    // or printing "—" where a name goes — would claim it belongs somewhere.
+    fetchOrder.mockResolvedValue(makeOrder({ branch: null }));
+
+    render(<OrderDetail id="o1" />);
+
+    await screen.findByText('ORD-1024');
+    expect(screen.queryByText('Marina')).not.toBeInTheDocument();
+  });
+
+  it('renders a branch that has no short code', async () => {
+    // `code` is optional per business, so the parenthesised suffix must not
+    // render as an empty "()".
+    fetchOrder.mockResolvedValue(
+      makeOrder({ branch: { id: 'b2', name: 'Corniche', code: null } }),
+    );
+
+    render(<OrderDetail id="o1" />);
+
+    expect(await screen.findByText('Corniche')).toBeInTheDocument();
+    expect(screen.queryByText('()')).not.toBeInTheDocument();
   });
 });
