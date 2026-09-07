@@ -871,9 +871,16 @@ export async function seedDemoData() {
    */
   const kitchenCategory = await prisma.category.create({
     data: {
-      name: 'Kitchen',
-      slug: DEMO.categorySlug('kitchen'),
-      description: 'Second-business menu — must never appear in the cafe reports.',
+      // `Category` has no description column — the note about this belonging
+      // to the second business lives in the comment above, not in a field
+      // that does not exist.
+      //
+      // Named "Menu", not "Kitchen": the cafe's own CATEGORIES list already
+      // has a `kitchen` slug, and `Category.slug` is globally unique, so the
+      // two collided. "Menu" is also the truer word for a restaurant's
+      // catalogue, which is what this actually is.
+      name: 'Menu',
+      slug: DEMO.categorySlug('restaurant-menu'),
     },
   });
 
