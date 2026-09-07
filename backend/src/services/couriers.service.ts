@@ -103,12 +103,15 @@ export interface CourierListParams {
    * least one assignment for an order taken at this branch" — a record of
    * where they HAVE worked, not a roster of where they BELONG.
    *
-   * The difference is real and shows up immediately: a newly added courier
-   * with no assignments yet matches no branch and disappears from every
-   * scoped list. That is the honest answer to the question the data can
-   * currently support, and it is why "should a courier belong to a branch"
-   * is a schema decision still open with the owner rather than something
-   * guessed at here.
+   * ─── RESOLVED 2026-09-08 (O2) ──────────────────────────────────────
+   * A courier now HAS branches (`DeliveryStaffBranch`), so this filters on
+   * where they belong rather than where they have worked. The old filter
+   * ("has an assignment for an order at this branch") made a newly hired
+   * courier invisible on every scoped list until their first delivery —
+   * precisely when a dispatcher most needs to find them.
+   *
+   * See `courierBranchWhere` for why a courier with NO branches recorded
+   * still appears everywhere.
    */
   branchId?: string;
 }
@@ -119,9 +122,7 @@ export async function listCouriers(params: CourierListParams) {
 
   const where: Prisma.DeliveryStaffWhereInput = {
     ...(params.status ? { status: params.status } : {}),
-    ...(params.branchId
-      ? { assignments: { some: { order: { branchId: params.branchId } } } }
-      : {}),
+    ...courierBranchWhere(params.branchId),
     ...(params.search
       ? {
           OR: [
@@ -143,6 +144,9 @@ export async function listCouriers(params: CourierListParams) {
         ...COURIER_FIELDS,
         // Whether a code exists is not secret; the code itself is.
         accessCodeHash: true,
+        // O1.3: the roster can finally SAY where a courier works, now that
+        // there is a truthful answer to give.
+        branches: { select: { branch: { select: { id: true, name: true } } } },
         _count: {
           select: {
             assignments: {
@@ -164,11 +168,14 @@ export async function listCouriers(params: CourierListParams) {
   ]);
 
   return {
-    couriers: rows.map(({ accessCodeHash, _count, ...courier }) => ({
+    couriers: rows.map(({ accessCodeHash, _count, branches, ...courier }) => ({
       ...courier,
       createdAt: courier.createdAt.toISOString(),
       hasAccessCode: accessCodeHash !== null,
       activeAssignments: _count.assignments,
+      // An empty array means "not placed yet", never "belongs nowhere" — the
+      // UI says so rather than leaving the cell blank.
+      branches: branches.map((row) => row.branch),
     })),
     total,
     page,
@@ -183,6 +190,9 @@ export async function getCourier(id: string) {
     select: {
       ...COURIER_FIELDS,
       accessCodeHash: true,
+      // Same shape as the list (O2) — the detail page and the roster must not
+      // disagree about where somebody works.
+      branches: { select: { branch: { select: { id: true, name: true } } } },
       assignments: {
         orderBy: { createdAt: 'desc' },
         take: 20,
@@ -206,6 +216,7 @@ export async function getCourier(id: string) {
     ...rest,
     createdAt: rest.createdAt.toISOString(),
     hasAccessCode: accessCodeHash !== null,
+    branches: rest.branches.map((row) => row.branch),
     assignments: rest.assignments.map((assignment) => ({
       ...assignment,
       createdAt: assignment.createdAt.toISOString(),
@@ -635,4 +646,95 @@ export async function unassignOrder(assignmentId: string) {
   }
 
   await prisma.deliveryAssignment.delete({ where: { id: assignmentId } });
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * WHICH BRANCHES A COURIER SERVES (O2)
+ *
+ * The owner's answer, 2026-09-08: a courier can serve one branch and another
+ * as well. So this is a join table, not a `branchId` column, and one courier
+ * record rather than one per branch — their access code, phone and delivery
+ * history stay in one place.
+ *
+ * ─── WHY THIS REPLACES THE ASSIGNMENT-HISTORY FILTER ─────────────────
+ * PR #155 scoped the courier roster by "has an assignment for an order at this
+ * branch" — where they have WORKED, not where they BELONG. That made a newly
+ * hired courier invisible on every scoped list until their first delivery,
+ * which is exactly when a dispatcher most needs to find them.
+ * ───────────────────────────────────────────────────────────────────── */
+
+/** The branches this courier serves, for the detail page and the form. */
+export async function listCourierBranches(courierId: string) {
+  const rows = await prisma.deliveryStaffBranch.findMany({
+    where: { courierId },
+    select: { branch: { select: { id: true, name: true, code: true, isActive: true } } },
+    orderBy: { branch: { name: 'asc' } },
+  });
+
+  return rows.map((row) => row.branch);
+}
+
+/**
+ * Replace the whole set in one transaction.
+ *
+ * A full replace rather than add/remove endpoints: the UI edits this as a set
+ * of checkboxes, and applying a diff computed on a stale client is how a
+ * branch nobody touched gets removed. Sending the intended final state means
+ * the last writer wins predictably instead of partially.
+ */
+export async function setCourierBranches(courierId: string, branchIds: string[]) {
+  const courier = await prisma.deliveryStaff.findUnique({
+    where: { id: courierId },
+    select: { id: true },
+  });
+
+  if (!courier) throw AppError.notFound('Courier not found');
+
+  const wanted = [...new Set(branchIds)];
+
+  if (wanted.length > 0) {
+    const found = await prisma.branch.count({ where: { id: { in: wanted } } });
+
+    // Refused as a whole rather than silently keeping the ids that resolve —
+    // a partially applied roster is harder to notice than a rejected one.
+    if (found !== wanted.length) {
+      throw AppError.badRequest('One or more branches do not exist', { field: 'branchIds' });
+    }
+  }
+
+  await prisma.$transaction([
+    prisma.deliveryStaffBranch.deleteMany({
+      where: { courierId, branchId: { notIn: wanted.length > 0 ? wanted : [''] } },
+    }),
+    ...wanted.map((branchId) =>
+      prisma.deliveryStaffBranch.upsert({
+        where: { courierId_branchId: { courierId, branchId } },
+        create: { courierId, branchId },
+        update: {},
+      }),
+    ),
+  ]);
+
+  return listCourierBranches(courierId);
+}
+
+/**
+ * The `where` clause that scopes a courier list to one branch.
+ *
+ * ─── A COURIER WITH NO BRANCHES IS VISIBLE EVERYWHERE, ON PURPOSE ────
+ * Every courier that existed before this shipped has no rows here, and an
+ * empty relation would hide all of them from every scoped list the moment it
+ * deployed — a migration that silently empties a screen. So "no branches
+ * recorded" means "not yet placed", and such a courier still appears; only a
+ * courier explicitly assigned elsewhere is filtered out.
+ *
+ * This is the same direction as `UserBranch`'s "no row means the global role":
+ * an upgrade grants nothing and takes nothing away.
+ */
+export function courierBranchWhere(branchId: string | undefined) {
+  if (!branchId) return {};
+
+  return {
+    OR: [{ branches: { some: { branchId } } }, { branches: { none: {} } }],
+  };
 }

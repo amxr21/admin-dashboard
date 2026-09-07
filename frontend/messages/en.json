@@ -196,7 +196,8 @@
       "emptyTitle": "No businesses yet",
       "emptyDescription": "A business is the company that owns your shops — its name, address and tax id are what print on an invoice. Add one, then add the branches that trade under it.",
       "columnHeader": "Branch",
-      "noBranch": "No branch recorded"
+      "noBranch": "No branch recorded",
+      "anyBranch": "Any branch"
     },
     "form": {
       "createTitle": "Add branch",
@@ -1050,8 +1051,10 @@
         "zone": "Zone",
         "region": "Region",
         "country": "Country",
-        "status": "Status"
-      }
+        "status": "Status",
+        "branches": "Branches served"
+      },
+      "branchesHint": "Leave all unticked for a courier who can work at any branch."
     },
     "detail": {
       "back": "Back to couriers",
