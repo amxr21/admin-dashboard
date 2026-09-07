@@ -606,12 +606,26 @@ owner on 2026-09-08 and the whole track followed the same day.
       is ever wanted it is its own project with real legal questions.
 
 ### Already built — verify and tell the owner, do not rebuild
-- [ ] **F7.5** Low-stock alerts already exist, **including email**.
-      `adjustStock` fires `notify()` on CROSSING into low stock, gated on
-      `notifications.lowStockAlerts`; `notify()` writes the in-app row AND
-      calls `sendAlertEmail`. **It works; it is almost certainly just
-      unconfigured.** Confirm the three email settings and check one arrives.
-      Do not build a second path
+- [x] **F7.5 — VERIFIED 2026-09-08. Nothing was missing; NO CODE WRITTEN.**
+      Traced the whole chain and it is intact: `adjustStock` fires `notify()`
+      on CROSSING into low stock (gated on `notifications.lowStockAlerts`,
+      default ON), and `notify()` writes the in-app row AND calls
+      `sendAlertEmail` — the two are independent, so neither is gated on the
+      other succeeding.
+      **Why it looks broken:** it is unconfigured. Queried the local database
+      directly — there are ZERO `Setting` rows, so everything sits at registry
+      defaults, and `email.enabled` defaults to **false**. No `SMTP_*` env
+      vars are set either.
+      **To switch it on** (owner task, now in `SETUP_TODO.md`): set
+      `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD` in `backend/.env`,
+      then in Settings turn on **Send email for alerts**, fill **Send emails
+      from**, and make sure **Support email** is set — that last one is the
+      RECIPIENT (`store.supportEmail`), which is easy to miss because the
+      field is not named like one.
+      **Added a regression test** (`low-stock-alert.test.ts`) pinning that
+      `notify()` reaches `sendAlertEmail`, watched failing. Not because the
+      link was broken, but because a working-but-unconfigured feature is
+      exactly what gets rebuilt by the next person who looks.
 
 ### Older, from §U / the G-GATE
 - [ ] Optimistic row updates with rollback
