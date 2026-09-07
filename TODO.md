@@ -389,8 +389,9 @@ This is F5.4. **No schema change needed.**
       screen, so the form now refuses with a clear message instead of
       redirecting into a broken state. See the new item below
 
-### O3b — 🔴 FOUND 2026-09-08: 2FA login has no code-entry screen
-Not a regression — pre-existing, surfaced while wiring O3.4.
+### O3b — ✅ FOUND AND FIXED 2026-09-08
+Pre-existing, not a regression — surfaced while wiring O3.4, fixed the same
+day. A 2FA user can now actually sign in, and 2FA can actually be switched on.
 
 `signIn` can return `TWO_FACTOR_REQUIRED` with a `pendingToken` and no session
 written. A repo-wide grep found **zero** UI handling it: the login form awaited
@@ -403,15 +404,27 @@ The 2FA/sessions/API-key SETTINGS panels have the same problem and are already
 noted in CLAUDE.md as built-but-not-linked, which is probably why nobody hit
 this: the feature cannot currently be switched on from the UI.
 
-**Mitigated, not fixed 2026-09-08:** the login form now refuses with a clear
-message rather than redirecting into a broken state.
+**Fixed 2026-09-08** (the interim "refuse with a message" mitigation was
+replaced by the real code-entry step).
 
-- [ ] O3b.1 Build the 2FA code-entry step (`verifyTwoFactor` already exists and
-      already returns the role for the landing redirect — only the screen is
-      missing)
-- [ ] O3b.2 Link the built-and-route-reachable 2FA / sessions / API-key panels
-      from the settings page (this is the long-standing "still needs a human"
-      item in CLAUDE.md)
+- [x] O3b.1 **DONE 2026-09-08.** A second phase of the same form, not a
+      third field on the first: the password is already spent, and
+      re-rendering it invites the browser to resubmit credentials that no
+      longer prove anything. **The pending token lives in React state and
+      nowhere else** — it proves the password step happened, so it is a
+      credential that SKIPS the password if stolen; `localStorage` would
+      outlive the tab for any script on the origin to read, and the URL would
+      reach history, server logs and referrers. A test asserts it reaches
+      neither. Accepts a backup code too (so `type="text"`, not `number`,
+      with `inputMode`/`autocomplete` still giving phones the numeric pad and
+      OS autofill). Lands on the role's page, same as a password-only login.
+      **All 5 tests watched failing** against the reintroduced bug
+- [x] O3b.2 **DONE 2026-09-08.** All three mounted next to My account —
+      they configure THIS person's own access (second factor, live sessions,
+      keys), not how the shop is run. This was very likely why O3b.1 went
+      unnoticed for so long: 2FA could not be switched on from the UI, so
+      nobody could reach the broken login path. Closes the long-standing
+      "still needs a human" item (1) in CLAUDE.md
 
 ### O4 — `MANAGER` is the wrong shape for a shop manager
 Today MANAGER = every area except `staff` — an OPERATIONS manager. A shop
