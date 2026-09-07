@@ -334,3 +334,96 @@ describe('who worked when', () => {
     }
   });
 });
+
+describe('what happened during a shift (F6.4)', () => {
+  /**
+   * The summary is a query over `AuditLog`, which every write already reaches
+   * — no second activity log, which would be two records of one fact free to
+   * disagree.
+   *
+   * The risk is the BOUNDARY. `auditWhere`'s from/to are calendar dates
+   * snapped to midnight; a shift is a timestamp range inside a day. Rounding
+   * it would attribute the night shift's work to the morning one, and nothing
+   * would look wrong — just a plausible number against the wrong name.
+   */
+  async function logAt(actorId: string, action: string, at: Date) {
+    return prisma.auditLog.create({
+      data: { action, entity: 'shifts', actorId, createdAt: at },
+      select: { id: true },
+    });
+  }
+
+  it('counts only what happened inside the shift window', async () => {
+    const worker = await makeUser(StaffRole.SUPPORT, 'summary-window');
+    const start = new Date('2026-08-01T09:00:00Z');
+    const end = new Date('2026-08-01T17:00:00Z');
+    const shift = await seedShift(worker.id, start, end);
+
+    await logAt(worker.id, 'inside.one', new Date('2026-08-01T10:00:00Z'));
+    await logAt(worker.id, 'inside.two', new Date('2026-08-01T16:59:00Z'));
+    // One minute before the shift and one minute after — both must be out.
+    await logAt(worker.id, 'before', new Date('2026-08-01T08:59:00Z'));
+    await logAt(worker.id, 'after', new Date('2026-08-01T17:01:00Z'));
+
+    const res = await request(app).get(`/api/v1/shifts/${shift.id}/summary`).set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+
+    const body = res.body as { data: { totalActions: number; byAction: { action: string }[] } };
+    expect(body.data.totalActions).toBe(2);
+
+    const actions = body.data.byAction.map((row) => row.action);
+    expect(actions).toContain('inside.one');
+    expect(actions).not.toContain('before');
+    expect(actions).not.toContain('after');
+  });
+
+  it('counts only THAT person, not everyone on at the time', async () => {
+    const mine = await makeUser(StaffRole.SUPPORT, 'summary-mine');
+    const theirs = await makeUser(StaffRole.SUPPORT, 'summary-theirs');
+    const start = new Date('2026-08-02T09:00:00Z');
+    const shift = await seedShift(mine.id, start, new Date('2026-08-02T17:00:00Z'));
+
+    await logAt(mine.id, 'mine.action', new Date('2026-08-02T10:00:00Z'));
+    // Same window, different person — a colleague's work is not yours.
+    await logAt(theirs.id, 'theirs.action', new Date('2026-08-02T10:00:00Z'));
+
+    const res = await request(app).get(`/api/v1/shifts/${shift.id}/summary`).set(auth(ownerToken));
+
+    const body = res.body as { data: { totalActions: number } };
+    expect(body.data.totalActions).toBe(1);
+  });
+
+  it('summarises an OPEN shift up to now', async () => {
+    // Still working, so the honest reading is "what they have done so far",
+    // not an error or an empty result.
+    const worker = await makeUser(StaffRole.SUPPORT, 'summary-open');
+    const shift = await seedShift(worker.id, new Date(Date.now() - 60 * 60 * 1000), null);
+
+    await logAt(worker.id, 'during.open', new Date(Date.now() - 30 * 60 * 1000));
+
+    const res = await request(app).get(`/api/v1/shifts/${shift.id}/summary`).set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    expect((res.body as { data: { totalActions: number } }).data.totalActions).toBe(1);
+  });
+
+  it('lets somebody read their OWN summary without `staff`', async () => {
+    // "What did I do today" is a question about your own work. A cashier
+    // reviewing their own shift is not reading personnel data about anybody.
+    const shift = await seedShift(workerId, new Date('2026-08-03T09:00:00Z'), new Date('2026-08-03T17:00:00Z'));
+
+    const res = await request(app).get(`/api/v1/shifts/${shift.id}/summary`).set(auth(workerToken));
+
+    expect(res.status).toBe(200);
+  });
+
+  it("refuses someone else's summary without `staff`", async () => {
+    const other = await makeUser(StaffRole.SUPPORT, 'summary-other');
+    const shift = await seedShift(other.id, new Date('2026-08-04T09:00:00Z'), new Date('2026-08-04T17:00:00Z'));
+
+    const res = await request(app).get(`/api/v1/shifts/${shift.id}/summary`).set(auth(workerToken));
+
+    expect(res.status).toBe(403);
+  });
+});

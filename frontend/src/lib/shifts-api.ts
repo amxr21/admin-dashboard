@@ -90,3 +90,25 @@ export async function editShift(
   });
   return result.shift;
 }
+
+export interface ShiftSummary {
+  shift: Shift;
+  /**
+   * Audited WRITES in the window. Reads are not audited, so this is "what
+   * they changed", never "how busy they were" — the UI has to say so rather
+   * than let a big number imply the second reading.
+   */
+  totalActions: number;
+  byAction: { action: string; count: number }[];
+  recent: {
+    id: string;
+    action: string;
+    entity: string;
+    entityId: string | null;
+    createdAt: string;
+  }[];
+}
+
+export async function fetchShiftSummary(id: string): Promise<ShiftSummary> {
+  return apiFetch<ShiftSummary>(`/shifts/${id}/summary`);
+}
