@@ -215,20 +215,37 @@ Both now expressible: `UserBranch` was read-only until this stage.*
 
 *Full version with the reasoning behind each item: `O7-PLAN.md`.*
 
+### O1 — ✅ DONE 2026-09-08 except O1.3 (blocked on O2)
+Orders, returns and stock movements now name their branch, shown only when the
+switcher is on "All branches" — with one selected, every row is from it and the
+column would just repeat. The courier roster (O1.3) genuinely cannot be done
+until O2 is answered.
+
+**Original entry:**
+
 ### O1 — Branch is invisible outside the order detail
 Orders now name their branch (PR #155). Inventory, returns and couriers are
 SCOPED but show no branch column, so on "All branches" rows from different
 places are indistinguishable — the same gap the order detail had.
 
-- [ ] O1.1 Add a branch column to the inventory list (only when unscoped — a
-      column repeating the same value on every row is noise)
-- [ ] O1.2 Same for the returns list, via `Return.order.branch`
-- [ ] O1.3 Same for the courier roster, or state plainly that a courier has no
-      single branch (depends on O2)
-- [ ] O1.4 Add a branch column to the ORDERS list too — #155 only did the
-      detail page
-- [ ] O1.5 Backend: these lists do not currently SELECT the branch; each needs
-      it added and resolved to a name, as `getOrder` now does
+- [x] O1.1 **DONE 2026-09-08.** On the stock-movement log, which is where a
+      branch actually varies — the inventory LIST is per product, one row per
+      product across all branches, so a column there would repeat or mislead
+- [x] O1.2 **DONE 2026-09-08.** Reached through the order, as planned — a
+      return deliberately has no `branchId` of its own
+- [ ] O1.3 **BLOCKED on O2, confirmed 2026-09-08.** `DeliveryStaff` has no
+      `branchId` — verified against the schema. There is no truthful value to
+      put in the column until the owner answers whether a courier belongs to
+      ONE branch or serves several. Showing "where they have worked" would
+      label a courier with a branch they do not belong to
+- [x] O1.4 **DONE 2026-09-08.**
+- [x] O1.5 **DONE 2026-09-08.** One shared `resolveBranchLabels()` batch
+      lookup rather than three copies. It is a batch lookup and NOT a Prisma
+      `include` because `Order.branchId` is a plain id with no relation — an
+      order outlives the branch that took it, so a per-row lookup would be N
+      queries. A missing branch stays `null`; the UI renders an em dash rather
+      than inventing a name, since "not recorded" is a different fact from
+      "belongs to whichever branch sorts first"
 
 ### O6 — ✅ FIXED 2026-09-08 — courier status update blanked the card
 **Diagnosed 2026-09-07, fixed 2026-09-08.** All four items done; 47/47 courier

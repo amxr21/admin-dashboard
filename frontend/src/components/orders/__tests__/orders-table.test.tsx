@@ -98,6 +98,7 @@ function makeOrder(overrides: Partial<OrderListRow> = {}): OrderListRow {
     total: '59.98',
     placedAt: '2026-07-01T10:00:00.000Z',
     paymentMethod: 'card',
+    branch: null,
     customer: { id: 'c1', name: 'Ali', email: 'ali@example.com' },
     itemCount: 2,
     ...overrides,

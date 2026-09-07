@@ -66,6 +66,7 @@ function makeRow(overrides: Partial<ReturnListRow> = {}): ReturnListRow {
     resolution: 'NONE',
     category: null,
     createdAt: '2026-07-20T00:00:00.000Z',
+    branch: null,
     order: { id: 'o1', orderNumber: 'ORD-1024' },
     customer: { id: 'c1', name: 'Ali' },
     itemCount: 1,

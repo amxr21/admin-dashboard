@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 import { Prisma, ReturnCategory, ReturnResolution, ReturnStatus } from '@prisma/client';
 import type { Request } from 'express';
+import { resolveBranchLabels } from './branches.service.js';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
@@ -94,13 +95,18 @@ export async function listReturns(params: ReturnListParams) {
         resolution: true,
         category: true,
         createdAt: true,
-        order: { select: { id: true, orderNumber: true } },
+        // O1: reached THROUGH the order, because a return has no branch of
+        // its own — it carries a required `orderId` and the order already
+        // records the branch, so a second copy could only drift from it.
+        order: { select: { id: true, orderNumber: true, branchId: true } },
         customer: { select: { id: true, name: true } },
         _count: { select: { items: true } },
       },
     }),
     prisma.return.count({ where }),
   ]);
+
+  const branches = await resolveBranchLabels(rows.map((row) => row.order.branchId));
 
   return {
     returns: rows.map((row) => ({
@@ -110,8 +116,9 @@ export async function listReturns(params: ReturnListParams) {
       resolution: row.resolution,
       category: row.category,
       createdAt: row.createdAt.toISOString(),
-      order: row.order,
+      order: { id: row.order.id, orderNumber: row.order.orderNumber },
       customer: row.customer,
+      branch: row.order.branchId ? (branches.get(row.order.branchId) ?? null) : null,
       itemCount: row._count.items,
     })),
     total,

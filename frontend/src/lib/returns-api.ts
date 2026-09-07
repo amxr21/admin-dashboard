@@ -32,6 +32,9 @@ export interface ReturnListRow {
   order: { id: string; orderNumber: string };
   customer: { id: string; name: string } | null;
   itemCount: number;
+  /** Which branch this belongs to. Null when it predates branch scoping, or
+   *  its branch was removed — the UI shows nothing rather than a guess. */
+  branch: { id: string; name: string; code: string | null } | null;
 }
 
 export interface ReturnItemDetail {
