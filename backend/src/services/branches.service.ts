@@ -1,4 +1,4 @@
-import { StaffRole } from '@prisma/client';
+import { Prisma, StaffRole } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
@@ -178,4 +178,228 @@ export async function resolveBrand(
     storeLogoUrl: firstFilled(business.logoUrl, fallback.storeLogoUrl),
     storeCurrency: firstFilled(business.currency, fallback.storeCurrency),
   };
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * WRITES (O7 stage 1)
+ *
+ * F8 built the engine and none of the controls: `Business`, `Branch` and
+ * `UserBranch` all existed with the right columns, and nothing but a
+ * migration or the seeder could create a row in any of them. An owner could
+ * not open a second shop without a developer running SQL.
+ *
+ * These are ordinary CRUD over tables that already exist. What is NOT
+ * ordinary is which of them may be refused — that is the part carrying the
+ * comments below.
+ * ───────────────────────────────────────────────────────────────────── */
+
+export interface BusinessInput {
+  name: string;
+  kind?: string | null;
+  legalName?: string | null;
+  taxId?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  addressLine?: string | null;
+  city?: string | null;
+  country?: string | null;
+  currency?: string | null;
+  timezone?: string | null;
+  logoUrl?: string | null;
+  isActive?: boolean;
+}
+
+export async function createBusiness(input: BusinessInput) {
+  return prisma.business.create({ data: input });
+}
+
+/**
+ * `id` is never accepted (see the route). Every other field is optional, so
+ * an owner can correct one of them without resubmitting the whole record.
+ */
+export async function updateBusiness(businessId: string, input: Partial<BusinessInput>) {
+  const before = await prisma.business.findUnique({ where: { id: businessId } });
+
+  if (!before) throw AppError.notFound('Business not found');
+
+  const updated = await prisma.business.update({ where: { id: businessId }, data: input });
+
+  return { before, updated };
+}
+
+export interface BranchInput {
+  businessId: string;
+  name: string;
+  code?: string | null;
+  addressLine?: string | null;
+  city?: string | null;
+  phone?: string | null;
+  timezone?: string | null;
+  isSellingPoint?: boolean;
+  isActive?: boolean;
+  isDefault?: boolean;
+}
+
+/**
+ * A duplicate `code` is a 409, not a 500.
+ *
+ * The constraint is `@@unique([businessId, code])` — per business rather than
+ * global, because two businesses may both sensibly call a branch "MAIN".
+ * Prisma raises P2002, which would otherwise reach the error handler as an
+ * unhandled 500 telling the owner nothing about what to change.
+ */
+async function translateDuplicateCode<T>(write: () => Promise<T>): Promise<T> {
+  try {
+    return await write();
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      throw AppError.conflict('A branch with this code already exists in this business', {
+        field: 'code',
+      });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Exactly one branch carries `isDefault`, enforced in the same transaction.
+ *
+ * Two defaults would make `defaultBranchId()` order-dependent — returning
+ * whichever row the database happened to hand back first, silently and
+ * differently between queries. That is precisely the bug F8.2 fixed by
+ * replacing "the oldest branch" with an explicit flag, and a second flag
+ * would reintroduce it in a new disguise.
+ *
+ * Scoped per BUSINESS, not globally: each business needs its own default, and
+ * clearing across businesses would unset an unrelated company's.
+ */
+async function clearOtherDefaults(
+  tx: Prisma.TransactionClient,
+  businessId: string,
+  keepBranchId: string,
+) {
+  await tx.branch.updateMany({
+    where: { businessId, isDefault: true, id: { not: keepBranchId } },
+    data: { isDefault: false },
+  });
+}
+
+export async function createBranch(input: BranchInput) {
+  const business = await prisma.business.findUnique({
+    where: { id: input.businessId },
+    select: { id: true },
+  });
+
+  if (!business) {
+    throw AppError.badRequest('Business not found', { field: 'businessId' });
+  }
+
+  return translateDuplicateCode(() =>
+    prisma.$transaction(async (tx) => {
+      // The first branch of a business is its default whether or not the
+      // caller said so. A business with branches and no default sends
+      // `defaultBranchId()` back to "any active branch" — the
+      // ordering-dependent answer the flag exists to replace.
+      const existing = await tx.branch.count({ where: { businessId: input.businessId } });
+      const isDefault = input.isDefault ?? existing === 0;
+
+      const branch = await tx.branch.create({ data: { ...input, isDefault } });
+
+      if (isDefault) await clearOtherDefaults(tx, input.businessId, branch.id);
+
+      return branch;
+    }),
+  );
+}
+
+/**
+ * Refuses to deactivate the LAST active branch of a business.
+ *
+ * Mirrors the last-OWNER rule in `staff.service.ts`, for the same reason:
+ * `defaultBranchId()` would have nothing to fall back to, and every write
+ * that records a branch — every stock movement, every order — would fail at
+ * the point of sale rather than here, where the person can still understand
+ * why.
+ *
+ * Deactivating is not deleting. The branch's stock, orders and audit history
+ * are untouched and stay queryable: orders are history, and a closed shop's
+ * numbers still have to explain last year's revenue.
+ */
+export async function updateBranch(branchId: string, input: Partial<BranchInput>) {
+  const before = await prisma.branch.findUnique({ where: { id: branchId } });
+
+  if (!before) throw AppError.notFound('Branch not found');
+
+  if (input.isActive === false && before.isActive) {
+    const remaining = await prisma.branch.count({
+      where: { businessId: before.businessId, isActive: true, id: { not: branchId } },
+    });
+
+    if (remaining === 0) {
+      throw AppError.badRequest(
+        'This is the last active branch — a business must keep at least one',
+        { field: 'isActive' },
+      );
+    }
+  }
+
+  const updated = await translateDuplicateCode(() =>
+    prisma.$transaction(async (tx) => {
+      const branch = await tx.branch.update({ where: { id: branchId }, data: input });
+
+      if (input.isDefault === true) {
+        await clearOtherDefaults(tx, before.businessId, branchId);
+      }
+
+      // Deactivating the default hands the flag on rather than leaving the
+      // business without one — an inactive default is the same "nothing to
+      // fall back to" problem in a quieter form.
+      if (input.isActive === false && before.isDefault) {
+        const heir = await tx.branch.findFirst({
+          where: { businessId: before.businessId, isActive: true, id: { not: branchId } },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        });
+
+        if (heir) {
+          await tx.branch.update({ where: { id: heir.id }, data: { isDefault: true } });
+          await tx.branch.update({ where: { id: branchId }, data: { isDefault: false } });
+        }
+      }
+
+      return tx.branch.findUniqueOrThrow({ where: { id: branch.id } });
+    }),
+  );
+
+  return { before, updated };
+}
+
+/** Every business with its branches — the list page in O7 stage 3. */
+export async function listBusinesses() {
+  const businesses = await prisma.business.findMany({
+    orderBy: { name: 'asc' },
+    include: {
+      branches: {
+        orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          city: true,
+          isSellingPoint: true,
+          isActive: true,
+          isDefault: true,
+          _count: { select: { staff: true } },
+        },
+      },
+    },
+  });
+
+  return businesses.map((business) => ({
+    ...business,
+    branches: business.branches.map(({ _count, ...branch }) => ({
+      ...branch,
+      staffCount: _count.staff,
+    })),
+  }));
 }
