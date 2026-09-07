@@ -53,7 +53,23 @@ export interface Overview {
 export interface RevenueSeries {
   range: DateRange;
   granularity: Granularity;
-  points: { date: string; revenue: string; orders: number }[];
+  points: {
+    date: string;
+    revenue: string;
+    orders: number;
+    /**
+     * Gross profit for the bucket, over the COSTED lines only (F1.3).
+     *
+     * `null` means no line in this bucket has a recorded cost — a real gap,
+     * not zero. Measured against the costed subset's OWN revenue, never
+     * against `revenue` above: subtracting partial COGS from total revenue
+     * would report every uncosted line as pure profit.
+     */
+    profit: string | null;
+    /** Coverage, so any surface showing `profit` can state what it covers. */
+    costedLines: number;
+    totalLines: number;
+  }[];
 }
 
 export interface TopProducts {
@@ -716,6 +732,53 @@ export function fillRevenueGaps(
     date,
     revenue: byDate.has(date) ? byDate.get(date)! : null,
   }));
+}
+
+/**
+ * Gap-fills the profit series (F1.3) so it aligns INDEX-for-index with
+ * `fillRevenueGaps` over the same range — which is the contract the chart's
+ * `profitData` prop depends on.
+ *
+ * Kept separate from `fillRevenueGaps` for the same reason `fillOrdersGaps`
+ * is: most callers want revenue alone, and widening that function's return
+ * shape would ripple into every existing consumer for a field one new caller
+ * needs.
+ *
+ * A bucket with no row, and a bucket whose row has no costed line, both come
+ * back `null`. They mean the same thing to a reader — "no profit was measured
+ * here" — and the chart draws both as a real gap rather than a zero.
+ */
+export function fillProfitGaps(
+  points: readonly { date: string; profit: string | null }[],
+  range: DateRange,
+  granularity: Granularity,
+): (number | null)[] {
+  const byDate = new Map(points.map((point) => [point.date, point.profit]));
+
+  return enumerateBuckets(range, granularity).map((date) => {
+    const value = byDate.get(date);
+    return value === undefined || value === null ? null : Number(value);
+  });
+}
+
+/**
+ * Total coverage across the window, for the one line that states what the
+ * profit series actually measures.
+ *
+ * Summed over buckets rather than taken from any single one: the ratio the
+ * reader needs is "how much of this PERIOD is costed", and one bucket's
+ * coverage says nothing about the rest.
+ */
+export function profitCoverageOf(
+  points: readonly { costedLines: number; totalLines: number }[],
+): { costedLines: number; totalLines: number } {
+  return points.reduce(
+    (sum, point) => ({
+      costedLines: sum.costedLines + point.costedLines,
+      totalLines: sum.totalLines + point.totalLines,
+    }),
+    { costedLines: 0, totalLines: 0 },
+  );
 }
 
 export interface OrdersGapPoint {

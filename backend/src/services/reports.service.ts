@@ -387,16 +387,97 @@ export async function getRevenueSeries(params: RevenueSeriesParams) {
           ORDER BY bucket ASC
         `;
 
+  /**
+   * Gross profit per bucket (F1.3), from the SAME line-level snapshot the
+   * margin report reads — `OrderItem.cost`, never a live product lookup.
+   *
+   * ─── WHY A SECOND QUERY AND NOT A JOIN ONTO THE FIRST ────────────────
+   * Revenue above sums `orders.total`, which is the grand total including
+   * tax. COGS lives on the LINE. Joining `order_items` into that query would
+   * multiply the order total by its line count — a classic fan-out that
+   * inflates revenue silently and plausibly.
+   *
+   * ─── THE COVERAGE RULE, RESTATED BECAUSE IT IS EASY TO GET WRONG ─────
+   * `costedRevenue` is the revenue of the lines that HAVE a cost, and profit
+   * is measured against THAT, never against the bucket's full revenue.
+   * Subtracting partial COGS from total revenue would report every uncosted
+   * line as pure profit — the single most dangerous number this app can
+   * render, because it is large, plausible and always wrong in the flattering
+   * direction.
+   *
+   * A bucket with no costed lines returns `null`, not 0: "not measured" and
+   * "measured as zero" are different facts, and the chart must render the
+   * first as a gap rather than a floor.
+   */
+  const profitRows =
+    params.granularity === 'week'
+      ? await prisma.$queryRaw<
+          { bucket: string; costedRevenue: Prisma.Decimal; cogs: Prisma.Decimal; costedLines: bigint; totalLines: bigint }[]
+        >`
+          SELECT DATE_FORMAT(DATE_SUB(o.placed_at, INTERVAL WEEKDAY(o.placed_at) DAY), ${format}) AS bucket,
+                 SUM(CASE WHEN oi.cost IS NOT NULL THEN oi.price * oi.quantity ELSE 0 END) AS costedRevenue,
+                 SUM(CASE WHEN oi.cost IS NOT NULL THEN oi.cost  * oi.quantity ELSE 0 END) AS cogs,
+                 SUM(CASE WHEN oi.cost IS NOT NULL THEN 1 ELSE 0 END) AS costedLines,
+                 COUNT(*) AS totalLines
+          FROM order_items oi
+          JOIN orders o ON o.id = oi.order_id
+          WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
+            AND o.status NOT IN (${Prisma.join(excluded)})
+          GROUP BY bucket
+          ORDER BY bucket ASC
+        `
+      : await prisma.$queryRaw<
+          { bucket: string; costedRevenue: Prisma.Decimal; cogs: Prisma.Decimal; costedLines: bigint; totalLines: bigint }[]
+        >`
+          SELECT DATE_FORMAT(o.placed_at, ${format}) AS bucket,
+                 SUM(CASE WHEN oi.cost IS NOT NULL THEN oi.price * oi.quantity ELSE 0 END) AS costedRevenue,
+                 SUM(CASE WHEN oi.cost IS NOT NULL THEN oi.cost  * oi.quantity ELSE 0 END) AS cogs,
+                 SUM(CASE WHEN oi.cost IS NOT NULL THEN 1 ELSE 0 END) AS costedLines,
+                 COUNT(*) AS totalLines
+          FROM order_items oi
+          JOIN orders o ON o.id = oi.order_id
+          WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
+            AND o.status NOT IN (${Prisma.join(excluded)})
+          GROUP BY bucket
+          ORDER BY bucket ASC
+        `;
+
+  const profitByBucket = new Map(
+    profitRows.map((row) => {
+      const costedLines = Number(row.costedLines);
+      return [
+        row.bucket,
+        {
+          profit: costedLines > 0 ? Number(row.costedRevenue) - Number(row.cogs) : null,
+          costedLines,
+          totalLines: Number(row.totalLines),
+        },
+      ] as const;
+    }),
+  );
+
   return {
     range: { from: params.from, to: params.to },
     granularity: params.granularity,
-    points: rows.map((row) => ({
-      date: row.bucket,
-      revenue: money(row.revenue),
-      // COUNT returns BIGINT, which JSON.stringify throws on. Narrowed here
-      // rather than at the route, so no caller can forget.
-      orders: Number(row.orders),
-    })),
+    points: rows.map((row) => {
+      const profit = profitByBucket.get(row.bucket);
+      return {
+        date: row.bucket,
+        revenue: money(row.revenue),
+        // COUNT returns BIGINT, which JSON.stringify throws on. Narrowed here
+        // rather than at the route, so no caller can forget.
+        orders: Number(row.orders),
+        /**
+         * Gross profit over the COSTED lines only. `null` where nothing in
+         * this bucket has a recorded cost — a real gap, and the chart draws
+         * it as one.
+         */
+        profit: profit?.profit === null || profit === undefined ? null : profit.profit.toFixed(2),
+        /** Coverage, so every surface showing the profit line can state it. */
+        costedLines: profit?.costedLines ?? 0,
+        totalLines: profit?.totalLines ?? 0,
+      };
+    }),
   };
 }
 

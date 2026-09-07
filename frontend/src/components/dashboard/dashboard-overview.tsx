@@ -36,7 +36,9 @@ import {
   fetchRevenue,
   fetchStatusBreakdown,
   fetchTopProducts,
+  fillProfitGaps,
   fillRevenueGaps,
+  profitCoverageOf,
   previousPeriod,
   samePeriodLastYear,
   type DateRange,
@@ -82,6 +84,12 @@ export function DashboardOverview() {
   const [previousOverview, setPreviousOverview] = useState<Overview | null>(null);
   const [points, setPoints] = useState<RevenuePoint[]>([]);
   const [comparisonPoints, setComparisonPoints] = useState<RevenuePoint[] | null>(null);
+  /** F1.3 — index-aligned with `points`; null at a bucket with no costed line. */
+  const [profitPoints, setProfitPoints] = useState<(number | null)[] | null>(null);
+  const [profitCoverage, setProfitCoverage] = useState<{
+    costedLines: number;
+    totalLines: number;
+  } | null>(null);
   const [topProducts, setTopProducts] = useState<TopProducts | null>(null);
   const [statusBreakdown, setStatusBreakdown] = useState<StatusBreakdown | null>(null);
   const [fulfillment, setFulfillment] = useState<FulfillmentHealth | null>(null);
@@ -135,6 +143,21 @@ export function DashboardOverview() {
       setOverview(loadedOverview);
       setPreviousOverview(loadedPreviousOverview);
       setPoints(fillRevenueGaps(series.points, range, 'day'));
+
+      /**
+       * The profit line is opt-in on the DATA, not on a setting: it appears
+       * only where something in the window actually has a recorded cost.
+       *
+       * An empty line with a "0 of 400 lines" note would be worse than no
+       * line at all — it occupies the legend, implies a measure exists, and
+       * says nothing. A business that has never entered a cost simply sees
+       * the chart it saw before.
+       */
+      const coverage = profitCoverageOf(series.points);
+      setProfitCoverage(coverage.costedLines > 0 ? coverage : null);
+      setProfitPoints(
+        coverage.costedLines > 0 ? fillProfitGaps(series.points, range, 'day') : null,
+      );
       setComparisonPoints(
         comparisonRange && comparisonSeries
           ? fillRevenueGaps(comparisonSeries.points, comparisonRange, 'day')
@@ -410,6 +433,8 @@ export function DashboardOverview() {
             granularity="day"
             comparisonData={comparisonPoints}
             comparisonLabel={comparisonSeriesLabel}
+            profitData={profitPoints}
+            profitCoverage={profitCoverage}
             isLoading={isLoading}
             error={error}
           />

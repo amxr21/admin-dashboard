@@ -281,7 +281,10 @@
     "revenueOverTime": "Revenue over time",
     "revenueChart": {
       "inProgress": "In progress — period not yet complete",
-      "noData": "No revenue in this period"
+      "noData": "No revenue in this period",
+      "profit": "Gross profit",
+      "profitCoverage": "Profit covers {costed} of {total} order lines — lines with no recorded cost are excluded.",
+      "profitNoCoverage": "No profit line: none of this period’s order lines has a recorded cost."
     },
     "vsPreviousPeriod": "vs previous period",
     "vsSameLastYear": "vs same period last year",
