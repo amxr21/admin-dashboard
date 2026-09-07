@@ -8,6 +8,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useBranchColumn } from '@/hooks/useBranchColumn';
 import { fetchMovements, type MovementListResult } from '@/lib/inventory-api';
 
 /**
@@ -30,6 +31,8 @@ export function MovementLogSheet({
   onOpenChange,
 }: MovementLogSheetProps) {
   const t = useTranslations('inventory.log');
+  /** Only on "all branches" — with one selected every row is from it. */
+  const showBranch = useBranchColumn();
   const tReason = useTranslations('stockReason');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
@@ -133,6 +136,13 @@ export function MovementLogSheet({
                     >
                       {formatter.dateTime(new Date(movement.createdAt), 'long')}
                     </time>
+                    {/* O1: unscoped, this log mixes every branch's movements
+                        and two rows for the same product read identically. */}
+                    {showBranch && movement.branch ? (
+                      <p className="text-muted-foreground text-xs">
+                        {movement.branch.name}
+                      </p>
+                    ) : null}
                   </div>
                 </li>
               ))}

@@ -403,3 +403,39 @@ export async function listBusinesses() {
     })),
   }));
 }
+
+/**
+ * Branch names for a page of rows, in one query (O1).
+ *
+ * ─── WHY THIS IS A BATCH LOOKUP AND NOT AN `include` ─────────────────
+ * `Order.branchId` is a plain `String?` with no Prisma relation, on purpose:
+ * an order outlives the branch that took it, because a closed shop's orders
+ * still explain last year's revenue. `getOrder` already resolves one this way;
+ * a LIST cannot do the same per row without N queries.
+ *
+ * ─── WHY A MISSING BRANCH IS `null`, NEVER A GUESS ───────────────────
+ * A row can have no branch for two different real reasons — it predates
+ * branch scoping, or the branch was removed — and neither is "it belongs to
+ * whichever branch sorts first". The caller renders nothing, which is honest;
+ * inventing a name here would attribute a sale to a shop that did not make it.
+ */
+export interface BranchLabel {
+  id: string;
+  name: string;
+  code: string | null;
+}
+
+export async function resolveBranchLabels(
+  branchIds: (string | null | undefined)[],
+): Promise<Map<string, BranchLabel>> {
+  const ids = [...new Set(branchIds.filter((id): id is string => Boolean(id)))];
+
+  if (ids.length === 0) return new Map();
+
+  const branches = await prisma.branch.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, code: true },
+  });
+
+  return new Map(branches.map((branch) => [branch.id, branch]));
+}

@@ -39,6 +39,8 @@ import {
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { useUrlState } from '@/hooks/useUrlState';
+import { useBranchColumn } from '@/hooks/useBranchColumn';
+import { BranchCell } from '@/components/branch-cell';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTypedConfirm } from '@/components/danger-zone';
 import {
@@ -91,6 +93,9 @@ const STATUSES: OrderStatus[] = [
 
 export function OrdersTable() {
   const t = useTranslations('orders');
+  const tBranch = useTranslations('branches.manage');
+  /** Only on "all branches" — see the hook. */
+  const showBranch = useBranchColumn();
   const tTable = useTranslations('table');
   const formatter = useFormatter();
   const formatCurrency = useCurrencyFormat();
@@ -367,6 +372,19 @@ export function OrdersTable() {
       header: t('columns.customer'),
       cell: (order) => order.customer?.name ?? t('guest'),
     },
+    ...(showBranch
+      ? [
+          {
+            // No `sortValue`: the branch is resolved AFTER the query (it is a
+            // plain id, not a relation), so `buildOrderBy` cannot order by it
+            // and a clickable header would be a dead click — the same reason
+            // `customer` above has none.
+            id: 'branch',
+            header: tBranch('columnHeader'),
+            cell: (order: OrderListRow) => <BranchCell branch={order.branch} />,
+          },
+        ]
+      : []),
     {
       id: 'placedAt',
       header: t('columns.placed'),

@@ -26,6 +26,8 @@ import {
 } from '@/components/ui/select';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { useUrlState } from '@/hooks/useUrlState';
+import { useBranchColumn } from '@/hooks/useBranchColumn';
+import { BranchCell } from '@/components/branch-cell';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { fetchReturns, type ReturnListResult, type ReturnListRow, type ReturnStatus } from '@/lib/returns-api';
 
@@ -38,6 +40,8 @@ const URL_DEFAULTS = { page: '1', search: '', status: ALL, pageSize: '' };
 
 export function ReturnsTable() {
   const t = useTranslations('returns');
+  const tBranch = useTranslations('branches.manage');
+  const showBranch = useBranchColumn();
   const tTable = useTranslations('table');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
@@ -145,6 +149,18 @@ export function ReturnsTable() {
       cell: (row) => row.customer?.name ?? '—',
       sortValue: (row) => row.customer?.name ?? null,
     },
+    ...(showBranch
+      ? [
+          {
+            // Reached through the order — a return has no branch of its own,
+            // deliberately (it carries a required `orderId` and the order
+            // already records the branch; a second copy could only drift).
+            id: 'branch',
+            header: tBranch('columnHeader'),
+            cell: (row: ReturnListRow) => <BranchCell branch={row.branch} />,
+          },
+        ]
+      : []),
     {
       id: 'items',
       header: t('columns.items'),
