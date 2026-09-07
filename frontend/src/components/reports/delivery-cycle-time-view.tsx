@@ -5,6 +5,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 
 import { DateRangePresetField } from '@/components/reports/date-range-field';
 import { ExportButton } from '@/components/reports/export-button';
+import { EmptyState } from '@/components/empty-state';
 import { ErrorSection } from '@/components/errors/error-section';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
@@ -63,6 +64,14 @@ export function DeliveryCycleTimeView() {
         <Skeleton className="h-40 w-full" />
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
+      ) : (data?.deliveredCount ?? 0) === 0 ? (
+        /**
+         * F4.5 — an empty period must SAY it is empty, rather than falling
+         * through to tiles where `?? 0` renders a confident zero. A
+         * fabricated zero is indistinguishable from a measured one, so the
+         * reader cannot tell a quiet month from a broken report.
+         */
+        <EmptyState title={t('empty.title')} description={t('empty.description')} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="bg-card rounded-lg border p-4">

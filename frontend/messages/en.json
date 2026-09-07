@@ -1654,7 +1654,11 @@
       "subtitle": "A guest order (no customer link) counts as new — it has no prior relationship to bank on, same as a genuine first-time customer.",
       "new": "New customers",
       "returning": "Returning customers",
-      "orders": "{count, plural, one {# order} other {# orders}}"
+      "orders": "{count, plural, one {# order} other {# orders}}",
+      "empty": {
+        "title": "No orders in this period",
+        "description": "Nothing was sold in this range, so there is no new-vs-returning split to show."
+      }
     },
     "customerLifetimeValue": {
       "title": "Customer lifetime value",
@@ -1678,6 +1682,10 @@
       "columns": {
         "ordersPlaced": "Orders placed",
         "customers": "Customers"
+      },
+      "empty": {
+        "title": "No orders in this period",
+        "description": "Order frequency needs at least one order in the selected range."
       }
     },
     "guestVsRegistered": {
@@ -1686,7 +1694,11 @@
       "subtitle": "A guest order and one from a later-deleted customer look identical after the fact — both fall under \"guest\".",
       "guest": "Guest",
       "registered": "Registered",
-      "orders": "{count, plural, one {# order} other {# orders}}"
+      "orders": "{count, plural, one {# order} other {# orders}}",
+      "empty": {
+        "title": "No orders in this period",
+        "description": "Nothing was sold in this range, so there is no guest-vs-registered split to show."
+      }
     },
     "paymentMethodBreakdown": {
       "title": "Payment method breakdown",
@@ -1734,7 +1746,11 @@
       "approved": "Approved",
       "rejected": "Rejected",
       "pending": "Pending",
-      "averageHours": "Avg. hours to moderation"
+      "averageHours": "Avg. hours to moderation",
+      "empty": {
+        "title": "No reviews moderated in this period",
+        "description": "No review was approved or rejected in the selected range."
+      }
     },
     "productsWithoutReviews": {
       "title": "Products without reviews",
@@ -1819,6 +1835,10 @@
         "REQUESTED": "Requested",
         "APPROVED": "Approved",
         "REJECTED": "Rejected"
+      },
+      "empty": {
+        "title": "No returns in this period",
+        "description": "No return was requested in the selected range."
       }
     },
     "returnReasons": {
@@ -1866,7 +1886,11 @@
       "subtitle": "Restricted to currently-delivered assignments — the only case the last-updated timestamp can be trusted as the delivery moment.",
       "deliveredCount": "Delivered",
       "averageHours": "Average hours",
-      "medianHours": "Median hours"
+      "medianHours": "Median hours",
+      "empty": {
+        "title": "No completed deliveries in this period",
+        "description": "Cycle time is measured from assignments that reached Delivered."
+      }
     },
     "courierWorkloadSnapshot": {
       "title": "Courier workload",
