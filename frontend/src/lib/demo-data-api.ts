@@ -10,6 +10,15 @@ export interface DemoDataSummary {
   categories: number;
   discounts: number;
   notifications: number;
+  // F8: the seeder now creates these too, and the API counts them. Listed
+  // even though only `total` is rendered today — a type that under-describes
+  // the response is how a later consumer reads a field that is silently
+  // always undefined.
+  businesses: number;
+  branches: number;
+  staff: number;
+  returns: number;
+  variants: number;
   total: number;
 }
 

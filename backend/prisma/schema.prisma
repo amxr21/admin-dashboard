@@ -164,6 +164,131 @@ enum DeliveryStatus {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// BUSINESSES & BRANCHES
+// ═══════════════════════════════════════════════════════════════════
+
+/// One business the owner runs — a cafe, a restaurant, a food truck.
+///
+/// ─── ONE INSTALL, MANY BUSINESSES ────────────────────────────────────
+/// This deployment belongs to ONE owner, who may run several businesses in
+/// it, each with its own branches. That is deliberately NOT multi-tenancy:
+/// there is a single owner and a single login, so this is an organising
+/// level, not a security boundary between strangers.
+///
+/// It still has to isolate properly. A cafe and a restaurant under one owner
+/// have different menus, different staff and different revenue, and mixing
+/// them would make every report silently wrong rather than visibly broken.
+///
+/// ─── WHY TWO LEVELS AND NOT ONE ──────────────────────────────────────
+/// A `Location` model alone (the older Track D §S7.5 idea) would make two
+/// BUSINESSES look like two shelves of one shop — their products, customers
+/// and reports would merge. A branch shares its business's catalogue and
+/// staff; a second business shares nothing. Those are different
+/// relationships and need different levels.
+model Business {
+  id   String @id @default(cuid())
+  name String @db.VarChar(160)
+
+  /// Free text, since a business type is a label for the owner's benefit
+  /// rather than something the app branches on — a "cafe" and a "food truck"
+  /// run identically here. Kept so a future template/wizard has something to
+  /// key off without needing a migration first.
+  kind String? @db.VarChar(60)
+
+  /// "Every detail of the shop" (F8.5). All optional: an owner setting up
+  /// their first business should not have to fill in a tax id before they
+  /// can add a product.
+  legalName   String? @map("legal_name") @db.VarChar(200)
+  taxId       String? @map("tax_id") @db.VarChar(60)
+  email       String? @db.VarChar(255)
+  phone       String? @db.VarChar(40)
+  addressLine String? @map("address_line") @db.VarChar(255)
+  city        String? @db.VarChar(120)
+  country     String? @db.VarChar(2)
+  /// ISO 4217 (AED, USD). NULL falls back to the store-wide currency setting
+  /// rather than defaulting to one — guessing a currency is how money gets
+  /// displayed wrong with no error.
+  currency    String? @db.VarChar(3)
+  /// IANA zone (Asia/Dubai). Matters because opening hours and a shift that
+  /// crosses midnight are meaningless without one.
+  timezone    String? @db.VarChar(64)
+  logoUrl     String? @map("logo_url") @db.VarChar(512)
+
+  /// Deactivated rather than deleted: a closed business still owns the orders
+  /// and audit history that explain last year's numbers.
+  isActive Boolean @default(true) @map("is_active")
+
+  branches Branch[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@map("businesses")
+}
+
+/// One physical place a business operates from — a shop, a warehouse, a
+/// truck. Stock, orders and shifts live HERE, not on the business.
+///
+/// Branches of the same business share its catalogue and its people; what
+/// differs is what is physically present and who is working. That is why
+/// stock becomes per-branch (F8.2) while products stay per-business.
+///
+/// Also absorbs the "previous warehouses" the owner asked about: a warehouse
+/// is a branch that happens not to sell — `isSellingPoint` says which,
+/// instead of a separate model that would duplicate every stock relation.
+model Branch {
+  id         String   @id @default(cuid())
+  businessId String   @map("business_id")
+  /// Cascade: a branch cannot outlive the business it belongs to. Businesses
+  /// are deactivated rather than deleted (see `isActive`), so in practice
+  /// this only fires for a business removed before it was ever used.
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  name String  @db.VarChar(160)
+  /// Short human code for labels and paperwork ("MAR", "WH1"). Unique per
+  /// business, not globally — two businesses may both have a "MAIN".
+  code String? @db.VarChar(24)
+
+  addressLine String? @map("address_line") @db.VarChar(255)
+  city        String? @db.VarChar(120)
+  phone       String? @db.VarChar(40)
+  /// Overrides the business timezone for a branch in another zone. NULL means
+  /// "use the business's", never UTC.
+  timezone    String? @db.VarChar(64)
+
+  /// False for a warehouse or prep kitchen — it holds stock but takes no
+  /// orders. Reports that count "shops" can filter on it rather than
+  /// hard-coding a name convention.
+  isSellingPoint Boolean @default(true) @map("is_selling_point")
+  isActive       Boolean @default(true) @map("is_active")
+
+  /// The branch a movement is attributed to when no branch is named.
+  ///
+  /// Explicit, NOT inferred from "oldest branch". Ordering by `createdAt`
+  /// looked equivalent and was not: this table's first row is written by a
+  /// migration using MySQL's `NOW(3)`, which records the SERVER's local time,
+  /// while every later row comes from Prisma in real UTC. On a machine four
+  /// hours ahead of UTC the seeded branch sorts AFTER branches created later,
+  /// so "oldest" silently returned the wrong one and stock landed at the
+  /// wrong place with nothing erroring.
+  ///
+  /// A flag cannot drift with a timezone. Exactly one branch should carry it;
+  /// the service falls back to any active branch if none does, rather than
+  /// refusing to record stock.
+  isDefault Boolean @default(false) @map("is_default")
+
+  stock BranchStock[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([businessId, code])
+  @@index([businessId, isActive])
+  @@map("branches")
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // STAFF & PLATFORM
 // ═══════════════════════════════════════════════════════════════════
 
@@ -430,7 +555,7 @@ model Product {
   /// business selling both espresso beans and espresso machines cannot have
   /// one sensible number for both, which is what the single global setting
   /// forced.
-  lowStockThreshold Int?     @map("low_stock_threshold")
+  lowStockThreshold Int? @map("low_stock_threshold")
 
   /// Where this product is normally kept, as FREE TEXT for now (F7.8).
   ///
@@ -481,18 +606,19 @@ model Product {
   /// SetNull, not Cascade — deleting a category must never delete products.
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
-  orderItems OrderItem[]
-  reviews    Review[]
-  variants   ProductVariant[]
-  images     ProductImage[]
-  discounts  Discount[]
-  redirects  ProductRedirect[]
+  orderItems    OrderItem[]
+  reviews       Review[]
+  variants      ProductVariant[]
+  images        ProductImage[]
+  discounts     Discount[]
+  redirects     ProductRedirect[]
   cartItems     CartItem[]
   wishlistItems WishlistItem[]
 
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
   stockMovements StockMovement[]
+  branchStock    BranchStock[]
 
   @@index([status])
   @@index([categoryId])
@@ -617,10 +743,10 @@ model Customer {
   /// same revocation mechanism `User.tokenVersion` gives staff.
   tokenVersion Int       @default(0) @map("token_version")
 
-  orders    Order[]
-  reviews   Review[]
-  returns   Return[]
-  discounts Discount[]
+  orders        Order[]
+  reviews       Review[]
+  returns       Return[]
+  discounts     Discount[]
   cartItems     CartItem[]
   wishlistItems WishlistItem[]
 
@@ -632,7 +758,20 @@ model Customer {
 }
 
 model Order {
-  id            String      @id @default(cuid())
+  id String @id @default(cuid())
+
+  /// Which branch took this order (F8.3).
+  ///
+  /// Nullable so the migration can backfill rather than demand a default, and
+  /// because an order outlives the branch that took it — a closed shop's
+  /// orders still explain last year's revenue. Reports treat a null branch as
+  /// UNATTRIBUTED and say so, rather than silently folding it into whichever
+  /// branch happens to sort first.
+  ///
+  /// A plain id, not a relation, for the same reason `AuditLog.actorId` is:
+  /// history has to survive the thing it points at being removed.
+  branchId String? @map("branch_id") @db.VarChar(64)
+
   /// Human-facing reference shown to customers and couriers, e.g. "ORD-1024".
   orderNumber   String      @unique @map("order_number") @db.VarChar(40)
   /// Denormalised on purpose: the order total must not change if a product's
@@ -679,11 +818,11 @@ model Order {
 }
 
 model OrderItem {
-  id       String  @id @default(cuid())
-  quantity Int     @default(1)
+  id       String   @id @default(cuid())
+  quantity Int      @default(1)
   /// Price AT TIME OF ORDER. Never read the live product price when
   /// displaying a historical order.
-  price    Decimal @default(0) @db.Decimal(10, 2)
+  price    Decimal  @default(0) @db.Decimal(10, 2)
   /// Unit COST at time of order — the other half of the snapshot above, and
   /// for the same reason. Margin reporting used to join `products.cost` live,
   /// which meant a supplier price change silently rewrote the recorded profit
@@ -1049,6 +1188,54 @@ enum StockMovementReason {
   CORRECTION
 }
 
+/// How much of one product is at one branch (F8.2).
+///
+/// ─── WHY A TABLE AND NOT A COLUMN ────────────────────────────────────
+/// `Product.stock` is a single number, so "how much is at Marina" was not
+/// merely unbuilt — it was unanswerable. A column cannot hold one value per
+/// branch, and a JSON blob would put a number nothing can index or sum
+/// behind a shape no query can filter on.
+///
+/// ─── `Product.stock` IS KEPT, AND STILL MEANS SOMETHING ──────────────
+/// It becomes the ALL-BRANCH total: the sum of every row here for that
+/// product. It is not abandoned and it is not a duplicate — "how much do we
+/// own in total" is a real question (reorder decisions, valuation, the
+/// catalogue list) and answering it should not require summing a table per
+/// row, which is the same reasoning that made it denormalised in the first
+/// place.
+///
+/// So there are now two denormalised totals, each with its own truth:
+///   StockMovement (per branch)  ->  BranchStock.quantity  ->  Product.stock
+/// Every write moves all three inside one transaction. `reconcile()` checks
+/// the first link; a second check for the second link is worth adding when
+/// this ships.
+model BranchStock {
+  id String @id @default(cuid())
+
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  branchId String @map("branch_id")
+  /// Cascade: a branch's stock rows have no meaning without the branch. The
+  /// MOVEMENTS survive it (they are history, and reference the branch by a
+  /// plain id) — this row is only the running total.
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  /// Same denormalised-running-total contract as `Product.stock`: the
+  /// movements for this product AND branch are the truth, this is the sum so
+  /// a list does not have to compute it per row.
+  quantity Int @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// One row per product per branch — the pair is the identity, and the
+  /// unique constraint is what makes an upsert on it safe under concurrency.
+  @@unique([productId, branchId])
+  @@index([branchId])
+  @@map("branch_stock")
+}
+
 /// Stock as a LOG, not a number you overwrite.
 ///
 /// `product.stock` is a denormalised running total kept in step by the same
@@ -1061,10 +1248,23 @@ enum StockMovementReason {
 model StockMovement {
   id String @id @default(cuid())
 
+  /// Where this movement happened (F8.2).
+  ///
+  /// Nullable ONLY so the migration can add it and backfill every existing row
+  /// to the seeded branch. Left nullable rather than made required because a
+  /// NOT NULL with a hardcoded default would silently attribute a future
+  /// orphaned movement to whichever branch that default named.
+  ///
+  /// A plain id, not a relation, for the same reason `actorId` is: the trail
+  /// has to survive the thing it references being removed. The branch's
+  /// running total (`BranchStock`) cascades away with the branch; this record
+  /// of what actually happened does not.
+  branchId String? @map("branch_id") @db.VarChar(64)
+
   /// Signed. +50 received, -3 damaged. The sum of deltas for a product equals
   /// its stock — a test asserts exactly that.
-  delta  Int
-  reason StockMovementReason
+  delta    Int
+  reason   StockMovementReason
   /// What ONE unit in this movement cost to acquire (F1.4a).
   ///
   /// Records what a given delivery actually cost, so cost drift over time is
@@ -1082,9 +1282,9 @@ model StockMovement {
   /// design that this column would feed — see MASTER_TODO F1.4a's own note on
   /// why that was deferred rather than rejected: this app has no checkout
   /// flow yet, so batch consumption would have nothing to run on.
-  unitCost Decimal? @map("unit_cost") @db.Decimal(10, 2)
+  unitCost Decimal?            @map("unit_cost") @db.Decimal(10, 2)
   /// Free-text detail, e.g. "pallet 4, water damage".
-  note   String?             @db.VarChar(255)
+  note     String?             @db.VarChar(255)
 
   /// Exactly ONE of productId/variantId is set, never both, never neither —
   /// enforced in stock.service.ts (MySQL has no CHECK constraint for it). A

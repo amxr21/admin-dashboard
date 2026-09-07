@@ -28,6 +28,17 @@ const WHERE = {
   category: { slug: { startsWith: DEMO_TAG } },
   discount: { code: { startsWith: DEMO_TAG } },
   notification: { body: { contains: DEMO_TAG } },
+  /**
+   * Businesses and branches match on `name`: neither has another unique text
+   * column, and `Branch.code` is unique per business rather than globally, so
+   * it cannot be the handle.
+   */
+  business: { name: { startsWith: DEMO_TAG } },
+  branch: { name: { startsWith: DEMO_TAG } },
+  /** Staff share the customers' `.invalid` domain under a `staff-` prefix. */
+  staff: { email: { contains: DEMO_TAG } },
+  return: { rmaNumber: { startsWith: DEMO_TAG } },
+  variant: { sku: { startsWith: DEMO_TAG } },
 } as const;
 
 export interface DemoDataSummary {
@@ -38,24 +49,72 @@ export interface DemoDataSummary {
   categories: number;
   discounts: number;
   notifications: number;
+  businesses: number;
+  branches: number;
+  staff: number;
+  returns: number;
+  variants: number;
   total: number;
 }
 
 async function countDemoRows(): Promise<DemoDataSummary> {
-  const [orders, products, customers, couriers, categories, discounts, notifications] =
-    await Promise.all([
-      prisma.order.count({ where: WHERE.order }),
-      prisma.product.count({ where: WHERE.product }),
-      prisma.customer.count({ where: WHERE.customer }),
-      prisma.deliveryStaff.count({ where: WHERE.courier }),
-      prisma.category.count({ where: WHERE.category }),
-      prisma.discount.count({ where: WHERE.discount }),
-      prisma.notification.count({ where: WHERE.notification }),
-    ]);
+  const [
+    orders,
+    products,
+    customers,
+    couriers,
+    categories,
+    discounts,
+    notifications,
+    businesses,
+    branches,
+    staff,
+    returns,
+    variants,
+  ] = await Promise.all([
+    prisma.order.count({ where: WHERE.order }),
+    prisma.product.count({ where: WHERE.product }),
+    prisma.customer.count({ where: WHERE.customer }),
+    prisma.deliveryStaff.count({ where: WHERE.courier }),
+    prisma.category.count({ where: WHERE.category }),
+    prisma.discount.count({ where: WHERE.discount }),
+    prisma.notification.count({ where: WHERE.notification }),
+    prisma.business.count({ where: WHERE.business }),
+    prisma.branch.count({ where: WHERE.branch }),
+    prisma.user.count({ where: WHERE.staff }),
+    prisma.return.count({ where: WHERE.return }),
+    prisma.productVariant.count({ where: WHERE.variant }),
+  ]);
 
-  const total = orders + products + customers + couriers + categories + discounts + notifications;
+  const total =
+    orders +
+    products +
+    customers +
+    couriers +
+    categories +
+    discounts +
+    notifications +
+    businesses +
+    branches +
+    staff +
+    returns +
+    variants;
 
-  return { orders, products, customers, couriers, categories, discounts, notifications, total };
+  return {
+    orders,
+    products,
+    customers,
+    couriers,
+    categories,
+    discounts,
+    notifications,
+    businesses,
+    branches,
+    staff,
+    returns,
+    variants,
+    total,
+  };
 }
 
 /** What a delete WOULD remove, without removing it — powers the confirmation dialog's copy. */
@@ -83,14 +142,24 @@ export async function deleteDemoData(): Promise<DemoDataSummary> {
   ).map((row) => row.id);
 
   await prisma.$transaction([
+    // Returns reference orders and cascade from them; deleted explicitly so
+    // the count above describes what actually went.
+    prisma.return.deleteMany({ where: WHERE.return }),
     prisma.order.deleteMany({ where: WHERE.order }),
     prisma.review.deleteMany({ where: { productId: { in: productIds } } }),
+    prisma.productVariant.deleteMany({ where: WHERE.variant }),
     prisma.product.deleteMany({ where: WHERE.product }),
     prisma.customer.deleteMany({ where: WHERE.customer }),
     prisma.deliveryStaff.deleteMany({ where: WHERE.courier }),
     prisma.category.deleteMany({ where: WHERE.category }),
     prisma.discount.deleteMany({ where: WHERE.discount }),
     prisma.notification.deleteMany({ where: WHERE.notification }),
+    // Staff after orders: order notes reference an author, so the FK refuses
+    // the delete while those orders still exist.
+    prisma.user.deleteMany({ where: WHERE.staff }),
+    // Branches before businesses, for the same honesty reason as returns.
+    prisma.branch.deleteMany({ where: WHERE.branch }),
+    prisma.business.deleteMany({ where: WHERE.business }),
   ]);
 
   return before;
