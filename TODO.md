@@ -26,19 +26,12 @@ reasoning behind decisions already made, not for what is open.
 
 ## 🔴 Blocking
 
-- [ ] **vitest cannot spawn workers on this machine (2026-09-07).**
-      Every run fails with `[vitest-pool]: Failed to start forks worker` /
-      `Timeout waiting for worker to respond`, even a single test file, even
-      with `--pool=threads`. The same suites passed 134/134 an hour earlier.
-      Ruled out: memory (7.5 GB free), process count (cleared to zero), node's
-      own `fork()` (works), the vite/vitest caches (deleted).
-      **Untried: a reboot** — this class of Windows worker-spawn failure
-      usually clears with one. Then antivirus scanning `node_modules`, then a
-      `pnpm store prune` + reinstall.
-      **Until fixed: verify with tsc + eslint + `next build`, and let CI run
-      the suites.** A local run reporting mass failures right now is
-      meaningless — it once reported "116 failed" from a run where no test
-      ever executed.
+**RESOLVED 2026-09-08.** vitest spawns workers again — the full backend suite
+runs locally (890/890 across 41 files). The reboot listed as "untried" is the
+likely cause; nothing in the repo changed. Kept as a note because the failure
+mode was convincing: it once reported "116 failed" from a run where no test
+ever executed, so a mass-failure run on this machine is worth distrusting
+before it is worth debugging.
 
 ## ✅ State of the tree
 
@@ -60,6 +53,15 @@ pages already shared one anatomy, closed without a rebuild).
 
 The owner is enumerating issues, **not** requesting fixes. Do not start any of
 these without being asked. Recorded here so they are not lost.
+
+### ⭐ O7 — ✅ ALL FOUR STAGES COMPLETE 2026-09-08
+**Was:** the admin cannot build or modify the structure. An owner can now add
+a business, open a branch or warehouse, edit either, and put people at
+branches with a per-branch role — all from the UI, none of it needing SQL.
+40 new tests (17 stage 1 · 15 stage 2 · 8 stage 3); every guard and the
+switcher refresh were watched failing before the code went in.
+
+**Original entry, kept for the reasoning:**
 
 ### ⭐ O7 — THE ADMIN CANNOT BUILD OR MODIFY THE STRUCTURE
 **Owner, 2026-09-07, stated as the priority: "I NEED THIS ONE THING: the admin
@@ -168,21 +170,34 @@ Both now expressible: `UserBranch` was read-only until this stage.*
       `{ from, to }` — "was FULFILLMENT here, now MANAGER" is the whole
       question a reviewer asks, and `to` alone cannot answer it
 
-#### Stage 3 — UI
-- [ ] 3.1 `/admin/branches` — list grouped by business: name, code, city,
-      selling-point vs warehouse, active state, staff count
-- [ ] 3.2 Create/edit branch in a Sheet (per the drawer-vs-page convention — a
-      brief detour from a list)
-- [ ] 3.3 Create/edit business as a full page — more fields, a destination
-      worth its own URL
-- [ ] 3.4 Branch roster panel — add/remove a person, set their role here
-- [ ] 3.5 Real empty states — "add your second branch" must explain what a
-      branch IS, not just show a `+`
-- [ ] 3.6 i18n both locales, en/ar parity maintained
-- [ ] 3.7 **The switcher must refresh** after a create/rename — it currently
-      loads once on mount
+#### Stage 3 — UI ✅ COMPLETE 2026-09-08
+- [x] 3.1 **DONE 2026-09-08.** Grouped by business, not a flat table — a
+      branch has no meaning without its business, and a flat one would repeat
+      the business down every row (the same reason the switcher groups)
+- [x] 3.2 **DONE 2026-09-08.** `BranchSheet` — a short field set, a detour
+      from a list you return to, with the list visible underneath (you are
+      usually adding a SECOND branch and seeing the first is the point)
+- [x] 3.3 **DONE 2026-09-08.** `/admin/branches/new` and `/[id]` — twelve
+      fields including the legal name and tax id that reach an invoice; the
+      other pole of the same convention
+- [x] 3.4 **DONE 2026-09-08.** `BranchRosterPanel`. Shows BOTH roles per
+      person (`MANAGER here · SUPPORT elsewhere`) — showing only one would
+      either invent a promotion or hide the role that actually applies.
+      OWNER/DEVELOPER are not offered, since the server refuses them
+- [x] 3.5 **DONE 2026-09-08.** Two distinct empties, both explaining rather
+      than pointing: no businesses says what a business IS and that its details
+      print on invoices; a business with no branches says it cannot record
+      stock or take orders until one exists. Both asserted in tests
+- [x] 3.6 **DONE 2026-09-08.** 79 new keys per locale, parity 1630/1630
+      (was 1551). Arabic uses a real ICU plural with the `two`/`few`/`many`
+      forms, not an English-shaped one/other; `messages.test.ts` 18/18
+- [x] 3.7 **DONE 2026-09-08.** A create/rename reloads, the same blunt and
+      reliable answer the switcher already uses when the active branch
+      changes. **Watched failing** — swapping the reload for a local refetch
+      turns the test red. A stale switcher missing a branch is one an owner
+      cannot scope to
 
-#### Stage 4 — Tests (written alongside 1 and 2, not after)
+#### Stage 4 — Tests ✅ COMPLETE 2026-09-08
 - [x] 4.1 **DONE for stage 1 (2026-09-08).** `branch-writes.test.ts`, 17
       tests. **Watched all four guards fail first**: swapping `requireRole` for
       `requireArea` and disabling the last-branch check turns exactly the four
@@ -192,7 +207,11 @@ Both now expressible: `UserBranch` was read-only until this stage.*
 - [x] 4.3 **DONE 2026-09-08.** Asserted through the write path for the first
       time — the read path was tested in F8.4, but nothing could create a row
       to test it with until this stage. Also asserts unscoped stays global
-- [ ] 4.4 Frontend: create → appears in the switcher without a reload
+- [x] 4.4 **DONE 2026-09-08**, with the premise corrected: the fix is a
+      deliberate FULL reload, not a reload-free update. The switcher is
+      mounted in the shell above this page and holds its own state, so a
+      local refetch updates the list and leaves the switcher stale — which is
+      exactly what the test now catches. 8 tests in `branches-view.test.tsx`
 
 *Full version with the reasoning behind each item: `O7-PLAN.md`.*
 

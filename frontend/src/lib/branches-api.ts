@@ -102,3 +102,129 @@ export interface ResolvedBrand {
 export async function fetchBrand(): Promise<ResolvedBrand> {
   return apiFetch<ResolvedBrand>('/branches/_brand');
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+ * WRITES (O7)
+ *
+ * Everything above this point reads. F8 shipped a switcher over branches that
+ * only a migration or the seeder could create; these are the controls that
+ * were missing.
+ * ───────────────────────────────────────────────────────────────────── */
+
+export interface BusinessSummary {
+  id: string;
+  name: string;
+  kind: string | null;
+  legalName: string | null;
+  taxId: string | null;
+  email: string | null;
+  phone: string | null;
+  addressLine: string | null;
+  city: string | null;
+  country: string | null;
+  currency: string | null;
+  timezone: string | null;
+  logoUrl: string | null;
+  isActive: boolean;
+  branches: {
+    id: string;
+    name: string;
+    code: string | null;
+    city: string | null;
+    isSellingPoint: boolean;
+    isActive: boolean;
+    isDefault: boolean;
+    /** How many people hold a per-branch role here (F8.4). */
+    staffCount: number;
+  }[];
+}
+
+/** Every business with its branches — the org chart behind /admin/branches. */
+export async function fetchBusinesses(): Promise<BusinessSummary[]> {
+  return apiFetch<BusinessSummary[]>('/businesses');
+}
+
+export type BusinessInput = {
+  name: string;
+} & Partial<{
+  kind: string | null;
+  legalName: string | null;
+  taxId: string | null;
+  email: string | null;
+  phone: string | null;
+  addressLine: string | null;
+  city: string | null;
+  country: string | null;
+  currency: string | null;
+  timezone: string | null;
+  logoUrl: string | null;
+  isActive: boolean;
+}>;
+
+export async function createBusiness(input: BusinessInput): Promise<BusinessSummary> {
+  return apiFetch<BusinessSummary>('/businesses', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateBusiness(
+  id: string,
+  input: Partial<BusinessInput>,
+): Promise<BusinessSummary> {
+  return apiFetch<BusinessSummary>(`/businesses/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export type BranchCreateInput = {
+  businessId: string;
+  name: string;
+} & BranchUpdate & { isDefault?: boolean };
+
+export async function createBranch(input: BranchCreateInput): Promise<BranchDetail> {
+  return apiFetch<BranchDetail>('/branches', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Who works at a branch.
+ *
+ * Both roles are returned on purpose: `role` is what they hold HERE, and
+ * `globalRole` is what they hold everywhere else. Rendering only the first
+ * would make a SUPPORT-globally / MANAGER-here person read as a manager
+ * outright, which is exactly the confusion F8.4's replacement rule avoids.
+ */
+export interface BranchStaffMember {
+  userId: string;
+  name: string | null;
+  email: string;
+  isActive: boolean;
+  role: string;
+  globalRole: string;
+  assignedAt: string;
+}
+
+export async function fetchBranchStaff(branchId: string): Promise<BranchStaffMember[]> {
+  return apiFetch<BranchStaffMember[]>(`/branches/${branchId}/staff`);
+}
+
+/** Upserts — re-assigning somebody already here changes their role. */
+export async function assignBranchStaff(
+  branchId: string,
+  userId: string,
+  role: string,
+): Promise<unknown> {
+  return apiFetch(`/branches/${branchId}/staff`, {
+    method: 'POST',
+    body: JSON.stringify({ userId, role }),
+  });
+}
+
+/** They keep their global role — this is "no longer placed here". */
+export async function removeBranchStaff(branchId: string, userId: string): Promise<void> {
+  await apiFetch(`/branches/${branchId}/staff/${userId}`, { method: 'DELETE' });
+}

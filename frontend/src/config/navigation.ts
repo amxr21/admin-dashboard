@@ -2,12 +2,13 @@ import {
   BadgePercent,
   Bell,
   Boxes,
+  Building2,
   ChartColumn,
   Database,
   FolderTree,
   History,
-  LogIn,
   LayoutDashboard,
+  LogIn,
   Package,
   RotateCcw,
   Settings,
@@ -91,6 +92,11 @@ export const NAVIGATION: readonly NavGroup[] = [
     items: [
       { href: '/admin/reports', labelKey: 'reports', icon: ChartColumn, area: 'reports' },
       { href: '/admin/staff', labelKey: 'staff', icon: UsersRound, area: 'staff' },
+      // Reading the org chart needs `settings`, like the page it sits beside;
+      // CHANGING it is OWNER/DEVELOPER-only and enforced on the server, not
+      // by hiding the link. A MANAGER who opens this sees the shops and no
+      // working create button, which is the honest version of the same rule.
+      { href: '/admin/branches', labelKey: 'branches', icon: Building2, area: 'settings' },
       { href: '/admin/audit', labelKey: 'audit', icon: History, area: 'staff' },
       // Same `staff` area as Audit — it names who has been failing to sign
       // in, which is personnel data, not a business metric.
