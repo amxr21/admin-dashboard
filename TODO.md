@@ -102,30 +102,42 @@ per-branch roles become testable against a real roster.
 
 ---
 
-#### Stage 1 — Business + Branch write API
-- [ ] 1.1 `POST /businesses` — `name` required, everything else optional (an
-      owner must not need a tax id before adding a product)
-- [ ] 1.2 `PATCH /businesses/:id` — same fields, never accepts `id`
-- [ ] 1.3 `POST /branches` — `businessId` + `name` required. **A warehouse is
-      `isSellingPoint: false`**, not a separate concept
-- [ ] 1.4 Expose the existing `PATCH /branches/:id` (built in F8.5, never
-      reachable from the UI)
-- [ ] 1.5 `Branch.code` is unique PER BUSINESS, not globally — a duplicate must
-      409, not 500
-- [ ] 1.6 Audit every write (`branch.created`, `business.updated`, ...) —
-      opening a shop is exactly what an audit trail is for
+#### Stage 1 — Business + Branch write API ✅ COMPLETE 2026-09-08
+- [x] 1.1 **DONE 2026-09-08.** `POST /businesses`, `name` the only required
+      field; a test creates one with nothing else and asserts `taxId` is null
+- [x] 1.2 **DONE 2026-09-08.** `PATCH /businesses/:id`. `id` is not in the
+      schema, so a client echoing the record back has it DROPPED rather than
+      applied — tested by patching with another business's id
+- [x] 1.3 **DONE 2026-09-08.** `POST /branches`; a warehouse is
+      `isSellingPoint: false` on the same endpoint, not a second concept
+- [x] 1.4 **DONE 2026-09-08 (backend).** The existing PATCH now runs through
+      `updateBranch()`, so the 1.8 and 1.10 guards apply to it too instead of
+      only to new writes. UI reachability is stage 3
+- [x] 1.5 **DONE 2026-09-08.** P2002 translated to a 409 naming the field;
+      tested both ways — duplicate in one business 409s, same code in another
+      business succeeds
+- [x] 1.6 **DONE 2026-09-08.** `business.created`/`business.updated`/
+      `branch.created`/`branch.updated`, each with a real field diff via a
+      shared `changedFields()` — only what moved, so the one change that
+      matters is not buried under every unchanged field
 
 **Guards to DECIDE, not default:**
-- [ ] 1.7 Who may create a branch? *Recommend OWNER/DEVELOPER only — MANAGER
-      reaching `settings` does not imply "may open a shop"*
-- [ ] 1.8 Can the last ACTIVE branch be deactivated? *Recommend NO, mirroring
-      the last-OWNER rule — `defaultBranchId()` would have nothing to fall back
-      to*
-- [ ] 1.9 What happens to a deactivated branch's stock and orders? They MUST
-      survive — orders are history
-- [ ] 1.10 **`isDefault` must stay unique** — setting it must clear it
-      elsewhere in the same transaction. Two defaults makes `defaultBranchId()`
-      order-dependent: the exact bug F8.2 fixed
+- [x] 1.7 **DECIDED + DONE 2026-09-08: OWNER/DEVELOPER only.** Took the
+      recommendation. Writes use `requireRole`, not `requireArea('settings')`
+      — MANAGER holds `settings` and is refused, which a test asserts. READS
+      stay on `settings`: seeing the org chart is ordinary, changing it is not
+- [x] 1.8 **DECIDED + DONE 2026-09-08: NO.** Refused with a 400 naming the
+      field, mirroring the last-OWNER rule. Refused HERE, where the person can
+      still understand why, rather than at the point of sale when a stock
+      movement has no branch to record
+- [x] 1.9 **DECIDED + DONE 2026-09-08: they survive.** Deactivation sets a
+      flag and cascades nothing; a test re-reads a closed branch by id after
+      deactivating it
+- [x] 1.10 **DONE 2026-09-08.** `clearOtherDefaults()` inside the same
+      transaction, scoped per business. Three cases covered: the first branch
+      becomes the default unasked, a second claiming it clears the first, and
+      deactivating the default hands the flag to a branch that is still open
+      (an inactive default is the same problem in a quieter form)
 
 #### Stage 2 — Assign people to branches (`UserBranch` writes)
 *This is what unlocks the org shapes the owner described.*
@@ -157,11 +169,12 @@ per-branch roles become testable against a real roster.
       loads once on mount
 
 #### Stage 4 — Tests (written alongside 1 and 2, not after)
-- [ ] 4.1 Guard tests FIRST (the F8.3/F8.4 pattern): a MANAGER cannot create a
-      branch · nobody grants above their own rank · the last active branch
-      cannot be deactivated · two branches cannot both be `isDefault`
-- [ ] 4.2 Duplicate `code` in one business 409s; the SAME code in a different
-      business succeeds
+- [x] 4.1 **DONE for stage 1 (2026-09-08).** `branch-writes.test.ts`, 17
+      tests. **Watched all four guards fail first**: swapping `requireRole` for
+      `requireArea` and disabling the last-branch check turns exactly the four
+      guard tests red. "Nobody grants above their own rank" belongs to stage 2
+      and is still open
+- [x] 4.2 **DONE 2026-09-08.** Both directions asserted
 - [ ] 4.3 A role at one branch does not change it at another (the F8.4
       contract, now through the write path)
 - [ ] 4.4 Frontend: create → appears in the switcher without a reload
