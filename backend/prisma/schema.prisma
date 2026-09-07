@@ -283,6 +283,8 @@ model Branch {
   staff UserBranch[]
   /// Which couriers serve this branch (O2).
   couriers DeliveryStaffBranch[]
+  /// Work periods recorded here (F6.1).
+  shifts   Shift[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -353,6 +355,11 @@ model User {
   twoFactorBackupCodes TwoFactorBackupCode[]
   apiKeys              ApiKey[]
   branchRoles          UserBranch[]
+  /// Periods of work (F6.1). Three relations because a shift names up to
+  /// three different people: whose it is, who opened it, who corrected it.
+  shifts               Shift[]               @relation("ShiftWorker")
+  shiftsOpened         Shift[]               @relation("ShiftOpener")
+  shiftsEdited         Shift[]               @relation("ShiftEditor")
 
   @@index([role])
   @@index([createdAt])
@@ -1611,4 +1618,82 @@ model ScheduledReport {
 
   @@index([isActive, frequency])
   @@map("scheduled_reports")
+}
+
+/// A period of WORK — who, where, from when to when (F6.1).
+///
+/// ─── A SHIFT IS NOT A SESSION ────────────────────────────────────────
+/// The owner drew this line himself, 2026-09-08: a `Session` is the backlog of
+/// activity inside the system, written BY the app when somebody signs in. A
+/// shift is declared by the PERSON and describes their working day. They
+/// answer different questions and neither can stand in for the other — a
+/// cashier can be signed in all night without being on shift, and can be on
+/// shift while signed in on somebody else's till.
+///
+/// ─── ACTUAL TIME ONLY, NO ROTA ───────────────────────────────────────
+/// Also his call. There is no planned start to compare against, so no
+/// lateness, no no-shows, no schedule editor. A rota is a genuinely different
+/// feature and adding two columns "in case" would imply one exists.
+///
+/// ─── CORRECTIONS STAY VISIBLE ────────────────────────────────────────
+/// A manager may fix a shift for somebody who forgot to clock in or out. The
+/// original values are KEPT (`originalStartedAt`/`originalEndedAt`) and the
+/// edit is attributed (`editedById`), the same discipline `StockMovement` uses
+/// for a stock correction: a timesheet that can be silently rewritten is worth
+/// less as a record than one that cannot, and this is a record of hours people
+/// may be paid for.
+///
+/// Deliberately NOT payroll (F6.6). No rates, no overtime rules, no
+/// jurisdiction-specific rounding. Those carry real legal obligations and are
+/// their own project.
+model Shift {
+  id String @id @default(cuid())
+
+  /// WHOSE shift this is.
+  userId String @map("user_id")
+  /// Cascade: a shift has no meaning without the person who worked it. The
+  /// AUDIT of what they did survives in `AuditLog`, which references actors
+  /// by plain id for exactly this reason.
+  user   User   @relation("ShiftWorker", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// WHERE it was worked. Required — "who was on at Marina yesterday" is the
+  /// question this table exists to answer, and a null branch cannot answer it.
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  /// Who OPENED it, distinct from whose shift it is: a manager may open one
+  /// for somebody who forgot to clock in. Equal to `userId` in the ordinary
+  /// case, which is the overwhelming majority.
+  openedById String @map("opened_by_id")
+  openedBy   User   @relation("ShiftOpener", fields: [openedById], references: [id])
+
+  startedAt DateTime  @map("started_at")
+  /// NULL means STILL OPEN — the single source of truth for "who is on now".
+  /// Not a separate status column: two representations of one fact drift, and
+  /// an `isOpen` flag disagreeing with a set `endedAt` has no correct reading.
+  endedAt   DateTime? @map("ended_at")
+
+  /// What the times were BEFORE a manager corrected them. Null means never
+  /// corrected — the ordinary case. Kept rather than overwritten so an edited
+  /// timesheet still shows what was originally recorded.
+  originalStartedAt DateTime? @map("original_started_at")
+  originalEndedAt   DateTime? @map("original_ended_at")
+  /// Who made the correction, and why. Null unless edited.
+  editedById        String?   @map("edited_by_id")
+  editedBy          User?     @relation("ShiftEditor", fields: [editedById], references: [id])
+  editReason        String?   @map("edit_reason") @db.VarChar(255)
+  editedAt          DateTime? @map("edited_at")
+
+  /// The worker's own note — "covered for Sara", "closed early, power cut".
+  note String? @db.VarChar(255)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// "Who is on now" and "who was on at this branch" are the two reads this
+  /// table exists for; both are covered here.
+  @@index([userId, startedAt])
+  @@index([branchId, startedAt])
+  @@index([endedAt])
+  @@map("shifts")
 }
