@@ -26,24 +26,42 @@ reasoning behind decisions already made, not for what is open.
 
 ## 📬 Open PRs — the 2026-09-08 stack
 
-Pushed 2026-09-08. **Each PR is based on the one below it**, so each shows only
-its own diff; merge bottom-up and GitHub retargets the rest as they land.
+**8 merged, 6 open.** Merge bottom-up; each shows only its own diff.
 
 | PR | Branch | Base | What |
 |---|---|---|---|
-| #156 | `stack/01-courier-response-shape` | `dev` | O6 — courier card blanking |
-| #157 | `stack/02-branch-write-api` | #156 | O7 §1 — business/branch writes |
-| #158 | `stack/03-branch-roster` | #157 | O7 §2 — people at branches |
-| #159 | `stack/04-branch-management-ui` | #158 | O7 §3 — the UI |
-| #160 | `stack/05-docs` | #159 | CLAUDE.md + workbook |
-| #161 | `stack/06-branch-on-lists` | #160 | O1 — branch named on lists |
-| #162 | `stack/07-courier-branches` | #161 | O2 — courier serves branches |
+| #165 | `stack/09-two-factor-login` | **`dev`** | O3b — 2FA login + settings panels |
+| #171 | `stack/10b-shifts-backend` | #165 | F6.1 — shift model + API |
+| #167 | `stack/11-shifts-ui` | #171 | F6.3/6.5 — shift UI + staff activity |
+| #168 | `stack/12-shift-summary` | #167 | F6.4 — shift summary |
+| #169 | `stack/13-low-stock-alert-test` | #168 | F7.5 — low-stock email test |
+| #170 | `stack/14-bulk-progress` | #169 | §U — bulk-delete progress |
 
-**Conflicts on these are usually FAKE** — see the rules section below. PRs are
-squash-merged, which rewrites SHAs, so each branch still carries pre-squash
-copies of everything under it. `git rebase origin/dev` first; do not hand-resolve.
+Merged: #156-#163 (O6, O7 §1-3, docs, O1, O2, O3).
 
-`work/2026-09-08` holds all seven commits together if a combined view helps.
+### ⚠️ What went wrong on 2026-09-07, and how it was fixed
+
+**#166 was merged into `stack/09-two-factor-login` instead of `dev`.** GitHub
+marked it MERGED and closed it, but the F6.1 shift work never reached `dev` —
+`backend/src/services/shifts.service.ts` was simply absent from it, with no
+open PR left to bring it in. Nothing was lost, but nothing would have shipped
+either, and the closed PR made it look done.
+
+Reopened as **#171** on `stack/10b-shifts-backend` (a new branch name: the old
+one is bound to the closed PR).
+
+**The lesson for a stack: merge each PR into `dev`, not into its base branch.**
+GitHub retargets the next PR to `dev` automatically as each one lands — that
+retarget is the mechanism, and merging into the base short-circuits it.
+
+**#165's "conflict" was fake, as this file's own rule predicts.** `merge-tree`
+returned a clean tree; `git rebase origin/dev` skipped 8 already-applied
+commits and produced zero conflicts. #167/#168 had a REAL conflict of the same
+family — each branch carried its own copy of a parent's commit under a
+different SHA — fixed by rebasing each onto its actual base, not by hand.
+
+All six verified after the rebase: backend 922/922, frontend 1050/1050, tsc,
+eslint and `check:merge` clean on the stack tip.
 
 ---
 
