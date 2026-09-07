@@ -20,6 +20,7 @@ import { canAccessArea, type Area, type StaffRole } from '@/config/areas';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useResourceSchema } from '@/components/providers/schema-provider';
 import { useNavCounts } from '@/hooks/useNavCounts';
+import { NavPendingIndicator } from '@/components/shell/nav-pending-indicator';
 import { getDirection } from '@/i18n/routing';
 import { cn } from '@/lib/utils';
 
@@ -296,6 +297,12 @@ function NavLinkItem({ item, collapsed, isRtl, isActive, onNavigate, count }: Na
                 </span>
               )
             ) : null}
+            {/* Must be INSIDE the Link: `useLinkStatus` reads the enclosing
+                link's state and silently reports `false` anywhere else.
+                Sits after the badge rather than replacing it — the count is
+                still true while the page loads, and swapping them would make
+                the row's width jump at the moment of a click. */}
+            <NavPendingIndicator className={cn(collapsed && 'absolute bottom-0.5 end-1.5')} />
           </Link>
         </HoverCardTrigger>
 

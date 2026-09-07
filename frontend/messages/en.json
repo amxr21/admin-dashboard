@@ -1356,6 +1356,7 @@
       "description": "They are not told automatically — give it to them directly. Setting it also clears any lockout.",
       "label": "New password",
       "confirm": "Set password",
+      "confirming": "Setting password…",
       "cancel": "Cancel"
     },
     "resetToken": {
