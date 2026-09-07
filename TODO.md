@@ -545,9 +545,22 @@ that staleness is why these are consolidated here.
       (`assertPermitted(config, 'create')`), so this is real work, not wiring
 
 ### Shifts (F6) — all gated on one decision
-- [ ] **F6.1** 🚫 **the `Shift` model's shape** — see "Waiting on the owner".
-      **This is the same object as O5's till session**; answering it unblocks
-      both tracks
+- [x] **F6.1 — DONE 2026-09-08.** `Shift` model + service + routes, migration
+      `20260908010000_add_shifts` (additive, one table). Built to the owner's
+      definition: a period of WORK (user · branch · start · end), distinct
+      from a `Session`. `endedAt IS NULL` is the single source of truth for
+      "open" — not a separate status column, because two representations of
+      one fact drift and an `isOpen` disagreeing with a set `endedAt` has no
+      correct reading. `openedById` is separate from `userId` so "a manager
+      clocked them on" stays legible. Corrections keep the ORIGINAL times and
+      are attributed; **a second edit does not overwrite the original**, or a
+      manager could launder a correction by editing twice. **Nobody edits
+      their own shift at any rank, including OWNER** — the person who benefits
+      must not be the person who approves. Clocking on needs no area (the
+      people who work shifts would otherwise be the ones who cannot record
+      them); READING other people's is behind `staff`, like the audit trail.
+      16 tests, both critical rules watched failing. **This also unblocks O5's
+      till session — same object.**
 - [ ] **F6.3** Open/close shift UI in the shell (not buried in Settings), with
       elapsed time. Must survive a reload and a second tab — the open shift
       lives on the server, never in `localStorage`
