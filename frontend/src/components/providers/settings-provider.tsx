@@ -13,6 +13,7 @@ import {
 import { applyAppearance, cacheAppearance, readAppearance } from '@/lib/apply-appearance';
 import { fetchSettings } from '@/lib/settings-api';
 import { fetchBrand, type ResolvedBrand } from '@/lib/branches-api';
+import { readBranchId } from '@/lib/auth-storage';
 
 /**
  * Fetches the settings registry and shares it — same reasoning as
@@ -158,12 +159,32 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setByKey(Object.fromEntries(settings.map((setting) => [setting.key, setting.value])));
       setOverrides({});
 
-      // Separate try: a brand-resolution failure must not lose the settings
-      // that already arrived. Without a branch the endpoint returns the
-      // store-wide values anyway, so falling back to them costs nothing.
-      try {
-        setBrand(await fetchBrand());
-      } catch {
+      /**
+       * Only fetched when a branch is actually active.
+       *
+       * With no active branch the endpoint returns the store-wide settings
+       * that were just loaded above, so the request buys nothing — one extra
+       * round trip on every page load of every single-branch install, which
+       * is every install today.
+       *
+       * It also stopped an unrelated CI failure: an unconditional fetch here
+       * fires in every test that renders this provider, most of which mock
+       * `fetchSettings` and know nothing about brands. Those requests resolved
+       * AFTER the test finished, and the late re-render reached GSAP once the
+       * jsdom environment was already torn down — surfacing as
+       * `ReferenceError: requestAnimationFrame is not defined`, an unhandled
+       * error that failed the run while all 1016 tests passed.
+       *
+       * Separate try: a brand-resolution failure must not lose the settings
+       * that already arrived.
+       */
+      if (readBranchId()) {
+        try {
+          setBrand(await fetchBrand());
+        } catch {
+          setBrand(null);
+        }
+      } else {
         setBrand(null);
       }
     } catch {
