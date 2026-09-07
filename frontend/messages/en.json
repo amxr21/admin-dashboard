@@ -86,7 +86,14 @@
       "backToLogin": "Back to sign in",
       "done": "Password set. Sign in with your new password."
     },
-    "twoFactorUnavailable": "Two-factor sign-in is not available yet. Ask an owner to turn it off for your account."
+    "twoFactor": {
+      "title": "Two-step verification",
+      "hint": "Enter the 6-digit code from your authenticator app.",
+      "code": "Verification code",
+      "backupHint": "Lost your device? A backup code works here too.",
+      "verify": "Verify",
+      "startOver": "Use a different account"
+    }
   },
   "courier": {
     "login": {

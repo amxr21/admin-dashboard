@@ -459,9 +459,14 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   figure describing a past event must read a snapshot, never a live lookup. `Order.total`,
   `OrderItem.price`, `Order.subtotal`/`taxAmount` and now `OrderItem.cost` all follow this rule;
   a new one should be checked against it before it ships.
-- **Still needs a human (unchanged from 2026-08-12):** (1) `settings/page.tsx` mounts most panels
-  but the 2FA / sessions / API-key panels are built and route-reachable yet not linked from the
-  settings page — a small follow-up; (2) `order-detail.test.tsx` has one `it.skip`
+- **Still needs a human:** ~~(1) the unlinked 2FA / sessions / API-key panels~~ — **DONE
+  2026-09-08**, all three mounted next to My account. That gap turned out to matter more than
+  "a small follow-up": because 2FA could not be switched on from the UI, nobody could reach the
+  fact that the 2FA LOGIN had no code-entry screen at all — `signIn` returned
+  `TWO_FACTOR_REQUIRED` and the form redirected to `/admin` with no session, so an account with
+  2FA enabled could not sign in. Both halves fixed the same day (TODO.md O3b). The lesson is the
+  F5.1 one again: a backend flow whose frontend half was never built stays invisible while the
+  feature that reaches it is also unreachable. (2) `order-detail.test.tsx` has one `it.skip`
   (`includes the chosen category when one is selected`) to unskip once both the orders PR and the
   return-taxonomy PR are on `dev` — the skip is commented in place.
 - **Schema-gated work still open** — `TODO.md` (was MASTER_TODO Track D §S7): S7.1 Address model, S7.3

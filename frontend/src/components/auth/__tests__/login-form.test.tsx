@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { createElement, type ReactNode } from 'react';
 
-import { render, screen } from '@/test/render';
+import { render, screen, waitFor } from '@/test/render';
 import { LoginForm } from '../login-form';
 import { ApiError } from '@/lib/api';
 
@@ -14,10 +14,14 @@ import { ApiError } from '@/lib/api';
  */
 
 const signIn = vi.fn();
+const verifyTwoFactor = vi.fn();
 const replace = vi.fn();
 
 vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ signIn: (...args: unknown[]) => signIn(...args) }),
+  useAuth: () => ({
+    signIn: (...args: unknown[]) => signIn(...args),
+    verifyTwoFactor: (...args: unknown[]) => verifyTwoFactor(...args),
+  }),
 }));
 
 vi.mock('@/i18n/navigation', () => ({
@@ -62,17 +66,91 @@ describe('successful sign-in', () => {
     expect(replace).toHaveBeenCalledWith('/admin/orders');
   });
 
-  it('refuses rather than redirecting when 2FA is required', async () => {
-    // `signIn` can return TWO_FACTOR_REQUIRED and no session is written.
-    // There is no code-entry screen yet, so redirecting would land them on a
-    // page their nonexistent session cannot load.
-    signIn.mockResolvedValue({ status: 'TWO_FACTOR_REQUIRED', pendingToken: 'pending' });
+});
+
+describe('two-step verification (O3b.1)', () => {
+  /**
+   * Before this, `signIn` could return TWO_FACTOR_REQUIRED and NOTHING in the
+   * UI handled it — the form redirected to /admin with no session written, so
+   * every request 401'd and a 2FA user could not sign in at all. The tests
+   * below are about the two halves staying distinct: no session yet, and no
+   * redirect until the code is verified.
+   */
+  it('asks for a code instead of redirecting', async () => {
+    signIn.mockResolvedValue({ status: 'TWO_FACTOR_REQUIRED', pendingToken: 'pending-token' });
     render(<LoginForm />);
 
     await submit('twofa@example.com', 'correct-password');
 
+    expect(await screen.findByLabelText(/verification code/i)).toBeInTheDocument();
+    // No session exists yet — redirecting here is the original bug.
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('verifies the code and lands on the role page', async () => {
+    signIn.mockResolvedValue({ status: 'TWO_FACTOR_REQUIRED', pendingToken: 'pending-token' });
+    verifyTwoFactor.mockResolvedValue('FULFILLMENT');
+    render(<LoginForm />);
+
+    await submit('picker@example.com', 'correct-password');
+
+    const field = await screen.findByLabelText(/verification code/i);
+    await userEvent.type(field, '123456');
+    await userEvent.click(screen.getByRole('button', { name: /verify/i }));
+
+    await waitFor(() => {
+      expect(verifyTwoFactor).toHaveBeenCalledWith('pending-token', '123456');
+    });
+    // A 2FA sign-in lands exactly where a password-only one would (O3.4).
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith('/admin/orders');
+    });
+  });
+
+  it('keeps the code step open after a wrong code', async () => {
+    signIn.mockResolvedValue({ status: 'TWO_FACTOR_REQUIRED', pendingToken: 'pending-token' });
+    verifyTwoFactor.mockRejectedValue(new ApiError(401, 'UNAUTHORIZED', 'Invalid code'));
+    render(<LoginForm />);
+
+    await submit('twofa@example.com', 'correct-password');
+
+    const field = await screen.findByLabelText(/verification code/i);
+    await userEvent.type(field, '000000');
+    await userEvent.click(screen.getByRole('button', { name: /verify/i }));
+
     expect(await screen.findByRole('alert')).toBeInTheDocument();
+    // Still on the code step, and the field is cleared for a retype — the
+    // code is single-use, so a wrong one is never corrected in place.
+    expect(screen.getByLabelText(/verification code/i)).toHaveValue('');
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('never sends the pending token to storage or the URL', async () => {
+    // It proves the password step happened, so it is a credential that skips
+    // the password if stolen. React state dies with the page; localStorage
+    // and the URL both outlive it.
+    signIn.mockResolvedValue({ status: 'TWO_FACTOR_REQUIRED', pendingToken: 'secret-pending' });
+    render(<LoginForm />);
+
+    await screen.findByLabelText(/password/i);
+    await submit('twofa@example.com', 'correct-password');
+    await screen.findByLabelText(/verification code/i);
+
+    expect(JSON.stringify(window.localStorage)).not.toContain('secret-pending');
+    expect(window.location.href).not.toContain('secret-pending');
+  });
+
+  it('can start over, dropping the pending token', async () => {
+    signIn.mockResolvedValue({ status: 'TWO_FACTOR_REQUIRED', pendingToken: 'pending-token' });
+    render(<LoginForm />);
+
+    await submit('twofa@example.com', 'correct-password');
+    await screen.findByLabelText(/verification code/i);
+
+    await userEvent.click(screen.getByRole('button', { name: /different account/i }));
+
+    // Back to the password form — a genuine restart, not a hidden half-login.
+    expect(await screen.findByLabelText(/password/i)).toBeInTheDocument();
   });
 });
 
