@@ -10,13 +10,16 @@ import {
   assignOrder,
   createCourier,
   getCourier,
+  listCourierBranches,
   listCouriers,
+  setCourierBranches,
   regenerateAccessCode,
   revokeAccessCode,
   unassignOrder,
   updateAssignment,
   updateCourier,
 } from '../../services/couriers.service.js';
+import { audit } from '../../services/audit.service.js';
 
 /**
  * Couriers and delivery assignments.
@@ -100,6 +103,44 @@ couriersRouter.patch('/couriers/:id', ...guard, async (req, res) => {
   }
 
   res.json({ data: { courier: await updateCourier(String(req.params.id), parsed.data, req) } });
+});
+
+/**
+ * Which branches a courier serves (O2).
+ *
+ * A full REPLACE rather than add/remove endpoints: the UI edits this as a set
+ * of checkboxes, and applying a diff computed against a stale client is how a
+ * branch nobody touched gets dropped. Sending the intended final state makes
+ * the last writer win predictably instead of partially.
+ */
+couriersRouter.get('/couriers/:id/branches', ...guard, async (req, res) => {
+  res.json({ data: { branches: await listCourierBranches(String(req.params.id)) } });
+});
+
+couriersRouter.put('/couriers/:id/branches', ...guard, async (req, res) => {
+  const parsed = z
+    .object({ branchIds: z.array(z.string().trim().min(1)).max(50) })
+    .safeParse(req.body);
+
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+
+  const id = String(req.params.id);
+  const before = await listCourierBranches(id);
+  const branches = await setCourierBranches(id, parsed.data.branchIds);
+
+  audit(req, {
+    action: 'delivery.courier.branches_changed',
+    entity: 'couriers',
+    entityId: id,
+    changes: {
+      branches: {
+        from: before.map((branch) => branch.name),
+        to: branches.map((branch) => branch.name),
+      },
+    },
+  });
+
+  res.json({ data: { branches } });
 });
 
 /**

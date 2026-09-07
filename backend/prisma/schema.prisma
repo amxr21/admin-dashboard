@@ -281,6 +281,8 @@ model Branch {
   stock BranchStock[]
   /// Who works here, and in what capacity (F8.4).
   staff UserBranch[]
+  /// Which couriers serve this branch (O2).
+  couriers DeliveryStaffBranch[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1189,12 +1191,54 @@ model DeliveryStaff {
   accessCodeHash String?             @unique @map("access_code_hash") @db.VarChar(64)
 
   assignments DeliveryAssignment[]
+  /// Which branches this courier serves (O2). Many, not one — see the model.
+  branches    DeliveryStaffBranch[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([status])
   @@map("delivery_staff")
+}
+
+/// Which branches a courier serves (O2).
+///
+/// ─── WHY A JOIN TABLE AND NOT `branchId` ON THE COURIER ──────────────
+/// The owner's answer, 2026-09-08: a courier can serve one branch and another
+/// as well. A single `branchId` cannot express that, and the alternative --
+/// a second courier ROW per branch -- was considered and rejected: it splits
+/// one person's delivery history across timelines that can never be added up,
+/// and hands them a different sign-in code per branch. The credential lives on
+/// `DeliveryStaff`, so duplicating the row duplicates the credential.
+///
+/// One courier record, many branches. Same shape as `UserBranch`, deliberately,
+/// so "who works where" is one idea in this schema and not two.
+///
+/// ─── NO ROLE COLUMN, UNLIKE `UserBranch` ─────────────────────────────
+/// A courier's capabilities do not vary by branch -- they deliver. `UserBranch`
+/// carries a role because a staff member genuinely can be a manager at one shop
+/// and support at another; there is no equivalent axis here, and adding a
+/// column "for symmetry" would invite a meaning nobody has defined.
+model DeliveryStaffBranch {
+  id String @id @default(cuid())
+
+  courierId String        @map("courier_id")
+  /// Cascade: serving a branch has no meaning without the courier. Their
+  /// ASSIGNMENTS are history and reference the courier separately.
+  courier   DeliveryStaff @relation(fields: [courierId], references: [id], onDelete: Cascade)
+
+  branchId String @map("branch_id")
+  /// Cascade for the same reason: closing a branch removes its roster, never
+  /// the record of deliveries made from it.
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// One row per courier per branch. Two would make "does he serve here"
+  /// ambiguous for no gain -- there is no per-row attribute to differ on.
+  @@unique([courierId, branchId])
+  @@index([branchId])
+  @@map("delivery_staff_branches")
 }
 
 /// Links an order to a courier. The delivery address is denormalised here so a

@@ -83,6 +83,7 @@ function makeCourier(overrides: Partial<Courier> = {}): Courier {
   return {
     id: 'c1',
     name: 'Sami',
+    branches: [],
     email: null,
     phone: '+971500000000',
     vehicleType: 'Van',

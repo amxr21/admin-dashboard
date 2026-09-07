@@ -37,6 +37,7 @@ function makeCourier(overrides: Partial<CourierDetailData> = {}): CourierDetailD
   return {
     id: 'c1',
     name: 'Sami',
+    branches: [],
     email: 'sami@example.test',
     phone: '+971500000000',
     vehicleType: 'Van',
