@@ -183,7 +183,8 @@
     },
     "loginHistory": "Staff activity",
     "branches": "Branches",
-    "pos": "Till"
+    "pos": "Till",
+    "shift": "Shift"
   },
   "branches": {
     "switcherLabel": "Active branch",
@@ -2311,7 +2312,16 @@
     "expectedHint": "Opened with {float}, took {cash} in cash.",
     "tillClosed": "Till closed — variance {variance}",
     "varianceShort": "Variance {variance}",
-    "dismissVariance": "Dismiss the till variance"
+    "dismissVariance": "Dismiss the till variance",
+    "pageTitle": "Shift",
+    "pageSubtitle": "Clock on when you arrive, and off when you leave.",
+    "notOnShift": "You are not on shift",
+    "floatHint": "Leave blank if this shift has no cash drawer.",
+    "dismiss": "Dismiss",
+    "lastTillVariance": "Last till closed with a variance of",
+    "floatOnRecord": "Opened with a {float} float",
+    "elapsedHint": "Time on shift",
+    "notOnShiftShort": "Off shift"
   },
   "staffActivity": {
     "title": "Staff activity",
@@ -2377,6 +2387,14 @@
     "confirmCharge": "Confirm & charge",
     "referenceLabel": "Terminal reference (optional)",
     "referencePlaceholder": "e.g. from the card terminal receipt",
-    "referenceHint": "So a disputed charge can be matched back to this sale later."
+    "referenceHint": "So a disputed charge can be matched back to this sale later.",
+    "gate": {
+      "title": "Start your shift?",
+      "subtitle": "Sales you ring up are attached to your open shift.",
+      "openingFloat": "Opening float (optional)",
+      "floatPlaceholder": "0.00",
+      "startAndOpen": "Start shift & open till",
+      "skip": "Not right now — just let me sell"
+    }
   }
 }

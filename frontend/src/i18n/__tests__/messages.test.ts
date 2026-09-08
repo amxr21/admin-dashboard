@@ -73,6 +73,8 @@ describe('Arabic is actually translated', () => {
       // same reasoning as `auth.emailPlaceholder` above.
       'courier.login.codePlaceholder',
       'imageUpload.urlPlaceholder',
+      // Same reasoning — "0.00" is a numeric format example, not prose.
+      'pos.gate.floatPlaceholder',
       // A timezone abbreviation, not prose — used as-is in Arabic technical
       // UI, same reasoning as "iPhone"/"WhatsApp"/"Excel" above.
       'table.utc',

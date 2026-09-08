@@ -4,6 +4,7 @@ import {
   Boxes,
   Building2,
   ChartColumn,
+  Clock,
   Database,
   FolderTree,
   History,
@@ -78,6 +79,12 @@ export const NAVIGATION: readonly NavGroup[] = [
       // First in the Shop group: for a cashier it is the whole job, and for
       // everyone else it is where a walk-in sale starts.
       { href: '/admin/pos', labelKey: 'pos', icon: ScanLine, area: 'orders' },
+      // No `area` — clocking on/off is not a privileged act (same reasoning
+      // the topbar's shift control always used), so this is visible to
+      // anyone signed in, not gated behind the `orders` area the till itself
+      // needs. Right after Till: the owner's note was to give the shift
+      // clock a tab of its own next to the till it gates access to.
+      { href: '/admin/pos/shift', labelKey: 'shift', icon: Clock },
       { href: '/admin/orders', labelKey: 'orders', icon: ShoppingCart, area: 'orders' },
       { href: '/admin/inventory', labelKey: 'inventory', icon: Boxes, area: 'inventory' },
       { href: '/admin/returns', labelKey: 'returns', icon: RotateCcw, area: 'returns' },

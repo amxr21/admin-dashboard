@@ -183,7 +183,8 @@
     },
     "loginHistory": "نشاط الموظفين",
     "branches": "الفروع",
-    "pos": "نقطة البيع"
+    "pos": "نقطة البيع",
+    "shift": "الوردية"
   },
   "branches": {
     "switcherLabel": "الفرع النشط",
@@ -2311,7 +2312,16 @@
     "expectedHint": "فُتح بـ {float}، والمقبوض نقدًا {cash}.",
     "tillClosed": "أُغلق الصندوق — الفرق {variance}",
     "varianceShort": "الفرق {variance}",
-    "dismissVariance": "إخفاء فرق الصندوق"
+    "dismissVariance": "إخفاء فرق الصندوق",
+    "pageTitle": "الوردية",
+    "pageSubtitle": "سجّل حضورك عند الوصول، وانصرافك عند المغادرة.",
+    "notOnShift": "لست في وردية حاليًا",
+    "floatHint": "اتركه فارغًا إذا لم تكن هذه الوردية تحتوي على درج نقدي.",
+    "dismiss": "تجاهل",
+    "lastTillVariance": "أُغلق الدرج الأخير بفارق قدره",
+    "floatOnRecord": "بدأت بمبلغ افتتاحي قدره {float}",
+    "elapsedHint": "مدة الوردية",
+    "notOnShiftShort": "خارج الوردية"
   },
   "staffActivity": {
     "title": "نشاط الموظفين",
@@ -2377,6 +2387,14 @@
     "confirmCharge": "تأكيد وتحصيل الدفع",
     "referenceLabel": "الرقم المرجعي لجهاز الدفع (اختياري)",
     "referencePlaceholder": "مثال: من إيصال جهاز الدفع",
-    "referenceHint": "حتى يمكن مطابقة أي نزاع على الدفع بهذه العملية لاحقًا."
+    "referenceHint": "حتى يمكن مطابقة أي نزاع على الدفع بهذه العملية لاحقًا.",
+    "gate": {
+      "title": "هل تريد بدء ورديتك؟",
+      "subtitle": "المبيعات التي تسجّلها تُنسب إلى ورديتك المفتوحة.",
+      "openingFloat": "المبلغ الافتتاحي (اختياري)",
+      "floatPlaceholder": "0.00",
+      "startAndOpen": "ابدأ الوردية وافتح الصندوق",
+      "skip": "ليس الآن — اسمح لي بالبيع فقط"
+    }
   }
 }
