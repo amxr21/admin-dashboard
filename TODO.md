@@ -585,8 +585,21 @@ till its branch for free.
       the discrepancy
 
 #### Stage C — receipt + role
-- [ ] O5.9 Thermal receipt renderer (58/80mm) — the invoice is A4; different
-      layout, likely a different component
+- [x] **O5.9 — DONE 2026-09-08.** `ThermalReceipt`, its own component rather
+      than a restyled invoice: at 58mm you get ~32 monospace characters per
+      line, so the A4 letterhead, address block and table have nowhere to go —
+      restyling would mean hiding most of it and hoping the rest reflows.
+      **`@page { size: 58mm auto }`** — a real page size, with `auto` height
+      because thermal printers feed continuous paper: a fixed height either
+      cuts a long receipt off or ejects blank paper after a short one. Scoped
+      to the component, not globals.css, or every other print in the app comes
+      out on a roll. Monospace and `force-ltr` even in Arabic — the layout is a
+      column of aligned figures and a printer cannot reflow them.
+      Lines print the EXTENDED price (2 × 4.50 = 9.00), since printing 4.50
+      beside a quantity of 2 invites arithmetic that fails. Tendered/change are
+      OMITTED on a card sale rather than printed as 0.00, which reads as a
+      mistake. Figures come from the SERVER's response, never the on-screen
+      estimate. 5 tests, both rules watched failing
 - [x] **O5.10 — DONE 2026-09-08**, and genuinely last: the TODO warned that
       adding it first grants screens that cannot take money, and those screens
       (O5.6/O5.7) now exist. Enum + `ROLE_AREAS` + `ROLE_ORDER` + i18n, both

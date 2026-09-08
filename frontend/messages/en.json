@@ -2315,6 +2315,18 @@
     "archived": "This product is archived",
     "increase": "One more {name}",
     "decrease": "One fewer {name}",
-    "remove": "Remove {name}"
+    "remove": "Remove {name}",
+    "receipt": {
+      "taxId": "TRN {id}",
+      "servedBy": "Served by {name}",
+      "subtotal": "Subtotal",
+      "tax": "Tax",
+      "total": "TOTAL",
+      "paidBy": "Paid by",
+      "tendered": "Cash",
+      "change": "Change",
+      "thanks": "Thank you"
+    },
+    "printReceipt": "Print receipt"
   }
 }

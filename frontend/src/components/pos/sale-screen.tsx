@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { AlertTriangle, Minus, Plus, ScanLine, Trash2 } from 'lucide-react';
+import { AlertTriangle, Minus, Plus, Printer, ScanLine, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import {
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { checkout, scanProduct, type ScannedProduct } from '@/lib/pos-api';
+import { ThermalReceipt, type ReceiptData } from '@/components/pos/thermal-receipt';
 import { fetchMyShift } from '@/lib/shifts-api';
 
 /**
@@ -54,9 +55,10 @@ export function SaleScreen() {
   const [isScanning, setIsScanning] = useState(false);
   const [isSelling, setIsSelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastSale, setLastSale] = useState<{ orderNumber: string; change: string | null } | null>(
-    null,
-  );
+  /** The completed sale, kept so it can be printed. Cleared by the next scan
+   *  — a receipt left on screen while a new sale is rung up is one somebody
+   *  eventually prints for the wrong customer. */
+  const [lastSale, setLastSale] = useState<ReceiptData | null>(null);
 
   const scanField = useRef<HTMLInputElement>(null);
 
@@ -93,6 +95,9 @@ export function SaleScreen() {
 
     try {
       const product = await scanProduct(trimmed);
+
+      // A new scan starts a new sale; the previous receipt goes away.
+      setLastSale(null);
 
       setLines((current) => {
         const existing = current.find((line) => line.product.id === product.id);
@@ -155,7 +160,24 @@ export function SaleScreen() {
       // Kept on screen rather than toasted away: the change to hand back is
       // the one number the cashier still needs AFTER the sale completes, and
       // a toast disappears while they are opening the drawer.
-      setLastSale({ orderNumber: result.orderNumber, change: result.change });
+      //
+      // Built from the SERVER's figures, not the on-screen estimate — the
+      // receipt is the document of record and must show what was charged.
+      setLastSale({
+        orderNumber: result.orderNumber,
+        soldAt: new Date().toLocaleString(),
+        lines: lines.map((line) => ({
+          name: line.product.name,
+          quantity: line.quantity,
+          price: line.product.price,
+        })),
+        subtotal: result.subtotal,
+        taxAmount: result.taxAmount,
+        total: result.total,
+        method,
+        tendered: method === 'cash' && tendered.trim() !== '' ? tendered.trim() : null,
+        change: result.change,
+      });
       toast.success(t('sold', { total: result.total }));
 
       setLines([]);
@@ -316,7 +338,7 @@ export function SaleScreen() {
         </Button>
 
         {lastSale ? (
-          <div className="space-y-1 rounded-md border p-3">
+          <div className="space-y-2 rounded-md border p-3">
             <p className="text-sm font-medium">{t('done', { number: lastSale.orderNumber })}</p>
             {lastSale.change !== null ? (
               // The number the cashier still needs after the sale — kept on
@@ -326,9 +348,22 @@ export function SaleScreen() {
                 {t('change', { amount: lastSale.change })}
               </p>
             ) : null}
+            <Button variant="outline" className="w-full" onClick={() => window.print()}>
+              <Printer className="size-4" aria-hidden />
+              {t('printReceipt')}
+            </Button>
           </div>
         ) : null}
       </aside>
+
+      {/* Rendered off-screen and revealed only by the print stylesheet, so the
+          till screen stays a till screen. `hidden` would remove it from the
+          print output too — `sr-only` keeps it in the document. */}
+      {lastSale ? (
+        <div className="sr-only print:not-sr-only">
+          <ThermalReceipt data={lastSale} />
+        </div>
+      ) : null}
     </div>
   );
 }

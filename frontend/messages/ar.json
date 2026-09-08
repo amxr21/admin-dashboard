@@ -2315,6 +2315,18 @@
     "archived": "هذا المنتج مؤرشف",
     "increase": "زيادة {name}",
     "decrease": "إنقاص {name}",
-    "remove": "إزالة {name}"
+    "remove": "إزالة {name}",
+    "receipt": {
+      "taxId": "الرقم الضريبي {id}",
+      "servedBy": "بخدمتك {name}",
+      "subtotal": "المجموع الفرعي",
+      "tax": "الضريبة",
+      "total": "الإجمالي",
+      "paidBy": "طريقة الدفع",
+      "tendered": "المبلغ المستلم",
+      "change": "الباقي",
+      "thanks": "شكرًا لكم"
+    },
+    "printReceipt": "طباعة الإيصال"
   }
 }
