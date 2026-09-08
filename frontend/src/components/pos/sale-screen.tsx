@@ -17,8 +17,9 @@ import {
 } from '@/components/ui/select';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
-import { checkout, scanProduct, type ScannedProduct } from '@/lib/pos-api';
+import { checkout, scanProduct } from '@/lib/pos-api';
 import { ThermalReceipt, type ReceiptData } from '@/components/pos/thermal-receipt';
+import { ProductGrid } from '@/components/pos/product-grid';
 
 /**
  * The till (O5.5).
@@ -48,8 +49,23 @@ import { ThermalReceipt, type ReceiptData } from '@/components/pos/thermal-recei
  * is precisely how a receipt ends up disagreeing with an invoice by a cent.
  */
 
+/**
+ * Everything a cart line actually reads (O9.10) — deliberately narrower than
+ * `ScannedProduct`, because a grid tap only ever has `BrowsedProduct`, which
+ * lacks `sku`/`barcode`/`totalStock`. Both response shapes already satisfy
+ * this subset, so a line added by either path is the same shape here rather
+ * than one of them needing a cast or a placeholder value.
+ */
+interface CartProduct {
+  id: string;
+  name: string;
+  price: string;
+  branchStock: number | null;
+  status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+}
+
 interface CartLine {
-  product: ScannedProduct;
+  product: CartProduct;
   quantity: number;
 }
 
@@ -84,6 +100,31 @@ export function SaleScreen() {
     scanField.current?.focus();
   }
 
+  /**
+   * Shared by a scan AND a grid tap (O9.10) — the de-dupe rule must be
+   * identical either way. Scanning the same item twice adds one rather than
+   * a second line, because two lines for one product is what the checkout
+   * endpoint refuses, and it would print twice on the receipt. A grid tap
+   * on an already-added product must behave the same way, not open a way
+   * around that rule.
+   */
+  function addToCart(product: CartProduct) {
+    // A new item starts a new sale; the previous receipt goes away.
+    setLastSale(null);
+
+    setLines((current) => {
+      const existing = current.find((line) => line.product.id === product.id);
+
+      if (existing) {
+        return current.map((line) =>
+          line.product.id === product.id ? { ...line, quantity: line.quantity + 1 } : line,
+        );
+      }
+
+      return [...current, { product, quantity: 1 }];
+    });
+  }
+
   async function submitScan(event: React.FormEvent) {
     event.preventDefault();
 
@@ -96,24 +137,7 @@ export function SaleScreen() {
     try {
       const product = await scanProduct(trimmed);
 
-      // A new scan starts a new sale; the previous receipt goes away.
-      setLastSale(null);
-
-      setLines((current) => {
-        const existing = current.find((line) => line.product.id === product.id);
-
-        // Scanning the same item twice adds one, rather than a second line.
-        // Two lines for one product is what the checkout endpoint refuses,
-        // and it would print twice on the receipt.
-        if (existing) {
-          return current.map((line) =>
-            line.product.id === product.id ? { ...line, quantity: line.quantity + 1 } : line,
-          );
-        }
-
-        return [...current, { product, quantity: 1 }];
-      });
-
+      addToCart(product);
       setCode('');
     } catch (caught) {
       // The API's 404 names the code it could not find — at a till the usual
@@ -231,11 +255,13 @@ export function SaleScreen() {
           </p>
         ) : null}
 
-        {lines.length === 0 ? (
-          <p className="text-muted-foreground rounded-lg border border-dashed px-4 py-12 text-center text-sm">
-            {t('empty')}
-          </p>
-        ) : (
+        {/* The PRIMARY way most products are found (O9.10) — the scan field
+            above stays exact-match for the few products that carry a code.
+            Tapping a tile calls the same addToCart() a scan does, so the
+            de-dupe rule cannot differ between the two paths. */}
+        <ProductGrid onAdd={addToCart} disabled={isSelling} />
+
+        {lines.length > 0 ? (
           <ul className="divide-y rounded-lg border">
             {lines.map((line) => (
               <li key={line.product.id} className="flex items-center gap-3 px-4 py-3">
@@ -288,7 +314,7 @@ export function SaleScreen() {
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
       </div>
 
       <aside className="space-y-4 rounded-lg border p-4">

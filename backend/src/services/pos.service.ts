@@ -107,6 +107,123 @@ export async function scanProduct(
 }
 
 /* ─────────────────────────────────────────────────────────────────────
+ * BROWSE (O9.10)
+ *
+ * The scan field answers "this exact code is in my hand". This answers a
+ * different question: "which product is this, on a shelf with no barcode?"
+ * Counted against the live catalogue when this was built: 30 products, 1
+ * barcode — for the other 29 a cashier had no way to sell them except typing
+ * an exact SKU from memory. The owner confirmed the shop will not be
+ * barcoding its stock, which makes this the PRIMARY way a cashier finds a
+ * product, and the scan field a secondary path for the items that do carry
+ * a code.
+ *
+ * Deliberately a SEPARATE function from scanProduct, not a shared one with a
+ * "fuzzy" flag — the scan's exactness is a correctness property (a mistyped
+ * digit must never silently resolve to a different product), and mixing it
+ * into the same code path as a browsable, paginated, search-matched list is
+ * how that property quietly grows an escape hatch.
+ * ───────────────────────────────────────────────────────────────────── */
+
+export interface BrowsedProduct {
+  id: string;
+  name: string;
+  price: string;
+  imageUrl: string | null;
+  categoryId: string | null;
+  /** Same meaning as `ScannedProduct.branchStock` — stock AT the till's
+   *  branch, null when no branch is in context. */
+  branchStock: number | null;
+  status: ProductStatus;
+}
+
+export interface BrowseProductsParams {
+  /** Free-text match on name — the till's own search, not `/search`'s
+   *  cross-entity one, which also returns orders and customers a cashier
+   *  building a cart has no use for. */
+  q?: string | undefined;
+  categoryId?: string | undefined;
+  branchId: string | null;
+}
+
+/**
+ * The grid a cashier taps instead of scanning.
+ *
+ * ARCHIVED products are excluded — unlike a scan, which must still surface an
+ * archived product if it is physically scanned off a shelf (the cashier is
+ * holding the thing regardless of its catalogue state), a browse is choosing
+ * what to sell and an archived row has no business being offered.
+ *
+ * Capped rather than paginated: a till screen has room for a grid, not a
+ * pager, and a shop with more than this many active products needs the
+ * search box, not another page of tiles to scan by eye.
+ */
+const BROWSE_LIMIT = 60;
+
+export async function browseProducts(
+  params: BrowseProductsParams,
+): Promise<BrowsedProduct[]> {
+  const q = params.q?.trim();
+
+  const products = await prisma.product.findMany({
+    where: {
+      status: 'ACTIVE',
+      ...(q ? { name: { contains: q } } : {}),
+      ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+    },
+    orderBy: { name: 'asc' },
+    take: BROWSE_LIMIT,
+    select: {
+      id: true,
+      name: true,
+      price: true,
+      imageUrl: true,
+      categoryId: true,
+      stock: true,
+      status: true,
+    },
+  });
+
+  // One query for every branch row, not one per product — the grid can hold
+  // up to BROWSE_LIMIT tiles, and N+1 queries here would be the same mistake
+  // the scan path avoids by design.
+  const stockByProductId = new Map<string, number>();
+
+  if (params.branchId !== null && products.length > 0) {
+    const rows = await prisma.branchStock.findMany({
+      where: { branchId: params.branchId, productId: { in: products.map((p) => p.id) } },
+      select: { productId: true, quantity: true },
+    });
+
+    for (const row of rows) stockByProductId.set(row.productId, row.quantity);
+  }
+
+  return products.map((product) => ({
+    id: product.id,
+    name: product.name,
+    price: product.price.toFixed(2),
+    imageUrl: product.imageUrl,
+    categoryId: product.categoryId,
+    // Missing row means the branch holds none of it — same reasoning as the
+    // scan path's `?? 0` (see inventory.service.ts's comment on the same
+    // question). Only meaningful when a branch is in context at all.
+    branchStock: params.branchId === null ? null : (stockByProductId.get(product.id) ?? 0),
+    status: product.status,
+  }));
+}
+
+/** Active categories, for the grid's tabs. Excludes inactive ones the same
+ *  way browseProducts excludes archived products — a tab for a category
+ *  nobody may sell into is a dead end, not a filter. */
+export async function browseCategories(): Promise<{ id: string; name: string }[]> {
+  return prisma.category.findMany({
+    where: { isActive: true },
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true },
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────────
  * CHECKOUT (O5.7, O5.8)
  *
  * The first thing in this app that creates an `Order` — until now

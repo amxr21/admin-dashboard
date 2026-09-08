@@ -2360,6 +2360,15 @@
       "change": "Change",
       "thanks": "Thank you"
     },
-    "printReceipt": "Print receipt"
+    "printReceipt": "Print receipt",
+    "grid": {
+      "searchLabel": "Search products",
+      "searchPlaceholder": "Search by name...",
+      "allCategories": "All",
+      "loadFailed": "Could not load products. Try again.",
+      "empty": "No products yet. Add one from Products.",
+      "noMatches": "No products match that search.",
+      "outOfStock": "Out of stock here"
+    }
   }
 }

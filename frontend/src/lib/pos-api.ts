@@ -30,6 +30,51 @@ export async function scanProduct(code: string): Promise<ScannedProduct> {
   return result.product;
 }
 
+/**
+ * The grid a cashier taps instead of scanning (O9.10).
+ *
+ * The owner confirmed the shop will not be barcoding its stock, so this is
+ * the PRIMARY way a cashier finds most of the catalogue — counted against
+ * the live database when this was built: 30 products, 1 barcode. Scanning
+ * stays exactly as exact as it was for the few that do carry a code.
+ */
+export interface BrowsedProduct {
+  id: string;
+  name: string;
+  /** 2dp string, same rule as everywhere else money crosses this boundary. */
+  price: string;
+  imageUrl: string | null;
+  categoryId: string | null;
+  /** Same meaning as `ScannedProduct.branchStock`. */
+  branchStock: number | null;
+  status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+}
+
+export async function browseProducts(params: {
+  q?: string;
+  categoryId?: string;
+}): Promise<BrowsedProduct[]> {
+  const search = new URLSearchParams();
+  if (params.q?.trim()) search.set('q', params.q.trim());
+  if (params.categoryId) search.set('categoryId', params.categoryId);
+
+  const qs = search.toString();
+  const result = await apiFetch<{ products: BrowsedProduct[] }>(
+    `/pos/browse${qs ? `?${qs}` : ''}`,
+  );
+  return result.products;
+}
+
+export interface BrowseCategory {
+  id: string;
+  name: string;
+}
+
+export async function browseCategories(): Promise<BrowseCategory[]> {
+  const result = await apiFetch<{ categories: BrowseCategory[] }>('/pos/browse/categories');
+  return result.categories;
+}
+
 export interface CheckoutLine {
   productId: string;
   quantity: number;

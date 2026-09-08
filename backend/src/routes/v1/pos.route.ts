@@ -5,7 +5,7 @@ import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
-import { checkout, scanProduct } from '../../services/pos.service.js';
+import { browseCategories, browseProducts, checkout, scanProduct } from '../../services/pos.service.js';
 import { getOpenShift } from '../../services/shifts.service.js';
 
 /**
@@ -51,6 +51,50 @@ posRouter.get('/pos/scan', ...guard, async (req, res) => {
   const product = await scanProduct(parsed.data.code, req.branchId ?? null);
 
   res.status(200).json({ data: { product } });
+});
+
+const browseQuery = z.object({
+  q: z.string().trim().max(200).optional(),
+  categoryId: z.string().trim().min(1).optional(),
+});
+
+/**
+ * GET /api/v1/pos/browse?q=&categoryId= — the grid a cashier taps instead of
+ * scanning (O9.10).
+ *
+ * The owner confirmed the shop will not be barcoding its stock, so this is
+ * the PRIMARY way a cashier finds most of the catalogue, not a fallback —
+ * `/pos/scan` stays exactly as exact as it was for the few products that do
+ * carry a code.
+ */
+posRouter.get('/pos/browse', ...guard, async (req, res) => {
+  const parsed = browseQuery.safeParse(req.query);
+
+  if (!parsed.success) {
+    throw AppError.badRequest('Invalid search', parsed.error.flatten());
+  }
+
+  const products = await browseProducts({
+    q: parsed.data.q,
+    categoryId: parsed.data.categoryId,
+    branchId: req.branchId ?? null,
+  });
+
+  res.status(200).json({ data: { products } });
+});
+
+/**
+ * GET /api/v1/pos/browse/categories — the grid's tabs.
+ *
+ * A separate endpoint rather than nesting under `/browse` itself: the
+ * category list does not change per keystroke the way the product grid does,
+ * so the two have different natural refetch rates and belong in different
+ * requests.
+ */
+posRouter.get('/pos/browse/categories', ...guard, async (_req, res) => {
+  const categories = await browseCategories();
+
+  res.status(200).json({ data: { categories } });
 });
 
 const checkoutSchema = z.object({

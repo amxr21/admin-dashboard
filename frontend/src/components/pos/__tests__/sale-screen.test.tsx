@@ -22,15 +22,19 @@ import type { ScannedProduct } from '@/lib/pos-api';
  *    flattened "something went wrong" leaves them stuck at the counter.
  */
 
-const { scanProduct, checkout } = vi.hoisted(() => ({
+const { scanProduct, checkout, browseProducts, browseCategories } = vi.hoisted(() => ({
   scanProduct: vi.fn(),
   checkout: vi.fn(),
+  browseProducts: vi.fn(),
+  browseCategories: vi.fn(),
 }));
 
 vi.mock('@/lib/pos-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/pos-api')>()),
   scanProduct,
   checkout,
+  browseProducts,
+  browseCategories,
 }));
 
 function makeProduct(overrides: Partial<ScannedProduct> = {}): ScannedProduct {
@@ -49,6 +53,10 @@ function makeProduct(overrides: Partial<ScannedProduct> = {}): ScannedProduct {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // These tests are about the scan+cart path, not the grid (see
+  // product-grid.test.tsx for that). Resolving empty keeps it quiet.
+  browseProducts.mockResolvedValue([]);
+  browseCategories.mockResolvedValue([]);
 });
 
 async function scan(code: string) {

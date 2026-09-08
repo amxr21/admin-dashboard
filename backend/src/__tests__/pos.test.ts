@@ -25,6 +25,7 @@ const RUN = `pos-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const userIds: string[] = [];
 const productIds: string[] = [];
+const categoryIds: string[] = [];
 const businessIds: string[] = [];
 const shiftIds: string[] = [];
 const orderIds: string[] = [];
@@ -53,22 +54,46 @@ async function makeUser(role: StaffRole, label: string) {
 async function makeProduct(opts: {
   barcode?: string;
   sku?: string;
+  name?: string;
   price?: string;
   stock?: number;
   status?: ProductStatus;
+  categoryId?: string;
 }) {
   const product = await prisma.product.create({
     data: {
-      name: `${RUN} ${opts.sku ?? opts.barcode ?? 'item'}`,
+      name: opts.name ?? `${RUN} ${opts.sku ?? opts.barcode ?? 'item'}`,
       price: new Prisma.Decimal(opts.price ?? '5.00'),
       stock: opts.stock ?? 0,
       ...(opts.status ? { status: opts.status } : {}),
       ...(opts.barcode ? { barcode: opts.barcode } : {}),
       ...(opts.sku ? { sku: opts.sku } : {}),
+      ...(opts.categoryId ? { categoryId: opts.categoryId } : {}),
     },
   });
   productIds.push(product.id);
   return product;
+}
+
+async function makeCategory(name: string) {
+  const category = await prisma.category.create({
+    data: { name, slug: `${RUN}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` },
+  });
+  categoryIds.push(category.id);
+  return category;
+}
+
+function browse(query: Record<string, string> = {}, token = ownerToken, branch?: string) {
+  const req = request(app)
+    .get('/api/v1/pos/browse')
+    .query(query)
+    .set(auth(token));
+
+  return branch ? req.set('X-Branch-Id', branch) : req;
+}
+
+function browseCategoriesReq(token = ownerToken) {
+  return request(app).get('/api/v1/pos/browse/categories').set(auth(token));
 }
 
 function scan(code: string, token = ownerToken, branch?: string) {
@@ -112,6 +137,7 @@ afterAll(async () => {
   await prisma.stockMovement.deleteMany({ where: { productId: { in: productIds } } });
   await prisma.branchStock.deleteMany({ where: { productId: { in: productIds } } });
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
+  await prisma.category.deleteMany({ where: { id: { in: categoryIds } } });
   await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
   await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -632,5 +658,114 @@ describe('taking a sale (O5.7, O5.8)', () => {
 
     expect(res.status).toBe(201);
     expect(await paymentShiftFor(res)).toBeNull();
+  });
+});
+
+describe('browsing the grid (O9.10)', () => {
+  it('finds a product by a partial name match', async () => {
+    const product = await makeProduct({ name: `${RUN} Flat White Grid` });
+
+    const res = await browse({ q: `${RUN} Flat White` });
+
+    expect(res.status).toBe(200);
+    const body = res.body as { data: { products: { id: string }[] } };
+    expect(body.data.products.some((p) => p.id === product.id)).toBe(true);
+  });
+
+  it('excludes archived products — a browse is choosing what to sell', async () => {
+    // Unlike a scan, which must still surface an archived product physically
+    // scanned off a shelf, browsing offers what CAN be sold.
+    const archived = await makeProduct({
+      name: `${RUN} Archived Grid Item`,
+      status: ProductStatus.ARCHIVED,
+    });
+
+    const res = await browse({ q: `${RUN} Archived Grid` });
+
+    const body = res.body as { data: { products: { id: string }[] } };
+    expect(body.data.products.some((p) => p.id === archived.id)).toBe(false);
+  });
+
+  it('filters by category', async () => {
+    const category = await makeCategory(`${RUN} Pastries`);
+    const inCategory = await makeProduct({
+      name: `${RUN} Croissant Grid`,
+      categoryId: category.id,
+    });
+    const outsideCategory = await makeProduct({ name: `${RUN} Coffee Grid` });
+
+    const res = await browse({ categoryId: category.id });
+
+    const body = res.body as { data: { products: { id: string }[] } };
+    const ids = body.data.products.map((p) => p.id);
+    expect(ids).toContain(inCategory.id);
+    expect(ids).not.toContain(outsideCategory.id);
+  });
+
+  it('reports branch stock the same way a scan does', async () => {
+    const product = await makeProduct({ name: `${RUN} Stocked Grid Item`, stock: 10 });
+    await prisma.branchStock.upsert({
+      where: { productId_branchId: { productId: product.id, branchId } },
+      create: { productId: product.id, branchId, quantity: 7 },
+      update: { quantity: 7 },
+    });
+
+    const res = await browse({ q: `${RUN} Stocked Grid` }, ownerToken, branchId);
+
+    const body = res.body as { data: { products: { id: string; branchStock: number | null }[] } };
+    const row = body.data.products.find((p) => p.id === product.id);
+    expect(row?.branchStock).toBe(7);
+  });
+
+  it('reports a missing branch row as 0, same as scanProduct', async () => {
+    const product = await makeProduct({ name: `${RUN} No Branch Row Grid`, stock: 5 });
+
+    const res = await browse({ q: `${RUN} No Branch Row Grid` }, ownerToken, branchId);
+
+    const body = res.body as { data: { products: { id: string; branchStock: number | null }[] } };
+    const row = body.data.products.find((p) => p.id === product.id);
+    expect(row?.branchStock).toBe(0);
+  });
+
+  it('reports null stock when no branch is in context', async () => {
+    const product = await makeProduct({ name: `${RUN} No Branch Header Grid` });
+
+    const res = await browse({ q: `${RUN} No Branch Header Grid` });
+
+    const body = res.body as { data: { products: { id: string; branchStock: number | null }[] } };
+    const row = body.data.products.find((p) => p.id === product.id);
+    expect(row?.branchStock).toBeNull();
+  });
+
+  it('lists active categories for the grid tabs', async () => {
+    const active = await makeCategory(`${RUN} Active Tab`);
+    const inactive = await prisma.category.create({
+      data: {
+        name: `${RUN} Inactive Tab`,
+        slug: `${RUN}-inactive-tab`,
+        isActive: false,
+      },
+    });
+    categoryIds.push(inactive.id);
+
+    const res = await browseCategoriesReq();
+
+    expect(res.status).toBe(200);
+    const body = res.body as { data: { categories: { id: string }[] } };
+    const ids = body.data.categories.map((c) => c.id);
+    expect(ids).toContain(active.id);
+    expect(ids).not.toContain(inactive.id);
+  });
+
+  it('is reachable by the CASHIER role, same as scan and checkout', async () => {
+    // The owner confirmed the cashier's job is scanning and counting only —
+    // this endpoint has to be part of that job, gated the same way scan is.
+    const product = await makeProduct({ name: `${RUN} Cashier Grid Access` });
+
+    const res = await browse({ q: `${RUN} Cashier Grid Access` }, supportToken);
+
+    expect(res.status).toBe(200);
+    const body = res.body as { data: { products: { id: string }[] } };
+    expect(body.data.products.some((p) => p.id === product.id)).toBe(true);
   });
 });
