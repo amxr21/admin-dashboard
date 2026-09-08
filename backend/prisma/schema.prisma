@@ -1421,10 +1421,45 @@ model StockMovement {
   /// deleted, exactly like OrderStatusHistory.changedById.
   actorId String? @map("actor_id")
 
+  /// ─── BATCH DETAIL (F7.8) ──────────────────────────────────────────
+  /// The owner's case, 2026-09-08: "buy the stock of 50 units then enter one
+  /// unit details once". A receipt of 50 is ALREADY one row here, so the
+  /// batch's facts belong on that row — beside `unitCost`, which is the same
+  /// kind of fact and was added for the same reason.
+  ///
+  /// NOT on `Product`. A product bought three times from two suppliers at
+  /// different prices has three answers to "when did it arrive", and a column
+  /// there could hold only the newest — silently overwriting the history the
+  /// movement log exists to keep. Loose columns on Product would have to be
+  /// undone later.
+  ///
+  /// All optional and all meaningless outside a RECEIVED movement: nothing
+  /// was delivered when stock is written off as damaged. The service leaves
+  /// them null rather than inventing a date.
+
+  /// When the goods physically arrived. Distinct from `createdAt`, which is
+  /// when somebody got round to recording it — often the next morning, and
+  /// for a late-entered batch, days later.
+  deliveredAt DateTime? @map("delivered_at")
+  /// When it was ordered/paid for. Answers "how long does this supplier take"
+  /// without a purchase-order model.
+  purchasedAt DateTime? @map("purchased_at")
+  /// The supplier's own document number — invoice, delivery note, whatever is
+  /// printed on the paper in the box. Free text on purpose: every supplier
+  /// formats theirs differently and normalising it would reject valid ones.
+  reference   String?   @map("reference") @db.VarChar(64)
+
+  supplierId String?   @map("supplier_id")
+  /// SetNull, not Cascade: deleting a supplier must never delete stock
+  /// history. The batch still happened and its cost still explains the
+  /// margin, whether or not you still buy from them.
+  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([productId, createdAt])
   @@index([variantId, createdAt])
+  @@index([supplierId])
   @@map("stock_movements")
 }
 
@@ -1696,4 +1731,44 @@ model Shift {
   @@index([branchId, startedAt])
   @@index([endedAt])
   @@map("shifts")
+}
+
+/// Who a batch of stock was bought from (F7.9).
+///
+/// ─── WHY A MODEL AND NOT A STRING ON THE MOVEMENT ────────────────────
+/// A supplier is asked the same three questions repeatedly — who do we reorder
+/// from, what did they charge last time, what is their email — and free text
+/// answers none of them: "Acme Ltd", "acme", and "ACME Ltd." are three
+/// suppliers to a query and one to a person. F7.6 (a reorder email sent on
+/// approval) needs a real address to send to, which a typo'd string cannot
+/// guarantee.
+///
+/// ─── DELIBERATELY THIN ───────────────────────────────────────────────
+/// No payment terms, no lead times, no purchase orders. Those belong to a
+/// procurement feature nobody has asked for, and columns added "while we are
+/// here" become columns that must be explained later. This holds exactly what
+/// receiving stock and emailing a reorder need.
+model Supplier {
+  id   String  @id @default(cuid())
+  name String  @db.VarChar(160)
+  /// Where a reorder request is sent (F7.6). Optional: an owner may record a
+  /// supplier they only ever phone, and forcing a fake address to save the
+  /// row is how bad data gets in.
+  email String? @db.VarChar(255)
+  phone String? @db.VarChar(40)
+  /// Free text — a name, an extension, whatever the owner actually uses.
+  contactName String? @map("contact_name") @db.VarChar(160)
+  note        String? @db.VarChar(255)
+
+  /// Deactivated rather than deleted: a supplier you no longer buy from still
+  /// explains where last year's stock came from. Same rule as Business.
+  isActive Boolean @default(true) @map("is_active")
+
+  movements StockMovement[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@map("suppliers")
 }

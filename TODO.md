@@ -26,24 +26,42 @@ reasoning behind decisions already made, not for what is open.
 
 ## 📬 Open PRs — the 2026-09-08 stack
 
-Pushed 2026-09-08. **Each PR is based on the one below it**, so each shows only
-its own diff; merge bottom-up and GitHub retargets the rest as they land.
+**8 merged, 6 open.** Merge bottom-up; each shows only its own diff.
 
 | PR | Branch | Base | What |
 |---|---|---|---|
-| #156 | `stack/01-courier-response-shape` | `dev` | O6 — courier card blanking |
-| #157 | `stack/02-branch-write-api` | #156 | O7 §1 — business/branch writes |
-| #158 | `stack/03-branch-roster` | #157 | O7 §2 — people at branches |
-| #159 | `stack/04-branch-management-ui` | #158 | O7 §3 — the UI |
-| #160 | `stack/05-docs` | #159 | CLAUDE.md + workbook |
-| #161 | `stack/06-branch-on-lists` | #160 | O1 — branch named on lists |
-| #162 | `stack/07-courier-branches` | #161 | O2 — courier serves branches |
+| #165 | `stack/09-two-factor-login` | **`dev`** | O3b — 2FA login + settings panels |
+| #171 | `stack/10b-shifts-backend` | #165 | F6.1 — shift model + API |
+| #167 | `stack/11-shifts-ui` | #171 | F6.3/6.5 — shift UI + staff activity |
+| #168 | `stack/12-shift-summary` | #167 | F6.4 — shift summary |
+| #169 | `stack/13-low-stock-alert-test` | #168 | F7.5 — low-stock email test |
+| #170 | `stack/14-bulk-progress` | #169 | §U — bulk-delete progress |
 
-**Conflicts on these are usually FAKE** — see the rules section below. PRs are
-squash-merged, which rewrites SHAs, so each branch still carries pre-squash
-copies of everything under it. `git rebase origin/dev` first; do not hand-resolve.
+Merged: #156-#163 (O6, O7 §1-3, docs, O1, O2, O3).
 
-`work/2026-09-08` holds all seven commits together if a combined view helps.
+### ⚠️ What went wrong on 2026-09-07, and how it was fixed
+
+**#166 was merged into `stack/09-two-factor-login` instead of `dev`.** GitHub
+marked it MERGED and closed it, but the F6.1 shift work never reached `dev` —
+`backend/src/services/shifts.service.ts` was simply absent from it, with no
+open PR left to bring it in. Nothing was lost, but nothing would have shipped
+either, and the closed PR made it look done.
+
+Reopened as **#171** on `stack/10b-shifts-backend` (a new branch name: the old
+one is bound to the closed PR).
+
+**The lesson for a stack: merge each PR into `dev`, not into its base branch.**
+GitHub retargets the next PR to `dev` automatically as each one lands — that
+retarget is the mechanism, and merging into the base short-circuits it.
+
+**#165's "conflict" was fake, as this file's own rule predicts.** `merge-tree`
+returned a clean tree; `git rebase origin/dev` skipped 8 already-applied
+commits and produced zero conflicts. #167/#168 had a REAL conflict of the same
+family — each branch carried its own copy of a parent's commit under a
+different SHA — fixed by rebasing each onto its actual base, not by hand.
+
+All six verified after the rebase: backend 922/922, frontend 1050/1050, tsc,
+eslint and `check:merge` clean on the stack tip.
 
 ---
 
@@ -534,13 +552,33 @@ that staleness is why these are consolidated here.
       delivery zones, tax by region
 - [ ] **S7.5** ~~`Location` model~~ — **SUPERSEDED by F8's `Branch`.** One
       model, not two. Kept here only so nobody re-adds it
-- [ ] **F7.9** `Supplier` model — the real remaining half of S7.5's idea.
-      **Unblocks F7.6 and F7.8**
+- [x] **F7.9 — DONE 2026-09-08.** `Supplier` model (name required, contact
+      optional, deactivated rather than deleted). Built WITH F7.8 rather than
+      before it: the batch dates alone are half an answer without knowing who
+      supplied it. Deliberately thin — no payment terms, no lead times, no
+      purchase orders; those belong to a procurement feature nobody asked for.
+      **Still unblocks F7.6** (the reorder email now has a real address to
+      send to). **No UI yet** — suppliers can be created via the API/seed but
+      have no management screen; that is the obvious follow-up
 - [ ] **F7.6** Supplier reorder email, sent on admin approval. Needs F7.9
-- [ ] **F7.8 (rest)** Receipt / delivery date / purchase date — these belong
-      on `StockMovement` (properties of a BATCH arriving), beside `unitCost`
-      and a `supplierId`. **Not on `Product`** — loose columns there would
-      have to be undone
+- [x] **F7.8 (rest) — DONE 2026-09-08.** `deliveredAt`, `purchasedAt`,
+      `reference` and `supplierId` on `StockMovement`, beside `unitCost`.
+      **The owner's case decided the shape**: "buy 50 units then enter one
+      unit's details once" is ONE record per receipt, not fifty identities —
+      and a receipt already WAS one movement row, so nothing new was needed to
+      express it. Per-unit serials were considered and rejected as not what
+      was asked for.
+      On `StockMovement`, never `Product`: a product bought three times from
+      two suppliers has three answers to "when did it arrive", and a column on
+      the product could hold only the newest, silently overwriting the history
+      the log exists to keep.
+      `deliveredAt` is deliberately distinct from `createdAt` — a batch
+      entered the next morning has both, and collapsing them makes "how long
+      does this supplier take" unanswerable. All four are REFUSED on an
+      outgoing movement (nothing was delivered when stock is written off), and
+      a bad `supplierId` is a 400 naming the field rather than a raw FK
+      violation surfacing as a 500. FK is SetNull: deleting a supplier must
+      never delete stock history. 6 tests, both guards watched failing
 - [ ] **F3.5** Bulk receive — import is create-only
       (`assertPermitted(config, 'create')`), so this is real work, not wiring
 
@@ -657,14 +695,27 @@ owner on 2026-09-08 and the whole track followed the same day.
    A shift is a period of WORK (employee · branch · start · end), distinct from a `Session`,
    which is system activity. A manager may correct one and the correction stays visible;
    actual worked time only, no planned rota.
-2. **F7.8 — QR vs serial.** A printable shelf label using the existing `barcode` (small job), or
-   a serial per individual unit (**a different inventory model** — a count plus a movement log
-   cannot express it)?
-3. **Pre-push `next build`.** It has cost a round trip twice. (a) add it to pre-push (~60–90s
-   every push); (b) leave CI as the guard; (c) run it by hand when touching
-   `useSearchParams`/`useParams`.
-4. **F7.10 — re-seed the demo data.** Best done once the local DB exists. The seeder now covers
-   businesses, branches, per-branch stock, staff, returns, variants and order notes.
+2. ~~**F7.8 — QR vs serial.**~~ **ANSWERED 2026-09-08: BATCH details, not per-unit serials.**
+   The owner's words: "the owner will buy the stock of 50 units then enter one unit details
+   once". That is one record per RECEIPT, not fifty identities — and `StockMovement` is already
+   exactly that shape (a receipt of 50 is one row, already carrying `unitCost` and `note`). So
+   this is F7.8's "rest" — receipt / delivery / purchase date, plus a supplier link — added to
+   `StockMovement`, NOT loose columns on `Product`, which would have to be undone. Per-unit
+   serials were considered and are NOT what was asked for: they need a different inventory model
+   (a count plus a movement log cannot express "unit #47 came back faulty").
+3. ~~**Pre-push `next build`.**~~ **DECIDED + DONE 2026-09-08 — option (c), automated.**
+   `frontend/scripts/check-suspense-risk.sh` greps what the push actually ADDS for
+   `useSearchParams`/`useParams`; no match exits instantly, a match runs the build. Every push
+   pays nothing; the handful that can break pay 90s. Running it on every push was rejected for a
+   behavioural reason, not a performance one: 90s on doc-only pushes is enough friction to get
+   bypassed with `--no-verify`, and a check people skip is worse than one that runs rarely and
+   honestly. It also REFUSES to build when `frontend/.next` looks like a live dev server's cache
+   (no `BUILD_ID`), because building into it corrupts the cache and the dev server then throws
+   module-not-found errors that read like a code regression. Both paths tested: skip on a clean
+   push, and detection + the dev-server refusal on a probe commit.
+4. **F7.10 — re-seed the demo data. POSTPONED by the owner 2026-09-08.** Not blocked, not
+   wanted yet. The seeder covers businesses, branches, per-branch stock, staff, returns,
+   variants and order notes; the local DB predates several of those.
 5. **F5.5 — cashiering.** There is **no checkout/order-creation flow at all** — nothing creates
    an `Order` but the seeder and tests. A real POS needs order creation, payment capture and a
    till concept. **Scope it as its own project**; do not let it arrive disguised as a dashboard

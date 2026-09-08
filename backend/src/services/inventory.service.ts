@@ -237,6 +237,12 @@ export async function listMovements(
         // O1: unscoped, the log mixes every branch's movements and two rows
         // for the same product are otherwise indistinguishable.
         branchId: true,
+        // F7.8: the batch's own facts, so the log answers "where did this
+        // stock come from and when did it land" without a second lookup.
+        deliveredAt: true,
+        purchasedAt: true,
+        reference: true,
+        supplier: { select: { id: true, name: true } },
         createdAt: true,
       },
     }),
@@ -252,6 +258,8 @@ export async function listMovements(
     movements: movements.map((movement) => ({
       ...movement,
       branch: movement.branchId ? (branches.get(movement.branchId) ?? null) : null,
+      deliveredAt: movement.deliveredAt?.toISOString() ?? null,
+      purchasedAt: movement.purchasedAt?.toISOString() ?? null,
       // Decimal → string, deliberately: JSON.stringify would emit it
       // inconsistently and a float would lose the cents. Null stays null —
       // "not recorded" is not "0.00".
@@ -327,6 +335,21 @@ export interface AdjustStockInput {
    * time it arrives here it is already known to belong.
    */
   unitCost?: string | undefined;
+  /**
+   * Batch detail (F7.8) — properties of THIS delivery, not of the product.
+   *
+   * The owner's case: fifty units arrive, their details are entered once. A
+   * receipt is already ONE movement row, so the batch's facts live on it,
+   * beside `unitCost`. On `Product` they could only ever hold the most recent
+   * delivery, silently overwriting the history this log exists to keep.
+   *
+   * The route refuses all four on an outgoing movement, so by the time they
+   * arrive here they are already known to belong.
+   */
+  deliveredAt?: string | undefined;
+  purchasedAt?: string | undefined;
+  reference?: string | undefined;
+  supplierId?: string | undefined;
   actorId: string;
 }
 
@@ -354,6 +377,21 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
   // Resolved before the transaction: it is a lookup, not something the
   // transaction's correctness depends on.
   const branchId = input.branchId ?? (await defaultBranchId());
+
+  // Checked here rather than left to the foreign key: a bad id would
+  // otherwise surface as a raw Prisma FK violation — a 500 naming a
+  // constraint, which tells whoever is receiving stock nothing about which
+  // field to fix.
+  if (input.supplierId) {
+    const supplier = await prisma.supplier.findUnique({
+      where: { id: input.supplierId },
+      select: { id: true },
+    });
+
+    if (!supplier) {
+      throw AppError.badRequest('Supplier not found', { field: 'supplierId' });
+    }
+  }
 
   const result = await prisma.$transaction(async (tx) => {
     const product = await tx.product.findUnique({
@@ -384,6 +422,10 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
         // `new Prisma.Decimal(string)` — never a float. Undefined stays NULL,
         // which means "not recorded" and is distinct from a recorded 0.
         unitCost: input.unitCost === undefined ? null : new Prisma.Decimal(input.unitCost),
+        deliveredAt: input.deliveredAt ? new Date(input.deliveredAt) : null,
+        purchasedAt: input.purchasedAt ? new Date(input.purchasedAt) : null,
+        reference: input.reference ?? null,
+        supplierId: input.supplierId ?? null,
         actorId: input.actorId,
       },
       select: {

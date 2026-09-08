@@ -79,6 +79,18 @@ const adjustBody = z
       .trim()
       .regex(/^\d{1,8}(\.\d{1,2})?$/, 'Enter an amount like 12.50')
       .optional(),
+    /**
+     * Batch detail (F7.8) — facts about THIS delivery, entered once for the
+     * whole receipt rather than per unit.
+     *
+     * Dates arrive as ISO strings and are validated here rather than trusted:
+     * `new Date('nonsense')` yields an Invalid Date that Prisma rejects with a
+     * message naming neither the field nor the value.
+     */
+    deliveredAt: z.string().trim().datetime({ offset: true }).optional(),
+    purchasedAt: z.string().trim().datetime({ offset: true }).optional(),
+    reference: z.string().trim().max(64).optional(),
+    supplierId: z.string().trim().min(1).optional(),
   })
   .strict()
   /**
@@ -92,6 +104,27 @@ const adjustBody = z
   .refine(
     (body) => body.unitCost === undefined || INCOMING_REASONS.has(body.reason),
     { message: 'A unit cost only applies when stock is received', path: ['unitCost'] },
+  )
+  /**
+   * Batch detail follows the same rule as the cost, for the same reason.
+   *
+   * Nothing was delivered, purchased or invoiced when stock is written off as
+   * damaged. Storing a delivery date on a DAMAGED movement would be a fact
+   * nothing can interpret later; silently dropping it would lose data the user
+   * believed they had entered. Refuse, naming the first offending field so the
+   * form can point at it.
+   */
+  .refine(
+    (body) =>
+      INCOMING_REASONS.has(body.reason) ||
+      (body.deliveredAt === undefined &&
+        body.purchasedAt === undefined &&
+        body.reference === undefined &&
+        body.supplierId === undefined),
+    {
+      message: 'Delivery details only apply when stock is received',
+      path: ['deliveredAt'],
+    },
   );
 
 inventoryRouter.get('/inventory', ...guard, async (req, res) => {
@@ -136,6 +169,10 @@ inventoryRouter.post('/inventory/:productId/movements', ...guard, async (req, re
     reason: parsed.data.reason,
     note: parsed.data.note,
     unitCost: parsed.data.unitCost,
+    deliveredAt: parsed.data.deliveredAt,
+    purchasedAt: parsed.data.purchasedAt,
+    reference: parsed.data.reference,
+    supplierId: parsed.data.supplierId,
     actorId: user.id,
   }, req);
 
