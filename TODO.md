@@ -12,7 +12,7 @@ reasoning behind decisions already made, not for what is open.
 
 # 📊 STATUS AT A GLANCE — 2026-09-08
 
-**23 open · 92 done.** Started this session at 87 open, closed 11, then the
+**22 open · 93 done.** Started this session at 87 open, closed 11, then the
 owner used the merged build and opened **O9** (16 items) — see below.
 
 | | Track | State |
@@ -30,7 +30,7 @@ owner used the merged build and opened **O9** (16 items) — see below.
 | ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
 | ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
 | 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
-| 🔨 | **O9** the till: a counter, not an endpoint list | 9 done, 8 left |
+| 🔨 | **O9** the till: a counter, not an endpoint list | 10 done, 7 left |
 | 📋 | 16 items | see PENDING below |
 
 **Verification at this point:** backend 1001/1001 (47 files) · frontend
@@ -926,14 +926,26 @@ systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6)
 
 ## 🔐 TIER 4 — CONTROL AND CLOSE
 
-- [ ] **O9.13 — Manager override.** The answer to note 5's "the admin should
-      be able to cash ppl but its mainly cashiers staff". Not a second
-      parallel screen: the cashier gets a restricted till and a supervisor
-      authorises the exceptions IN PLACE with their own credentials — the
-      standard pattern across all four systems surveyed. Pairs with O8's
-      owner-editable permissions: what needs an override should BE what the
-      role cannot do, read from one place, not a second hardcoded list.
-      **O9.7 now depends on this** — see below.
+- [x] **O9.13 — DONE 2026-09-09.** Manager override. The answer to note 5's
+      "the admin should be able to cash ppl but its mainly cashiers staff".
+      Confirmed with the owner: a manager types their OWN credentials in
+      place, never signing into the terminal.
+      Backend `verifyManagerOverride()` — deliberately NOT `login()` with a
+      different return shape: no session created, `lastLoginAt` untouched.
+      Gated on the `settings` AREA rather than a hardcoded role list —
+      FULFILLMENT/SUPPORT both outrank CASHIER on the rank table without
+      being "a manager" in any sense this means, and area-gating means an
+      owner's O8 edit to who holds `settings` is respected automatically. A
+      manager with 2FA enabled is refused outright and told to sign in
+      normally — never silently downgraded to a weaker check. Same
+      brute-force protection as login, locking the MANAGER's account.
+      Frontend `ManagerOverrideDialog` built GENERIC, not wired into
+      discounts directly — the owner's own note named a second future use
+      (voids), and a dialog built one level down inside one feature is
+      exactly how the next caller ends up copy-pasting it instead of reusing
+      it. Radix's confirm action closes on click by default; prevented so a
+      refused approval keeps the dialog open with the reason visible.
+      **O9.7 now depends on this** — see below. Commit `7ebc5ff`.
 - [ ] **O9.7 — Return at the register, cashier starts / manager approves.**
       MOVED from Tier 1 2026-09-09 after the owner clarified the cashier's job
       is scanning and counting only — deciding whether a return is accepted
