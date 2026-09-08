@@ -12,7 +12,7 @@ reasoning behind decisions already made, not for what is open.
 
 # 📊 STATUS AT A GLANCE — 2026-09-08
 
-**25 open · 90 done.** Started this session at 87 open, closed 11, then the
+**23 open · 92 done.** Started this session at 87 open, closed 11, then the
 owner used the merged build and opened **O9** (16 items) — see below.
 
 | | Track | State |
@@ -30,7 +30,7 @@ owner used the merged build and opened **O9** (16 items) — see below.
 | ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
 | ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
 | 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
-| 🔨 | **O9** the till: a counter, not an endpoint list | 7 done, 10 left |
+| 🔨 | **O9** the till: a counter, not an endpoint list | 9 done, 8 left |
 | 📋 | 16 items | see PENDING below |
 
 **Verification at this point:** backend 1001/1001 (47 files) · frontend
@@ -957,19 +957,29 @@ systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6)
       O9.7 exists. Needs a decision on whether the halves are one transaction
       or two linked ones (B4.11 already parks "exchange linkage").
 
-## 🔧 TIER 5 — MINOR
+## 🔧 TIER 5 — MINOR — ✅ COMPLETE (superseded, not built as originally scoped)
 
-- [ ] **O9.5 — Start shift opens a dialog.** Ending one already opens a proper
-      `AlertDialog` with the drawer count; starting is a bare float input in
-      the topbar. Make it symmetrical. **Keep both existing decisions**: the
-      float stays optional (null means "no drawer", not zero), and expected
-      cash stays AFTER the count field so the target cannot be typed to match.
-- [ ] **O9.6 — Hide the clock from whoever does not punch it.**
-      `ShiftControl` is mounted unconditionally (`app-shell.tsx:274`), so an
-      owner sees a clock-in button he has no use for. Gate it on the role that
-      works shifts. **The watching half already exists** — if the owner could
-      not find it, that is discovery, and the fix is a link from where he
-      looked, not a second table.
+- [x] **O9.5 — SUPERSEDED 2026-09-09, done bigger than scoped.** The owner
+      asked mid-session for the shift clock to move to its own tab entirely
+      ("smth like an interactive clock"), which subsumes the original "start
+      should open a dialog too" ask — starting now opens a whole page
+      (`/admin/pos/shift`), not a bigger dialog. Both existing decisions
+      carried over: the float stays optional, and expected cash stays AFTER
+      the count field. New `useShiftClock` hook shared by the page, the
+      till's onboarding gate, and the topbar indicator. Commit `406f9fb`.
+- [x] **O9.6 — DONE 2026-09-09, also bigger than scoped.** The owner asked
+      for the shift controls off the topbar entirely, not just gated by
+      role. `ShiftControl` is now a small READ-ONLY indicator (elapsed time
+      or "Off shift") linking to the shift page — no start/end controls left
+      in the topbar for anyone to misuse. The watching half
+      (`staff-activity-view.tsx`) was already there and untouched. Commit
+      `406f9fb`.
+
+**Also shipped this session, not originally in O9 at all**: the till itself
+gained an onboarding gate (`TillGate`) — opening it with no open shift now
+asks "Start your shift?" before the sale screen renders, rather than
+rendering instantly. Skippable — an owner selling with no shift open still
+works, unchanged server-side.
 
 ## ⏳ WAITING ON THE OWNER
 
@@ -980,12 +990,12 @@ systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6)
   clothing wants size/colour variants, hardware wants weight and quantity.
   `variants.test.ts` exists in the backend, so some of this may already be
   built; better to know what he actually runs than to build the generic middle.
-- **O9.4 — schedule or actual worked time?** He asked for a popup that sets
-  "the working range, then the timer starts". A planned range and a worked
-  shift are different objects: if a cashier declares 9–5 and leaves at 3,
-  which is payroll? **O5.1 already settled this once** — "actual worked time
-  only, no planned rota". His note may be a reversal or may just describe the
-  dialog. Ask; do not assume. Blocks only O9.5, so it holds up little.
+- **O9.4 — schedule or actual worked time? No longer blocking anything.**
+  O9.5 shipped 2026-09-09 as "actual worked time only" (unchanged from
+  O5.1's original decision) — the shift page and gate both work today. If
+  the owner still wants a planned-range field, it is a genuinely separate
+  addition on top of what exists, not a blocker to it. Ask only if he raises
+  it again.
 
 ---
 

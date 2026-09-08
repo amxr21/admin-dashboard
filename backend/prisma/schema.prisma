@@ -919,6 +919,21 @@ model OrderItem {
   /// counts them, rather than quietly shrinking its own denominator.
   cost     Decimal? @db.Decimal(10, 2)
 
+  /// A cashier's ad-hoc discount on THIS line (O9 Tier 3), 0-100. A SEPARATE
+  /// column from `price` rather than writing the discounted figure into it —
+  /// `price` is read everywhere as "what this line's unit actually costs",
+  /// and margin/revenue reporting, the invoice and every other consumer would
+  /// silently start reading a discounted price as the real one. Percent
+  /// rather than a fixed amount: it scales with `price` and `quantity`
+  /// without a second unit to reconcile, and a single number is a single cap
+  /// to enforce (`pos.maxCashierDiscountPercent`).
+  ///
+  /// NULL means no discount was applied — not 0, so "the cashier considered
+  /// a discount and left it at zero" is never confused with "no discount
+  /// control ever touched this line", the same NULL-vs-zero discipline
+  /// `cost` above already uses.
+  discountPercent Decimal? @map("discount_percent") @db.Decimal(5, 2)
+
   orderId String @map("order_id")
   /// Cascade — an order's items have no meaning without the order.
   order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
