@@ -629,7 +629,15 @@ owner on 2026-09-08 and the whole track followed the same day.
 
 ### Older, from §U / the G-GATE
 - [ ] Optimistic row updates with rollback
-- [ ] Bulk-action progress
+- [x] **Bulk-action progress — DONE 2026-09-08.** The confirm button counts
+      real completions ("Deleting 3 of 12…") as each request lands. The
+      requests still all go out at once: serialising them for a tidy counter
+      would make deleting 50 rows genuinely SLOWER for the sake of a label,
+      so the count reflects actual completions rather than a simulated
+      animation. Hidden for a single row — "1 of 1" resolves faster than the
+      eye reads it. **Orders' bulk status change deliberately gets NO
+      counter**: it sends one request for the whole batch, so there is nothing
+      to count and a progress number there would be a lie. Watched failing
 - [ ] Loading-overlay blur / nav-transition smoothness
 - [ ] **Design Fix Checklist Phases 6-7** — blocked: the text was never
       transcribed into the repo. **Ask the owner to re-paste**; do not
