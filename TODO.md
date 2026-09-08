@@ -464,6 +464,13 @@ mode) and `discounts`: more authority than the job needs.
       editable rather than decided here
 - [x] O4.3 **VOID** — superseded by O8, same reason
 
+### ⭐ O8 — ✅ COMPLETE 2026-09-08 (all 6 items)
+An owner can now change what every role reaches, from the permissions matrix.
+21 tests. OWNER/DEVELOPER can never be narrowed — enforced in the service and
+on READ, so even a hand-written database row cannot lock everyone out.
+
+**Original entry:**
+
 ### ⭐ O8 — OWNER-EDITABLE ROLE PERMISSIONS
 **Owner, 2026-09-08:** "don't worry about what manager can do as long as the
 owner/admin can modify the given permissions for any role."
@@ -506,9 +513,27 @@ permissions matrix already exists at `permissions-matrix.tsx` to build on.
       widen its own permissions has none. DELETE resets to the shipped
       default, which is a real action — the defaults change between releases,
       so a manual "tick everything back" would freeze the role at today's
-- [ ] O8.4 Make `permissions-matrix.tsx` editable for the editable roles
-- [ ] O8.5 Frontend reads the resolved permissions rather than its own
-      hardcoded copy — the two must not drift
+- [x] **O8.4 — DONE 2026-09-08.** The matrix is now the control, not a report
+      of one. Checkboxes for editable roles, icons for locked ones; OWNER and
+      DEVELOPER carry an "always full" badge distinct from DEMO's "read-only"
+      (DEMO sees everything and writes nothing; OWNER does everything and
+      cannot be narrowed). A customised role shows a Reset button.
+      Optimistic with rollback — a checkbox that does not move until a round
+      trip finishes feels broken, and the grid must never show a permission
+      the server rejected.
+      **A real bug the test surfaced**: a failed save set the same `error`
+      state as a failed LOAD, which replaces the whole table — so a rejected
+      toggle wiped the grid and left the owner with no idea what the
+      permissions now were. Save errors now render ABOVE the table and keep
+      it. 6 tests; the locked-role and rollback guards watched failing
+- [x] **O8.5 — DONE 2026-09-08**, and mostly already true: the matrix has
+      always read `GET /roles` live rather than `config/areas.ts`, and that
+      endpoint now returns the RESOLVED set. `/roles/me` switched too, since
+      it drives what the sidebar shows — reading the code default there would
+      leave a user looking at links the API refuses.
+      `config/areas.ts` stays as the sidebar's advisory copy ON PURPOSE (it
+      can only under-label a menu, never over-grant) — the note in
+      `roles-api.ts` already explains that split
 - [x] **O8.6 — DONE 2026-09-08.** 15 tests, written before the UI. Locked
       roles watched failing. Also asserts a hand-written row for OWNER is
       IGNORED on read — a migration, a restored backup or somebody at a

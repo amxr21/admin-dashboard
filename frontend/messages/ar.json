@@ -1506,7 +1506,11 @@
       "area": "المجال",
       "readOnly": "قراءة فقط",
       "granted": "يمكن لـ {role} الوصول إلى {area}",
-      "notGranted": "لا يمكن لـ {role} الوصول إلى {area}"
+      "notGranted": "لا يمكن لـ {role} الوصول إلى {area}",
+      "alwaysFull": "وصول كامل دائمًا",
+      "reset": "إعادة تعيين",
+      "resetDone": "أُعيد إلى الإعداد الافتراضي",
+      "toggle": "{role} يمكنه فتح {area}"
     }
   },
   "staffRole": {

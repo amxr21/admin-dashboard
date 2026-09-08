@@ -1506,7 +1506,11 @@
       "area": "Area",
       "readOnly": "Read-only",
       "granted": "{role} can reach {area}",
-      "notGranted": "{role} cannot reach {area}"
+      "notGranted": "{role} cannot reach {area}",
+      "alwaysFull": "Always full",
+      "reset": "Reset",
+      "resetDone": "Returned to the default",
+      "toggle": "{role} can open {area}"
     }
   },
   "staffRole": {

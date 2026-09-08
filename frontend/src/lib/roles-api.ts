@@ -15,8 +15,16 @@ import type { Area, StaffRole } from '@/config/areas';
 export interface RoleGrant {
   role: StaffRole;
   label: string;
+  /** RESOLVED (O8) — the owner's override where one exists, otherwise the
+   *  shipped default. Never the raw code default. */
   areas: Area[];
   readOnly: boolean;
+  /** OWNER/DEVELOPER always keep full access; the matrix renders them
+   *  read-only and the API refuses them either way. */
+  isLocked: boolean;
+  /** Whether an owner has changed this from the shipped default, so "why can
+   *  Support see reports" has a visible answer. */
+  isCustomised: boolean;
 }
 
 export interface RolesModel {
@@ -26,4 +34,22 @@ export interface RolesModel {
 
 export async function fetchRolesModel(): Promise<RolesModel> {
   return apiFetch<RolesModel>('/roles');
+}
+
+/**
+ * Replace what a role may reach (O8).
+ *
+ * Sends the intended FINAL set, not a diff: the matrix edits checkboxes, and
+ * a diff computed against a stale page removes an area nobody touched.
+ */
+export async function setRoleAreas(role: StaffRole, areas: Area[]): Promise<RoleGrant> {
+  return apiFetch<RoleGrant>(`/roles/${role}/areas`, {
+    method: 'PUT',
+    body: JSON.stringify({ areas }),
+  });
+}
+
+/** Drop the override, returning the role to the shipped default. */
+export async function resetRoleAreas(role: StaffRole): Promise<RoleGrant> {
+  return apiFetch<RoleGrant>(`/roles/${role}/areas`, { method: 'DELETE' });
 }
