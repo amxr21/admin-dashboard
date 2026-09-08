@@ -293,6 +293,26 @@ export const SETTINGS = {
     label: 'Low-stock alerts',
     description: 'Notify staff when a product crosses the low-stock threshold.',
   },
+  /**
+   * Whether the till may sell stock the branch does not have (O5.8).
+   *
+   * Defaults to FALSE — refusing suits a shop whose count is trusted, and
+   * selling what is not there produces a negative somebody has to explain
+   * later, while the cashier standing at the shelf can see the truth now.
+   *
+   * But a shop mid-stocktake, or one whose counts are known to lag reality,
+   * must not have its till stop working over bookkeeping. Hence the escape
+   * hatch, and hence which way round the default goes.
+   */
+  'inventory.allowNegativeStock': {
+    type: 'boolean',
+    default: false,
+    area: 'settings',
+    label: 'Allow selling out-of-stock items',
+    description:
+      'Let the till complete a sale even when the branch shows none in stock. Off by default: a sale that takes stock negative is a discrepancy somebody has to explain afterwards.',
+  },
+
   'notifications.returnRequestAlerts': {
     type: 'boolean',
     default: true,

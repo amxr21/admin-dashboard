@@ -31,6 +31,16 @@ export interface Shift {
   /** Whether the recorded times were corrected. The UI says so rather than
    *  presenting edited hours as though they were clocked. */
   wasEdited: boolean;
+
+  /**
+   * The till (O5.3), as 2dp strings. NULL means this shift had NO drawer —
+   * most of them, since a picker never opens one. That is a different fact
+   * from a float of zero, and it decides whether closing asks for a count.
+   */
+  openingFloat: string | null;
+  closingCount: string | null;
+  /** Negative is short, positive is over. Null until the till is closed. */
+  variance: string | null;
 }
 
 /** My open shift, or null. */
@@ -39,7 +49,9 @@ export async function fetchMyShift(): Promise<Shift | null> {
   return result.shift;
 }
 
-export async function startShift(input: { note?: string; forUserId?: string } = {}): Promise<Shift> {
+export async function startShift(
+  input: { note?: string; forUserId?: string; openingFloat?: string } = {},
+): Promise<Shift> {
   const result = await apiFetch<{ shift: Shift }>('/shifts', {
     method: 'POST',
     body: JSON.stringify(input),
@@ -111,4 +123,35 @@ export interface ShiftSummary {
 
 export async function fetchShiftSummary(id: string): Promise<ShiftSummary> {
   return apiFetch<ShiftSummary>(`/shifts/${id}/summary`);
+}
+
+export interface ShiftTakings {
+  byMethod: { method: string; total: string }[];
+  /** What should be in the DRAWER — cash only. Card takings never were. */
+  cash: string;
+}
+
+export async function fetchShiftTakings(id: string): Promise<ShiftTakings> {
+  return apiFetch<ShiftTakings>(`/shifts/${id}/takings`);
+}
+
+export interface TillCloseResult {
+  shift: Shift;
+  /** Opening float plus cash taken. */
+  expected: string;
+  counted: string;
+  /** Negative is short, positive is over. Recorded either way — a till that
+   *  refuses an inconvenient count stops being counted honestly. */
+  variance: string;
+}
+
+export async function closeTill(
+  id: string,
+  closingCount: string,
+  note?: string,
+): Promise<TillCloseResult> {
+  return apiFetch<TillCloseResult>(`/shifts/${id}/close-till`, {
+    method: 'POST',
+    body: JSON.stringify({ closingCount, ...(note ? { note } : {}) }),
+  });
 }

@@ -6,7 +6,10 @@ import { AppError } from '../../errors/AppError.js';
 import { toCsv } from '../../lib/csv.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { effectiveRole, withBranchContext } from '../../middleware/branch-context.js';
-import { canAccessArea } from '../../config/roles.js';
+import {
+  canAccessAreaResolved,
+  resolveAreas,
+} from '../../services/role-permissions.service.js';
 import { ADMIN_RESOURCES } from '../../config/admin.config.js';
 import { audit } from '../../services/audit.service.js';
 import {
@@ -41,14 +44,17 @@ export const resourceRouter = Router();
  * depends on which resource was asked for. `requireArea` is still the single
  * implementation — this only chooses the argument.
  */
-function guardArea(req: Request): void {
+async function guardArea(req: Request): Promise<void> {
   const config = requireResource(String(req.params.resource));
 
   // `effectiveRole`, never `user.role` (F8.4). This is the generic engine, so
   // reading the global role here would exempt EVERY config-driven resource
   // from per-branch authorisation in one place — the widest possible version
   // of the mistake, and invisible because each individual route looks fine.
-  if (!canAccessArea(effectiveRole(req), config.permissionArea)) {
+  // Resolved, not the code default (O8): an owner can edit what a role
+  // reaches, and reading the default here would exempt the whole generic
+  // engine from those edits in one place.
+  if (!(await canAccessAreaResolved(effectiveRole(req), config.permissionArea))) {
     throw AppError.forbidden('You do not have access to this resource');
   }
 }
@@ -60,13 +66,15 @@ function guardArea(req: Request): void {
  * what they can actually open. This is a convenience, not a control: every
  * request is authorised independently.
  */
-resourceRouter.get('/r/_schema', authenticate, withBranchContext, (req, res) => {
+resourceRouter.get('/r/_schema', authenticate, withBranchContext, async (req, res) => {
   // Branch-aware too (F8.4): the sidebar has to match what this person can
   // open AT THE BRANCH THEY ARE IN. Filtering by the global role would show a
   // Marina-only fulfillment user the whole Downtown navigation and let every
   // click 403 — technically safe, and unusable.
+  const reachable = await resolveAreas(effectiveRole(req));
+
   const resources = ADMIN_RESOURCES.filter((config) =>
-    canAccessArea(effectiveRole(req), config.permissionArea),
+    reachable.includes(config.permissionArea),
   ).map((config) => ({
     resource: config.resource,
     label: config.label,
@@ -83,7 +91,7 @@ resourceRouter.get('/r/_schema', authenticate, withBranchContext, (req, res) => 
 
 // GET /api/v1/r/:resource
 resourceRouter.get('/r/:resource', authenticate, withBranchContext, async (req, res) => {
-  guardArea(req);
+  await guardArea(req);
   const config = requireResource(String(req.params.resource));
 
   const { page, pageSize, search, sort, dir, ...rest } = req.query;
@@ -118,7 +126,7 @@ resourceRouter.get('/r/:resource', authenticate, withBranchContext, async (req, 
  * (`entity=<resource>&action=<resource>.export`), no new model needed.
  */
 resourceRouter.get('/r/:resource/export', authenticate, withBranchContext, async (req, res) => {
-  guardArea(req);
+  await guardArea(req);
   const config = requireResource(String(req.params.resource));
 
   const { search, sort, dir, ...rest } = req.query;
@@ -170,8 +178,8 @@ resourceRouter.get('/r/:resource/export', authenticate, withBranchContext, async
  * A header-only file, deliberately: a filled example row invites copy-paste
  * of placeholder data into a real import.
  */
-resourceRouter.get('/r/:resource/import-template', authenticate, withBranchContext, (req, res) => {
-  guardArea(req);
+resourceRouter.get('/r/:resource/import-template', authenticate, withBranchContext, async (req, res) => {
+  await guardArea(req);
   const config = requireResource(String(req.params.resource));
 
   const header = importTemplateColumns(config).join(',');
@@ -250,7 +258,7 @@ resourceRouter.post(
   withBranchContext,
   parseImportUpload,
   async (req, res) => {
-    guardArea(req);
+    await guardArea(req);
     const config = requireResource(String(req.params.resource));
     const rows = parseImportFile(req);
 
@@ -284,7 +292,7 @@ resourceRouter.post(
 
 // GET /api/v1/r/:resource/_relations/:field — options for a relation picker.
 resourceRouter.get('/r/:resource/_relations/:field', authenticate, withBranchContext, async (req, res) => {
-  guardArea(req);
+  await guardArea(req);
   const config = requireResource(String(req.params.resource));
 
   const options = await relationOptions(
@@ -298,7 +306,7 @@ resourceRouter.get('/r/:resource/_relations/:field', authenticate, withBranchCon
 
 // GET /api/v1/r/:resource/:id
 resourceRouter.get('/r/:resource/:id', authenticate, async (req, res) => {
-  guardArea(req);
+  await guardArea(req);
   const config = requireResource(String(req.params.resource));
 
   const row = await getResourceRow(config, String(req.params.id));
@@ -308,7 +316,7 @@ resourceRouter.get('/r/:resource/:id', authenticate, async (req, res) => {
 
 // POST /api/v1/r/:resource
 resourceRouter.post('/r/:resource', authenticate, async (req, res) => {
-  guardArea(req);
+  await guardArea(req);
   const config = requireResource(String(req.params.resource));
 
   const row = await createResourceRow(config, req.body as Record<string, unknown>, req);
@@ -320,7 +328,7 @@ resourceRouter.post('/r/:resource', authenticate, async (req, res) => {
 
 // PATCH /api/v1/r/:resource/:id
 resourceRouter.patch('/r/:resource/:id', authenticate, async (req, res) => {
-  guardArea(req);
+  await guardArea(req);
   const config = requireResource(String(req.params.resource));
 
   const row = await updateResourceRow(
@@ -337,7 +345,7 @@ resourceRouter.patch('/r/:resource/:id', authenticate, async (req, res) => {
 
 // DELETE /api/v1/r/:resource/:id
 resourceRouter.delete('/r/:resource/:id', authenticate, async (req, res) => {
-  guardArea(req);
+  await guardArea(req);
   const config = requireResource(String(req.params.resource));
 
   const { row, action } = await deleteResourceRow(config, String(req.params.id), req);

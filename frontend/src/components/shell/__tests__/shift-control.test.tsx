@@ -19,10 +19,12 @@ import type { Shift } from '@/lib/shifts-api';
  * already on shift invites a click that 409s.
  */
 
-const { fetchMyShift, startShift, endShift } = vi.hoisted(() => ({
+const { fetchMyShift, startShift, endShift, closeTill, fetchShiftTakings } = vi.hoisted(() => ({
   fetchMyShift: vi.fn(),
   startShift: vi.fn(),
   endShift: vi.fn(),
+  closeTill: vi.fn(),
+  fetchShiftTakings: vi.fn(),
 }));
 
 vi.mock('@/lib/shifts-api', async (importOriginal) => ({
@@ -30,6 +32,8 @@ vi.mock('@/lib/shifts-api', async (importOriginal) => ({
   fetchMyShift,
   startShift,
   endShift,
+  closeTill,
+  fetchShiftTakings,
 }));
 
 function makeShift(overrides: Partial<Shift> = {}): Shift {
@@ -48,6 +52,11 @@ function makeShift(overrides: Partial<Shift> = {}): Shift {
     openedBy: { id: 'u1', name: 'Sami', email: 'sami@example.test' },
     editedBy: null,
     wasEdited: false,
+    // No till by default — most shifts have none, and it is the path these
+    // existing tests cover.
+    openingFloat: null,
+    closingCount: null,
+    variance: null,
     ...overrides,
   };
 }
@@ -162,5 +171,128 @@ describe('failure modes', () => {
     render(<ShiftControl />);
 
     expect(await screen.findByText('0:00')).toBeInTheDocument();
+  });
+});
+
+describe('the till (O5.11)', () => {
+  /**
+   * ─── WHY THE FLOAT DECIDES THE SHAPE ─────────────────────────────────
+   * A shift opened WITH a drawer must be closed by counting it — ending it
+   * without a count leaves a till nobody reconciled, which somebody chases
+   * later. A shift opened without one never asks, because most shifts have no
+   * till and making a picker count nothing is friction for the majority.
+   */
+  it('sends the opening float when one is entered', async () => {
+    fetchMyShift.mockResolvedValue(null);
+    startShift.mockResolvedValue(makeShift({ openingFloat: '100.00' }));
+
+    render(
+      <>
+        <ShiftControl />
+        <Toaster />
+      </>,
+    );
+
+    await userEvent.type(await screen.findByLabelText(/cash in the drawer/i), '100.00');
+    await userEvent.click(screen.getByRole('button', { name: /start shift/i }));
+
+    await waitFor(() => {
+      expect(startShift).toHaveBeenCalledWith({ openingFloat: '100.00' });
+    });
+  });
+
+  it('starts with NO till when the float is left blank', async () => {
+    // Null means "no drawer", which is a different fact from a float of zero
+    // — and it is what stops the close dialog asking for a count.
+    fetchMyShift.mockResolvedValue(null);
+    startShift.mockResolvedValue(makeShift());
+
+    render(
+      <>
+        <ShiftControl />
+        <Toaster />
+      </>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /start shift/i }));
+
+    await waitFor(() => {
+      expect(startShift).toHaveBeenCalledWith({});
+    });
+  });
+
+  it('asks for a count when closing a shift that had a drawer', async () => {
+    fetchMyShift.mockResolvedValue(makeShift({ openingFloat: '100.00' }));
+    fetchShiftTakings.mockResolvedValue({ byMethod: [], cash: '25.00' });
+
+    render(<ShiftControl />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /end shift/i }));
+
+    expect(await screen.findByLabelText(/count the drawer/i)).toBeInTheDocument();
+  });
+
+  it('does NOT ask for a count when there was no drawer', async () => {
+    fetchMyShift.mockResolvedValue(makeShift());
+
+    render(<ShiftControl />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /end shift/i }));
+
+    await screen.findByRole('alertdialog');
+    expect(screen.queryByLabelText(/count the drawer/i)).not.toBeInTheDocument();
+  });
+
+  it('closes the till with the count and shows the variance', async () => {
+    fetchMyShift.mockResolvedValue(makeShift({ openingFloat: '100.00' }));
+    fetchShiftTakings.mockResolvedValue({ byMethod: [], cash: '25.00' });
+    closeTill.mockResolvedValue({
+      shift: makeShift({ endedAt: new Date().toISOString() }),
+      expected: '125.00',
+      counted: '123.00',
+      variance: '-2.00',
+    });
+
+    render(
+      <>
+        <ShiftControl />
+        <Toaster />
+      </>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /end shift/i }));
+    await userEvent.type(await screen.findByLabelText(/count the drawer/i), '123.00');
+    await userEvent.click(screen.getByRole('button', { name: /^end shift$/i }));
+
+    await waitFor(() => {
+      expect(closeTill).toHaveBeenCalledWith('s1', '123.00');
+    });
+
+    // The variance survives the dialog closing — the cashier sees the result
+    // of the count they just made rather than it vanishing with the toast.
+    // Scoped to the button, since the toast shows the same figure.
+    expect(
+      await screen.findByRole('button', { name: /dismiss the till variance/i }),
+    ).toHaveTextContent('-2.00');
+  });
+
+  it('ends a no-till shift without closing a drawer', async () => {
+    fetchMyShift.mockResolvedValue(makeShift());
+    endShift.mockResolvedValue(makeShift({ endedAt: new Date().toISOString() }));
+
+    render(
+      <>
+        <ShiftControl />
+        <Toaster />
+      </>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /end shift/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /^end shift$/i }));
+
+    await waitFor(() => {
+      expect(endShift).toHaveBeenCalledWith('s1');
+    });
+    expect(closeTill).not.toHaveBeenCalled();
   });
 });

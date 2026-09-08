@@ -449,14 +449,108 @@ Today MANAGER = every area except `staff` — an OPERATIONS manager. A shop
 manager who counts stock also gets `settings` (theme, tax rate, maintenance
 mode) and `discounts`: more authority than the job needs.
 
-- [ ] O4.1 **❓ OWNER DECISION: narrow MANAGER, or add a distinct role?**
+- [x] **O4.1 — ANSWERED BY THE OWNER 2026-09-08: NEITHER.** His words: "don't
+      worry about what manager can do as long as the owner/admin can modify
+      the given permissions for any role". So MANAGER's shape stops being a
+      design question — it becomes data the owner edits. Supersedes O4.2 and
+      O4.3, which both assumed a fixed set of roles decided in code.
+      Replaced by **O8** below.
+- [x] ~~O4.1 original~~ **❓ narrow MANAGER, or add a distinct role?**
       *Do not add a role reflexively — every new role multiplies the permission
       matrix, which `roles.ts` warns about in its own comment.* Easier to
       answer AFTER O7 stage 2, when per-branch roles are testable against a
       real roster
-- [ ] O4.2 If narrowing: which areas leave MANAGER, and does anything break
-- [ ] O4.3 If adding: the role, its rank in `ROLE_ORDER`, its `ROLE_AREAS`
-      entry, i18n label, and the permissions matrix row
+- [x] O4.2 **VOID** — superseded by O8: which areas a role reaches becomes
+      editable rather than decided here
+- [x] O4.3 **VOID** — superseded by O8, same reason
+
+### ⭐ O8 — ✅ COMPLETE 2026-09-08 (all 6 items)
+An owner can now change what every role reaches, from the permissions matrix.
+21 tests. OWNER/DEVELOPER can never be narrowed — enforced in the service and
+on READ, so even a hand-written database row cannot lock everyone out.
+
+**Original entry:**
+
+### ⭐ O8 — OWNER-EDITABLE ROLE PERMISSIONS
+**Owner, 2026-09-08:** "don't worry about what manager can do as long as the
+owner/admin can modify the given permissions for any role."
+
+This replaces O4 entirely. `ROLE_AREAS` is hardcoded in BOTH
+`backend/src/config/roles.ts` and `frontend/src/config/areas.ts`; a read-only
+permissions matrix already exists at `permissions-matrix.tsx` to build on.
+
+**Three decisions taken with the owner 2026-09-08:**
+- [x] O8.0a **OWNER and DEVELOPER are NOT editable.** They always keep full
+      access. Otherwise an owner unticking their own `settings` box loses the
+      very screen that would let them tick it back, and recovery needs
+      database access.
+- [x] O8.0b **Global role definitions only**, no per-branch overrides. One
+      definition of what "Manager" means everywhere. A person can still hold
+      different roles at different branches (F8.4, already built) — that is a
+      different axis and it stays.
+- [x] O8.0c **Changes apply on the next page load**, not by signing everyone
+      out. Someone mid-task keeps their work; the next screen reflects the new
+      permissions.
+
+- [x] **O8.1 — DONE 2026-09-08.** `RolePermission` (role as the PK, areas as
+      JSON), migration `20260908050000_add_role_permissions`. Overrides ONLY:
+      a role with no row behaves exactly as before, so shipping this granted
+      nobody anything. Storing the full set per role instead would make the
+      code default dead on first save, and a later release adding an AREA
+      could never reach an existing install
+- [x] **O8.2 — DONE 2026-09-08.** `role-permissions.service.ts` resolves
+      default + override, cached 15s. **`requireArea` is now ASYNC and reads
+      the resolved set** — that is the line between a real feature and a
+      cosmetic one: without it the matrix would save, the link would vanish,
+      and the endpoint would still answer. All 5 call sites converted
+      (`guardArea` in the resource engine included, which would otherwise have
+      exempted every config-driven resource in one place)
+- [x] **O8.3 — DONE 2026-09-08.** `PUT`/`DELETE /roles/:role/areas`, plus
+      `GET /roles` and `/roles/me` switched to the RESOLVED set (they served
+      the code default, which would have shown a matrix disagreeing with what
+      the API enforces). OWNER/DEVELOPER-only via `requireRole`, deliberately
+      not `requireArea('settings')`: MANAGER holds that, and a role that can
+      widen its own permissions has none. DELETE resets to the shipped
+      default, which is a real action — the defaults change between releases,
+      so a manual "tick everything back" would freeze the role at today's
+- [x] **O8.4 — DONE 2026-09-08.** The matrix is now the control, not a report
+      of one. Checkboxes for editable roles, icons for locked ones; OWNER and
+      DEVELOPER carry an "always full" badge distinct from DEMO's "read-only"
+      (DEMO sees everything and writes nothing; OWNER does everything and
+      cannot be narrowed). A customised role shows a Reset button.
+      Optimistic with rollback — a checkbox that does not move until a round
+      trip finishes feels broken, and the grid must never show a permission
+      the server rejected.
+      **A real bug the test surfaced**: a failed save set the same `error`
+      state as a failed LOAD, which replaces the whole table — so a rejected
+      toggle wiped the grid and left the owner with no idea what the
+      permissions now were. Save errors now render ABOVE the table and keep
+      it. 6 tests; the locked-role and rollback guards watched failing
+- [x] **O8.5 — DONE 2026-09-08**, and mostly already true: the matrix has
+      always read `GET /roles` live rather than `config/areas.ts`, and that
+      endpoint now returns the RESOLVED set. `/roles/me` switched too, since
+      it drives what the sidebar shows — reading the code default there would
+      leave a user looking at links the API refuses.
+      `config/areas.ts` stays as the sidebar's advisory copy ON PURPOSE (it
+      can only under-label a menu, never over-grant) — the note in
+      `roles-api.ts` already explains that split
+- [x] **O8.6 — DONE 2026-09-08.** 15 tests, written before the UI. Locked
+      roles watched failing. Also asserts a hand-written row for OWNER is
+      IGNORED on read — a migration, a restored backup or somebody at a
+      database console must not be able to lock everyone out.
+      **Two of my own tests were wrong and got caught**: the first asserted
+      against `GET /settings`, which is NOT behind `requireArea` (only the
+      PATCH is), so it would have proved nothing; the second hit
+      `/reports/overview` without its required date range and read the 400 as
+      a pass-adjacent failure. Both now use a genuinely guarded route
+
+### O5 — ✅ COMPLETE 2026-09-08 (all 11 items)
+The app can take a sale. `prisma.order.create` existed only in tests and the
+seeder when this track opened; there is now a till that scans, prices with the
+shared receipt math, decrements per-branch stock, records a payment and prints
+a thermal receipt — with a drawer that reconciles at close.
+
+**Original entry:**
 
 ### O5 — POS / till: the cashier who scans items and prints a receipt
 **Clarified by the owner 2026-09-07:** not a permissions question. He means a
@@ -530,23 +624,104 @@ till its branch for free.
       against the bug. Rewritten to compare `.toString()` and assert
       `decimalPlaces() <= 2`, then watched failing. A money assertion that
       formats before comparing tests nothing.
-- [ ] O5.5 Cart state: scan/select → add line → quantity → subtotal/tax/total
-- [ ] O5.6 Barcode lookup endpoint (the column exists; nothing queries it yet)
-- [ ] O5.7 Create the order + its `OrderItem`s with price AND cost snapshotted
-      (the F1.1 rule), decrement per-branch stock with a `SOLD` movement, and
-      record the `Payment` — all in ONE transaction
-- [ ] O5.8 Refuse a sale that would take branch stock negative, or decide
-      deliberately that it is allowed
+- [x] **O5.5 — DONE 2026-09-08.** `/admin/pos` — scan to add, quantity, running
+      estimate, take payment. **The scan field keeps focus after every action**:
+      a hardware scanner is a KEYBOARD, so with focus elsewhere the next
+      barcode is typed into whatever is focused, silently setting a quantity
+      to 5012345678900. Scanning the same item twice adds ONE rather than a
+      second line — the checkout endpoint refuses duplicates and two lines
+      would print twice on the receipt. The on-screen figure is labelled an
+      ESTIMATE; the authoritative subtotal/tax/total come back from the server
+      via the shared math (O5.4), because two implementations of the same
+      arithmetic is exactly how a receipt disagrees with an invoice by a cent.
+      Over-stock is a WARNING, not a block — the cashier is holding the item
+      and the server decides (O5.8). Change stays on screen after the sale
+      rather than in a toast that vanishes while the drawer is opening.
+      **A second weak test caught and fixed**: the focus test passed with
+      refocus disabled, because the field carries `autoFocus` and nothing had
+      moved focus away. Now clicks elsewhere first, then watched failing.
+      11 tests. CASHIER now lands here
+- [x] **O5.6 — DONE 2026-09-08.** `GET /pos/scan?code=` — EXACT match on
+      `barcode` then `sku`, never fuzzy. That is the rule the suite protects:
+      a prefix or name match would let a dropped digit resolve to a real but
+      DIFFERENT product, charging the customer for something they are not
+      holding, with nothing on screen looking wrong. Watched failing.
+      Reports stock **at the till's branch** (the number the cashier can
+      actually reach) alongside the all-branch total, so they can say "none
+      here, twelve at the warehouse". An ARCHIVED product is returned and
+      FLAGGED, not hidden — one physically on the shelf still has to be
+      sellable, and the till decides whether to warn. Guarded by `orders`,
+      not `inventory`: selling a coffee must not require stock-editing
+      rights. 13 tests
+- [x] **O5.7 — DONE 2026-09-08.** `POST /pos/checkout`. **The first thing in
+      this app that creates an `Order`** — until now `prisma.order.create`
+      existed only in tests and the seeder. Order, lines, `SOLD` movements,
+      per-branch stock, product stock and the `Payment` all commit in ONE
+      transaction: a sale that recorded the money but not the stock leaves
+      books and shelves disagreeing with nothing to say which half happened,
+      which is exactly what a dropped connection mid-payment produces.
+      **Price AND cost snapshotted** (F1.1) — a test raises the supplier cost
+      AFTER the sale and asserts the recorded profit does not move. Missing
+      cost stores NULL, never 0, or the sale reports as pure profit. Prices
+      are read INSIDE the transaction, so the receipt shows the price at the
+      moment of sale. Stock movements are written directly rather than through
+      `adjustStock`, which opens its own transaction — nesting it would commit
+      stock before the payment. 11 tests; three rules watched failing
+- [x] **O5.8 — DECIDED + DONE 2026-09-08: refuse by DEFAULT, overridable.**
+      New `inventory.allowNegativeStock` setting, default FALSE. Refusing
+      suits a shop whose count is trusted — selling what is not there produces
+      a negative somebody has to explain later, while the cashier standing at
+      the shelf can see the truth NOW — but a shop mid-stocktake, or one whose
+      counts lag reality, must not have its till stop working over
+      bookkeeping. The error names the available number so it can be checked
+      against the shelf. With the setting on, stock goes genuinely negative
+      and stays visible rather than being clamped to zero, which would hide
+      the discrepancy
 
 #### Stage C — receipt + role
-- [ ] O5.9 Thermal receipt renderer (58/80mm) — the invoice is A4; different
-      layout, likely a different component
-- [ ] O5.10 `CASHIER` role: `ROLE_AREAS` entry, rank in `ROLE_ORDER`, i18n
-      label, permissions-matrix row. **Trivial, and LAST** — adding it first
-      grants screens that cannot take money
-- [ ] O5.11 Open/close-shift UI in the shell, with elapsed time — must survive
-      a reload and a second tab (the open shift lives on the server, never in
-      `localStorage`)
+- [x] **O5.9 — DONE 2026-09-08.** `ThermalReceipt`, its own component rather
+      than a restyled invoice: at 58mm you get ~32 monospace characters per
+      line, so the A4 letterhead, address block and table have nowhere to go —
+      restyling would mean hiding most of it and hoping the rest reflows.
+      **`@page { size: 58mm auto }`** — a real page size, with `auto` height
+      because thermal printers feed continuous paper: a fixed height either
+      cuts a long receipt off or ejects blank paper after a short one. Scoped
+      to the component, not globals.css, or every other print in the app comes
+      out on a roll. Monospace and `force-ltr` even in Arabic — the layout is a
+      column of aligned figures and a printer cannot reflow them.
+      Lines print the EXTENDED price (2 × 4.50 = 9.00), since printing 4.50
+      beside a quantity of 2 invites arithmetic that fails. Tendered/change are
+      OMITTED on a card sale rather than printed as 0.00, which reads as a
+      mistake. Figures come from the SERVER's response, never the on-screen
+      estimate. 5 tests, both rules watched failing
+- [x] **O5.10 — DONE 2026-09-08**, and genuinely last: the TODO warned that
+      adding it first grants screens that cannot take money, and those screens
+      (O5.6/O5.7) now exist. Enum + `ROLE_AREAS` + `ROLE_ORDER` + i18n, both
+      sides. Grant is `orders`/`returns`/`products` — deliberately NARROWER
+      than FULFILLMENT, with **no `inventory`**: a cashier reads stock through
+      the scan and the product list, but editing it is a different job, and
+      requiring stock rights to sell a coffee is the exact over-granting O4
+      exists to correct.
+      **Two things the tests caught.** (1) My rank comment said "outranks
+      nobody" while the placement put CASHIER above SUPPORT — moved below it,
+      so code and intent agree; a person on a till has no business changing
+      anyone's role. (2) I pointed the landing page at `/admin/pos`, which
+      does not exist until O5.5 — the F5.4 landing test failed because it
+      checks every destination is real and inside the role's grant. Points at
+      orders until the sale screen lands
+- [x] **O5.11 — DONE 2026-09-08.** The clock on/off half shipped with F6.3
+      (server-held, survives a reload and a second tab); this adds the DRAWER.
+      **The opening float decides the shape**: a shift opened WITH one must be
+      closed by counting it — ending without a count leaves a till nobody
+      reconciled — and a shift opened without one never asks, because most
+      shifts have no till and making a picker count nothing is friction for
+      the majority. The float is optional, so null keeps meaning "no drawer"
+      rather than collapsing into a zero.
+      **Expected cash is shown AFTER the count field, as context only** —
+      leading with the target invites the count to be typed to match it, which
+      is the one thing a variance exists to detect. The variance survives the
+      dialog closing so the cashier sees the result of the count they just
+      made. 6 tests, the till-close path watched failing
 
 **Ordering matters:** role first → screens that cannot take money. Checkout
 without `Payment` → sales nobody can reconcile.
@@ -592,7 +767,11 @@ that staleness is why these are consolidated here.
       **Still unblocks F7.6** (the reorder email now has a real address to
       send to). **No UI yet** — suppliers can be created via the API/seed but
       have no management screen; that is the obvious follow-up
-- [ ] **F7.6** Supplier reorder email, sent on admin approval. Needs F7.9
+- [ ] **F7.6** Supplier reorder email. **SCOPED 2026-09-08 by the owner: the
+      SMALL approach** — a "email this supplier about low stock" action that
+      sends a pre-filled message, reusing `sendAlertEmail`. NOT purchase
+      orders with a request→approve→send workflow; that is procurement and its
+      own track. F7.9 shipped, so the supplier now has a real address
 - [x] **F7.8 (rest) — DONE 2026-09-08.** `deliveredAt`, `purchasedAt`,
       `reference` and `supplierId` on `StockMovement`, beside `unitCost`.
       **The owner's case decided the shape**: "buy 50 units then enter one

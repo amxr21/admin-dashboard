@@ -182,7 +182,8 @@
       "loginHistory": "من سجّل الدخول ومن رُفض"
     },
     "loginHistory": "نشاط الموظفين",
-    "branches": "الفروع"
+    "branches": "الفروع",
+    "pos": "نقطة البيع"
   },
   "branches": {
     "switcherLabel": "الفرع النشط",
@@ -289,7 +290,8 @@
     "MANAGER": "مدير",
     "FULFILLMENT": "تجهيز الطلبات",
     "SUPPORT": "الدعم",
-    "DEMO": "تجريبي (قراءة فقط)"
+    "DEMO": "تجريبي (قراءة فقط)",
+    "CASHIER": "أمين صندوق"
   },
   "orderStatus": {
     "PENDING": "قيد الانتظار",
@@ -1504,7 +1506,11 @@
       "area": "المجال",
       "readOnly": "قراءة فقط",
       "granted": "يمكن لـ {role} الوصول إلى {area}",
-      "notGranted": "لا يمكن لـ {role} الوصول إلى {area}"
+      "notGranted": "لا يمكن لـ {role} الوصول إلى {area}",
+      "alwaysFull": "وصول كامل دائمًا",
+      "reset": "إعادة تعيين",
+      "resetDone": "أُعيد إلى الإعداد الافتراضي",
+      "toggle": "{role} يمكنه فتح {area}"
     }
   },
   "staffRole": {
@@ -2276,7 +2282,14 @@
       "breakdown": "ما تم عمله",
       "recent": "الأحدث",
       "empty": "لم يُغيَّر شيء خلال هذه الوردية."
-    }
+    },
+    "openingFloat": "النقد في الدرج عند الفتح",
+    "floatPlaceholder": "الرصيد الافتتاحي",
+    "countLabel": "احسب الدرج",
+    "expectedHint": "فُتح بـ {float}، والمقبوض نقدًا {cash}.",
+    "tillClosed": "أُغلق الصندوق — الفرق {variance}",
+    "varianceShort": "الفرق {variance}",
+    "dismissVariance": "إخفاء فرق الصندوق"
   },
   "staffActivity": {
     "title": "نشاط الموظفين",
@@ -2287,5 +2300,44 @@
       "shifts": "الورديات",
       "logins": "تسجيلات الدخول"
     }
+  },
+  "pos": {
+    "title": "نقطة البيع",
+    "subtitle": "امسح المنتجات، استلم الدفع، واطبع الإيصال.",
+    "scanLabel": "امسح أو اكتب الرمز",
+    "scanPlaceholder": "الباركود أو رمز المنتج",
+    "add": "إضافة",
+    "empty": "امسح منتجًا لبدء عملية بيع.",
+    "estimate": "الإجمالي التقديري",
+    "estimateNote": "تُحتسب الضريبة عند استلام الدفع — ويعرض الإيصال الإجمالي النهائي.",
+    "method": "طريقة الدفع",
+    "methods": {
+      "cash": "نقدًا",
+      "card": "بطاقة",
+      "transfer": "تحويل"
+    },
+    "tendered": "المبلغ المستلم",
+    "takePayment": "استلام الدفع",
+    "taking": "جارٍ استلام الدفع…",
+    "sold": "تمت عملية البيع — {total}",
+    "done": "عملية البيع {number}",
+    "change": "الباقي {amount}",
+    "overStock": "يتوفر {available} فقط هنا",
+    "archived": "هذا المنتج مؤرشف",
+    "increase": "زيادة {name}",
+    "decrease": "إنقاص {name}",
+    "remove": "إزالة {name}",
+    "receipt": {
+      "taxId": "الرقم الضريبي {id}",
+      "servedBy": "بخدمتك {name}",
+      "subtotal": "المجموع الفرعي",
+      "tax": "الضريبة",
+      "total": "الإجمالي",
+      "paidBy": "طريقة الدفع",
+      "tendered": "المبلغ المستلم",
+      "change": "الباقي",
+      "thanks": "شكرًا لكم"
+    },
+    "printReceipt": "طباعة الإيصال"
   }
 }
