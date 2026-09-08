@@ -675,14 +675,27 @@ owner on 2026-09-08 and the whole track followed the same day.
    A shift is a period of WORK (employee · branch · start · end), distinct from a `Session`,
    which is system activity. A manager may correct one and the correction stays visible;
    actual worked time only, no planned rota.
-2. **F7.8 — QR vs serial.** A printable shelf label using the existing `barcode` (small job), or
-   a serial per individual unit (**a different inventory model** — a count plus a movement log
-   cannot express it)?
-3. **Pre-push `next build`.** It has cost a round trip twice. (a) add it to pre-push (~60–90s
-   every push); (b) leave CI as the guard; (c) run it by hand when touching
-   `useSearchParams`/`useParams`.
-4. **F7.10 — re-seed the demo data.** Best done once the local DB exists. The seeder now covers
-   businesses, branches, per-branch stock, staff, returns, variants and order notes.
+2. ~~**F7.8 — QR vs serial.**~~ **ANSWERED 2026-09-08: BATCH details, not per-unit serials.**
+   The owner's words: "the owner will buy the stock of 50 units then enter one unit details
+   once". That is one record per RECEIPT, not fifty identities — and `StockMovement` is already
+   exactly that shape (a receipt of 50 is one row, already carrying `unitCost` and `note`). So
+   this is F7.8's "rest" — receipt / delivery / purchase date, plus a supplier link — added to
+   `StockMovement`, NOT loose columns on `Product`, which would have to be undone. Per-unit
+   serials were considered and are NOT what was asked for: they need a different inventory model
+   (a count plus a movement log cannot express "unit #47 came back faulty").
+3. ~~**Pre-push `next build`.**~~ **DECIDED + DONE 2026-09-08 — option (c), automated.**
+   `frontend/scripts/check-suspense-risk.sh` greps what the push actually ADDS for
+   `useSearchParams`/`useParams`; no match exits instantly, a match runs the build. Every push
+   pays nothing; the handful that can break pay 90s. Running it on every push was rejected for a
+   behavioural reason, not a performance one: 90s on doc-only pushes is enough friction to get
+   bypassed with `--no-verify`, and a check people skip is worse than one that runs rarely and
+   honestly. It also REFUSES to build when `frontend/.next` looks like a live dev server's cache
+   (no `BUILD_ID`), because building into it corrupts the cache and the dev server then throws
+   module-not-found errors that read like a code regression. Both paths tested: skip on a clean
+   push, and detection + the dev-server refusal on a probe commit.
+4. **F7.10 — re-seed the demo data. POSTPONED by the owner 2026-09-08.** Not blocked, not
+   wanted yet. The seeder covers businesses, branches, per-branch stock, staff, returns,
+   variants and order notes; the local DB predates several of those.
 5. **F5.5 — cashiering.** There is **no checkout/order-creation flow at all** — nothing creates
    an `Order` but the seeder and tests. A real POS needs order creation, payment capture and a
    till concept. **Scope it as its own project**; do not let it arrive disguised as a dashboard
