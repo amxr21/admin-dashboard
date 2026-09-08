@@ -315,7 +315,13 @@ resourceRouter.get('/r/:resource/:id', authenticate, async (req, res) => {
 });
 
 // POST /api/v1/r/:resource
-resourceRouter.post('/r/:resource', authenticate, async (req, res) => {
+//
+// `withBranchContext` added (O9.18): a create can trigger a hook that needs
+// to know the active branch (products' opening-stock hook, which used to
+// always fall through to `defaultBranchId()` regardless of the switcher).
+// Every other verb on this router already carries it; create was the one
+// route that did not.
+resourceRouter.post('/r/:resource', authenticate, withBranchContext, async (req, res) => {
   await guardArea(req);
   const config = requireResource(String(req.params.resource));
 

@@ -46,6 +46,12 @@ const userIds: string[] = [];
 const orderIds: string[] = [];
 const productIds: string[] = [];
 let customerId = '';
+/** So a restock resolves ONE explicit branch rather than falling through to
+ *  `defaultBranchId()` — this suite's shared test database carries the
+ *  seeded demo businesses, which now REFUSES to guess once more than one
+ *  business exists (O9.18). */
+let branchId = '';
+const businessIds: string[] = [];
 let ownerToken = '';
 let demoToken = '';
 let supportToken = '';
@@ -81,6 +87,7 @@ async function makeOrder(status: OrderStatus, quantity = 4) {
       status,
       total: new Prisma.Decimal('25.00').mul(quantity),
       customerId,
+      branchId,
       items: { create: [{ productId, quantity, price: new Prisma.Decimal('25.00') }] },
     },
     include: { items: true },
@@ -113,6 +120,13 @@ beforeAll(async () => {
     data: { name: `${RUN} customer`, email: `${RUN}@example.test` },
   });
   customerId = customer.id;
+
+  const business = await prisma.business.create({ data: { name: `${RUN} business` } });
+  businessIds.push(business.id);
+  const branch = await prisma.branch.create({
+    data: { businessId: business.id, name: `${RUN} branch` },
+  });
+  branchId = branch.id;
 });
 
 afterAll(async () => {
@@ -126,6 +140,8 @@ afterAll(async () => {
     where: { type: 'return.requested', body: { contains: RUN } },
   });
   await prisma.setting.deleteMany({ where: { key: 'notifications.returnRequestAlerts' } });
+  await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
+  await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
   await prisma.$disconnect();
 });
 
@@ -580,6 +596,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
         status: OrderStatus.DELIVERED,
         total: new Prisma.Decimal('125.00'),
         customerId,
+        branchId,
         items: {
           create: [
             { productId: productA, quantity: 3, price: new Prisma.Decimal('25.00') },

@@ -175,6 +175,14 @@ inventoryRouter.post('/inventory/:productId/movements', ...guard, async (req, re
     reference: parsed.data.reference,
     supplierId: parsed.data.supplierId,
     actorId: user.id,
+    // Pre-existing gap, found while applying O9.18: this route never read
+    // the branch switcher's header at all, unlike `/receive` and the list
+    // endpoint right above it — every single-movement adjustment silently
+    // ignored the switcher and fell through to `defaultBranchId()`. A
+    // single-business install never noticed; O9.18 now REFUSES a
+    // branch-less write once more than one business exists, which is what
+    // surfaced this.
+    branchId: req.branchId ?? undefined,
   }, req);
 
   req.log.info({

@@ -54,8 +54,13 @@ const RUN = `invtest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const userIds: string[] = [];
 const productIds: string[] = [];
+const businessIds: string[] = [];
 let ownerToken = '';
 let ownerId = '';
+/** So every write resolves ONE explicit branch rather than falling through
+ *  to `defaultBranchId()` — this suite's own database carries more than one
+ *  business (the seeded demo data), which now REFUSES to guess (O9.18). */
+let branchId = '';
 let demoToken = '';
 let supportToken = '';
 
@@ -92,6 +97,7 @@ function adjust(id: string, body: Record<string, unknown>, token = ownerToken) {
   return request(app)
     .post(`/api/v1/inventory/${id}/movements`)
     .set(auth(token))
+    .set('X-Branch-Id', branchId)
     .send(body);
 }
 
@@ -134,6 +140,16 @@ beforeAll(async () => {
   ownerId = owner.id;
   demoToken = demo.token;
   supportToken = support.token;
+
+  // O9.18: `defaultBranchId()` now refuses rather than guesses once more than
+  // one business exists, and this shared test database carries the seeded
+  // demo businesses. Every write in this suite must name its own branch.
+  const business = await prisma.business.create({ data: { name: `${RUN} business` } });
+  businessIds.push(business.id);
+  const branch = await prisma.branch.create({
+    data: { businessId: business.id, name: `${RUN} branch` },
+  });
+  branchId = branch.id;
 });
 
 afterAll(async () => {
@@ -144,6 +160,8 @@ afterAll(async () => {
   // Movements cascade from the product.
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
+  await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
   await prisma.notification.deleteMany({ where: { title: { contains: RUN } } });
   // Suppliers are not cascaded from the product — the movement's FK is
   // SetNull precisely so stock history survives a deleted supplier.
@@ -768,7 +786,7 @@ describe('receiving a whole delivery at once (F3.5)', () => {
   }
 
   function receive(body: Record<string, unknown>, path = '/api/v1/inventory/receive') {
-    return request(app).post(path).set(auth(ownerToken)).send(body);
+    return request(app).post(path).set(auth(ownerToken)).set('X-Branch-Id', branchId).send(body);
   }
 
   it('receives every line and moves the stock', async () => {
@@ -920,5 +938,30 @@ describe('receiving a whole delivery at once (F3.5)', () => {
     expect(
       (res.body as { data: { errors: { message: string }[] } }).data.errors[0]?.message,
     ).toMatch(/SKU or a barcode/i);
+  });
+});
+
+describe('defaultBranchId refuses to guess across businesses (O9.18)', () => {
+  it('400s a branch-less write once more than one business exists', async () => {
+    // This suite's own database already carries the seeded demo businesses
+    // PLUS the branch this file created in beforeAll — genuinely more than
+    // one business, with no way to know which one's default the caller
+    // meant. The regression this guards: `defaultBranchId()` used to
+    // silently `findFirst` whichever flagged branch it reached first.
+    const id = await makeProduct(5);
+
+    const res = await request(app)
+      .post(`/api/v1/inventory/${id}/movements`)
+      .set(auth(ownerToken))
+      // Deliberately NO X-Branch-Id — the one thing this test exists to omit.
+      .send({ delta: 1, reason: 'RECEIVED' });
+
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorBody).error.message).toMatch(/select a branch/i);
+
+    // Refused before anything moved — the write must leave no trace, same
+    // discipline as every other refusal in this file.
+    const movements = await prisma.stockMovement.count({ where: { productId: id } });
+    expect(movements).toBe(0);
   });
 });

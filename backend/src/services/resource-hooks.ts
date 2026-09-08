@@ -92,7 +92,7 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
      * till is broken, so a failure here must surface rather than be logged
      * and swallowed.
      */
-    afterCreate: async (row: Record<string, unknown>): Promise<void> => {
+    afterCreate: async (row: Record<string, unknown>, req: Request): Promise<void> => {
       const quantity = typeof row.stock === 'number' ? row.stock : 0;
 
       // Nothing to place. A zero-stock product is the normal case for a
@@ -100,10 +100,15 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
       // 0 row would be indistinguishable from one that was counted.
       if (quantity <= 0) return;
 
-      // Shares defaultBranchId() with every other write rather than picking a
-      // branch here — a second copy of "which branch when none is named" is
-      // free to drift from the flagged-default rule F8.2 established.
-      const branchId = await defaultBranchId();
+      // The switcher's own branch FIRST (O9.18) — an owner creating a
+      // product while scoped to "Marina" must have the opening stock land
+      // at Marina, not at whatever `defaultBranchId()` happens to resolve
+      // to. Only falls through to the shared default when the request
+      // genuinely named no branch, same as every other write in this file.
+      // Shares defaultBranchId() rather than picking a fallback branch here
+      // — a second copy of "which branch when none is named" is free to
+      // drift from the flagged-default rule F8.2 established.
+      const branchId = req.branchId ?? (await defaultBranchId());
 
       await prisma.branchStock.upsert({
         where: { productId_branchId: { productId: String(row.id), branchId } },

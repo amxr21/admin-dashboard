@@ -860,43 +860,30 @@ describe('a created product is visible at the till (O9.1)', () => {
   const productIds: string[] = [];
   const businessIds: string[] = [];
   let defaultBranch = '';
-  /** The install's real defaults, restored afterwards — see below. */
-  let previousDefaultIds: string[] = [];
 
+  /**
+   * An EXPLICIT branch header on every create, rather than manipulating the
+   * `isDefault` flag and leaning on `defaultBranchId()`'s fallback.
+   *
+   * The first two versions of this test did the latter, and each broke
+   * against real data in a different way: the first against multiple
+   * businesses each carrying their own flagged default (`isDefault` is
+   * unique PER BUSINESS, so `findFirst` returned whichever the engine
+   * reached first); the second because O9.18 made `defaultBranchId()`
+   * REFUSE outright once more than one business exists, which this suite's
+   * seeded demo data always does. Passing the branch this test cares about
+   * directly is what the real till already does via the switcher's header
+   * (`resource.route.ts`'s create route gained `withBranchContext` for
+   * exactly this, also part of O9.18), and it means this test asserts the
+   * hook's behaviour without depending on how many OTHER businesses happen
+   * to exist in a shared database.
+   */
   beforeAll(async () => {
     const business = await prisma.business.create({ data: { name: `${RUN} stock business` } });
     businessIds.push(business.id);
 
-    // `defaultBranchId()` answers "the flagged branch, else the oldest active
-    // one". The suite shares a database, so this must not depend on what other
-    // rows happen to exist.
-    //
-    // `isDefault` is unique PER BUSINESS, not globally — a seeded database has
-    // one flagged branch per business, and `findFirst` returns whichever the
-    // engine reaches first. So EVERY currently-flagged branch is unflagged for
-    // the duration and restored afterwards; clearing just one would leave
-    // another still winning the lookup, which is exactly what made the first
-    // version of this test fail against real data.
-    const existing = await prisma.branch.findMany({
-      where: { isActive: true, isDefault: true },
-      select: { id: true },
-    });
-    previousDefaultIds = existing.map((branch) => branch.id);
-
-    if (previousDefaultIds.length > 0) {
-      await prisma.branch.updateMany({
-        where: { id: { in: previousDefaultIds } },
-        data: { isDefault: false },
-      });
-    }
-
     const branch = await prisma.branch.create({
-      data: {
-        businessId: business.id,
-        name: `${RUN} Default Branch`,
-        isDefault: true,
-        isActive: true,
-      },
+      data: { businessId: business.id, name: `${RUN} Default Branch`, isActive: true },
     });
     defaultBranch = branch.id;
   });
@@ -906,20 +893,18 @@ describe('a created product is visible at the till (O9.1)', () => {
     await prisma.product.deleteMany({ where: { id: { in: productIds } } });
     await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
     await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
-
-    if (previousDefaultIds.length > 0) {
-      await prisma.branch.updateMany({
-        where: { id: { in: previousDefaultIds } },
-        data: { isDefault: true },
-      });
-    }
   });
 
-  it('writes the opening stock to the default branch', async () => {
-    const res = await request(app)
+  function createProduct(body: Record<string, unknown>) {
+    return request(app)
       .post('/api/v1/r/products')
       .set(auth(ownerToken))
-      .send({ name: `${RUN} opening stock`, price: '9.99', stock: 40 });
+      .set('X-Branch-Id', defaultBranch)
+      .send(body);
+  }
+
+  it('writes the opening stock to the branch named by the switcher', async () => {
+    const res = await createProduct({ name: `${RUN} opening stock`, price: '9.99', stock: 40 });
 
     expect(res.status).toBe(201);
 
@@ -941,10 +926,7 @@ describe('a created product is visible at the till (O9.1)', () => {
     // The create already wrote `Product.stock`. Routing this through
     // `adjustStock()` would move BOTH totals and leave the product claiming
     // 80 — the reason the hook writes the branch row directly.
-    const res = await request(app)
-      .post('/api/v1/r/products')
-      .set(auth(ownerToken))
-      .send({ name: `${RUN} no double count`, price: '4.00', stock: 25 });
+    const res = await createProduct({ name: `${RUN} no double count`, price: '4.00', stock: 25 });
 
     const productId = (res.body as RowBody).data.row.id as string;
     productIds.push(productId);
@@ -966,10 +948,7 @@ describe('a created product is visible at the till (O9.1)', () => {
     // goods. Inventing a RECEIVED movement would put stock in the ledger
     // that nobody received and make the first real delivery look like a
     // duplicate.
-    const res = await request(app)
-      .post('/api/v1/r/products')
-      .set(auth(ownerToken))
-      .send({ name: `${RUN} no movement`, price: '2.50', stock: 10 });
+    const res = await createProduct({ name: `${RUN} no movement`, price: '2.50', stock: 10 });
 
     const productId = (res.body as RowBody).data.row.id as string;
     productIds.push(productId);
@@ -983,10 +962,7 @@ describe('a created product is visible at the till (O9.1)', () => {
     // A catalogue entry added before its first delivery is the normal case.
     // A stored 0 would be indistinguishable from a branch that counted and
     // found none.
-    const res = await request(app)
-      .post('/api/v1/r/products')
-      .set(auth(ownerToken))
-      .send({ name: `${RUN} zero stock`, price: '1.00', stock: 0 });
+    const res = await createProduct({ name: `${RUN} zero stock`, price: '1.00', stock: 0 });
 
     const productId = (res.body as RowBody).data.row.id as string;
     productIds.push(productId);
