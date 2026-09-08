@@ -25,10 +25,10 @@ reasoning behind decisions already made, not for what is open.
 | ✅ | **F6** shifts (5 items) | merged |
 | ✅ | **F7.5** low-stock email (verified, not rebuilt) | merged |
 | ✅ | **F7.8 / F7.9** batch detail + `Supplier` | merged |
-| ⏳ | **F3.5** bulk receive | **PR #174** |
-| ⏳ | **O5** POS / till (11 items) | **PRs #175–#182** |
-| ⏳ | **O8** owner-editable permissions (6 items) | **PRs #183–#184** |
-| 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, unpushed |
+| ✅ | **F3.5** bulk receive | merged (#174) |
+| ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
+| ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
+| 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
 | 📋 | 16 items | see PENDING below |
 
 **Verification at this point:** backend 1001/1001 (47 files) · frontend
@@ -37,38 +37,24 @@ en/ar parity 1727/1727 · 6 additive migrations applied locally.
 
 ---
 
-# ⏳ IN FLIGHT — the PR stack (#174 → #184)
+# ✅ THE 2026-09-08 STACK IS MERGED
 
-**11 PRs, all MERGEABLE. Merge #174 FIRST, then upward.**
+**All 11 PRs (#174–#184) are in `dev`**, merged by the owner 2026-09-08.
+Verified file-by-file rather than trusting the PR states: `pos.service.ts`,
+`order-math.service.ts`, `role-permissions.service.ts`,
+`bulk-receive.service.ts`, `sale-screen.tsx`, `thermal-receipt.tsx`,
+`pos-api.ts` and the `CASHIER` enum value are all present on `origin/dev`.
 
-Only #174 targets `dev`; each one above targets the branch below it, so it
-cannot merge until that one lands. GitHub retargets the next PR to `dev`
-automatically as each one merges.
+That check was worth doing. Most of the stack merged into its BASE branch
+rather than into `dev` — the same pattern that orphaned #166 on 2026-09-07 —
+but the chain carried everything through this time, so nothing was lost.
 
-| PR | What | Base |
-|---|---|---|
-| #174 | F3.5 bulk receive | **`dev`** ← start here |
-| #175 | O5.2/5.3 payments + till session | #174 |
-| #176 | O5.4 shared receipt math | #175 |
-| #177 | O5.6 barcode scan | #176 |
-| #178 | O5.7/5.8 checkout | #177 |
-| #179 | O5.10 CASHIER role | #178 |
-| #180 | O5.5 sale screen | #179 |
-| #181 | O5.9 thermal receipt | #180 |
-| #182 | O5.11 till drawer UI | #181 |
-| #183 | O8.1–8.3/8.6 editable permissions | #182 |
-| #184 | O8.4/8.5 permissions matrix UI | #183 ← last |
-
-**Merge each into `dev`, never into its base branch.** That is the mistake
-that made #166 show as "merged" while its work never reached `dev` — see the
-2026-09-07 note further down.
-
-**Expect fake conflicts partway up.** Squash-merging rewrites SHAs, so each
-branch carries pre-squash copies of everything below it. `git rebase
-origin/dev` clears them; do not hand-resolve.
+**The rule still stands for the next stack: merge each PR into `dev`.** When a
+PR merges into its base instead, GitHub still marks it MERGED, and the only way
+to know whether the work actually reached `dev` is to look for the files.
 
 **Not yet pushed:** B4.7/B4.8 (per-line and partial returns) is committed on
-`work/pos-and-roles` and needs its own PR once the stack lands.
+`work/pos-and-roles`, rebased onto the merged `dev`, and needs its own PR.
 
 ---
 
