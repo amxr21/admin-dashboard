@@ -531,37 +531,106 @@ describe('taking a sale (O5.7, O5.8)', () => {
     expect(res.status).toBe(400);
   });
 
-  it('links the sale to a till session so the drawer can be reconciled', async () => {
-    const cashier = await makeUser(StaffRole.SUPPORT, 'pos-cashier');
-    const product = await makeProduct({ sku: `${RUN}-SELL-11`, price: '15.00', stock: 5 });
-    await stockAt(product.id, 5);
-
+  /**
+   * Whose drawer a sale belongs to (O9.17).
+   *
+   * ─── WHAT THIS REPLACED ──────────────────────────────────────────
+   * The previous version of this test opened a shift for a CASHIER, then
+   * sold as the OWNER while passing the cashier's `shiftId` in the body —
+   * and asserted the payment landed on that shift. It passed, and it was
+   * asserting the bug: the id was taken from the request and written
+   * unverified, so one person's sale could be credited to another person's
+   * drawer. `closeTill` then computed a variance against a figure that was
+   * never theirs.
+   *
+   * The id now comes from the token, so these tests sell as the person whose
+   * shift it is and prove the body cannot override it.
+   */
+  async function openShiftFor(userId: string) {
     const shift = await prisma.shift.create({
       data: {
-        userId: cashier.id,
+        userId,
         branchId,
-        openedById: cashier.id,
+        openedById: userId,
         startedAt: new Date(),
         openingFloat: new Prisma.Decimal('0.00'),
       },
       select: { id: true },
     });
     shiftIds.push(shift.id);
+    return shift;
+  }
+
+  async function paymentShiftFor(res: request.Response) {
+    const payment = await prisma.payment.findFirst({
+      where: { orderId: (res.body as { data: { orderId: string } }).data.orderId },
+      select: { shiftId: true },
+    });
+    return payment?.shiftId ?? null;
+  }
+
+  it('links the sale to the seller own open till session', async () => {
+    const owner = await prisma.user.findFirst({
+      where: { email: `${RUN}-owner@example.test` },
+      select: { id: true },
+    });
+    const shift = await openShiftFor(owner!.id);
+
+    const product = await makeProduct({ sku: `${RUN}-SELL-11`, price: '15.00', stock: 5 });
+    await stockAt(product.id, 5);
 
     const res = await sell({
       lines: [{ productId: product.id, quantity: 1 }],
       method: 'cash',
       tendered: '15.00',
-      shiftId: shift.id,
     });
 
     expect(res.status).toBe(201);
+    // Attached without the client naming it — that is the whole point.
+    expect(await paymentShiftFor(res)).toBe(shift.id);
 
-    const payment = await prisma.payment.findFirst({
-      where: { orderId: (res.body as { data: { orderId: string } }).data.orderId },
-      select: { shiftId: true },
+    await prisma.shift.update({
+      where: { id: shift.id },
+      data: { endedAt: new Date() },
+    });
+  });
+
+  it('ignores a shiftId in the body — it cannot credit another drawer', async () => {
+    // Somebody else's open drawer. Before the fix, naming it here moved this
+    // sale's cash into their count.
+    const cashier = await makeUser(StaffRole.SUPPORT, 'pos-other-cashier');
+    const theirs = await openShiftFor(cashier.id);
+
+    const product = await makeProduct({ sku: `${RUN}-SELL-12`, price: '15.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sell({
+      lines: [{ productId: product.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '15.00',
+      shiftId: theirs.id,
     });
 
-    expect(payment?.shiftId).toBe(shift.id);
+    expect(res.status).toBe(201);
+    // The seller (owner) has no open shift, so this belongs to no drawer —
+    // and emphatically not to the cashier's.
+    expect(await paymentShiftFor(res)).not.toBe(theirs.id);
+    expect(await paymentShiftFor(res)).toBeNull();
+  });
+
+  it('sells fine with no open shift at all', async () => {
+    // An owner ringing up a sale outside any session is real. The payment
+    // simply belongs to no drawer; it is not an error.
+    const product = await makeProduct({ sku: `${RUN}-SELL-13`, price: '9.00', stock: 3 });
+    await stockAt(product.id, 3);
+
+    const res = await sell({
+      lines: [{ productId: product.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '9.00',
+    });
+
+    expect(res.status).toBe(201);
+    expect(await paymentShiftFor(res)).toBeNull();
   });
 });

@@ -22,21 +22,15 @@ import type { ScannedProduct } from '@/lib/pos-api';
  *    flattened "something went wrong" leaves them stuck at the counter.
  */
 
-const { scanProduct, checkout, fetchMyShift } = vi.hoisted(() => ({
+const { scanProduct, checkout } = vi.hoisted(() => ({
   scanProduct: vi.fn(),
   checkout: vi.fn(),
-  fetchMyShift: vi.fn(),
 }));
 
 vi.mock('@/lib/pos-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/pos-api')>()),
   scanProduct,
   checkout,
-}));
-
-vi.mock('@/lib/shifts-api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/shifts-api')>()),
-  fetchMyShift,
 }));
 
 function makeProduct(overrides: Partial<ScannedProduct> = {}): ScannedProduct {
@@ -55,7 +49,6 @@ function makeProduct(overrides: Partial<ScannedProduct> = {}): ScannedProduct {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  fetchMyShift.mockResolvedValue({ id: 'shift-1' });
 });
 
 async function scan(code: string) {
@@ -154,7 +147,7 @@ describe('building a sale', () => {
 });
 
 describe('taking payment', () => {
-  it('sends the cart and the open shift, then clears', async () => {
+  it('sends the cart, then clears', async () => {
     scanProduct.mockResolvedValue(makeProduct());
     checkout.mockResolvedValue({
       orderId: 'o1',
@@ -184,11 +177,22 @@ describe('taking payment', () => {
           lines: [{ productId: 'p1', quantity: 1 }],
           method: 'cash',
           tendered: '10.00',
-          // Attached so the drawer can be reconciled at close.
-          shiftId: 'shift-1',
         }),
       );
     });
+
+    /**
+     * No `shiftId` — the server resolves it from the signed-in user (O9.17).
+     *
+     * This screen used to read the open shift once on mount and send that id
+     * with every sale. Held for the life of the page it went stale the moment
+     * the cashier clocked out, so handing the terminal over without a reload
+     * credited the PREVIOUS person's drawer. Asserted explicitly because
+     * reintroducing it would look harmless and silently misattribute cash.
+     */
+    expect(checkout).not.toHaveBeenCalledWith(
+      expect.objectContaining({ shiftId: expect.anything() }),
+    );
 
     // Cart cleared, ready for the next customer.
     await waitFor(() => {
@@ -247,37 +251,5 @@ describe('taking payment', () => {
     render(<SaleScreen />);
 
     expect(await screen.findByRole('button', { name: /take payment/i })).toBeDisabled();
-  });
-
-  it('sells without a shift when none is open', async () => {
-    // An owner ringing up a sale outside any session is real. The payment
-    // simply has no shift rather than the sale being refused.
-    fetchMyShift.mockResolvedValue(null);
-    scanProduct.mockResolvedValue(makeProduct());
-    checkout.mockResolvedValue({
-      orderId: 'o1',
-      orderNumber: 'POS-1',
-      subtotal: '4.50',
-      taxAmount: '0.00',
-      total: '4.50',
-      change: null,
-    });
-
-    render(
-      <>
-        <SaleScreen />
-        <Toaster />
-      </>,
-    );
-
-    await scan('5012345678900');
-    await screen.findByText('Flat white');
-    await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
-
-    await waitFor(() => {
-      expect(checkout).toHaveBeenCalledWith(
-        expect.not.objectContaining({ shiftId: expect.anything() }),
-      );
-    });
   });
 });

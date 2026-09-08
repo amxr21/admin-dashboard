@@ -49,7 +49,10 @@ export async function checkout(input: {
   lines: CheckoutLine[];
   method: string;
   tendered?: string;
-  shiftId?: string;
+  /** Removed (O9.17) — the server resolves the shift from the signed-in user.
+   *  A client-supplied one went stale when the cashier clocked out and
+   *  credited the previous person's drawer. */
+  // shiftId is intentionally absent.
   customerId?: string;
   note?: string;
 }): Promise<CheckoutResult> {

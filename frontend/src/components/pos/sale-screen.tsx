@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { AlertTriangle, Minus, Plus, Printer, ScanLine, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -19,7 +19,6 @@ import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { checkout, scanProduct, type ScannedProduct } from '@/lib/pos-api';
 import { ThermalReceipt, type ReceiptData } from '@/components/pos/thermal-receipt';
-import { fetchMyShift } from '@/lib/shifts-api';
 
 /**
  * The till (O5.5).
@@ -30,6 +29,17 @@ import { fetchMyShift } from '@/lib/shifts-api';
  * silently changes a quantity to 5012345678900. So focus returns to the scan
  * field after every action, which is also what a cashier expects — the next
  * thing they do is always scan the next item.
+ *
+ * ─── THIS SCREEN DOES NOT KNOW WHICH SHIFT IT IS IN ──────────────────
+ * It used to: it read the open shift once on mount and sent that id with
+ * every sale. Held for the life of the page, that id went stale the moment
+ * the cashier clocked out — and a cashier who hands the terminal over
+ * without a reload then posted the PREVIOUS person's shift, quietly moving
+ * their takings into somebody else's drawer (O9.17).
+ *
+ * The server now resolves the shift from the authenticated user on every
+ * checkout, so there is nothing here to go stale. Do not reintroduce a
+ * client-held shift id.
  *
  * ─── THE TOTAL IS COMPUTED SERVER-SIDE, NOT HERE ─────────────────────
  * What this screen shows is an ESTIMATE for the customer's benefit. The
@@ -51,7 +61,6 @@ export function SaleScreen() {
   const [code, setCode] = useState('');
   const [method, setMethod] = useState('cash');
   const [tendered, setTendered] = useState('');
-  const [shiftId, setShiftId] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [isSelling, setIsSelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,15 +70,6 @@ export function SaleScreen() {
   const [lastSale, setLastSale] = useState<ReceiptData | null>(null);
 
   const scanField = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    // The sale is attached to the open till session so the drawer can be
-    // reconciled. No open shift is not an error — an owner ringing up a sale
-    // outside any session is real; the payment simply has no shift.
-    void fetchMyShift()
-      .then((shift) => setShiftId(shift?.id ?? null))
-      .catch(() => setShiftId(null));
-  }, []);
 
   /** Display only — see the note at the top of this file. */
   const estimate = useMemo(
@@ -154,7 +154,6 @@ export function SaleScreen() {
         lines: lines.map((line) => ({ productId: line.product.id, quantity: line.quantity })),
         method,
         ...(method === 'cash' && tendered.trim() !== '' ? { tendered: tendered.trim() } : {}),
-        ...(shiftId ? { shiftId } : {}),
       });
 
       // Kept on screen rather than toasted away: the change to hand back is

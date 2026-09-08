@@ -6,6 +6,7 @@ import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
 import { checkout, scanProduct } from '../../services/pos.service.js';
+import { getOpenShift } from '../../services/shifts.service.js';
 
 /**
  * The till (O5).
@@ -70,7 +71,23 @@ const checkoutSchema = z.object({
     .trim()
     .regex(/^\d{1,8}(\.\d{1,2})?$/, 'Enter an amount like 20.00')
     .optional(),
-  shiftId: z.string().trim().min(1).optional(),
+  /**
+   * `shiftId` is deliberately NOT accepted here (O9.17).
+   *
+   * It used to be, and it was written onto the `Payment` row unverified —
+   * nothing checked the shift existed, was still open, or belonged to the
+   * caller. The drawer is reconciled by summing the payments carrying a
+   * shift id, so a wrong value silently moved cash into somebody else's
+   * count and `closeTill` then computed a variance against a figure that was
+   * never that cashier's.
+   *
+   * The realistic path was not an attack: the sale screen read the shift once
+   * on mount and held it for the life of the page, so a cashier who clocked
+   * out and handed the terminal over without a reload kept posting the
+   * PREVIOUS person's id. Resolving it server-side from the authenticated
+   * user removes the id from the client's hands entirely, and the stale-page
+   * case disappears with it.
+   */
   customerId: z.string().trim().min(1).optional(),
   note: z.string().trim().max(255).optional(),
 });
@@ -92,8 +109,21 @@ posRouter.post('/pos/checkout', ...guard, async (req, res) => {
 
   const user = requireUser(req);
 
+  // Whose drawer this sale belongs to is decided HERE, from the token —
+  // never from the body. `actorId` was already derived this way; `shiftId`
+  // sitting next to it in the same write while being client-supplied is what
+  // made the inconsistency easy to miss on review.
+  //
+  // No open shift is not an error: an owner ringing up a sale outside any
+  // session is real, and that payment simply belongs to no drawer.
+  const openShift = await getOpenShift(user.id);
+
   const result = await checkout(
-    { ...parsed.data, branchId: req.branchId ?? undefined },
+    {
+      ...parsed.data,
+      branchId: req.branchId ?? undefined,
+      shiftId: openShift?.id,
+    },
     user.id,
     req,
   );

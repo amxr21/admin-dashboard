@@ -126,6 +126,13 @@ export interface CheckoutInput {
   tendered?: string | undefined;
   branchId?: string | undefined;
   /** The till session this belongs to, so the drawer can be reconciled. */
+  /**
+   * The till session this sale belongs to. **Resolved by the ROUTE from the
+   * authenticated user's own open shift, never accepted from the request
+   * body** (O9.17) — the drawer is reconciled by summing the payments that
+   * carry a shift id, so a client-supplied one silently moves cash into
+   * another cashier's count.
+   */
   shiftId?: string | undefined;
   customerId?: string | undefined;
   note?: string | undefined;
