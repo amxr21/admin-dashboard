@@ -543,11 +543,30 @@ till its branch for free.
       sellable, and the till decides whether to warn. Guarded by `orders`,
       not `inventory`: selling a coffee must not require stock-editing
       rights. 13 tests
-- [ ] O5.7 Create the order + its `OrderItem`s with price AND cost snapshotted
-      (the F1.1 rule), decrement per-branch stock with a `SOLD` movement, and
-      record the `Payment` — all in ONE transaction
-- [ ] O5.8 Refuse a sale that would take branch stock negative, or decide
-      deliberately that it is allowed
+- [x] **O5.7 — DONE 2026-09-08.** `POST /pos/checkout`. **The first thing in
+      this app that creates an `Order`** — until now `prisma.order.create`
+      existed only in tests and the seeder. Order, lines, `SOLD` movements,
+      per-branch stock, product stock and the `Payment` all commit in ONE
+      transaction: a sale that recorded the money but not the stock leaves
+      books and shelves disagreeing with nothing to say which half happened,
+      which is exactly what a dropped connection mid-payment produces.
+      **Price AND cost snapshotted** (F1.1) — a test raises the supplier cost
+      AFTER the sale and asserts the recorded profit does not move. Missing
+      cost stores NULL, never 0, or the sale reports as pure profit. Prices
+      are read INSIDE the transaction, so the receipt shows the price at the
+      moment of sale. Stock movements are written directly rather than through
+      `adjustStock`, which opens its own transaction — nesting it would commit
+      stock before the payment. 11 tests; three rules watched failing
+- [x] **O5.8 — DECIDED + DONE 2026-09-08: refuse by DEFAULT, overridable.**
+      New `inventory.allowNegativeStock` setting, default FALSE. Refusing
+      suits a shop whose count is trusted — selling what is not there produces
+      a negative somebody has to explain later, while the cashier standing at
+      the shelf can see the truth NOW — but a shop mid-stocktake, or one whose
+      counts lag reality, must not have its till stop working over
+      bookkeeping. The error names the available number so it can be checked
+      against the shelf. With the setting on, stock goes genuinely negative
+      and stays visible rather than being clamped to zero, which would hide
+      the discrepancy
 
 #### Stage C — receipt + role
 - [ ] O5.9 Thermal receipt renderer (58/80mm) — the invoice is A4; different

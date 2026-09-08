@@ -26,6 +26,8 @@ const RUN = `pos-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const userIds: string[] = [];
 const productIds: string[] = [];
 const businessIds: string[] = [];
+const shiftIds: string[] = [];
+const orderIds: string[] = [];
 
 let branchId = '';
 let ownerToken = '';
@@ -96,6 +98,18 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Orders created BY the checkout tests — found via their line items, since
+  // the sale generates its own order number.
+  const sold = await prisma.orderItem.findMany({
+    where: { productId: { in: productIds } },
+    select: { orderId: true },
+  });
+  const soldOrderIds = [...new Set([...orderIds, ...sold.map((item) => item.orderId)])];
+
+  await prisma.payment.deleteMany({ where: { orderId: { in: soldOrderIds } } });
+  await prisma.order.deleteMany({ where: { id: { in: soldOrderIds } } });
+  await prisma.shift.deleteMany({ where: { id: { in: shiftIds } } });
+  await prisma.stockMovement.deleteMany({ where: { productId: { in: productIds } } });
   await prisma.branchStock.deleteMany({ where: { productId: { in: productIds } } });
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
@@ -268,5 +282,286 @@ describe('who may use the till', () => {
     const res = await scan(`${RUN}-3330001112223`, supportToken);
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe('taking a sale (O5.7, O5.8)', () => {
+  /**
+   * The first thing in this app that creates an `Order`.
+   *
+   * ─── WHAT THESE TESTS PROTECT ────────────────────────────────────────
+   * 1. ATOMICITY. Order, lines, stock movements and payment commit together.
+   *    A sale that recorded the money but not the stock leaves books and
+   *    shelves disagreeing with nothing to say which half happened — which is
+   *    exactly what a dropped connection mid-payment produces.
+   * 2. THE F1.1 SNAPSHOT RULE. `price` AND `cost` are captured at sale time.
+   *    Margin reporting once joined `products.cost` live, so a supplier price
+   *    change silently rewrote the profit on every past order; a checkout
+   *    setting only `price` reintroduces exactly that.
+   * 3. Missing cost stores NULL, never 0 — a fabricated zero reports the sale
+   *    as pure profit.
+   */
+
+  async function stockAt(productId: string, quantity: number) {
+    await prisma.branchStock.upsert({
+      where: { productId_branchId: { productId, branchId } },
+      create: { productId, branchId, quantity },
+      update: { quantity },
+    });
+    await prisma.product.update({ where: { id: productId }, data: { stock: quantity } });
+  }
+
+  function sell(body: Record<string, unknown>, token = ownerToken) {
+    return request(app)
+      .post('/api/v1/pos/checkout')
+      .set(auth(token))
+      .set('X-Branch-Id', branchId)
+      .send(body);
+  }
+
+  it('creates the order, moves the stock and records the payment', async () => {
+    const product = await makeProduct({ sku: `${RUN}-SELL-1`, price: '10.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sell({
+      lines: [{ productId: product.id, quantity: 2 }],
+      method: 'cash',
+      tendered: '50.00',
+    });
+
+    expect(res.status).toBe(201);
+
+    const body = res.body as {
+      data: { orderId: string; total: string; change: string | null };
+    };
+
+    // 2 x 10.00, no tax configured in this suite.
+    expect(body.data.total).toBe('20.00');
+    // Change is STORED, not recomputed at read time.
+    expect(body.data.change).toBe('30.00');
+
+    const order = await prisma.order.findUnique({
+      where: { id: body.data.orderId },
+      select: {
+        status: true,
+        branchId: true,
+        items: { select: { quantity: true, price: true, cost: true } },
+        payments: { select: { amount: true, method: true, tendered: true, change: true } },
+      },
+    });
+
+    expect(order?.status).toBe('CONFIRMED');
+    expect(order?.branchId).toBe(branchId);
+    expect(order?.items).toHaveLength(1);
+    expect(order?.payments).toHaveLength(1);
+    expect(order?.payments[0]?.amount.toFixed(2)).toBe('20.00');
+
+    // Stock down at the branch AND on the product — the two numbers F8.2
+    // keeps in agreement.
+    const after = await prisma.branchStock.findUnique({
+      where: { productId_branchId: { productId: product.id, branchId } },
+    });
+    expect(after?.quantity).toBe(3);
+
+    const movement = await prisma.stockMovement.findFirst({
+      where: { productId: product.id, reason: 'SOLD' },
+      select: { delta: true, branchId: true },
+    });
+    expect(movement?.delta).toBe(-2);
+    expect(movement?.branchId).toBe(branchId);
+  });
+
+  it('snapshots BOTH price and cost at sale time (F1.1)', async () => {
+    const product = await makeProduct({ sku: `${RUN}-SELL-2`, price: '8.00', stock: 10 });
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { cost: new Prisma.Decimal('3.00') },
+    });
+    await stockAt(product.id, 10);
+
+    const res = await sell({ lines: [{ productId: product.id, quantity: 1 }], method: 'card' });
+    const orderId = (res.body as { data: { orderId: string } }).data.orderId;
+
+    // The supplier puts their price up AFTER the sale.
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { cost: new Prisma.Decimal('7.50'), price: new Prisma.Decimal('20.00') },
+    });
+
+    const item = await prisma.orderItem.findFirst({
+      where: { orderId },
+      select: { price: true, cost: true },
+    });
+
+    // Both frozen at what they were. This is the bug OrderItem.cost exists to
+    // prevent: a live join would now report the sale at 0.50 profit instead
+    // of 5.00, rewriting history.
+    expect(item?.price.toFixed(2)).toBe('8.00');
+    expect(item?.cost?.toFixed(2)).toBe('3.00');
+  });
+
+  it('stores NULL cost when the product has none — never 0', async () => {
+    // "Not recorded" is a real, permanent state. A fabricated zero would
+    // report the whole sale as pure profit.
+    const product = await makeProduct({ sku: `${RUN}-SELL-3`, price: '6.00', stock: 4 });
+    await stockAt(product.id, 4);
+
+    const res = await sell({ lines: [{ productId: product.id, quantity: 1 }], method: 'cash' });
+    const orderId = (res.body as { data: { orderId: string } }).data.orderId;
+
+    const item = await prisma.orderItem.findFirst({ where: { orderId }, select: { cost: true } });
+
+    expect(item?.cost).toBeNull();
+  });
+
+  it('refuses a sale that would take branch stock negative (O5.8)', async () => {
+    const product = await makeProduct({ sku: `${RUN}-SELL-4`, price: '5.00', stock: 2 });
+    await stockAt(product.id, 2);
+
+    const res = await sell({ lines: [{ productId: product.id, quantity: 3 }], method: 'cash' });
+
+    expect(res.status).toBe(400);
+    // Names the number, so the cashier can check the shelf against it.
+    expect((res.body as { error: { message: string } }).error.message).toMatch(/Only 2/);
+  });
+
+  it('writes NOTHING when a line is refused — atomicity', async () => {
+    // The rule that matters. A partially applied sale is a shop whose books
+    // and shelves disagree.
+    const ok = await makeProduct({ sku: `${RUN}-SELL-5`, price: '5.00', stock: 10 });
+    const short = await makeProduct({ sku: `${RUN}-SELL-6`, price: '5.00', stock: 1 });
+    await stockAt(ok.id, 10);
+    await stockAt(short.id, 1);
+
+    const before = await prisma.order.count();
+
+    const res = await sell({
+      lines: [
+        { productId: ok.id, quantity: 2 },
+        { productId: short.id, quantity: 5 },
+      ],
+      method: 'cash',
+    });
+
+    expect(res.status).toBe(400);
+
+    // No order, and the GOOD line's stock is untouched.
+    expect(await prisma.order.count()).toBe(before);
+
+    const okStock = await prisma.branchStock.findUnique({
+      where: { productId_branchId: { productId: ok.id, branchId } },
+    });
+    expect(okStock?.quantity).toBe(10);
+  });
+
+  it('allows an oversell when the setting says so', async () => {
+    // A shop mid-stocktake must not have its till stop working over
+    // bookkeeping — hence the escape hatch, and hence its default being off.
+    const product = await makeProduct({ sku: `${RUN}-SELL-7`, price: '5.00', stock: 1 });
+    await stockAt(product.id, 1);
+
+    await prisma.setting.upsert({
+      where: { key: 'inventory.allowNegativeStock' },
+      create: { key: 'inventory.allowNegativeStock', value: true },
+      update: { value: true },
+    });
+
+    try {
+      const res = await sell({ lines: [{ productId: product.id, quantity: 3 }], method: 'cash' });
+
+      expect(res.status).toBe(201);
+
+      const after = await prisma.branchStock.findUnique({
+        where: { productId_branchId: { productId: product.id, branchId } },
+      });
+      // Negative, and visible as such — the discrepancy is recorded rather
+      // than clamped to zero, which would hide it.
+      expect(after?.quantity).toBe(-2);
+    } finally {
+      await prisma.setting.deleteMany({ where: { key: 'inventory.allowNegativeStock' } });
+    }
+  });
+
+  it('refuses tendered less than the total', async () => {
+    const product = await makeProduct({ sku: `${RUN}-SELL-8`, price: '30.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sell({
+      lines: [{ productId: product.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '20.00',
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('leaves tendered and change NULL on a card sale', async () => {
+    // Nothing was handed over and nothing came back. Null means "not
+    // applicable", never zero.
+    const product = await makeProduct({ sku: `${RUN}-SELL-9`, price: '12.00', stock: 3 });
+    await stockAt(product.id, 3);
+
+    const res = await sell({ lines: [{ productId: product.id, quantity: 1 }], method: 'card' });
+    const orderId = (res.body as { data: { orderId: string } }).data.orderId;
+
+    const payment = await prisma.payment.findFirst({
+      where: { orderId },
+      select: { tendered: true, change: true },
+    });
+
+    expect(payment?.tendered).toBeNull();
+    expect(payment?.change).toBeNull();
+  });
+
+  it('refuses the same product on two lines', async () => {
+    // Each line would decrement stock separately and print twice on the
+    // receipt. The cart merges them; this refuses rather than silently
+    // summing — the same call bulk receive makes.
+    const product = await makeProduct({ sku: `${RUN}-SELL-10`, price: '5.00', stock: 10 });
+    await stockAt(product.id, 10);
+
+    const res = await sell({
+      lines: [
+        { productId: product.id, quantity: 1 },
+        { productId: product.id, quantity: 1 },
+      ],
+      method: 'cash',
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('links the sale to a till session so the drawer can be reconciled', async () => {
+    const cashier = await makeUser(StaffRole.SUPPORT, 'pos-cashier');
+    const product = await makeProduct({ sku: `${RUN}-SELL-11`, price: '15.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const shift = await prisma.shift.create({
+      data: {
+        userId: cashier.id,
+        branchId,
+        openedById: cashier.id,
+        startedAt: new Date(),
+        openingFloat: new Prisma.Decimal('0.00'),
+      },
+      select: { id: true },
+    });
+    shiftIds.push(shift.id);
+
+    const res = await sell({
+      lines: [{ productId: product.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '15.00',
+      shiftId: shift.id,
+    });
+
+    expect(res.status).toBe(201);
+
+    const payment = await prisma.payment.findFirst({
+      where: { orderId: (res.body as { data: { orderId: string } }).data.orderId },
+      select: { shiftId: true },
+    });
+
+    expect(payment?.shiftId).toBe(shift.id);
   });
 });
