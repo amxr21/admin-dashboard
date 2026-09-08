@@ -77,6 +77,22 @@ const approveBody = z
       .regex(/^\d+(\.\d{1,2})?$/, 'Enter an amount like 49.99')
       .optional(),
     restock: z.boolean(),
+    /**
+     * Per-line decisions (B4.7 / B4.8). Omit to accept every line in full —
+     * what approving a return has always meant, so an older client keeps
+     * working unchanged.
+     */
+    items: z
+      .array(
+        z.object({
+          returnItemId: z.string().trim().min(1),
+          accepted: z.boolean(),
+          /** Omitted means "all of what was asked". */
+          acceptedQuantity: z.number().int().positive().optional(),
+          rejectionReason: z.string().trim().max(255).optional(),
+        }),
+      )
+      .optional(),
   })
   .strict();
 
@@ -119,7 +135,8 @@ returnsRouter.post('/returns/:id/approve', ...guard, async (req, res) => {
 
   const result = await approveReturn(
     id,
-    { ...parsed.data, actorId: user.id },
+    // The branch the goods come back to, from the switcher (F8.2).
+    { ...parsed.data, actorId: user.id, branchId: req.branchId ?? undefined },
     req,
   );
 

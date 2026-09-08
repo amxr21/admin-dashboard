@@ -1085,9 +1085,42 @@ model Return {
 /// A line item being returned — a QUANTITY against an existing OrderItem, not
 /// a copy of it. Price and product are read through the relation so a return
 /// can never disagree with what the order actually recorded.
+/// Whether ONE line of a return was accepted (B4.7).
+///
+/// Separate from `ReturnStatus`, which describes the whole request: a return
+/// of three items can legitimately accept two and refuse the third, and a
+/// single status cannot say that.
+enum ReturnItemStatus {
+  /// Not yet decided — the state every line starts in.
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
 model ReturnItem {
   id       String @id @default(cuid())
+  /// How many the customer ASKED to return.
   quantity Int
+
+  /// ─── PER-LINE DECISION (B4.7) ─────────────────────────────────────
+  /// Defaults to PENDING so every existing row keeps its meaning: approving
+  /// a return used to accept all of it, and `approveReturn` still does that
+  /// by marking each line ACCEPTED. Nothing is reinterpreted retroactively.
+  status ReturnItemStatus @default(PENDING)
+
+  /// How many were actually accepted (B4.8). NULL until decided; on an
+  /// ACCEPTED line it may be FEWER than `quantity` — two of three arrived in
+  /// sellable condition, say.
+  ///
+  /// Nullable rather than defaulting to `quantity`, because "not yet decided"
+  /// and "decided, and the answer happens to equal what was asked" are
+  /// different facts, and the refund and restock both read this one.
+  acceptedQuantity Int? @map("accepted_quantity")
+
+  /// Why a line was refused. Required by the service when REJECTED — the
+  /// customer is owed a reason, and "some of your return was refused" with
+  /// no explanation is the complaint that follows.
+  rejectionReason String? @map("rejection_reason") @db.VarChar(255)
 
   returnId String @map("return_id")
   /// Cascade — a return's items have no meaning without the return.

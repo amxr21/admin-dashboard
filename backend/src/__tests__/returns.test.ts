@@ -550,3 +550,321 @@ describe('requesting a return notifies staff', () => {
     ).toBe(0);
   });
 });
+
+describe('deciding a return line by line (B4.7, B4.8)', () => {
+  /**
+   * ─── WHAT THESE PROTECT ──────────────────────────────────────────────
+   * Approving a return used to be all-or-nothing. A shop that gets three
+   * items back and finds one unsellable had to accept all three or refuse
+   * the lot — so the money and the stock were both wrong, in opposite
+   * directions.
+   *
+   * The rules that matter here move real money and real stock:
+   *  1. The refund is capped to what was ACCEPTED, not what was asked.
+   *     Refunding the full request after refusing a line pays for goods the
+   *     shop never took back.
+   *  2. Only accepted quantities are restocked. A refused line goes back to
+   *     the customer and was never on the shelf.
+   *  3. A refused line needs a REASON — "some of your return was refused"
+   *     with no explanation is the complaint that follows.
+   */
+
+  /** An order with TWO distinct lines, for the partial cases. */
+  async function makeTwoLineOrder() {
+    const productA = await makeProduct();
+    const productB = await makeProduct();
+
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `${RUN}-two-${orderIds.length}`,
+        status: OrderStatus.DELIVERED,
+        total: new Prisma.Decimal('125.00'),
+        customerId,
+        items: {
+          create: [
+            { productId: productA, quantity: 3, price: new Prisma.Decimal('25.00') },
+            { productId: productB, quantity: 2, price: new Prisma.Decimal('25.00') },
+          ],
+        },
+      },
+      include: { items: true },
+    });
+    orderIds.push(order.id);
+
+    return {
+      orderId: order.id,
+      lineA: order.items[0]!,
+      lineB: order.items[1]!,
+      productA,
+      productB,
+    };
+  }
+
+  async function requestReturn(orderId: string, items: { orderItemId: string; quantity: number }[]) {
+    const res = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: `${RUN} partial`, items });
+
+    const created = res.body as { data: { return: { id: string } } };
+
+    const rows = await prisma.returnItem.findMany({
+      where: { returnId: created.data.return.id },
+      select: { id: true, orderItemId: true, quantity: true },
+    });
+
+    return { returnId: created.data.return.id, rows };
+  }
+
+  it('accepts everything when no decisions are given', async () => {
+    // The behaviour approving a return has always had, so an older client
+    // keeps working unchanged.
+    const { orderId, lineA } = await makeTwoLineOrder();
+    const { returnId } = await requestReturn(orderId, [
+      { orderItemId: lineA.id, quantity: 2 },
+    ]);
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${returnId}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'REFUND', refundAmount: '50.00', restock: false });
+
+    expect(res.status).toBe(200);
+
+    const items = await prisma.returnItem.findMany({ where: { returnId } });
+    expect(items[0]?.status).toBe('ACCEPTED');
+    expect(items[0]?.acceptedQuantity).toBe(2);
+  });
+
+  it('caps the refund to what was ACCEPTED, not what was asked', async () => {
+    // The money rule. Two lines of 25.00 each requested; one refused, so the
+    // ceiling is 50.00 rather than 125.00.
+    const { orderId, lineA, lineB } = await makeTwoLineOrder();
+    const { returnId, rows } = await requestReturn(orderId, [
+      { orderItemId: lineA.id, quantity: 2 },
+      { orderItemId: lineB.id, quantity: 2 },
+    ]);
+
+    const rowA = rows.find((row) => row.orderItemId === lineA.id)!;
+    const rowB = rows.find((row) => row.orderItemId === lineB.id)!;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${returnId}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        // 100.00 was the ceiling before the refusal; now only A's 2 count.
+        refundAmount: '100.00',
+        restock: false,
+        items: [
+          { returnItemId: rowA.id, accepted: true },
+          { returnItemId: rowB.id, accepted: false, rejectionReason: 'Used, not sellable' },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error: { message: string } }).error.message).toMatch(/50\.00/);
+  });
+
+  it('restocks only the accepted quantity, at the right branch', async () => {
+    // The stock rule, plus the F8.2 invariant: the movement, `BranchStock`
+    // and `Product.stock` all have to agree.
+    const { orderId, lineA, productA } = await makeTwoLineOrder();
+    const { returnId, rows } = await requestReturn(orderId, [
+      { orderItemId: lineA.id, quantity: 3 },
+    ]);
+
+    const before = await prisma.product.findUnique({ where: { id: productA } });
+
+    await request(app)
+      .post(`/api/v1/returns/${returnId}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '25.00',
+        restock: true,
+        // Three came back; only ONE was sellable.
+        items: [{ returnItemId: rows[0]!.id, accepted: true, acceptedQuantity: 1 }],
+      })
+      .expect(200);
+
+    const after = await prisma.product.findUnique({ where: { id: productA } });
+    expect(after!.stock).toBe(before!.stock + 1);
+
+    const movement = await prisma.stockMovement.findFirst({
+      where: { productId: productA, reason: 'RETURNED' },
+      select: { delta: true, branchId: true },
+    });
+
+    expect(movement?.delta).toBe(1);
+    // Recorded against a branch — without it the movement log and
+    // BranchStock stop agreeing with Product.stock.
+    expect(movement?.branchId).not.toBeNull();
+  });
+
+  it('does not restock a refused line', async () => {
+    // It went back to the customer; it was never on the shelf.
+    const { orderId, lineA, lineB, productB } = await makeTwoLineOrder();
+    const { returnId, rows } = await requestReturn(orderId, [
+      { orderItemId: lineA.id, quantity: 1 },
+      { orderItemId: lineB.id, quantity: 1 },
+    ]);
+
+    const rowA = rows.find((row) => row.orderItemId === lineA.id)!;
+    const rowB = rows.find((row) => row.orderItemId === lineB.id)!;
+    const before = await prisma.product.findUnique({ where: { id: productB } });
+
+    await request(app)
+      .post(`/api/v1/returns/${returnId}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '25.00',
+        restock: true,
+        items: [
+          { returnItemId: rowA.id, accepted: true },
+          { returnItemId: rowB.id, accepted: false, rejectionReason: 'Missing packaging' },
+        ],
+      })
+      .expect(200);
+
+    const after = await prisma.product.findUnique({ where: { id: productB } });
+    expect(after!.stock).toBe(before!.stock);
+
+    // And NO movement row at all for the refused product. Checking the stock
+    // total alone is not enough: a rejected line carries quantity 0, so a
+    // restock that failed to skip it would add zero and look identical here
+    // while writing a phantom RETURNED movement into the log.
+    const phantom = await prisma.stockMovement.findFirst({
+      where: { productId: productB, reason: 'RETURNED' },
+    });
+    expect(phantom).toBeNull();
+  });
+
+  it('requires a reason for every refused line', async () => {
+    const { orderId, lineA } = await makeTwoLineOrder();
+    const { returnId, rows } = await requestReturn(orderId, [
+      { orderItemId: lineA.id, quantity: 1 },
+    ]);
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${returnId}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '0',
+        restock: false,
+        items: [{ returnItemId: rows[0]!.id, accepted: false }],
+      });
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error: { message: string } }).error.message).toMatch(/reason/i);
+  });
+
+  it('refuses accepting MORE than was returned', async () => {
+    // Would refund and restock goods the customer never brought back.
+    const { orderId, lineA } = await makeTwoLineOrder();
+    const { returnId, rows } = await requestReturn(orderId, [
+      { orderItemId: lineA.id, quantity: 2 },
+    ]);
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${returnId}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '25.00',
+        restock: false,
+        items: [{ returnItemId: rows[0]!.id, accepted: true, acceptedQuantity: 5 }],
+      });
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error: { message: string } }).error.message).toMatch(/only 2/i);
+  });
+
+  it('refuses an approval where NOTHING is accepted', async () => {
+    // That is a rejection of the whole return, and must not move the order to
+    // RETURNED as though goods had come back.
+    const { orderId, lineA } = await makeTwoLineOrder();
+    const { returnId, rows } = await requestReturn(orderId, [
+      { orderItemId: lineA.id, quantity: 1 },
+    ]);
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${returnId}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '0',
+        restock: false,
+        items: [{ returnItemId: rows[0]!.id, accepted: false, rejectionReason: 'All damaged' }],
+      });
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error: { message: string } }).error.message).toMatch(/reject the return/i);
+
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    expect(order?.status).toBe('DELIVERED');
+  });
+
+  it('refuses a decision naming a line from another return', async () => {
+    // The operator was looking at a different return; silently ignoring it
+    // would approve something they did not intend.
+    const { orderId, lineA } = await makeTwoLineOrder();
+    const { returnId } = await requestReturn(orderId, [
+      { orderItemId: lineA.id, quantity: 1 },
+    ]);
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${returnId}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '25.00',
+        restock: false,
+        items: [{ returnItemId: 'not-a-line-on-this-return', accepted: true }],
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('records the per-line outcome so a partial approval is legible', async () => {
+    // Otherwise the only trace is a refund total, and "which item did we
+    // refuse" has no answer.
+    const { orderId, lineA, lineB } = await makeTwoLineOrder();
+    const { returnId, rows } = await requestReturn(orderId, [
+      { orderItemId: lineA.id, quantity: 2 },
+      { orderItemId: lineB.id, quantity: 1 },
+    ]);
+
+    const rowA = rows.find((row) => row.orderItemId === lineA.id)!;
+    const rowB = rows.find((row) => row.orderItemId === lineB.id)!;
+
+    await request(app)
+      .post(`/api/v1/returns/${returnId}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '25.00',
+        restock: false,
+        items: [
+          { returnItemId: rowA.id, accepted: true, acceptedQuantity: 1 },
+          { returnItemId: rowB.id, accepted: false, rejectionReason: 'Opened' },
+        ],
+      })
+      .expect(200);
+
+    const saved = await prisma.returnItem.findMany({
+      where: { returnId },
+      select: { id: true, status: true, acceptedQuantity: true, rejectionReason: true },
+    });
+
+    const savedA = saved.find((row) => row.id === rowA.id);
+    const savedB = saved.find((row) => row.id === rowB.id);
+
+    expect(savedA?.status).toBe('ACCEPTED');
+    expect(savedA?.acceptedQuantity).toBe(1);
+    expect(savedB?.status).toBe('REJECTED');
+    expect(savedB?.rejectionReason).toBe('Opened');
+  });
+});

@@ -734,10 +734,31 @@ listed as open had in fact shipped** (F1.3, F4.4, F4.5, F7.4, F8.4, F8.5) —
 that staleness is why these are consolidated here.
 
 ### Returns — the fuller lifecycle
-- [ ] **B4.7** Per-line approve/reject on returns — needs `ReturnItem.status`.
-      Batch with B4.8
-- [ ] **B4.8** Partial returns — per-item quantity is already accepted on
-      REQUEST; approval is what ignores it
+- [x] **B4.7 — DONE 2026-09-08** (batched with B4.8, as the item suggested).
+      `ReturnItemStatus` (PENDING/ACCEPTED/REJECTED) + `rejectionReason` per
+      line. Omitting `items` accepts everything in full — what approving has
+      always meant — so no existing caller changes and no past return is
+      reinterpreted. A refused line REQUIRES a reason; "some of your return
+      was refused" with no explanation is the complaint that follows. An
+      approval where nothing is accepted is refused outright: that is a
+      rejection, and it must not move the order to RETURNED as though goods
+      came back
+- [x] **B4.8 — DONE 2026-09-08.** `acceptedQuantity` per line, so three came
+      back and one was sellable is expressible. **The refund is capped to what
+      was ACCEPTED, not what was asked** — refunding the full request after
+      refusing a line pays for goods the shop never took back (watched
+      failing). Accepting MORE than was returned is refused.
+      **Corrected the item's own premise**: approval did NOT ignore quantity
+      — it used `item.quantity` for both the refund cap and the restock. What
+      was missing was a per-line DECISION, which is B4.7.
+      **Found and fixed a real bug while here**: restock wrote a
+      `StockMovement` with NO `branchId` and updated `Product.stock` without
+      `BranchStock`, breaking the three-numbers-agree invariant F8.2 exists
+      to keep. Returns now restock to the order's branch.
+      **A second weak test of my own, caught**: "does not restock a refused
+      line" passed with the skip removed, because a rejected line carries
+      quantity 0 and restocking it adds zero. Now asserts NO movement row
+      exists, then watched failing. 9 tests
 - [ ] **B4.10** Refund without a return — needs a standalone model,
       independent of the RMA flow
 - [ ] **B4.11** Policy window check, restocking fees, exchange linkage — the
