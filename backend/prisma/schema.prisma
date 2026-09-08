@@ -69,6 +69,11 @@ enum StaffRole {
   OWNER
   MANAGER
   FULFILLMENT
+  /// Works a till: takes sales, handles returns, sees the stock in front of
+  /// them. Deliberately narrower than FULFILLMENT — no `delivery`, and no
+  /// `inventory`, because selling a coffee must not require stock-EDITING
+  /// rights (O5.10).
+  CASHIER
   SUPPORT
   DEMO
 }

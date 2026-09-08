@@ -571,9 +571,21 @@ till its branch for free.
 #### Stage C — receipt + role
 - [ ] O5.9 Thermal receipt renderer (58/80mm) — the invoice is A4; different
       layout, likely a different component
-- [ ] O5.10 `CASHIER` role: `ROLE_AREAS` entry, rank in `ROLE_ORDER`, i18n
-      label, permissions-matrix row. **Trivial, and LAST** — adding it first
-      grants screens that cannot take money
+- [x] **O5.10 — DONE 2026-09-08**, and genuinely last: the TODO warned that
+      adding it first grants screens that cannot take money, and those screens
+      (O5.6/O5.7) now exist. Enum + `ROLE_AREAS` + `ROLE_ORDER` + i18n, both
+      sides. Grant is `orders`/`returns`/`products` — deliberately NARROWER
+      than FULFILLMENT, with **no `inventory`**: a cashier reads stock through
+      the scan and the product list, but editing it is a different job, and
+      requiring stock rights to sell a coffee is the exact over-granting O4
+      exists to correct.
+      **Two things the tests caught.** (1) My rank comment said "outranks
+      nobody" while the placement put CASHIER above SUPPORT — moved below it,
+      so code and intent agree; a person on a till has no business changing
+      anyone's role. (2) I pointed the landing page at `/admin/pos`, which
+      does not exist until O5.5 — the F5.4 landing test failed because it
+      checks every destination is real and inside the role's grant. Points at
+      orders until the sale screen lands
 - [ ] O5.11 Open/close-shift UI in the shell, with elapsed time — must survive
       a reload and a second tab (the open shift lives on the server, never in
       `localStorage`)

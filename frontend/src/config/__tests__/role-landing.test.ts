@@ -50,7 +50,7 @@ describe('role landing pages', () => {
     // The whole point of O3: FULFILLMENT and SUPPORT were opening on a page
     // built to answer a question they are not allowed to ask, and whose every
     // widget 403s behind `requireArea('reports')`.
-    for (const role of ['FULFILLMENT', 'SUPPORT'] as const) {
+    for (const role of ['FULFILLMENT', 'SUPPORT', 'CASHIER'] as const) {
       expect(canAccessArea(role, 'reports')).toBe(false);
       expect(ROLE_LANDING[role]).not.toBe('/admin');
     }
@@ -66,7 +66,15 @@ describe('role landing pages', () => {
   it('covers every role, so a new one cannot be forgotten', () => {
     // A role missing from the map would fall back to '/admin' via
     // `landingFor` — silently reintroducing the exact bug for the new role.
-    const roles = ['DEVELOPER', 'OWNER', 'MANAGER', 'FULFILLMENT', 'SUPPORT', 'DEMO'] as const;
+    const roles = [
+      'DEVELOPER',
+      'OWNER',
+      'MANAGER',
+      'FULFILLMENT',
+      'CASHIER',
+      'SUPPORT',
+      'DEMO',
+    ] as const;
 
     for (const role of roles) {
       expect(ROLE_LANDING[role]).toBeDefined();

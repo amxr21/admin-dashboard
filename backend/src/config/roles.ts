@@ -63,6 +63,19 @@ export const ROLE_AREAS: Record<StaffRole, readonly Grant[]> = {
     'settings',
   ],
   [StaffRole.FULFILLMENT]: ['orders', 'delivery', 'inventory', 'products', 'returns'],
+  /**
+   * The till (O5.10).
+   *
+   * `orders` to take a sale, `returns` to take one back, `products` to look
+   * one up on the shelf. NOT `inventory`: a cashier reads stock through the
+   * scan (which reports it) and through the product list, but editing stock
+   * is a different job — requiring it to sell a coffee is exactly the
+   * over-granting O4 is trying to correct.
+   *
+   * No `customers` either. A till takes payment; it does not need to browse
+   * the customer book to do so.
+   */
+  [StaffRole.CASHIER]: ['orders', 'returns', 'products'],
   [StaffRole.SUPPORT]: ['orders', 'customers', 'reviews', 'returns'],
   /**
    * Sees the product, changes nothing — but NOT `staff`.
@@ -102,6 +115,7 @@ export const ROLE_LABELS: Record<StaffRole, string> = {
   [StaffRole.OWNER]: 'Owner',
   [StaffRole.MANAGER]: 'Manager',
   [StaffRole.FULFILLMENT]: 'Fulfillment',
+  [StaffRole.CASHIER]: 'Cashier',
   [StaffRole.SUPPORT]: 'Support',
   [StaffRole.DEMO]: 'Demo (read-only)',
 };
@@ -147,6 +161,11 @@ const ROLE_ORDER: readonly StaffRole[] = [
   StaffRole.MANAGER,
   StaffRole.FULFILLMENT,
   StaffRole.SUPPORT,
+  // Below SUPPORT, so a cashier outranks NOBODY. Rank decides exactly one
+  // question — who may change whose role — and a person on a till has no
+  // business changing anyone's. Placing it above SUPPORT would have let a
+  // cashier edit a support account, which nothing about the job implies.
+  StaffRole.CASHIER,
   StaffRole.DEMO,
 ];
 

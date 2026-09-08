@@ -16,6 +16,7 @@ export type StaffRole =
   | 'OWNER'
   | 'MANAGER'
   | 'FULFILLMENT'
+  | 'CASHIER'
   | 'SUPPORT'
   | 'DEMO';
 
@@ -26,6 +27,10 @@ export const STAFF_ROLES: StaffRole[] = [
   'MANAGER',
   'FULFILLMENT',
   'SUPPORT',
+  // Below SUPPORT so a cashier outranks nobody — mirrors ROLE_ORDER in
+  // backend config/roles.ts, which is the authority. Drift here would let the
+  // UI offer a role change the API then refuses.
+  'CASHIER',
   'DEMO',
 ];
 

@@ -35,6 +35,7 @@ export type StaffRole =
   | 'OWNER'
   | 'MANAGER'
   | 'FULFILLMENT'
+  | 'CASHIER'
   | 'SUPPORT'
   | 'DEMO';
 
@@ -57,6 +58,16 @@ const ROLE_AREAS: Record<StaffRole, readonly (typeof ALL | Area)[]> = {
     'settings',
   ],
   FULFILLMENT: ['orders', 'delivery', 'inventory', 'products', 'returns'],
+  /**
+   * The till (O5.10). Mirrors the backend's grant exactly — this list is a
+   * courtesy that hides links the API would refuse anyway, so drift here
+   * shows a cashier a link that 403s on click.
+   *
+   * NOT `inventory`: a cashier reads stock through the scan and the product
+   * list, but editing it is a different job. Requiring stock rights to sell a
+   * coffee is the over-granting O4 exists to correct.
+   */
+  CASHIER: ['orders', 'returns', 'products'],
   SUPPORT: ['orders', 'customers', 'reviews', 'returns'],
   /**
    * Explicit list, NOT `ALL` — this drifted from the backend's real grant
@@ -120,6 +131,10 @@ export const ROLE_LANDING: Record<StaffRole, string> = {
   MANAGER: '/admin',
   // Picks, packs and dispatches. Today's orders IS the job.
   FULFILLMENT: '/admin/orders',
+  // Stands at a till. Points at orders until the sale screen exists (O5.5) —
+  // landing somebody on a route that 404s is worse than landing them one
+  // click away from their work.
+  CASHIER: '/admin/orders',
   // Answers customers: returns and complaints, not revenue.
   SUPPORT: '/admin/returns',
   // A guided tour — the dashboard is the most representative first screen.
