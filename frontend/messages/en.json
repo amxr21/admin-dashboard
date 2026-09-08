@@ -182,7 +182,8 @@
       "loginHistory": "Who signed in and who was refused"
     },
     "loginHistory": "Staff activity",
-    "branches": "Branches"
+    "branches": "Branches",
+    "pos": "Till"
   },
   "branches": {
     "switcherLabel": "Active branch",
@@ -2288,5 +2289,32 @@
       "shifts": "Shifts",
       "logins": "Sign-ins"
     }
+  },
+  "pos": {
+    "title": "Till",
+    "subtitle": "Scan items, take payment, print a receipt.",
+    "scanLabel": "Scan or type a code",
+    "scanPlaceholder": "Barcode or SKU",
+    "add": "Add",
+    "empty": "Scan an item to start a sale.",
+    "estimate": "Estimate",
+    "estimateNote": "Tax is applied when payment is taken — the receipt shows the final total.",
+    "method": "Payment",
+    "methods": {
+      "cash": "Cash",
+      "card": "Card",
+      "transfer": "Transfer"
+    },
+    "tendered": "Cash received",
+    "takePayment": "Take payment",
+    "taking": "Taking payment…",
+    "sold": "Sale complete — {total}",
+    "done": "Sale {number}",
+    "change": "Change {amount}",
+    "overStock": "Only {available} in stock here",
+    "archived": "This product is archived",
+    "increase": "One more {name}",
+    "decrease": "One fewer {name}",
+    "remove": "Remove {name}"
   }
 }

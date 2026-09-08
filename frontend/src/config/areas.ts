@@ -131,10 +131,8 @@ export const ROLE_LANDING: Record<StaffRole, string> = {
   MANAGER: '/admin',
   // Picks, packs and dispatches. Today's orders IS the job.
   FULFILLMENT: '/admin/orders',
-  // Stands at a till. Points at orders until the sale screen exists (O5.5) —
-  // landing somebody on a route that 404s is worse than landing them one
-  // click away from their work.
-  CASHIER: '/admin/orders',
+  // Stands at a till. The sale screen IS the job, not a dashboard.
+  CASHIER: '/admin/pos',
   // Answers customers: returns and complaints, not revenue.
   SUPPORT: '/admin/returns',
   // A guided tour — the dashboard is the most representative first screen.

@@ -26,6 +26,9 @@ const ROUTE_AREA: Record<string, Area | null> = {
   '/admin/inventory': 'inventory',
   '/admin/delivery': 'delivery',
   '/admin/reports': 'reports',
+  // The till. Behind `orders`, not `inventory`: selling must not require
+  // stock-editing rights.
+  '/admin/pos': 'orders',
 };
 
 describe('role landing pages', () => {

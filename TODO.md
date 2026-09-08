@@ -530,7 +530,23 @@ till its branch for free.
       against the bug. Rewritten to compare `.toString()` and assert
       `decimalPlaces() <= 2`, then watched failing. A money assertion that
       formats before comparing tests nothing.
-- [ ] O5.5 Cart state: scan/select → add line → quantity → subtotal/tax/total
+- [x] **O5.5 — DONE 2026-09-08.** `/admin/pos` — scan to add, quantity, running
+      estimate, take payment. **The scan field keeps focus after every action**:
+      a hardware scanner is a KEYBOARD, so with focus elsewhere the next
+      barcode is typed into whatever is focused, silently setting a quantity
+      to 5012345678900. Scanning the same item twice adds ONE rather than a
+      second line — the checkout endpoint refuses duplicates and two lines
+      would print twice on the receipt. The on-screen figure is labelled an
+      ESTIMATE; the authoritative subtotal/tax/total come back from the server
+      via the shared math (O5.4), because two implementations of the same
+      arithmetic is exactly how a receipt disagrees with an invoice by a cent.
+      Over-stock is a WARNING, not a block — the cashier is holding the item
+      and the server decides (O5.8). Change stays on screen after the sale
+      rather than in a toast that vanishes while the drawer is opening.
+      **A second weak test caught and fixed**: the focus test passed with
+      refocus disabled, because the field carries `autoFocus` and nothing had
+      moved focus away. Now clicks elsewhere first, then watched failing.
+      11 tests. CASHIER now lands here
 - [x] **O5.6 — DONE 2026-09-08.** `GET /pos/scan?code=` — EXACT match on
       `barcode` then `sku`, never fuzzy. That is the rule the suite protects:
       a prefix or name match would let a dropped digit resolve to a real but

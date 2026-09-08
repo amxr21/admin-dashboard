@@ -11,6 +11,7 @@ import {
   LogIn,
   Package,
   RotateCcw,
+  ScanLine,
   Settings,
   ShoppingCart,
   Star,
@@ -74,6 +75,9 @@ export const NAVIGATION: readonly NavGroup[] = [
   {
     labelKey: 'catalogue',
     items: [
+      // First in the Shop group: for a cashier it is the whole job, and for
+      // everyone else it is where a walk-in sale starts.
+      { href: '/admin/pos', labelKey: 'pos', icon: ScanLine, area: 'orders' },
       { href: '/admin/orders', labelKey: 'orders', icon: ShoppingCart, area: 'orders' },
       { href: '/admin/inventory', labelKey: 'inventory', icon: Boxes, area: 'inventory' },
       { href: '/admin/returns', labelKey: 'returns', icon: RotateCcw, area: 'returns' },
