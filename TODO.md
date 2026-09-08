@@ -12,7 +12,7 @@ reasoning behind decisions already made, not for what is open.
 
 # 📊 STATUS AT A GLANCE — 2026-09-08
 
-**30 open · 85 done.** Started this session at 87 open, closed 11, then the
+**29 open · 86 done.** Started this session at 87 open, closed 11, then the
 owner used the merged build and opened **O9** (16 items) — see below.
 
 | | Track | State |
@@ -30,7 +30,7 @@ owner used the merged build and opened **O9** (16 items) — see below.
 | ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
 | ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
 | 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
-| 🔨 | **O9** the till: a counter, not an endpoint list | 3 done, 14 left |
+| 🔨 | **O9** the till: a counter, not an endpoint list | 4 done, 13 left |
 | 📋 | 16 items | see PENDING below |
 
 **Verification at this point:** backend 1001/1001 (47 files) · frontend
@@ -65,7 +65,7 @@ to know whether the work actually reached `dev` is to look for the files.
 Full detail for each is further down under its own track heading; this is the
 index.
 
-## 🆕 O9 — the till (14 left) — START HERE
+## 🆕 O9 — the till (13 left) — START HERE
 
 Opened 2026-09-08 from six notes the owner raised after using the merged O5
 build; **re-prioritised 2026-09-09 at his request — experience, then bugs,
@@ -78,9 +78,9 @@ the two most important items were not on it at all. Now:
   only sell 1 of the shop's 30 products (scan is exact-match only; 29 have no
   barcode). **O9.11**: every sale is anonymous. **O9.7**: returns are
   admin-only while the customer stands at the counter
-- **Tier 2 — two bugs found by reading, not reported.** **O9.17**: a sale can
-  be attributed to the wrong drawer (client-supplied `shiftId`, unverified).
-  **O9.18**: `defaultBranchId()` is order-dependent on a multi-business install
+- **Tier 2 — two bugs found by reading, not reported.** ✅ **O9.17** (a sale
+  credited to the wrong drawer) fixed 2026-09-09. **O9.18**:
+  `defaultBranchId()` is order-dependent on a multi-business install
 - **Tier 3–4 — counter friction, then control/close.** Discounts, park, void,
   notes, split payment; then manager override, cash drop, X/Z, exchange
 - **Tier 5 — minor.** The shift dialog and hiding the clock from the owner
@@ -860,23 +860,32 @@ foundation O9.7 needs already works.
 
 ## 🐛 TIER 2 — BUGS (found by reading, not reported)
 
-- [ ] **O9.17 — A sale can be attributed to the wrong drawer.** P2, found
-      2026-09-09. `shiftId` is accepted from the request body
-      (`pos.route.ts:73`) and written onto the `Payment` row unverified
-      (`pos.service.ts:313`) — nothing checks it exists, is still OPEN, or
-      belongs to the caller. The drawer is reconciled by summing payments
-      carrying that id, so a wrong value silently moves cash between people's
-      counts and `closeTill` computes a variance against a figure that was
-      never that cashier's.
-      **The realistic path is not an attack:** `sale-screen.tsx` reads the
-      shift once on mount and holds it for the life of the page, so a cashier
-      who ends their shift and hands the terminal over without a reload keeps
-      posting the OLD id.
-      Fix by resolving the shift SERVER-side from the authenticated user's own
-      open shift. The client then has no id to get wrong and the stale-page
-      case disappears with it. `actorId` in the same `create` call is already
-      taken from the token — the inconsistency sitting next to it is what made
-      this easy to miss.
+- [x] **O9.17 — DONE 2026-09-09.** A sale could be attributed to the wrong
+      drawer. P2, found by reading the checkout path, not reported.
+      `shiftId` was accepted from the request body and written onto the
+      `Payment` row unverified — nothing checked it existed, was still open,
+      or belonged to the caller. The drawer reconciles by summing payments
+      carrying a shift id, so a wrong value silently moved cash into someone
+      else's count and `closeTill` computed a variance against a figure that
+      was never that cashier's.
+      **The realistic path was not an attack:** `sale-screen.tsx` read the
+      shift once on mount and held it for the life of the page, so a cashier
+      who clocked out and handed the terminal over without a reload kept
+      posting the PREVIOUS person's id.
+      Fixed by resolving the shift SERVER-side from the authenticated user.
+      `shiftId` is gone from the request schema entirely — the client has no
+      id left to get wrong. The service still takes the field, now as a
+      trusted server-resolved value, documented where it is declared.
+      `actorId` in the same `create` call was already derived from the token;
+      the inconsistency next to it is what made this easy to miss.
+      The client-held shift state was REMOVED rather than left dead — a
+      mechanism that still looks wired up is how this gets reintroduced.
+      **The previous test asserted the bug**: it opened a shift for a CASHIER,
+      sold as the OWNER passing the cashier's id, and expected it to stick.
+      Replaced with three tests (own shift attaches, a body-supplied id is
+      ignored, no-shift sale still works), watched failing with the
+      vulnerability restored. Commit `bc99be9`.
+
 - [ ] **O9.18 — `defaultBranchId()` has an order-dependent answer.** Surfaced
       2026-09-09 while testing O9.1. `isDefault` is unique PER BUSINESS, not
       globally, so a multi-business install has several flagged branches —
