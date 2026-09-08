@@ -48,6 +48,7 @@ const RUN = `shifts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const userIds: string[] = [];
 const businessIds: string[] = [];
+const orderIds: string[] = [];
 
 let branchId = '';
 let ownerToken = '';
@@ -106,7 +107,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Payments first: their FK to the order is Cascade, but the shift FK is
+  // SetNull, so an orphaned payment would survive the shift delete.
+  await prisma.payment.deleteMany({ where: { orderId: { in: orderIds } } });
   await prisma.shift.deleteMany({ where: { userId: { in: userIds } } });
+  await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
   await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
   await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -423,6 +428,193 @@ describe('what happened during a shift (F6.4)', () => {
     const shift = await seedShift(other.id, new Date('2026-08-04T09:00:00Z'), new Date('2026-08-04T17:00:00Z'));
 
     const res = await request(app).get(`/api/v1/shifts/${shift.id}/summary`).set(auth(workerToken));
+
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('the till (O5.2 / O5.3)', () => {
+  /**
+   * "Did the drawer balance?" is the question `Payment` exists to answer, and
+   * it is arithmetic over what the cashier ACTUALLY did — took 50, gave back
+   * 7.50 — not over what the order said it cost.
+   *
+   * The rule worth protecting is that `variance` is STORED at close, never
+   * recomputed on read: a refund issued next week would otherwise silently
+   * rewrite what the cashier signed off tonight. Same snapshot discipline as
+   * `Order.total` and `OrderItem.cost`.
+   */
+  async function seedOrder(total: string) {
+    const order = await prisma.order.create({
+      data: { orderNumber: `${RUN}-${Math.random().toString(36).slice(2, 8)}`, total },
+      select: { id: true },
+    });
+    orderIds.push(order.id);
+    return order.id;
+  }
+
+  async function pay(shiftId: string, orderId: string, amount: string, method = 'cash') {
+    return prisma.payment.create({
+      data: { orderId, shiftId, amount, method },
+      select: { id: true },
+    });
+  }
+
+  /** A shift with a drawer open, for the tests that are about closing one. */
+  async function openTill(userId: string, openingFloat: string) {
+    return prisma.shift.create({
+      data: { userId, branchId, openedById: userId, startedAt: new Date(), openingFloat },
+      select: { id: true },
+    });
+  }
+
+  it('opens a shift with a float', async () => {
+    const cashier = await makeUser(StaffRole.SUPPORT, 'till-open');
+
+    const res = await request(app)
+      .post('/api/v1/shifts')
+      .set(auth(signToken(cashier)))
+      .set('X-Branch-Id', branchId)
+      .send({ openingFloat: '100.00' });
+
+    expect(res.status).toBe(201);
+    // A string, not a number — a float cannot hold 0.10 exactly.
+    expect(
+      (res.body as { data: { shift: { openingFloat: string | null } } }).data.shift.openingFloat,
+    ).toBe('100.00');
+  });
+
+  it('leaves the till fields null on a shift with no drawer', async () => {
+    // Most shifts: a picker works one and never opens a till. Null means "no
+    // till", which is a different fact from a float of zero.
+    const picker = await makeUser(StaffRole.FULFILLMENT, 'till-none');
+
+    const res = await request(app)
+      .post('/api/v1/shifts')
+      .set(auth(signToken(picker)))
+      .set('X-Branch-Id', branchId)
+      .send({});
+
+    const shift = (res.body as { data: { shift: { openingFloat: string | null } } }).data.shift;
+    expect(shift.openingFloat).toBeNull();
+  });
+
+  it('reports takings by method mid-shift', async () => {
+    const cashier = await makeUser(StaffRole.SUPPORT, 'till-takings');
+    const shift = await seedShift(cashier.id, new Date(), null);
+    const order = await seedOrder('40.00');
+
+    await pay(shift.id, order, '25.00', 'cash');
+    await pay(shift.id, order, '15.00', 'card');
+
+    const res = await request(app).get(`/api/v1/shifts/${shift.id}/takings`).set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+
+    const body = res.body as { data: { byMethod: { method: string; total: string }[] } };
+    const cash = body.data.byMethod.find((row) => row.method === 'cash');
+    const card = body.data.byMethod.find((row) => row.method === 'card');
+
+    expect(cash?.total).toBe('25.00');
+    expect(card?.total).toBe('15.00');
+  });
+
+  it('closes the till and records the variance', async () => {
+    // float 100 + cash takings 25 = 125 expected. Counted 123 → short by 2.
+    const cashier = await makeUser(StaffRole.SUPPORT, 'till-close');
+    const order = await seedOrder('25.00');
+    const shift = await openTill(cashier.id, '100.00');
+
+    await pay(shift.id, order, '25.00', 'cash');
+
+    const res = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/close-till`)
+      .set(auth(signToken(cashier)))
+      .send({ closingCount: '123.00' });
+
+    expect(res.status).toBe(200);
+
+    const body = res.body as { data: { expected: string; counted: string; variance: string } };
+    expect(body.data.expected).toBe('125.00');
+    expect(body.data.counted).toBe('123.00');
+    // Negative is SHORT. Not refused — the drawer is what it is, and a till
+    // that rejects an inconvenient count stops being counted honestly.
+    expect(body.data.variance).toBe('-2.00');
+
+    // Closed by the same act: a till counted but left open is a state
+    // somebody has to chase later.
+    const after = await prisma.shift.findUnique({ where: { id: shift.id } });
+    expect(after?.endedAt).not.toBeNull();
+  });
+
+  it('ignores card takings when reconciling the DRAWER', async () => {
+    // Only cash is in the drawer. Counting card payments against it would
+    // show a shortfall equal to the day's card sales, every single day.
+    const cashier = await makeUser(StaffRole.SUPPORT, 'till-card');
+    const order = await seedOrder('80.00');
+    const shift = await openTill(cashier.id, '50.00');
+
+    await pay(shift.id, order, '80.00', 'card');
+
+    const res = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/close-till`)
+      .set(auth(signToken(cashier)))
+      .send({ closingCount: '50.00' });
+
+    // Float back exactly, nothing missing.
+    expect((res.body as { data: { variance: string } }).data.variance).toBe('0.00');
+  });
+
+  it('keeps the variance as recorded when a refund lands later', async () => {
+    // THE rule this test exists for. Recomputing on read would let a refund
+    // issued next week rewrite what the cashier signed off tonight.
+    const cashier = await makeUser(StaffRole.SUPPORT, 'till-refund');
+    const order = await seedOrder('60.00');
+    const shift = await openTill(cashier.id, '0.00');
+
+    await pay(shift.id, order, '60.00', 'cash');
+
+    await request(app)
+      .post(`/api/v1/shifts/${shift.id}/close-till`)
+      .set(auth(signToken(cashier)))
+      .send({ closingCount: '60.00' });
+
+    // A refund against the same shift, after the fact — a negative amount on
+    // one signed column rather than a type enum plus a magnitude.
+    await pay(shift.id, order, '-10.00', 'cash');
+
+    const after = await prisma.shift.findUnique({
+      where: { id: shift.id },
+      select: { variance: true },
+    });
+
+    // Still balanced, as signed off. The refund is a separate fact.
+    expect(after?.variance?.toFixed(2)).toBe('0.00');
+  });
+
+  it('refuses closing a till on a shift that already ended', async () => {
+    const cashier = await makeUser(StaffRole.SUPPORT, 'till-done');
+    const shift = await seedShift(
+      cashier.id,
+      new Date('2026-08-01T08:00:00Z'),
+      new Date('2026-08-01T16:00:00Z'),
+    );
+
+    const res = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/close-till`)
+      .set(auth(signToken(cashier)))
+      .send({ closingCount: '10.00' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses another person takings to someone without `staff`', async () => {
+    const other = await makeUser(StaffRole.SUPPORT, 'till-other');
+    const shift = await seedShift(other.id, new Date(), null);
+
+    const res = await request(app)
+      .get(`/api/v1/shifts/${shift.id}/takings`)
+      .set(auth(workerToken));
 
     expect(res.status).toBe(403);
   });

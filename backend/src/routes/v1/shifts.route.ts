@@ -6,11 +6,14 @@ import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
 import { audit } from '../../services/audit.service.js';
+import { prisma } from '../../db/prisma.js';
 import {
+  closeTill,
   editShift,
   endShift,
   getOpenShift,
   getShiftSummary,
+  getShiftTakings,
   listShifts,
   startShift,
 } from '../../services/shifts.service.js';
@@ -39,8 +42,17 @@ shiftsRouter.get('/shifts/me', authenticate, async (req, res) => {
   res.status(200).json({ data: { shift: await getOpenShift(user.id) } });
 });
 
+/** Money always crosses this boundary as a string — a float cannot hold 0.10
+ *  exactly, and a till that is a cent out per hundred sales cannot balance. */
+const money = z
+  .string()
+  .trim()
+  .regex(/^\d{1,8}(\.\d{1,2})?$/, 'Enter an amount like 120.00');
+
 const startSchema = z.object({
   branchId: z.string().trim().min(1).optional(),
+  /** Cash in the drawer at open (O5.3). Omitted = no till on this shift. */
+  openingFloat: money.optional(),
   /** Opening a shift for somebody who forgot to clock in. Rank-checked. */
   forUserId: z.string().trim().min(1).optional(),
   note: z.string().trim().max(255).optional(),
@@ -63,6 +75,7 @@ shiftsRouter.post('/shifts', authenticate, withBranchContext, async (req, res) =
       branchId: parsed.data.branchId ?? req.branchId ?? undefined,
       forUserId: parsed.data.forUserId,
       note: parsed.data.note,
+      openingFloat: parsed.data.openingFloat,
     },
   );
 
@@ -207,4 +220,75 @@ shiftsRouter.get('/shifts/:id/summary', authenticate, async (req, res) => {
   }
 
   res.status(200).json({ data: summary });
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+ * TILL (O5.3)
+ * ───────────────────────────────────────────────────────────────────── */
+
+/** What this shift has taken so far, by method. Readable mid-shift, so a
+ *  cashier can check the drawer without ending their session. */
+shiftsRouter.get('/shifts/:id/takings', authenticate, async (req, res) => {
+  const user = requireUser(req);
+  const shiftId = String(req.params.id);
+
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: { userId: true },
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+
+  // Same rule as the summary: your own is always readable, somebody else's
+  // needs `staff`. What a till took is money data about a named person.
+  if (shift.userId !== user.id && !canAccessArea(user.role, 'staff')) {
+    throw AppError.forbidden("You cannot view someone else's till");
+  }
+
+  res.status(200).json({ data: await getShiftTakings(shiftId) });
+});
+
+const closeTillSchema = z.object({
+  closingCount: z
+    .string()
+    .trim()
+    .regex(/^\d{1,8}(\.\d{1,2})?$/, 'Enter an amount like 120.00'),
+  note: z.string().trim().max(255).optional(),
+});
+
+/**
+ * Close the shift AND reconcile the drawer in one act.
+ *
+ * Not a separate step from ending the shift: a till counted but left open, or
+ * a shift ended without a count, are both states somebody has to chase later.
+ * The plain `POST /shifts/:id/end` still exists for a shift with no till.
+ */
+shiftsRouter.post('/shifts/:id/close-till', authenticate, async (req, res) => {
+  const parsed = closeTillSchema.safeParse(req.body);
+
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+
+  const user = requireUser(req);
+
+  const result = await closeTill(
+    { id: user.id, role: user.role },
+    String(req.params.id),
+    parsed.data.closingCount,
+    parsed.data.note,
+  );
+
+  audit(req, {
+    action: 'shift.till_closed',
+    entity: 'shifts',
+    entityId: result.shift.id,
+    changes: {
+      // All three, because a variance alone cannot be checked: a reviewer
+      // needs what was expected and what was actually in the drawer.
+      expected: { from: null, to: result.expected },
+      counted: { from: null, to: result.counted },
+      variance: { from: null, to: result.variance },
+    },
+  });
+
+  res.status(200).json({ data: result });
 });

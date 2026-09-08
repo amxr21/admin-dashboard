@@ -489,15 +489,47 @@ till its branch for free.
       comparison. A rota is a separate, larger feature and is not in scope.
       Needs `openedById` distinct from `userId` (who opened it vs. whose shift
       it is) and a `branchId` from the start
-- [ ] O5.2 `Payment` model — amount, method, tendered, change, paidAt, and the
-      order it belongs to. Without it "did the drawer balance?" is
-      unanswerable BY CONSTRUCTION; `Order.paymentMethod` is free text
-- [ ] O5.3 `Shift`/till session — opener, opening float, closing count,
-      variance
+- [x] **O5.2 — DONE 2026-09-08.** `Payment` model, migration
+      `20260908030000_add_payments_and_till`. A TABLE, not columns on `Order`:
+      one free-text `paymentMethod` cannot express a split payment (30 cash,
+      rest on card) or a refund, which is a second money movement rather than
+      an edit of the first. `Order.paymentMethod` is NOT removed — every
+      existing order carries it and the reports reading it keep working.
+      **`amount` is signed** (positive pays, negative refunds), one column
+      rather than a type enum plus a magnitude, for the same reason
+      `StockMovement.delta` is signed: the sum IS what was collected, with no
+      case analysis to get wrong. `tendered`/`change` are STORED, not derived
+      — "did the drawer balance" is arithmetic over what the cashier actually
+      did, and deriving change assumes the case a variance exists to catch.
+      `paidAt` is distinct from `createdAt` (a payment entered next morning
+      after a terminal outage has both)
+- [x] **O5.3 — DONE 2026-09-08.** `openingFloat`/`closingCount`/`variance` on
+      `Shift` — the same object as a till session, per the owner, so no
+      parallel table to keep in step. `POST /shifts/:id/close-till` counts the
+      drawer and ends the shift in ONE act: a till counted but left open, or a
+      shift ended without a count, are both states somebody has to chase.
+      **`variance` is stored, never recomputed** — a refund landing next week
+      would otherwise silently rewrite what the cashier signed off tonight
+      (watched failing). **Only CASH counts against the drawer** — including
+      card would show a shortfall equal to the day's card sales every single
+      day (also watched failing). A short or over count is recorded, never
+      refused: a till that rejects an inconvenient count stops being counted
+      honestly. Also `GET /shifts/:id/takings`, readable mid-shift. 9 tests
 
 #### Stage B — checkout
-- [ ] O5.4 **Move the receipt math out of the seeder** into a shared service —
-      CLAUDE.md already flags that a real checkout must call the SAME math
+- [x] **O5.4 — DONE 2026-09-08.** `order-math.service.ts`; the seeder now calls
+      it, so seeded and sold orders cannot disagree about how a total is
+      reached. **Found a real rounding bug while extracting it**: the seeder
+      never rounded the SUBTOTAL, so a price like 3.333 x 3 stored `9.999` and
+      a total of `10.499` — money no till can take, on a receipt where
+      subtotal + tax does not equal total. Rounded once, on the order rather
+      than per line (per-line rounding differs by up to a cent and the invoice
+      shows ONE tax figure).
+      **A test-quality lesson worth keeping**: my first version of that test
+      asserted with `.toFixed(2)`, which DISPLAYS 9.999 as "10.00" — it passed
+      against the bug. Rewritten to compare `.toString()` and assert
+      `decimalPlaces() <= 2`, then watched failing. A money assertion that
+      formats before comparing tests nothing.
 - [ ] O5.5 Cart state: scan/select → add line → quantity → subtotal/tax/total
 - [ ] O5.6 Barcode lookup endpoint (the column exists; nothing queries it yet)
 - [ ] O5.7 Create the order + its `OrderItem`s with price AND cost snapshotted
@@ -579,8 +611,22 @@ that staleness is why these are consolidated here.
       a bad `supplierId` is a 400 naming the field rather than a raw FK
       violation surfacing as a 500. FK is SetNull: deleting a supplier must
       never delete stock history. 6 tests, both guards watched failing
-- [ ] **F3.5** Bulk receive — import is create-only
-      (`assertPermitted(config, 'create')`), so this is real work, not wiring
+- [x] **F3.5 — DONE 2026-09-08.** `POST /inventory/receive` + `/receive/preview`,
+      matching on SKU or barcode (whichever the supplier's paperwork carries).
+      **Its own service, not the generic import**: that one is create-only AND
+      writes rows of a CONFIGURED resource, while a delivery UPDATES stock and
+      inventory is deliberately not configured — stock is an append-only
+      movement log, never an editable number. It reuses the import's SHAPE
+      (validate all, then apply all-or-nothing), not its code.
+      **All-or-nothing**: receiving "47 of 50" leaves a shop whose count
+      matches neither the paperwork nor the shelf, and the 3 that failed are
+      the ones nobody chases. **A duplicate product across two lines is
+      REFUSED, not summed** — silently adding them doubles the stock with
+      nothing on screen to explain it. Each line goes through `adjustStock`
+      rather than writing movements directly, so the branch fallback,
+      per-branch total, product total and low-stock alert all still fire.
+      Carries F7.8's batch detail onto every line. 9 tests, both rules watched
+      failing. **No UI yet** — API only
 
 ### Shifts (F6) — ✅ COMPLETE 2026-09-08
 All five items done. The gating decision (F6.1's shape) was answered by the
