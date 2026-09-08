@@ -12,7 +12,7 @@ reasoning behind decisions already made, not for what is open.
 
 # 📊 STATUS AT A GLANCE — 2026-09-08
 
-**26 open · 89 done.** Started this session at 87 open, closed 11, then the
+**25 open · 90 done.** Started this session at 87 open, closed 11, then the
 owner used the merged build and opened **O9** (16 items) — see below.
 
 | | Track | State |
@@ -30,7 +30,7 @@ owner used the merged build and opened **O9** (16 items) — see below.
 | ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
 | ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
 | 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
-| 🔨 | **O9** the till: a counter, not an endpoint list | 6 done, 11 left |
+| 🔨 | **O9** the till: a counter, not an endpoint list | 7 done, 10 left |
 | 📋 | 16 items | see PENDING below |
 
 **Verification at this point:** backend 1001/1001 (47 files) · frontend
@@ -847,7 +847,7 @@ foundation O9.7 needs already works.
       customer is. Building a picker would be a control for a job that is not
       the cashier's. No code written; nothing to revert.
 
-## 🐛 TIER 2 — BUGS (found by reading, not reported)
+## 🐛 TIER 2 — BUGS (found by reading, not reported) — ✅ COMPLETE
 
 - [x] **O9.17 — DONE 2026-09-09.** A sale could be attributed to the wrong
       drawer. P2, found by reading the checkout path, not reported.
@@ -875,19 +875,34 @@ foundation O9.7 needs already works.
       ignored, no-shift sale still works), watched failing with the
       vulnerability restored. Commit `bc99be9`.
 
-- [ ] **O9.18 — `defaultBranchId()` has an order-dependent answer.** Surfaced
-      2026-09-09 while testing O9.1. `isDefault` is unique PER BUSINESS, not
-      globally, so a multi-business install has several flagged branches —
-      the live database has two (`__demo__ Marina`, `__demo__ Corniche`) —
-      and `defaultBranchId()`'s `findFirst` returns whichever it reaches
-      first. Every unscoped write (a POS sale with no branch header, a stock
-      adjustment, now a product's opening stock) lands in an
-      order-dependent branch.
-      **This is the same SHAPE as the bug F8.2 was written to remove** — that
-      one replaced "oldest branch" precisely because the answer must not
-      depend on row order. Not introduced by O9.1; it only became visible
-      there. Needs a decision on what the right answer even is for a
-      multi-business install, which is why it is a bug rather than a fix.
+- [x] **O9.18 — DONE 2026-09-09.** `defaultBranchId()` had an order-dependent
+      answer once more than one business existed. `isDefault` is unique PER
+      BUSINESS, not globally, so a multi-business install has several
+      flagged branches and `findFirst` returned whichever it reached first.
+      **Same SHAPE as the bug F8.2 removed** — that one replaced "oldest
+      branch" precisely because the answer must not depend on row order.
+      **Owner decided: refuse with a clear error rather than guess**, once
+      more than one business exists. A single-business install is unaffected
+      — the ambiguity does not exist there.
+      **Two pre-existing gaps found and fixed while applying it, both from
+      the same missing piece**: `POST /inventory/:productId/movements` never
+      read the branch switcher's header at all (unlike `/receive` beside
+      it), and `POST /r/:resource` never ran `withBranchContext` (unlike
+      every other verb on that router) — which meant `guardArea`'s
+      `effectiveRole()` silently fell back to the caller's GLOBAL role on
+      every generic-resource create, so **a per-branch role downgrade was
+      never enforced on create, only on read/update/delete.**
+      `branch-roles.test.ts` still passes clean, so existing coverage never
+      caught it.
+      24 backend tests broke on first applying the refusal — all of them
+      leaning on the old silent fallback against a database that has
+      genuinely carried multiple businesses since the demo seed. Fixed at
+      the source (each test now names its branch explicitly, the way the
+      real till does via the switcher), not worked around. One leftover test
+      business (debris from a crashed `branch-writes.test.ts` run) found and
+      deleted along the way — confirmed via its name and zero branches
+      before removing it.
+      Verification: backend 1016/1016, tsc/eslint clean. Commit `23c2a14`.
 
 ## 🛒 TIER 3 — REAL-COUNTER FRICTION
 
