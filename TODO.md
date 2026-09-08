@@ -531,7 +531,18 @@ till its branch for free.
       `decimalPlaces() <= 2`, then watched failing. A money assertion that
       formats before comparing tests nothing.
 - [ ] O5.5 Cart state: scan/select → add line → quantity → subtotal/tax/total
-- [ ] O5.6 Barcode lookup endpoint (the column exists; nothing queries it yet)
+- [x] **O5.6 — DONE 2026-09-08.** `GET /pos/scan?code=` — EXACT match on
+      `barcode` then `sku`, never fuzzy. That is the rule the suite protects:
+      a prefix or name match would let a dropped digit resolve to a real but
+      DIFFERENT product, charging the customer for something they are not
+      holding, with nothing on screen looking wrong. Watched failing.
+      Reports stock **at the till's branch** (the number the cashier can
+      actually reach) alongside the all-branch total, so they can say "none
+      here, twelve at the warehouse". An ARCHIVED product is returned and
+      FLAGGED, not hidden — one physically on the shelf still has to be
+      sellable, and the till decides whether to warn. Guarded by `orders`,
+      not `inventory`: selling a coffee must not require stock-editing
+      rights. 13 tests
 - [ ] O5.7 Create the order + its `OrderItem`s with price AND cost snapshotted
       (the F1.1 rule), decrement per-branch stock with a `SOLD` movement, and
       record the `Payment` — all in ONE transaction
