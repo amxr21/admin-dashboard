@@ -12,7 +12,7 @@ reasoning behind decisions already made, not for what is open.
 
 # 📊 STATUS AT A GLANCE — 2026-09-08
 
-**29 open · 86 done.** Started this session at 87 open, closed 11, then the
+**26 open · 89 done.** Started this session at 87 open, closed 11, then the
 owner used the merged build and opened **O9** (16 items) — see below.
 
 | | Track | State |
@@ -30,7 +30,7 @@ owner used the merged build and opened **O9** (16 items) — see below.
 | ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
 | ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
 | 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
-| 🔨 | **O9** the till: a counter, not an endpoint list | 4 done, 13 left |
+| 🔨 | **O9** the till: a counter, not an endpoint list | 6 done, 11 left |
 | 📋 | 16 items | see PENDING below |
 
 **Verification at this point:** backend 1001/1001 (47 files) · frontend
@@ -65,7 +65,7 @@ to know whether the work actually reached `dev` is to look for the files.
 Full detail for each is further down under its own track heading; this is the
 index.
 
-## 🆕 O9 — the till (13 left) — START HERE
+## 🆕 O9 — the till (11 left)
 
 Opened 2026-09-08 from six notes the owner raised after using the merged O5
 build; **re-prioritised 2026-09-09 at his request — experience, then bugs,
@@ -822,41 +822,30 @@ foundation O9.7 needs already works.
 
 ---
 
-## 🥇 TIER 1 — THE COUNTER IS UNUSABLE WITHOUT THESE
+## 🥇 TIER 1 — THE COUNTER IS UNUSABLE WITHOUT THESE — ✅ COMPLETE
 
-- [ ] **O9.10 — The till can only sell 1 of the shop's 30 products.**
-      **The single most important item in this track.** `scanProduct` matches
-      on EXACT barcode or EXACT SKU only. Counted against the live database
-      2026-09-09: **30 products, 1 barcode.** For the other 29 the cashier
-      must type an exact SKU from memory — no browse, no search, no grid, no
-      category tiles. This is what "it is so so empty" actually means.
-      **The scan path must NOT change.** Its exactness is correct and the
-      reasoning in the file is sound: fuzzy-matching a scan means a mistyped
-      digit silently charges someone for a different item. A search/browse
-      panel sits BESIDE it as a different control answering a different
-      question — "which product is this?" rather than "this code is in my
-      hand".
-      ⏳ **Blocked on the owner's barcode answer** (see WAITING below): if he
-      is going to print and stick barcodes, the till stays scanner-first and
-      the grid is a fallback; if not — which 1-of-30 suggests — the GRID is
-      the primary interface and scanning is the side door. That reverses which
-      one gets the screen space, so it is not guessable.
-- [ ] **O9.11 — Every counter sale is anonymous.** The backend already accepts
-      `customerId` on checkout (`pos.service.ts:257`); `sale-screen.tsx` never
-      sends it. So there is no purchase history, no "look up this person's
-      last order", nothing to hang loyalty on later, and no link between a
-      person and the receipt they are holding when they come back. A customer
-      picker at the till, optional and skippable — a walk-in must stay one tap
-      away, so this must not become a required field.
-- [ ] **O9.7 — Return/refund at the register.** The returns engine is good and
-      B4.7 just gave it per-line outcomes — but it is admin-only. The person
-      holding your receipt is standing at the counter and the cashier's only
-      path is to open the admin panel in another tab.
-      **Reuse `returns.service.ts`; do not write a second refund path.** The
-      money math, the restock and the per-line decisions all exist, and
-      receipt lookup by order number already works. This is a till-shaped UI
-      over two things that both exist. `Payment.amount` is already signed for
-      exactly this.
+- [x] **O9.10 — DONE 2026-09-09.** The till could only sell 1 of the shop's
+      30 products. The owner confirmed the shop will NOT be barcoding stock
+      and that the cashier's job is scanning and counting, nothing else —
+      which made this the top item, not a fallback feature.
+      Built `browseProducts`/`browseCategories` (`GET /pos/browse`,
+      `GET /pos/browse/categories`), gated the same as scan
+      (`requireArea('orders')`). Deliberately a SEPARATE function from
+      `scanProduct`, not the same one with a fuzzy flag — the scan's
+      exactness is a correctness property and must not grow an escape hatch.
+      Frontend: a tappable grid with search + category tabs next to the scan
+      field; tapping calls the same `addToCart()` a scan uses, so the de-dupe
+      rule (same item twice = quantity, never a second line) cannot differ
+      between the two paths.
+      **O9.11 (attach a customer) was DROPPED, not built** — see below.
+      Commit `8af285e`.
+
+- [x] **O9.11 — DROPPED 2026-09-09, not built.** Attaching a customer to a
+      sale would need the CASHIER to look one up, but the owner clarified the
+      cashier's job is "just scanning things and counting them in, nothing
+      else" — there is no one at the till who would know or ask who the
+      customer is. Building a picker would be a control for a job that is not
+      the cashier's. No code written; nothing to revert.
 
 ## 🐛 TIER 2 — BUGS (found by reading, not reported)
 
@@ -929,6 +918,19 @@ systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6)
       standard pattern across all four systems surveyed. Pairs with O8's
       owner-editable permissions: what needs an override should BE what the
       role cannot do, read from one place, not a second hardcoded list.
+      **O9.7 now depends on this** — see below.
+- [ ] **O9.7 — Return at the register, cashier starts / manager approves.**
+      MOVED from Tier 1 2026-09-09 after the owner clarified the cashier's job
+      is scanning and counting only — deciding whether a return is accepted
+      is a manager's call, not the cashier's. **New shape, decided with the
+      owner**: the cashier scans the receipt and marks which lines are coming
+      back; nothing moves until a manager approves via O9.13's override.
+      **Reuse `returns.service.ts`; do not write a second refund path.** The
+      money math, the restock and the per-line decisions all exist, and
+      receipt lookup by order number already works — this is a till-shaped UI
+      over two things that both exist, plus the new "pending approval" state.
+      **Depends on O9.13 existing first** — "waiting on manager" needs a real
+      approval action, not just a UI label.
 - [ ] **O9.15 — No-sale drawer open, cash drop, payout.** Opening the drawer
       without a sale is recorded and countable — every system surveyed logs
       these, because an unrecorded drawer open is the classic shrinkage path.
