@@ -517,8 +517,19 @@ till its branch for free.
       honestly. Also `GET /shifts/:id/takings`, readable mid-shift. 9 tests
 
 #### Stage B — checkout
-- [ ] O5.4 **Move the receipt math out of the seeder** into a shared service —
-      CLAUDE.md already flags that a real checkout must call the SAME math
+- [x] **O5.4 — DONE 2026-09-08.** `order-math.service.ts`; the seeder now calls
+      it, so seeded and sold orders cannot disagree about how a total is
+      reached. **Found a real rounding bug while extracting it**: the seeder
+      never rounded the SUBTOTAL, so a price like 3.333 x 3 stored `9.999` and
+      a total of `10.499` — money no till can take, on a receipt where
+      subtotal + tax does not equal total. Rounded once, on the order rather
+      than per line (per-line rounding differs by up to a cent and the invoice
+      shows ONE tax figure).
+      **A test-quality lesson worth keeping**: my first version of that test
+      asserted with `.toFixed(2)`, which DISPLAYS 9.999 as "10.00" — it passed
+      against the bug. Rewritten to compare `.toString()` and assert
+      `decimalPlaces() <= 2`, then watched failing. A money assertion that
+      formats before comparing tests nothing.
 - [ ] O5.5 Cart state: scan/select → add line → quantity → subtotal/tax/total
 - [ ] O5.6 Barcode lookup endpoint (the column exists; nothing queries it yet)
 - [ ] O5.7 Create the order + its `OrderItem`s with price AND cost snapshotted
