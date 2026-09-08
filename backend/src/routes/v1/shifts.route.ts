@@ -17,7 +17,7 @@ import {
   listShifts,
   startShift,
 } from '../../services/shifts.service.js';
-import { canAccessArea } from '../../config/roles.js';
+import { canAccessAreaResolved } from '../../services/role-permissions.service.js';
 
 /**
  * Shifts — a period of work (F6).
@@ -215,7 +215,7 @@ shiftsRouter.get('/shifts/:id/summary', authenticate, async (req, res) => {
   const user = requireUser(req);
   const summary = await getShiftSummary(String(req.params.id));
 
-  if (summary.shift.user.id !== user.id && !canAccessArea(user.role, 'staff')) {
+  if (summary.shift.user.id !== user.id && !(await canAccessAreaResolved(user.role, 'staff'))) {
     throw AppError.forbidden("You cannot view someone else's shift");
   }
 
@@ -241,7 +241,7 @@ shiftsRouter.get('/shifts/:id/takings', authenticate, async (req, res) => {
 
   // Same rule as the summary: your own is always readable, somebody else's
   // needs `staff`. What a till took is money data about a named person.
-  if (shift.userId !== user.id && !canAccessArea(user.role, 'staff')) {
+  if (shift.userId !== user.id && !(await canAccessAreaResolved(user.role, 'staff'))) {
     throw AppError.forbidden("You cannot view someone else's till");
   }
 

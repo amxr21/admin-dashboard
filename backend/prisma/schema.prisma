@@ -1883,3 +1883,49 @@ model Payment {
   @@index([shiftId, paidAt])
   @@map("payments")
 }
+
+/// An owner's override of what one role may reach (O8).
+///
+/// ─── OVERRIDES ONLY, NEVER THE WHOLE TRUTH ───────────────────────────
+/// `ROLE_AREAS` in `config/roles.ts` stays the DEFAULT. A role with no row
+/// here behaves exactly as it always did, so shipping this grants nobody
+/// anything and takes nothing away — the same discipline `UserBranch` follows
+/// ("no row means the global role").
+///
+/// Storing the full set for every role instead would mean the code default
+/// becomes dead the moment anyone saves anything, and a later release adding
+/// a new AREA could never reach an existing install: every role would already
+/// have a stored list that silently excludes it.
+///
+/// ─── OWNER AND DEVELOPER ARE NEVER STORED HERE ───────────────────────
+/// The owner's decision, 2026-09-08: they always keep full access. An owner
+/// who unticked their own `settings` box would lose the very screen that
+/// ticks it back, and recovery would need database access. The service
+/// refuses to write a row for either, so this is not merely a UI convention.
+///
+/// ─── NOT PER BRANCH ──────────────────────────────────────────────────
+/// Also decided: one definition of what "Manager" means, everywhere. A person
+/// can still hold a DIFFERENT role at each branch (F8.4) — that is a separate
+/// axis and it stays. Per-branch permission overrides would make "what can a
+/// Manager do" a question with no single answer.
+model RolePermission {
+  /// The role is the identity — one row per role, at most.
+  role StaffRole @id
+
+  /// The areas this role may reach, as a JSON array of area names. A JSON
+  /// column rather than a join table because it is read as a whole set on
+  /// every request and never queried by member; a join would turn one lookup
+  /// into a scan for no gain.
+  ///
+  /// An EMPTY array is a real, deliberate value — "this role reaches nothing"
+  /// — and is why absence has to mean "use the default" rather than "empty".
+  areas Json
+
+  /// Who last changed it, and when. The audit log holds the diff; these make
+  /// the current state self-explanatory without a search.
+  updatedById String?  @map("updated_by_id") @db.VarChar(64)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("role_permissions")
+}

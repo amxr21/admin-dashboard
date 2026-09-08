@@ -449,14 +449,75 @@ Today MANAGER = every area except `staff` — an OPERATIONS manager. A shop
 manager who counts stock also gets `settings` (theme, tax rate, maintenance
 mode) and `discounts`: more authority than the job needs.
 
-- [ ] O4.1 **❓ OWNER DECISION: narrow MANAGER, or add a distinct role?**
+- [x] **O4.1 — ANSWERED BY THE OWNER 2026-09-08: NEITHER.** His words: "don't
+      worry about what manager can do as long as the owner/admin can modify
+      the given permissions for any role". So MANAGER's shape stops being a
+      design question — it becomes data the owner edits. Supersedes O4.2 and
+      O4.3, which both assumed a fixed set of roles decided in code.
+      Replaced by **O8** below.
+- [x] ~~O4.1 original~~ **❓ narrow MANAGER, or add a distinct role?**
       *Do not add a role reflexively — every new role multiplies the permission
       matrix, which `roles.ts` warns about in its own comment.* Easier to
       answer AFTER O7 stage 2, when per-branch roles are testable against a
       real roster
-- [ ] O4.2 If narrowing: which areas leave MANAGER, and does anything break
-- [ ] O4.3 If adding: the role, its rank in `ROLE_ORDER`, its `ROLE_AREAS`
-      entry, i18n label, and the permissions matrix row
+- [x] O4.2 **VOID** — superseded by O8: which areas a role reaches becomes
+      editable rather than decided here
+- [x] O4.3 **VOID** — superseded by O8, same reason
+
+### ⭐ O8 — OWNER-EDITABLE ROLE PERMISSIONS
+**Owner, 2026-09-08:** "don't worry about what manager can do as long as the
+owner/admin can modify the given permissions for any role."
+
+This replaces O4 entirely. `ROLE_AREAS` is hardcoded in BOTH
+`backend/src/config/roles.ts` and `frontend/src/config/areas.ts`; a read-only
+permissions matrix already exists at `permissions-matrix.tsx` to build on.
+
+**Three decisions taken with the owner 2026-09-08:**
+- [x] O8.0a **OWNER and DEVELOPER are NOT editable.** They always keep full
+      access. Otherwise an owner unticking their own `settings` box loses the
+      very screen that would let them tick it back, and recovery needs
+      database access.
+- [x] O8.0b **Global role definitions only**, no per-branch overrides. One
+      definition of what "Manager" means everywhere. A person can still hold
+      different roles at different branches (F8.4, already built) — that is a
+      different axis and it stays.
+- [x] O8.0c **Changes apply on the next page load**, not by signing everyone
+      out. Someone mid-task keeps their work; the next screen reflects the new
+      permissions.
+
+- [x] **O8.1 — DONE 2026-09-08.** `RolePermission` (role as the PK, areas as
+      JSON), migration `20260908050000_add_role_permissions`. Overrides ONLY:
+      a role with no row behaves exactly as before, so shipping this granted
+      nobody anything. Storing the full set per role instead would make the
+      code default dead on first save, and a later release adding an AREA
+      could never reach an existing install
+- [x] **O8.2 — DONE 2026-09-08.** `role-permissions.service.ts` resolves
+      default + override, cached 15s. **`requireArea` is now ASYNC and reads
+      the resolved set** — that is the line between a real feature and a
+      cosmetic one: without it the matrix would save, the link would vanish,
+      and the endpoint would still answer. All 5 call sites converted
+      (`guardArea` in the resource engine included, which would otherwise have
+      exempted every config-driven resource in one place)
+- [x] **O8.3 — DONE 2026-09-08.** `PUT`/`DELETE /roles/:role/areas`, plus
+      `GET /roles` and `/roles/me` switched to the RESOLVED set (they served
+      the code default, which would have shown a matrix disagreeing with what
+      the API enforces). OWNER/DEVELOPER-only via `requireRole`, deliberately
+      not `requireArea('settings')`: MANAGER holds that, and a role that can
+      widen its own permissions has none. DELETE resets to the shipped
+      default, which is a real action — the defaults change between releases,
+      so a manual "tick everything back" would freeze the role at today's
+- [ ] O8.4 Make `permissions-matrix.tsx` editable for the editable roles
+- [ ] O8.5 Frontend reads the resolved permissions rather than its own
+      hardcoded copy — the two must not drift
+- [x] **O8.6 — DONE 2026-09-08.** 15 tests, written before the UI. Locked
+      roles watched failing. Also asserts a hand-written row for OWNER is
+      IGNORED on read — a migration, a restored backup or somebody at a
+      database console must not be able to lock everyone out.
+      **Two of my own tests were wrong and got caught**: the first asserted
+      against `GET /settings`, which is NOT behind `requireArea` (only the
+      PATCH is), so it would have proved nothing; the second hit
+      `/reports/overview` without its required date range and read the 400 as
+      a pass-adjacent failure. Both now use a genuinely guarded route
 
 ### O5 — ✅ COMPLETE 2026-09-08 (all 11 items)
 The app can take a sale. `prisma.order.create` existed only in tests and the
@@ -681,7 +742,11 @@ that staleness is why these are consolidated here.
       **Still unblocks F7.6** (the reorder email now has a real address to
       send to). **No UI yet** — suppliers can be created via the API/seed but
       have no management screen; that is the obvious follow-up
-- [ ] **F7.6** Supplier reorder email, sent on admin approval. Needs F7.9
+- [ ] **F7.6** Supplier reorder email. **SCOPED 2026-09-08 by the owner: the
+      SMALL approach** — a "email this supplier about low stock" action that
+      sends a pre-filled message, reusing `sendAlertEmail`. NOT purchase
+      orders with a request→approve→send workflow; that is procurement and its
+      own track. F7.9 shipped, so the supplier now has a real address
 - [x] **F7.8 (rest) — DONE 2026-09-08.** `deliveredAt`, `purchasedAt`,
       `reference` and `supplierId` on `StockMovement`, beside `unitCost`.
       **The owner's case decided the shape**: "buy 50 units then enter one

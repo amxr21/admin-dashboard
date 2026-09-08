@@ -2,7 +2,8 @@ import type { Request, Response, NextFunction } from 'express';
 import { StaffRole } from '@prisma/client';
 
 import { AppError } from '../errors/AppError.js';
-import { canAccessArea, isReadOnlyRole, type Area } from '../config/roles.js';
+import { isReadOnlyRole, type Area } from '../config/roles.js';
+import { canAccessAreaResolved } from '../services/role-permissions.service.js';
 import { getSettingValue } from '../services/settings.service.js';
 import { auditDenied } from '../services/audit.service.js';
 import { isIpAllowed, parseAllowlist } from '../lib/ip-allowlist.js';
@@ -262,7 +263,16 @@ export async function assertTwoFactorCompliant(req: Request): Promise<void> {
  * own for any route that takes a record id.
  */
 export function requireArea(area: Area) {
-  return function areaGuard(req: Request, _res: Response, next: NextFunction): void {
+  /**
+   * ASYNC since O8. The area set is no longer fixed in code — an owner can
+   * edit it — so the check has to resolve the override before deciding.
+   *
+   * `resolveAreas` is cached for a few seconds, so this is a map lookup on
+   * essentially every request rather than a query. Reading the code default
+   * directly here would make the whole feature cosmetic: the matrix would
+   * save, the UI would hide the link, and the endpoint would still answer.
+   */
+  return async function areaGuard(req: Request, _res: Response, next: NextFunction): Promise<void> {
     try {
       const user = requireUser(req);
       /**
@@ -276,7 +286,7 @@ export function requireArea(area: Area) {
        */
       const role = effectiveRole(req);
 
-      if (!canAccessArea(role, area)) {
+      if (!(await canAccessAreaResolved(role, area))) {
         req.log.warn({
           event: 'authz.area.denied',
           role,
