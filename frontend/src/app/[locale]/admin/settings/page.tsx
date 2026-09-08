@@ -4,6 +4,9 @@ import { PageTitle } from '@/components/shell/page-title';
 import { TranslationCompletenessPanel } from '@/components/settings/translation-completeness-panel';
 import { DangerZonePanel } from '@/components/settings/danger-zone-panel';
 import { MyAccountPanel } from '@/components/settings/my-account-panel';
+import { TwoFactorPanel } from '@/components/settings/two-factor-panel';
+import { SessionsPanel } from '@/components/settings/sessions-panel';
+import { ApiKeysPanel } from '@/components/settings/api-keys-panel';
 import { DataExportPanel } from '@/components/settings/data-export-panel';
 import { PoliciesPanel } from '@/components/settings/policies-panel';
 import { PersonalSettingsPanel } from '@/components/settings/personal-settings-panel';
@@ -43,6 +46,19 @@ export default async function SettingsPage({
           server-backed store settings with their single shared save bar,
           separated by the page's own vertical rhythm (space-y-10). */}
       <MyAccountPanel />
+      {/*
+        O3b.2 — these three were BUILT and route-reachable but linked from
+        nowhere, so the features they configure could not be turned on from
+        the UI at all. That is very likely why the missing 2FA code-entry
+        screen (O3b.1) went unnoticed: nobody could enable 2FA to hit it.
+
+        Placed with My account rather than among the store settings: all
+        three are about THIS person's own access — their second factor, their
+        live sessions, their keys — not about how the shop is configured.
+      */}
+      <TwoFactorPanel />
+      <SessionsPanel />
+      <ApiKeysPanel />
       <PersonalSettingsPanel />
       <SettingsForm />
       <DataExportPanel />
