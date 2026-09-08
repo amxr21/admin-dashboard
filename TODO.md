@@ -579,8 +579,22 @@ that staleness is why these are consolidated here.
       a bad `supplierId` is a 400 naming the field rather than a raw FK
       violation surfacing as a 500. FK is SetNull: deleting a supplier must
       never delete stock history. 6 tests, both guards watched failing
-- [ ] **F3.5** Bulk receive — import is create-only
-      (`assertPermitted(config, 'create')`), so this is real work, not wiring
+- [x] **F3.5 — DONE 2026-09-08.** `POST /inventory/receive` + `/receive/preview`,
+      matching on SKU or barcode (whichever the supplier's paperwork carries).
+      **Its own service, not the generic import**: that one is create-only AND
+      writes rows of a CONFIGURED resource, while a delivery UPDATES stock and
+      inventory is deliberately not configured — stock is an append-only
+      movement log, never an editable number. It reuses the import's SHAPE
+      (validate all, then apply all-or-nothing), not its code.
+      **All-or-nothing**: receiving "47 of 50" leaves a shop whose count
+      matches neither the paperwork nor the shelf, and the 3 that failed are
+      the ones nobody chases. **A duplicate product across two lines is
+      REFUSED, not summed** — silently adding them doubles the stock with
+      nothing on screen to explain it. Each line goes through `adjustStock`
+      rather than writing movements directly, so the branch fallback,
+      per-branch total, product total and low-stock alert all still fire.
+      Carries F7.8's batch detail onto every line. 9 tests, both rules watched
+      failing. **No UI yet** — API only
 
 ### Shifts (F6) — ✅ COMPLETE 2026-09-08
 All five items done. The gating decision (F6.1's shape) was answered by the

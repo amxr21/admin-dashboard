@@ -13,6 +13,7 @@ import {
   reconcile,
 } from '../../services/inventory.service.js';
 
+import { applyReceive, previewReceive } from '../../services/bulk-receive.service.js';
 /**
  * Inventory.
  *
@@ -196,4 +197,72 @@ inventoryRouter.post('/inventory/:productId/movements', ...guard, async (req, re
  */
 inventoryRouter.get('/inventory/:productId/reconcile', ...guard, async (req, res) => {
   res.json({ data: await reconcile(String(req.params.productId)) });
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+ * BULK RECEIVE (F3.5)
+ *
+ * A delivery arrives with a note listing many products. Entering them one at
+ * a time is the friction this removes.
+ *
+ * Two endpoints, preview then apply, mirroring the resource import: the
+ * operator sees which lines resolved to which PRODUCT NAMES before anything
+ * is written, because a SKU typo that happens to match a different real
+ * product is otherwise invisible until the stock is wrong.
+ * ───────────────────────────────────────────────────────────────────── */
+
+const receiveLineSchema = z.object({
+  sku: z.string().trim().max(120).optional(),
+  barcode: z.string().trim().max(120).optional(),
+  // Coerced because a CSV always arrives as strings; the service still
+  // rejects a non-integer or a zero with a per-line message.
+  quantity: z.coerce.number(),
+  unitCost: z
+    .string()
+    .trim()
+    .regex(/^\d{1,8}(\.\d{1,2})?$/, 'Enter an amount like 12.50')
+    .optional(),
+  note: z.string().trim().max(255).optional(),
+});
+
+const receiveSchema = z.object({
+  branchId: z.string().trim().min(1).optional(),
+  supplierId: z.string().trim().min(1).optional(),
+  deliveredAt: z.string().trim().datetime({ offset: true }).optional(),
+  purchasedAt: z.string().trim().datetime({ offset: true }).optional(),
+  reference: z.string().trim().max(64).optional(),
+  lines: z.array(receiveLineSchema).min(1),
+});
+
+/** Validates and writes nothing. Safe to call as often as the form likes. */
+inventoryRouter.post('/inventory/receive/preview', ...guard, async (req, res) => {
+  const parsed = receiveSchema.safeParse(req.body);
+
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+
+  res.status(200).json({ data: await previewReceive(parsed.data) });
+});
+
+/**
+ * Applies the whole delivery, or none of it.
+ *
+ * A 200 with `received: 0` and per-line errors is a REFUSAL, not a failure —
+ * the client renders the errors beside the lines. Reserving 4xx for malformed
+ * requests keeps "your file has mistakes" distinct from "your request was
+ * wrong", which are different problems for the person holding the delivery.
+ */
+inventoryRouter.post('/inventory/receive', ...guard, async (req, res) => {
+  const parsed = receiveSchema.safeParse(req.body);
+
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+
+  const user = requireUser(req);
+
+  const result = await applyReceive(
+    { ...parsed.data, branchId: parsed.data.branchId ?? req.branchId ?? undefined },
+    user.id,
+    req,
+  );
+
+  res.status(result.received > 0 ? 201 : 200).json({ data: result });
 });

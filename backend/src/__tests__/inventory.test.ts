@@ -738,3 +738,187 @@ describe('a received batch records its own delivery detail (F7.8)', () => {
     expect(first?.supplier?.name).toContain('Bean Bros');
   });
 });
+
+describe('receiving a whole delivery at once (F3.5)', () => {
+  /**
+   * A delivery note lists many products; entering them one at a time is the
+   * friction this removes. Deliberately NOT the generic resource import: that
+   * one is create-only and writes rows of a configured resource, while a
+   * delivery UPDATES stock — and inventory is not a configured resource at
+   * all, because stock is an append-only movement log rather than an editable
+   * number.
+   *
+   * The two rules worth protecting are all-or-nothing (a half-received
+   * delivery matches neither the paperwork nor the shelf) and the duplicate
+   * refusal (silently summing two lines doubles the stock with nothing on
+   * screen to explain it).
+   */
+  async function makeCoded(sku: string, barcode?: string) {
+    const product = await prisma.product.create({
+      data: {
+        name: `${RUN} ${sku}`,
+        price: new Prisma.Decimal('9.99'),
+        stock: 0,
+        sku: `${RUN}-${sku}`,
+        ...(barcode ? { barcode: `${RUN}-${barcode}` } : {}),
+      },
+    });
+    productIds.push(product.id);
+    return product;
+  }
+
+  function receive(body: Record<string, unknown>, path = '/api/v1/inventory/receive') {
+    return request(app).post(path).set(auth(ownerToken)).send(body);
+  }
+
+  it('receives every line and moves the stock', async () => {
+    const a = await makeCoded('BULK-A');
+    const b = await makeCoded('BULK-B');
+
+    const res = await receive({
+      reference: 'DN-9001',
+      lines: [
+        { sku: a.sku, quantity: 12 },
+        { sku: b.sku, quantity: 5 },
+      ],
+    });
+
+    expect(res.status).toBe(201);
+    expect((res.body as { data: { received: number } }).data.received).toBe(2);
+
+    const after = await prisma.product.findMany({
+      where: { id: { in: [a.id, b.id] } },
+      select: { id: true, stock: true },
+      orderBy: { sku: 'asc' },
+    });
+
+    expect(after.map((p) => p.stock)).toEqual([12, 5]);
+  });
+
+  it('matches on barcode as well as SKU', async () => {
+    // A supplier's paperwork carries whichever code they use, not the one
+    // this shop happens to file by.
+    const product = await makeCoded('BULK-C', 'EAN-C');
+
+    const res = await receive({ lines: [{ barcode: product.barcode, quantity: 4 }] });
+
+    expect(res.status).toBe(201);
+
+    const after = await prisma.product.findUnique({ where: { id: product.id } });
+    expect(after?.stock).toBe(4);
+  });
+
+  it('writes NOTHING when any line is bad', async () => {
+    // All-or-nothing. Receiving "1 of 2" leaves a shop whose counted stock
+    // matches neither the delivery note nor the shelf, and the line that
+    // failed is the one nobody remembers to chase.
+    const good = await makeCoded('BULK-D');
+
+    const res = await receive({
+      lines: [
+        { sku: good.sku, quantity: 10 },
+        { sku: `${RUN}-NOT-A-REAL-SKU`, quantity: 3 },
+      ],
+    });
+
+    expect(res.status).toBe(200);
+    expect((res.body as { data: { received: number } }).data.received).toBe(0);
+
+    const after = await prisma.product.findUnique({ where: { id: good.id } });
+    expect(after?.stock).toBe(0);
+  });
+
+  it('refuses the same product on two lines rather than summing them', async () => {
+    // Two lines for one product is usually a duplicated row. Adding them
+    // silently doubles the stock with nothing on screen to explain it.
+    const product = await makeCoded('BULK-E');
+
+    const res = await receive({
+      lines: [
+        { sku: product.sku, quantity: 6 },
+        { sku: product.sku, quantity: 6 },
+      ],
+    });
+
+    expect((res.body as { data: { received: number } }).data.received).toBe(0);
+
+    const errors = (res.body as { data: { errors: { line: number; message: string }[] } }).data
+      .errors;
+    expect(errors[0]?.line).toBe(2);
+    expect(errors[0]?.message).toMatch(/already on line 1/i);
+  });
+
+  it('rejects a zero or negative quantity per line', async () => {
+    // Receiving zero is not a delivery, and a negative is a write-off that
+    // belongs on its own movement with its own reason.
+    const product = await makeCoded('BULK-F');
+
+    const res = await receive({ lines: [{ sku: product.sku, quantity: 0 }] });
+
+    expect((res.body as { data: { received: number } }).data.received).toBe(0);
+    expect(
+      (res.body as { data: { errors: { message: string }[] } }).data.errors[0]?.message,
+    ).toMatch(/above zero/i);
+  });
+
+  it('previews without writing anything', async () => {
+    // The operator sees which lines resolved to which product NAMES before
+    // committing — a SKU typo matching a different real product is otherwise
+    // invisible until the stock is wrong.
+    const product = await makeCoded('BULK-G');
+
+    const res = await receive(
+      { lines: [{ sku: product.sku, quantity: 7 }] },
+      '/api/v1/inventory/receive/preview',
+    );
+
+    expect(res.status).toBe(200);
+
+    const body = res.body as { data: { validLines: number; resolved: { name: string }[] } };
+    expect(body.data.validLines).toBe(1);
+    expect(body.data.resolved[0]?.name).toContain('BULK-G');
+
+    const after = await prisma.product.findUnique({ where: { id: product.id } });
+    expect(after?.stock).toBe(0);
+  });
+
+  it('carries the batch detail onto every line', async () => {
+    // One delivery note covers all of them; a movement that lost its supplier
+    // would leave "where did this come from" unanswerable for that product
+    // alone (F7.8).
+    const supplier = await prisma.supplier.create({ data: { name: `${RUN} Bulk Supplies` } });
+    const a = await makeCoded('BULK-H');
+    const b = await makeCoded('BULK-I');
+
+    await receive({
+      supplierId: supplier.id,
+      reference: 'DN-9002',
+      deliveredAt: '2026-08-25T08:00:00.000Z',
+      lines: [
+        { sku: a.sku, quantity: 2 },
+        { sku: b.sku, quantity: 3 },
+      ],
+    });
+
+    const movements = await prisma.stockMovement.findMany({
+      where: { productId: { in: [a.id, b.id] } },
+      select: { supplierId: true, reference: true, deliveredAt: true },
+    });
+
+    expect(movements).toHaveLength(2);
+    for (const movement of movements) {
+      expect(movement.supplierId).toBe(supplier.id);
+      expect(movement.reference).toBe('DN-9002');
+      expect(movement.deliveredAt?.toISOString()).toBe('2026-08-25T08:00:00.000Z');
+    }
+  });
+
+  it('needs a SKU or a barcode to identify the product', async () => {
+    const res = await receive({ lines: [{ quantity: 5 }] });
+
+    expect((res.body as { data: { received: number } }).data.received).toBe(0);
+    expect(
+      (res.body as { data: { errors: { message: string }[] } }).data.errors[0]?.message,
+    ).toMatch(/SKU or a barcode/i);
+  });
+});
