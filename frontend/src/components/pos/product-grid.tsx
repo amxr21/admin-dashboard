@@ -42,6 +42,16 @@ import {
 interface ProductGridProps {
   onAdd: (product: BrowsedProduct) => void;
   disabled?: boolean;
+  /**
+   * Bump this (e.g. a counter incremented once per completed sale) to force
+   * a refetch without touching search or category state.
+   *
+   * Found by walking through an actual sale rather than testing this
+   * component in isolation: a sale decrements branch stock, but nothing here
+   * ever refetched afterwards, so a tile could still read as in-stock for
+   * the NEXT customer after the last unit had just been sold to this one.
+   */
+  refreshKey?: number;
 }
 
 /** Debounced the same amount as the resource table's own search box — long
@@ -49,17 +59,23 @@ interface ProductGridProps {
  *  short enough that it still reads as instant. */
 const SEARCH_DEBOUNCE_MS = 250;
 
-export function ProductGrid({ onAdd, disabled = false }: ProductGridProps) {
+export function ProductGrid({ onAdd, disabled = false, refreshKey }: ProductGridProps) {
   const t = useTranslations('pos.grid');
 
   const [categories, setCategories] = useState<BrowseCategory[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [products, setProducts] = useState<BrowsedProduct[]>([]);
+  /** True only for the FIRST fetch. A search keystroke or category tap
+   *  re-fetches too, but must not blank the grid to skeletons while a
+   *  cashier is mid-transaction with a customer waiting — the old tiles stay
+   *  on screen until the new ones arrive. Found by walking through an actual
+   *  sale rather than testing the fetch logic in isolation. */
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasLoadedOnce = useRef(false);
 
   useEffect(() => {
     // Loaded once. The category LIST changes as rarely as the resource
@@ -74,11 +90,14 @@ export function ProductGrid({ onAdd, disabled = false }: ProductGridProps) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(() => {
-      setIsLoading(true);
+      if (!hasLoadedOnce.current) setIsLoading(true);
       setError(false);
 
       void browseProducts({ q: query, categoryId: activeCategory ?? undefined })
-        .then(setProducts)
+        .then((result) => {
+          setProducts(result);
+          hasLoadedOnce.current = true;
+        })
         .catch(() => setError(true))
         .finally(() => setIsLoading(false));
     }, SEARCH_DEBOUNCE_MS);
@@ -86,7 +105,7 @@ export function ProductGrid({ onAdd, disabled = false }: ProductGridProps) {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, activeCategory]);
+  }, [query, activeCategory, refreshKey]);
 
   const showEmpty = !isLoading && !error && products.length === 0;
 

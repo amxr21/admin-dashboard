@@ -79,6 +79,8 @@ export function SaleScreen() {
   const [tendered, setTendered] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [isSelling, setIsSelling] = useState(false);
+  /** Bumped once per completed sale so the grid refetches stock (O9.10). */
+  const [gridRefreshKey, setGridRefreshKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   /** The completed sale, kept so it can be printed. Cleared by the next scan
    *  — a receipt left on screen while a new sale is rung up is one somebody
@@ -205,6 +207,11 @@ export function SaleScreen() {
 
       setLines([]);
       setTendered('');
+      // The sale just decremented branch stock — the grid must reflect that
+      // for the NEXT customer, or a just-sold-out item still shows as
+      // available. Found by walking through an actual sale end to end, not
+      // by testing the grid's fetch logic in isolation.
+      setGridRefreshKey((n) => n + 1);
     } catch (caught) {
       // A 400 here is a real refusal the cashier must read — not enough
       // stock, tendered less than the total — so it is shown verbatim rather
@@ -259,7 +266,7 @@ export function SaleScreen() {
             above stays exact-match for the few products that carry a code.
             Tapping a tile calls the same addToCart() a scan does, so the
             de-dupe rule cannot differ between the two paths. */}
-        <ProductGrid onAdd={addToCart} disabled={isSelling} />
+        <ProductGrid onAdd={addToCart} disabled={isSelling} refreshKey={gridRefreshKey} />
 
         {lines.length > 0 ? (
           <ul className="divide-y rounded-lg border">
