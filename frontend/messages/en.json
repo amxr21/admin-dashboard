@@ -2278,7 +2278,14 @@
       "breakdown": "What was done",
       "recent": "Most recent",
       "empty": "Nothing was changed during this shift."
-    }
+    },
+    "openingFloat": "Cash in the drawer at open",
+    "floatPlaceholder": "Float",
+    "countLabel": "Count the drawer",
+    "expectedHint": "Opened with {float}, took {cash} in cash.",
+    "tillClosed": "Till closed — variance {variance}",
+    "varianceShort": "Variance {variance}",
+    "dismissVariance": "Dismiss the till variance"
   },
   "staffActivity": {
     "title": "Staff activity",

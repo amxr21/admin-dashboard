@@ -2278,7 +2278,14 @@
       "breakdown": "ما تم عمله",
       "recent": "الأحدث",
       "empty": "لم يُغيَّر شيء خلال هذه الوردية."
-    }
+    },
+    "openingFloat": "النقد في الدرج عند الفتح",
+    "floatPlaceholder": "الرصيد الافتتاحي",
+    "countLabel": "احسب الدرج",
+    "expectedHint": "فُتح بـ {float}، والمقبوض نقدًا {cash}.",
+    "tillClosed": "أُغلق الصندوق — الفرق {variance}",
+    "varianceShort": "الفرق {variance}",
+    "dismissVariance": "إخفاء فرق الصندوق"
   },
   "staffActivity": {
     "title": "نشاط الموظفين",

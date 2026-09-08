@@ -458,6 +458,14 @@ mode) and `discounts`: more authority than the job needs.
 - [ ] O4.3 If adding: the role, its rank in `ROLE_ORDER`, its `ROLE_AREAS`
       entry, i18n label, and the permissions matrix row
 
+### O5 — ✅ COMPLETE 2026-09-08 (all 11 items)
+The app can take a sale. `prisma.order.create` existed only in tests and the
+seeder when this track opened; there is now a till that scans, prices with the
+shared receipt math, decrements per-branch stock, records a payment and prints
+a thermal receipt — with a drawer that reconciles at close.
+
+**Original entry:**
+
 ### O5 — POS / till: the cashier who scans items and prints a receipt
 **Clarified by the owner 2026-09-07:** not a permissions question. He means a
 person standing in the shop who **scans or selects items, takes payment, and
@@ -615,9 +623,19 @@ till its branch for free.
       does not exist until O5.5 — the F5.4 landing test failed because it
       checks every destination is real and inside the role's grant. Points at
       orders until the sale screen lands
-- [ ] O5.11 Open/close-shift UI in the shell, with elapsed time — must survive
-      a reload and a second tab (the open shift lives on the server, never in
-      `localStorage`)
+- [x] **O5.11 — DONE 2026-09-08.** The clock on/off half shipped with F6.3
+      (server-held, survives a reload and a second tab); this adds the DRAWER.
+      **The opening float decides the shape**: a shift opened WITH one must be
+      closed by counting it — ending without a count leaves a till nobody
+      reconciled — and a shift opened without one never asks, because most
+      shifts have no till and making a picker count nothing is friction for
+      the majority. The float is optional, so null keeps meaning "no drawer"
+      rather than collapsing into a zero.
+      **Expected cash is shown AFTER the count field, as context only** —
+      leading with the target invites the count to be typed to match it, which
+      is the one thing a variance exists to detect. The variance survives the
+      dialog closing so the cashier sees the result of the count they just
+      made. 6 tests, the till-close path watched failing
 
 **Ordering matters:** role first → screens that cannot take money. Checkout
 without `Payment` → sales nobody can reconcile.
