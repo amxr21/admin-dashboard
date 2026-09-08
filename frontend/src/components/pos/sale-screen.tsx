@@ -116,15 +116,6 @@ export function SaleScreen() {
     [lines],
   );
 
-  /** For the compact summary shown above the grid (O9.10 follow-up) — the
-   *  cart list itself scrolls out of view while the grid fills the screen,
-   *  so the cashier needs the running count and total visible WHILE tapping
-   *  through items, not only in the sidebar off to the side. */
-  const itemCount = useMemo(
-    () => lines.reduce((sum, line) => sum + line.quantity, 0),
-    [lines],
-  );
-
   function refocus() {
     scanField.current?.focus();
   }
@@ -292,24 +283,9 @@ export function SaleScreen() {
           </p>
         ) : null}
 
-        {/* The running cart, visible WHILE the grid fills the screen — the
-            cart list below scrolls out of view once there are enough items,
-            and the sidebar total sits off to the side. A cashier tapping
-            through a customer's order needs the count and total in the same
-            place their eyes already are. */}
-        {itemCount > 0 ? (
-          <div className="bg-muted/50 flex items-center justify-between rounded-lg border px-3 py-2">
-            <span className="text-sm font-medium">{t('itemsInCart', { count: itemCount })}</span>
-            <span className="text-sm font-semibold tabular-nums">{estimate}</span>
-          </div>
-        ) : null}
-
-        {/* The PRIMARY way most products are found (O9.10) — the scan field
-            above stays exact-match for the few products that carry a code.
-            Tapping a tile calls the same addToCart() a scan does, so the
-            de-dupe rule cannot differ between the two paths. */}
-        <ProductGrid onAdd={addToCart} disabled={isSelling} refreshKey={gridRefreshKey} />
-
+        {/* The running cart, moved ABOVE the grid (the owner's own screenshot
+            of what he wanted at the top) — visible while the grid fills the
+            rest of the screen, rather than scrolling out of view below it. */}
         {lines.length > 0 ? (
           <ul className="divide-y rounded-lg border">
             {lines.map((line) => (
@@ -364,6 +340,12 @@ export function SaleScreen() {
             ))}
           </ul>
         ) : null}
+
+        {/* The PRIMARY way most products are found (O9.10) — the scan field
+            above stays exact-match for the few products that carry a code.
+            Tapping a tile calls the same addToCart() a scan does, so the
+            de-dupe rule cannot differ between the two paths. */}
+        <ProductGrid onAdd={addToCart} disabled={isSelling} refreshKey={gridRefreshKey} />
       </div>
 
       <aside className="space-y-4 rounded-lg border p-4">

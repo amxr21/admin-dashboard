@@ -2370,7 +2370,6 @@
       "noMatches": "No products match that search.",
       "outOfStock": "Out of stock here"
     },
-    "itemsInCart": "{count, plural, one {# item} other {# items}}",
     "confirmTitle": "Confirm sale",
     "confirmTotal": "Total",
     "confirmMethod": "Paying by {method}",

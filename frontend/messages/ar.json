@@ -2370,7 +2370,6 @@
       "noMatches": "لا توجد منتجات مطابقة لهذا البحث.",
       "outOfStock": "غير متوفر في هذا الفرع"
     },
-    "itemsInCart": "{count, plural, zero {لا عناصر} one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}}",
     "confirmTitle": "تأكيد البيع",
     "confirmTotal": "الإجمالي",
     "confirmMethod": "الدفع عبر {method}",
