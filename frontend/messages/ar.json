@@ -2395,6 +2395,14 @@
       "floatPlaceholder": "0.00",
       "startAndOpen": "ابدأ الوردية وافتح الصندوق",
       "skip": "ليس الآن — اسمح لي بالبيع فقط"
+    },
+    "managerOverride": {
+      "title": "مطلوب موافقة المدير",
+      "emailLabel": "البريد الإلكتروني للمدير",
+      "passwordLabel": "كلمة مرور المدير",
+      "cancel": "إلغاء",
+      "approve": "موافقة",
+      "approving": "جارٍ التحقق..."
     }
   }
 }

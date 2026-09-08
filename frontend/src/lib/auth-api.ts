@@ -29,6 +29,29 @@ export async function redeemPasswordReset(
   });
 }
 
+/**
+ * Manager override at the till (O9 Tier 4) — a manager types their OWN
+ * credentials in place to authorise an action the signed-in cashier's role
+ * cannot do alone. AUTHENTICATED, unlike everything else in this file: the
+ * caller must already be signed in as the cashier for this to mean anything.
+ * Never signs the manager in — the cashier's own session is untouched either
+ * way, success or failure.
+ */
+export interface ManagerOverrideResult {
+  approverId: string;
+  approverName: string | null;
+}
+
+export async function requestManagerOverride(
+  email: string,
+  password: string,
+): Promise<ManagerOverrideResult> {
+  return apiFetch<ManagerOverrideResult>('/auth/manager-override', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
 export interface UpdateProfileInput {
   name?: string;
   phone?: string;
