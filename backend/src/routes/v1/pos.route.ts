@@ -134,6 +134,10 @@ const checkoutSchema = z.object({
    */
   customerId: z.string().trim().min(1).optional(),
   note: z.string().trim().max(255).optional(),
+  /** The card terminal's own receipt/reference number (O9.10 follow-up) —
+   *  optional, since not every terminal prints one and cash never has one.
+   *  Stored so a disputed charge can be matched back to this sale later. */
+  reference: z.string().trim().max(120).optional(),
 });
 
 /**

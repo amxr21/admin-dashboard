@@ -65,6 +65,16 @@ async function scan(code: string) {
   await userEvent.type(field, `${code}{Enter}`);
 }
 
+/**
+ * "Take Payment" now opens a confirm dialog (O9.10 follow-up) rather than
+ * charging directly — this walks through it the way a cashier would, so
+ * every existing checkout test still exercises the real path.
+ */
+async function takePaymentThroughConfirm() {
+  await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
+  await userEvent.click(await screen.findByRole('button', { name: /confirm & charge/i }));
+}
+
 describe('building a sale', () => {
   it('adds a scanned product to the cart', async () => {
     scanProduct.mockResolvedValue(makeProduct());
@@ -177,7 +187,7 @@ describe('taking payment', () => {
     await screen.findByText('Flat white');
 
     await userEvent.type(screen.getByLabelText(/cash received/i), '10.00');
-    await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
+    await takePaymentThroughConfirm();
 
     await waitFor(() => {
       expect(checkout).toHaveBeenCalledWith(
@@ -208,6 +218,38 @@ describe('taking payment', () => {
     });
   });
 
+  it('sends an optional card reference number, only when paying by card', async () => {
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({
+      orderId: 'o1',
+      orderNumber: 'POS-20260908-ABCD',
+      subtotal: '4.50',
+      taxAmount: '0.23',
+      total: '4.73',
+      change: null,
+    });
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+
+    await userEvent.click(screen.getByLabelText(/^payment$/i));
+    await userEvent.click(await screen.findByRole('option', { name: /card/i }));
+
+    await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
+    await userEvent.type(
+      await screen.findByLabelText(/terminal reference/i),
+      'TX-9981',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /confirm & charge/i }));
+
+    await waitFor(() => {
+      expect(checkout).toHaveBeenCalledWith(
+        expect.objectContaining({ method: 'card', reference: 'TX-9981' }),
+      );
+    });
+  });
+
   it('keeps the change on screen after the sale', async () => {
     // The one number still needed AFTER the sale completes. A toast would
     // vanish while the cashier is opening the drawer.
@@ -230,7 +272,7 @@ describe('taking payment', () => {
 
     await scan('5012345678900');
     await screen.findByText('Flat white');
-    await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
+    await takePaymentThroughConfirm();
 
     expect(await screen.findByText(/change 5\.50/i)).toBeInTheDocument();
   });
@@ -246,13 +288,17 @@ describe('taking payment', () => {
     render(<SaleScreen />);
     await scan('5012345678900');
     await screen.findByText('Flat white');
-    await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
+    await takePaymentThroughConfirm();
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Only 2 of Flat white left at this branch',
     );
     // The cart survives a refusal — the customer is still standing there.
-    expect(screen.getByText('Flat white')).toBeInTheDocument();
+    // Two matches now (the cart list AND the still-open confirm dialog's own
+    // line-item summary), which is the correct new shape, not a bug — the
+    // dialog stays open on a failed charge so the cashier sees the refusal
+    // right where they are (see the onClick comment on AlertDialogAction).
+    expect(screen.getAllByText('Flat white').length).toBeGreaterThan(0);
   });
 
   it('cannot take payment on an empty cart', async () => {

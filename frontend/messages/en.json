@@ -2369,6 +2369,15 @@
       "empty": "No products yet. Add one from Products.",
       "noMatches": "No products match that search.",
       "outOfStock": "Out of stock here"
-    }
+    },
+    "itemsInCart": "{count, plural, one {# item} other {# items}}",
+    "confirmTitle": "Confirm sale",
+    "confirmTotal": "Total",
+    "confirmMethod": "Paying by {method}",
+    "confirmBack": "Back",
+    "confirmCharge": "Confirm & charge",
+    "referenceLabel": "Terminal reference (optional)",
+    "referencePlaceholder": "e.g. from the card terminal receipt",
+    "referenceHint": "So a disputed charge can be matched back to this sale later."
   }
 }

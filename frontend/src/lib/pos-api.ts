@@ -100,6 +100,9 @@ export async function checkout(input: {
   // shiftId is intentionally absent.
   customerId?: string;
   note?: string;
+  /** The card terminal's own receipt/reference number — optional, cash never
+   *  has one. See the schema comment on `Payment.reference`. */
+  reference?: string;
 }): Promise<CheckoutResult> {
   return apiFetch<CheckoutResult>('/pos/checkout', {
     method: 'POST',

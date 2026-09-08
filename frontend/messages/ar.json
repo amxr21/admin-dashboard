@@ -2369,6 +2369,15 @@
       "empty": "لا توجد منتجات بعد. أضف منتجًا من صفحة المنتجات.",
       "noMatches": "لا توجد منتجات مطابقة لهذا البحث.",
       "outOfStock": "غير متوفر في هذا الفرع"
-    }
+    },
+    "itemsInCart": "{count, plural, zero {لا عناصر} one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}}",
+    "confirmTitle": "تأكيد البيع",
+    "confirmTotal": "الإجمالي",
+    "confirmMethod": "الدفع عبر {method}",
+    "confirmBack": "رجوع",
+    "confirmCharge": "تأكيد وتحصيل الدفع",
+    "referenceLabel": "الرقم المرجعي لجهاز الدفع (اختياري)",
+    "referencePlaceholder": "مثال: من إيصال جهاز الدفع",
+    "referenceHint": "حتى يمكن مطابقة أي نزاع على الدفع بهذه العملية لاحقًا."
   }
 }

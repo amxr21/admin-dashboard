@@ -196,16 +196,24 @@ function ProductTile({
   const t = useTranslations('pos.grid');
   const [imageFailed, setImageFailed] = useState(false);
 
-  // Out of stock at THIS branch is shown, never hidden — the same reasoning
-  // as the cart's over-stock warning: the cashier decides, the server is the
-  // one that actually refuses the sale.
+  /**
+   * Shown, never hidden — the owner asked to check stock "before listing the
+   * items", decided as: still visible, but DISABLED. A tile that vanishes
+   * once it sells out leaves a cashier unable to tell a customer "we just
+   * ran out of X" apart from "we never had X". Disabling it, rather than
+   * leaving it tappable, is the one behaviour change from the cart's own
+   * over-stock warning (which still only warns) — a cart line is a quantity
+   * correction on something already added; a grid tap is the decision to add
+   * a NEW zero-stock line in the first place, which this stops outright
+   * rather than deferring to the server's refusal on checkout.
+   */
   const isOutOfStock = product.branchStock !== null && product.branchStock <= 0;
 
   return (
     <button
       type="button"
       onClick={onAdd}
-      disabled={disabled}
+      disabled={disabled || isOutOfStock}
       className="border-border bg-card hover:bg-accent focus-visible:ring-ring flex flex-col overflow-hidden rounded-lg border text-start transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
     >
       <div className="bg-muted relative flex aspect-square items-center justify-center overflow-hidden">

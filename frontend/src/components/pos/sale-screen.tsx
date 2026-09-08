@@ -9,6 +9,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -77,6 +87,14 @@ export function SaleScreen() {
   const [code, setCode] = useState('');
   const [method, setMethod] = useState('cash');
   const [tendered, setTendered] = useState('');
+  /** The card terminal's own receipt/reference number — asked for in the
+   *  confirm dialog, not the sidebar, since it only makes sense once the
+   *  method is card. See the schema comment on `Payment.reference`. */
+  const [reference, setReference] = useState('');
+  /** A confirm step between "Take Payment" and the charge actually firing —
+   *  the sidebar total was always visible, but tapping the button charged
+   *  immediately with no chance to catch a wrong item or method first. */
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [isSelling, setIsSelling] = useState(false);
   /** Bumped once per completed sale so the grid refetches stock (O9.10). */
@@ -95,6 +113,15 @@ export function SaleScreen() {
       lines
         .reduce((sum, line) => sum + Number(line.product.price) * line.quantity, 0)
         .toFixed(2),
+    [lines],
+  );
+
+  /** For the compact summary shown above the grid (O9.10 follow-up) — the
+   *  cart list itself scrolls out of view while the grid fills the screen,
+   *  so the cashier needs the running count and total visible WHILE tapping
+   *  through items, not only in the sidebar off to the side. */
+  const itemCount = useMemo(
+    () => lines.reduce((sum, line) => sum + line.quantity, 0),
     [lines],
   );
 
@@ -180,6 +207,7 @@ export function SaleScreen() {
         lines: lines.map((line) => ({ productId: line.product.id, quantity: line.quantity })),
         method,
         ...(method === 'cash' && tendered.trim() !== '' ? { tendered: tendered.trim() } : {}),
+        ...(method === 'card' && reference.trim() !== '' ? { reference: reference.trim() } : {}),
       });
 
       // Kept on screen rather than toasted away: the change to hand back is
@@ -207,6 +235,8 @@ export function SaleScreen() {
 
       setLines([]);
       setTendered('');
+      setReference('');
+      setConfirmOpen(false);
       // The sale just decremented branch stock — the grid must reflect that
       // for the NEXT customer, or a just-sold-out item still shows as
       // available. Found by walking through an actual sale end to end, not
@@ -260,6 +290,18 @@ export function SaleScreen() {
           >
             {error}
           </p>
+        ) : null}
+
+        {/* The running cart, visible WHILE the grid fills the screen — the
+            cart list below scrolls out of view once there are enough items,
+            and the sidebar total sits off to the side. A cashier tapping
+            through a customer's order needs the count and total in the same
+            place their eyes already are. */}
+        {itemCount > 0 ? (
+          <div className="bg-muted/50 flex items-center justify-between rounded-lg border px-3 py-2">
+            <span className="text-sm font-medium">{t('itemsInCart', { count: itemCount })}</span>
+            <span className="text-sm font-semibold tabular-nums">{estimate}</span>
+          </div>
         ) : null}
 
         {/* The PRIMARY way most products are found (O9.10) — the scan field
@@ -363,11 +405,105 @@ export function SaleScreen() {
 
         <Button
           className="w-full"
-          onClick={() => void takePayment()}
+          onClick={() => {
+            setError(null);
+            setConfirmOpen(true);
+          }}
           disabled={lines.length === 0 || isSelling}
         >
-          {isSelling ? t('taking') : t('takePayment')}
+          {t('takePayment')}
         </Button>
+
+        {/*
+         * The confirm step between "Take Payment" and the charge actually
+         * firing. The sidebar total was always visible, but tapping the
+         * button used to charge immediately — no chance to catch a wrong
+         * item or the wrong method before money moved.
+         *
+         * `AlertDialogAction` calls takePayment() directly rather than
+         * closing the dialog first: a failed charge must keep the dialog
+         * OPEN so the cashier sees the refusal right where they are, not
+         * back on the till screen wondering why nothing happened. Success
+         * closes it itself (see takePayment's `setConfirmOpen(false)`).
+         */}
+        <AlertDialog open={confirmOpen} onOpenChange={(open) => !isSelling && setConfirmOpen(open)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('confirmTitle')}</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-3">
+                  <ul className="divide-y rounded-md border text-start">
+                    {lines.map((line) => (
+                      <li
+                        key={line.product.id}
+                        className="text-foreground flex items-center justify-between px-3 py-2 text-sm"
+                      >
+                        <span className="truncate">
+                          {line.product.name}
+                          <span className="text-muted-foreground ms-1 tabular-nums">
+                            × {line.quantity}
+                          </span>
+                        </span>
+                        <span className="tabular-nums">
+                          {(Number(line.product.price) * line.quantity).toFixed(2)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="text-foreground flex items-baseline justify-between font-semibold">
+                    <span>{t('confirmTotal')}</span>
+                    <span className="text-lg tabular-nums">{estimate}</span>
+                  </div>
+
+                  <p className="text-muted-foreground text-xs">{t('confirmMethod', { method: t(`methods.${method}`) })}</p>
+
+                  {method === 'card' ? (
+                    <div className="space-y-2 pt-1">
+                      <Label htmlFor="pos-reference">{t('referenceLabel')}</Label>
+                      <Input
+                        id="pos-reference"
+                        value={reference}
+                        onChange={(event) => setReference(event.target.value)}
+                        placeholder={t('referencePlaceholder')}
+                        className="force-ltr"
+                        disabled={isSelling}
+                      />
+                      <p className="text-muted-foreground text-xs">{t('referenceHint')}</p>
+                    </div>
+                  ) : null}
+
+                  {error ? (
+                    <p
+                      role="alert"
+                      className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
+                    >
+                      {error}
+                    </p>
+                  ) : null}
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isSelling}>{t('confirmBack')}</AlertDialogCancel>
+              <AlertDialogAction
+                // Radix's Action closes the dialog on click by default —
+                // prevented here because a FAILED charge must keep the
+                // dialog open with the refusal visible, not dismiss and
+                // strand the cashier looking at the till screen wondering
+                // what happened. Success closes it explicitly instead, in
+                // takePayment's own setConfirmOpen(false).
+                onClick={(event) => {
+                  event.preventDefault();
+                  void takePayment();
+                }}
+                disabled={isSelling}
+              >
+                {isSelling ? t('taking') : t('confirmCharge')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {lastSale ? (
           <div className="space-y-2 rounded-md border p-3">

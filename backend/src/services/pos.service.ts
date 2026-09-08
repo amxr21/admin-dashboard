@@ -253,6 +253,9 @@ export interface CheckoutInput {
   shiftId?: string | undefined;
   customerId?: string | undefined;
   note?: string | undefined;
+  /** The card terminal's own reference — see the schema comment on
+   *  `Payment.reference`. Optional; cash never has one. */
+  reference?: string | undefined;
 }
 
 /**
@@ -438,6 +441,7 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
         ...(input.shiftId ? { shiftId: input.shiftId } : {}),
         actorId,
         ...(input.note ? { note: input.note } : {}),
+        ...(input.reference ? { reference: input.reference } : {}),
       },
       select: { id: true, change: true },
     });
