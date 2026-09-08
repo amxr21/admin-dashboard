@@ -544,28 +544,88 @@ that staleness is why these are consolidated here.
 - [ ] **F3.5** Bulk receive — import is create-only
       (`assertPermitted(config, 'create')`), so this is real work, not wiring
 
-### Shifts (F6) — all gated on one decision
-- [ ] **F6.1** 🚫 **the `Shift` model's shape** — see "Waiting on the owner".
-      **This is the same object as O5's till session**; answering it unblocks
-      both tracks
-- [ ] **F6.3** Open/close shift UI in the shell (not buried in Settings), with
-      elapsed time. Must survive a reload and a second tab — the open shift
-      lives on the server, never in `localStorage`
-- [ ] **F6.4** "My shift" summary — a time-bounded `AuditLog` query, no new
-      logging needed
-- [ ] **F6.5** Shift history + who is on now. **Share a surface with F2's login
-      history** rather than building two near-identical staff-activity pages
-- [ ] **F6.6** ⚠️ Do NOT conflate shifts with payroll or time-clock compliance.
-      A note, not a task — if the owner wants payroll that is its own project
-      with real legal questions
+### Shifts (F6) — ✅ COMPLETE 2026-09-08
+All five items done. The gating decision (F6.1's shape) was answered by the
+owner on 2026-09-08 and the whole track followed the same day.
+- [x] **F6.1 — DONE 2026-09-08.** `Shift` model + service + routes, migration
+      `20260908010000_add_shifts` (additive, one table). Built to the owner's
+      definition: a period of WORK (user · branch · start · end), distinct
+      from a `Session`. `endedAt IS NULL` is the single source of truth for
+      "open" — not a separate status column, because two representations of
+      one fact drift and an `isOpen` disagreeing with a set `endedAt` has no
+      correct reading. `openedById` is separate from `userId` so "a manager
+      clocked them on" stays legible. Corrections keep the ORIGINAL times and
+      are attributed; **a second edit does not overwrite the original**, or a
+      manager could launder a correction by editing twice. **Nobody edits
+      their own shift at any rank, including OWNER** — the person who benefits
+      must not be the person who approves. Clocking on needs no area (the
+      people who work shifts would otherwise be the ones who cannot record
+      them); READING other people's is behind `staff`, like the audit trail.
+      16 tests, both critical rules watched failing. **This also unblocks O5's
+      till session — same object.**
+- [x] **F6.3 — DONE 2026-09-08.** `ShiftControl` in the topbar beside the
+      branch switcher (they answer the same kind of question: where you are
+      working, and whether you are on the clock). The open shift is read from
+      `GET /shifts/me` on every mount and NOTHING is written to
+      `localStorage` — a test asserts that, since two tabs could otherwise
+      disagree and a cleared cache would lose worked hours. Elapsed time is
+      RECOMPUTED from `startedAt` each tick rather than incremented, so a
+      backgrounded tab (where timers are throttled) shows the truth the moment
+      it is looked at. Clamped at zero: a clock skew or a start corrected into
+      the future would otherwise render "-1:00". 7 tests
+- [x] **F6.4 — DONE 2026-09-08.** `GET /shifts/:id/summary` over the existing
+      `AuditLog`; no second activity log, which would be two records of one
+      fact free to disagree. **Deliberately NOT `auditWhere`**: its `from`/`to`
+      are CALENDAR DATES snapped to midnight, and a shift is a timestamp range
+      inside a day — rounding it would attribute the night shift's work to the
+      morning one, with nothing looking wrong, just a plausible number against
+      the wrong name. Watched that exact bug fail the boundary test. An OPEN
+      shift summarises up to now. **Your own is always readable without
+      `staff`** — "what did I do today" is a question about your own work.
+      The panel STATES that it counts changes, not busyness: reads are not
+      audited, so a shift spent answering questions records little, and a bare
+      count next to somebody's name invites the wrong reading before a
+      conversation about their work. 5 tests
+- [x] **F6.5 — DONE 2026-09-08.** Shared, as the item asked. `/admin/
+      login-history` became **Staff activity** with three tabs: On now ·
+      Shifts · Sign-ins. **Not merged into one table** — a sign-in is an
+      instant the system recorded, a shift is a span the person declared, and
+      interleaving them would imply a relationship that does not exist.
+      "On now" is its own TAB rather than a filter, because it is the question
+      a manager actually walks up to the page to ask and a non-default filter
+      value is not discoverable. A corrected shift is marked as corrected,
+      with who and why — the point of keeping the original times is lost if
+      the table renders clocked and edited hours identically.
+      **Found while doing it**: the existing sidebar tests queried the Staff
+      link by `/staff/i`, which the new "Staff activity" label also matched.
+      Anchored to `/^staff$/i` — the tests were right, the label made them
+      ambiguous
+- [x] **F6.6 — HONOURED 2026-09-08** (a note, never a task). Nothing built
+      carries a pay rate, an overtime rule or any jurisdiction-specific
+      rounding, and the `Shift` model says so in its own comment. If payroll
+      is ever wanted it is its own project with real legal questions.
 
 ### Already built — verify and tell the owner, do not rebuild
-- [ ] **F7.5** Low-stock alerts already exist, **including email**.
-      `adjustStock` fires `notify()` on CROSSING into low stock, gated on
-      `notifications.lowStockAlerts`; `notify()` writes the in-app row AND
-      calls `sendAlertEmail`. **It works; it is almost certainly just
-      unconfigured.** Confirm the three email settings and check one arrives.
-      Do not build a second path
+- [x] **F7.5 — VERIFIED 2026-09-08. Nothing was missing; NO CODE WRITTEN.**
+      Traced the whole chain and it is intact: `adjustStock` fires `notify()`
+      on CROSSING into low stock (gated on `notifications.lowStockAlerts`,
+      default ON), and `notify()` writes the in-app row AND calls
+      `sendAlertEmail` — the two are independent, so neither is gated on the
+      other succeeding.
+      **Why it looks broken:** it is unconfigured. Queried the local database
+      directly — there are ZERO `Setting` rows, so everything sits at registry
+      defaults, and `email.enabled` defaults to **false**. No `SMTP_*` env
+      vars are set either.
+      **To switch it on** (owner task, now in `SETUP_TODO.md`): set
+      `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD` in `backend/.env`,
+      then in Settings turn on **Send email for alerts**, fill **Send emails
+      from**, and make sure **Support email** is set — that last one is the
+      RECIPIENT (`store.supportEmail`), which is easy to miss because the
+      field is not named like one.
+      **Added a regression test** (`low-stock-alert.test.ts`) pinning that
+      `notify()` reaches `sendAlertEmail`, watched failing. Not because the
+      link was broken, but because a working-but-unconfigured feature is
+      exactly what gets rebuilt by the next person who looks.
 
 ### Older, from §U / the G-GATE
 - [ ] Optimistic row updates with rollback

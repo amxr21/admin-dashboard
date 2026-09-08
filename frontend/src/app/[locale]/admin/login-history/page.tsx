@@ -1,9 +1,14 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { LoginHistoryTable } from '@/components/staff/login-history-table';
+import { StaffActivityView } from '@/components/staff/staff-activity-view';
 
 /**
- * Sign-in history — who got in, who did not, and from where.
+ * Staff activity — who is on now, who worked when, and who got in.
+ *
+ * F6.5: shifts share this page rather than getting their own. Both answer
+ * "what have staff been doing", both are guarded by `staff`, and both are
+ * read by the same person at the same moment — two near-identical pages
+ * would mean whoever is looking has to already know which holds the answer.
  *
  * Gated on the `staff` area, same as Audit and Staff: it names who has been
  * failing to sign in, which is closer to personnel data than to business
@@ -23,7 +28,7 @@ export default async function LoginHistoryPage({
   const { locale } = await params;
   setRequestLocale(locale);
 
-  const t = await getTranslations('loginHistory');
+  const t = await getTranslations('staffActivity');
 
   return (
     <div className="space-y-6">
@@ -32,7 +37,7 @@ export default async function LoginHistoryPage({
         <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
       </div>
 
-      <LoginHistoryTable />
+      <StaffActivityView />
     </div>
   );
 }

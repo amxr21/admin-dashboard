@@ -92,12 +92,12 @@ describe('previewing narrows the sidebar', () => {
       </AppShell>,
     );
 
-    expect(screen.getByRole('link', { name: /staff/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^staff$/i })).toBeInTheDocument();
 
     await user.click(screen.getByLabelText(/view as/i));
     await user.click(screen.getByRole('option', { name: /support/i }));
 
-    expect(screen.queryByRole('link', { name: /staff/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^staff$/i })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /orders/i })).toBeInTheDocument();
     expect(screen.getByText(/previewing as/i)).toBeInTheDocument();
   });
@@ -114,11 +114,11 @@ describe('previewing narrows the sidebar', () => {
 
     await user.click(screen.getByLabelText(/view as/i));
     await user.click(screen.getByRole('option', { name: /support/i }));
-    expect(screen.queryByRole('link', { name: /staff/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^staff$/i })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /exit preview/i }));
 
-    expect(screen.getByRole('link', { name: /staff/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^staff$/i })).toBeInTheDocument();
     expect(screen.queryByText(/previewing as/i)).not.toBeInTheDocument();
   });
 });

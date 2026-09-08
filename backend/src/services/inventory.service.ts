@@ -281,7 +281,10 @@ export async function listMovements(
  * cannot be reconciled against any branch's total, which is the one thing the
  * column exists to make possible.
  */
-async function defaultBranchId(): Promise<string> {
+/** Exported for F6.1 — a shift needs the same "which branch when none is
+ *  named" answer a stock movement does, and a second copy would be free to
+ *  reintroduce the timezone bug F8.2 fixed. */
+export async function defaultBranchId(): Promise<string> {
   // The flagged branch first; any active branch only as a fallback for an
   // install where the flag was never set.
   const branch =
