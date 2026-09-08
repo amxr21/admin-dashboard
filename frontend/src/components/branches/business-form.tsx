@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { ImageUploadField } from '@/components/image-upload-field';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api';
@@ -41,20 +42,35 @@ interface BusinessFormProps {
   businessId?: string;
 }
 
+/**
+ * Grouped rather than a flat list of twelve (O9.3).
+ *
+ * Twelve identical inputs in one column read as a form with no shape — the
+ * owner's complaint was that it looked "so basic". Widening alone would only
+ * make twelve undifferentiated inputs span more of the page, so they are
+ * grouped by the question each one answers: what the shop is called, how to
+ * reach it, where it is, and how it counts money.
+ *
+ * `logoUrl` is deliberately NOT in here — it is not a text input, and it
+ * renders on its own below with the real uploader.
+ */
+const GROUPS = [
+  { id: 'identity', fields: ['name', 'legalName', 'kind', 'taxId'] },
+  { id: 'contact', fields: ['email', 'phone'] },
+  { id: 'address', fields: ['addressLine', 'city', 'country'] },
+  { id: 'locale', fields: ['currency', 'timezone'] },
+] as const;
+
+/** Every writable field, in payload order. `logoUrl` included — it is stored
+ *  exactly like the others, it just has a better control. */
 const FIELDS = [
-  'name',
-  'legalName',
-  'kind',
-  'taxId',
-  'email',
-  'phone',
-  'addressLine',
-  'city',
-  'country',
-  'currency',
-  'timezone',
+  ...GROUPS.flatMap((group) => group.fields),
   'logoUrl',
 ] as const;
+
+/** Full-width inside its group: a legal name or a street rarely fits the half
+ *  column a two-up grid gives it. */
+const WIDE_FIELDS = new Set(['name', 'legalName', 'addressLine']);
 
 type Values = Record<string, string>;
 
@@ -173,7 +189,11 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
+    // Was `max-w-2xl`, which squeezed twelve fields into half the page and
+    // left the whole form hugging the start edge (O9.3). `4xl` is wide enough
+    // for a two-up grid to breathe without the line lengths becoming a
+    // reading problem.
+    <div className="max-w-4xl space-y-6">
       {error ? (
         <p
           role="alert"
@@ -183,43 +203,75 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
         </p>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        {FIELDS.map((field) => (
-          <div
-            key={field}
-            className={field === 'name' || field === 'addressLine' ? 'sm:col-span-2' : undefined}
-          >
-            <div className="space-y-2">
-              <Label htmlFor={`business-${field}`}>
-                {t(`fields.${field}`)}
-                {field === 'name' ? (
-                  <span className="text-destructive ms-1" aria-hidden>
-                    *
-                  </span>
-                ) : null}
-              </Label>
-              <Input
-                id={`business-${field}`}
-                type={field === 'email' ? 'email' : field === 'phone' ? 'tel' : 'text'}
-                value={values[field] ?? ''}
-                onChange={(event) => set(field, event.target.value)}
-                aria-invalid={field === 'name' && nameError ? true : undefined}
-                aria-describedby={
-                  field === 'name' && nameError ? 'business-name-error' : undefined
-                }
-              />
-              {field === 'name' && nameError ? (
-                <p id="business-name-error" role="alert" className="text-destructive text-sm">
-                  {nameError}
-                </p>
-              ) : null}
-              {field === 'legalName' || field === 'currency' || field === 'country' ? (
-                <p className="text-muted-foreground text-xs">{t(`hints.${field}`)}</p>
-              ) : null}
-            </div>
+      {GROUPS.map((group) => (
+        <section key={group.id} className="space-y-4 rounded-lg border p-4 sm:p-6">
+          <div>
+            <h2 className="font-medium">{t(`groups.${group.id}.title`)}</h2>
+            <p className="text-muted-foreground text-sm">{t(`groups.${group.id}.hint`)}</p>
           </div>
-        ))}
-      </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {group.fields.map((field) => (
+              <div
+                key={field}
+                className={WIDE_FIELDS.has(field) ? 'space-y-2 sm:col-span-2' : 'space-y-2'}
+              >
+                <Label htmlFor={`business-${field}`}>
+                  {t(`fields.${field}`)}
+                  {field === 'name' ? (
+                    <span className="text-destructive ms-1" aria-hidden>
+                      *
+                    </span>
+                  ) : null}
+                </Label>
+                <Input
+                  id={`business-${field}`}
+                  type={field === 'email' ? 'email' : field === 'phone' ? 'tel' : 'text'}
+                  value={values[field] ?? ''}
+                  onChange={(event) => set(field, event.target.value)}
+                  aria-invalid={field === 'name' && nameError ? true : undefined}
+                  aria-describedby={
+                    field === 'name' && nameError ? 'business-name-error' : undefined
+                  }
+                />
+                {field === 'name' && nameError ? (
+                  <p id="business-name-error" role="alert" className="text-destructive text-sm">
+                    {nameError}
+                  </p>
+                ) : null}
+                {field === 'legalName' || field === 'currency' || field === 'country' ? (
+                  <p className="text-muted-foreground text-xs">{t(`hints.${field}`)}</p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+
+      {/* O9.2 — was a plain text input asking for a pasted image URL, while
+          the real Cloudinary uploader already existed and was already wired
+          into Settings and the resource form. Same `logo` folder as the
+          store-wide logo in Settings: they are the same kind of asset, and
+          two folders for one concept makes the media library harder to read.
+          The component keeps a paste-a-URL fallback of its own for a
+          deployment that has not configured Cloudinary. */}
+      <section className="space-y-4 rounded-lg border p-4 sm:p-6">
+        <div>
+          <h2 className="font-medium">{t('groups.brand.title')}</h2>
+          <p className="text-muted-foreground text-sm">{t('groups.brand.hint')}</p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="business-logoUrl">{t('fields.logoUrl')}</Label>
+          <ImageUploadField
+            id="business-logoUrl"
+            value={values.logoUrl ?? ''}
+            onChange={(url) => set('logoUrl', url)}
+            folder="logo"
+            disabled={isSaving}
+          />
+        </div>
+      </section>
 
       {isEdit ? (
         <div className="flex items-start gap-3 border-t pt-4">

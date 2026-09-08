@@ -265,6 +265,28 @@
         "country": "Two letters, like AE or GB.",
         "currency": "Three letters, like AED or USD. Left blank, your store-wide currency is used.",
         "isActive": "Closing a business hides its branches. Nothing is deleted."
+      },
+      "groups": {
+        "identity": {
+          "title": "Identity",
+          "hint": "What this business is called, and the legal details that appear on an invoice."
+        },
+        "contact": {
+          "title": "Contact",
+          "hint": "How customers and suppliers reach this business."
+        },
+        "address": {
+          "title": "Address",
+          "hint": "Where the business is registered. Branches have their own addresses."
+        },
+        "locale": {
+          "title": "Money and time",
+          "hint": "How this business counts money and which clock its reports use."
+        },
+        "brand": {
+          "title": "Brand",
+          "hint": "The logo shown on this business's invoices and letterhead."
+        }
       }
     },
     "roster": {

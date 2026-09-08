@@ -688,6 +688,12 @@ export async function createResourceRow(
     const row = await delegateFor(config).create({ data, select: selectFor(config) });
     const serialized = serializeRow(row, config);
 
+    // AWAITED, unlike afterUpdate's fire-and-forget: this hook completes what
+    // the row means rather than recording history about it. Products' opening
+    // stock has to reach `BranchStock` or the till reads the product as zero
+    // (O9.1), so a failure belongs to the create and must surface.
+    await hooksFor(config.resource)?.afterCreate?.(serialized, req);
+
     audit(req, {
       action: `${config.resource}.create`,
       entity: config.resource,

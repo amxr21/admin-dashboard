@@ -12,7 +12,8 @@ reasoning behind decisions already made, not for what is open.
 
 # 📊 STATUS AT A GLANCE — 2026-09-08
 
-**16 open · 82 done.** Started this session at 87 open.
+**29 open · 85 done.** Started this session at 87 open, closed 11, then the
+owner used the merged build and opened **O9** (16 items) — see below.
 
 | | Track | State |
 |---|---|---|
@@ -29,6 +30,7 @@ reasoning behind decisions already made, not for what is open.
 | ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
 | ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
 | 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
+| 🔨 | **O9** the till is two endpoints (16 items) | Stage A done, 13 left |
 | 📋 | 16 items | see PENDING below |
 
 **Verification at this point:** backend 1001/1001 (47 files) · frontend
@@ -58,10 +60,26 @@ to know whether the work actually reached `dev` is to look for the files.
 
 ---
 
-# 📋 PENDING — the 16 that are left
+# 📋 PENDING — the 32 that are left
 
 Full detail for each is further down under its own track heading; this is the
 index.
+
+## 🆕 O9 — the till (16) — START HERE
+
+Opened 2026-09-08 from six notes the owner raised after using the merged O5
+build. **O5 shipped a till that can sell and nothing else** — two endpoints,
+no return, exchange, void, hold, discount, note or drawer control.
+
+- **O9.1–O9.3 — Stage A, two confirmed bugs + a cramped form.** No decisions
+  needed, ships alone, and **O9.1 is a P1**: every product added through the
+  UI reads as 0 stock at the till, so the over-stock warning fires on
+  essentially everything. Do this first
+- **O9.4–O9.6 — Stage B, the shift dialog.** Blocked on **O9.4**, which needs
+  the owner (schedule vs. actual worked time — O5.1 settled this once already,
+  and his new note may or may not reverse it)
+- **O9.7–O9.16 — Stage C, the till becomes a till.** Return/refund at the
+  register first; it is the biggest gap and the engine already exists
 
 ## Needs nothing from the owner (10)
 
@@ -775,6 +793,156 @@ till its branch for free.
 **Ordering matters:** role first → screens that cannot take money. Checkout
 without `Payment` → sales nobody can reconcile.
 **Size: its own track, comparable to all of F8.** Start at O5.1.
+
+---
+
+### ⭐ O9 — THE TILL IS TWO ENDPOINTS; THE OWNER FOUND OUT
+**Raised by the owner 2026-09-08**, six notes after using the merged O5 build.
+Traced to code the same day. Two are confirmed bugs, one is already built and
+was not found, and the rest is one finding wearing three hats: **O5 shipped a
+till that can sell and nothing else.**
+
+`pos.route.ts` exposes exactly two endpoints — `GET /pos/scan` and
+`POST /pos/checkout`. That is the whole till. No return at the register, no
+exchange, no void, no hold, no discount, no customer lookup, no note, no cash
+drop, no X/Z report. The owner's "what does till page do exactly? it is so so
+empty!" is not a layout complaint and must not be answered with layout.
+
+**Receipt printing already exists** (`thermal-receipt.tsx`, print stylesheet,
+`window.print()`) — that half of his note 5 is done. Do not rebuild it.
+
+#### Stage A — the two confirmed bugs (no decisions needed, ship first)
+
+- [x] **O9.1 — DONE 2026-09-09.** Every product added through the UI read as
+      0 stock at the till. P1, and the reason his note 4 says "it shows everything as low
+      stock". Two stock numbers exist: `Product.stock` (what the product page
+      shows) and `BranchStock.quantity` (what the till reads).
+      `branchStock.upsert` is called in exactly three places —
+      `inventory.service.ts:459`, `pos.service.ts:287`, `returns.service.ts:559`
+      — and **all three are movements**. The resource engine, which is how an
+      owner actually adds a product, never writes it. So a product created
+      with 40 in stock has `Product.stock = 40`, no `BranchStock` row, and
+      `pos.service.ts:95` reads the missing row as `0`.
+      **The `?? 0` is CORRECT and must not be changed** — `inventory.service.ts:181`
+      is right that no row means this branch holds none of it. The bug is the
+      ENTRY path, not the read.
+      Fix: when a product is created with a non-zero `stock`, write the
+      `BranchStock` row for the default branch in the SAME transaction, so the
+      two numbers cannot start life disagreeing.
+      **Why nothing caught it:** `demo-seed.ts` creates those rows by hand
+      (lines 367, 913), so every seeded product scans correctly and the bug is
+      reachable only through the real creation UI. A regression test must
+      create a product the way the resource engine does and then scan it —
+      asserting against seeded data would pass while the bug is live.
+- [x] **O9.2 — DONE 2026-09-09.** `logoUrl` asked for a pasted URL. P3, his note 1. The fix is
+      opting in, not building: `ImageUploadField` is a real Cloudinary uploader
+      over `POST /upload/image`, already used by `settings-form.tsx` and
+      `resource-form.tsx`. `business-form.tsx` maps a flat `FIELDS` array to
+      plain `<Input>`s and never used it. Backend was complete the whole time.
+- [x] **O9.3 — DONE 2026-09-09.** The business form was cramped to the left. Same note. Twelve
+      fields in a 2-up grid inside `max-w-2xl`. Widen and group (identity /
+      contact / address / locale) rather than only raising the cap — twelve
+      undifferentiated inputs across a full width is a different bad form, not
+      a fixed one.
+
+**Stage A shipped 2026-09-09.** O9.1 fixed via a new `afterCreate` resource
+hook (awaited, unlike `afterUpdate` — the branch row is part of what the
+created product MEANS, not history about it). It writes `BranchStock` DIRECTLY
+rather than calling `adjustStock`, which would move both totals and double the
+stock the product was created with; and it writes no `StockMovement`, because
+nothing moved — an invented RECEIVED row would make the first real delivery
+look like a duplicate.
+**All three fixes were watched failing before the code went in.**
+One finding worth keeping: the first version of the regression test failed
+against real data because **`isDefault` is unique PER BUSINESS, not globally** —
+the seeded database has two flagged branches and `defaultBranchId()`'s
+`findFirst` returns whichever it reaches first. The test now unflags every one
+of them for its duration. Verification: backend 1005/1005 (47 files), frontend
+1081/1081 + 1 skipped (120 files), tsc and eslint clean both sides, en/ar
+parity 1745/1745.
+
+#### Stage B — shift start/end as a real dialog (needs the O9.4 answer first)
+
+- [ ] **O9.4 — ⏳ WAITING ON THE OWNER. Does the dialog record a SCHEDULE or
+      the actual worked time?** He asked for a popup that lets the employer
+      "set the working range, then the timer starts". A planned range and a
+      worked shift are different objects: if a cashier declares 9–5 and leaves
+      at 3, which one is payroll?
+      **O5.1 already settled this once** — he chose "actual worked time only,
+      no planned rota, no lateness comparison". His new note may be a reversal
+      or may just be describing the dialog. **Ask; do not assume either way.**
+      Recommended: keep actual clock-in/out as the recorded truth and add the
+      schedule as a separate expectation to compare against, so the timesheet
+      stays a record of what happened rather than what was intended.
+- [ ] **O9.5 — Start/end shift opens a dialog.** Today starting a shift is a
+      bare float input sitting in the topbar (`shift-control.tsx`). Ending one
+      already opens a proper `AlertDialog` with the drawer count. Make the
+      start symmetrical. **Keep the two existing decisions intact**: the float
+      stays optional (null means "no drawer", not zero), and expected cash
+      stays AFTER the count field so the target cannot be typed to match.
+- [ ] **O9.6 — Hide the clock from whoever does not punch it.** His note 2,
+      second half. `ShiftControl` is mounted unconditionally in
+      `app-shell.tsx:274`, so an owner sees a clock-in button he has no use
+      for. Gate it on the role that actually works shifts.
+      **The watching half ALREADY EXISTS — do not rebuild it.**
+      `staff-activity-view.tsx` has "on now" and "shifts" tabs over
+      `ShiftsTable`. If the owner could not find it, that is an IA/discovery
+      problem and the fix is a link from where he looked, not a second table.
+
+#### Stage C — the till becomes a till (the real work)
+
+Sourced from what standard retail POS systems ship (KORONA, StoreHub,
+Lightspeed, Dynamics 365 — his note 6). Ordered by what a shop hits first.
+
+- [ ] **O9.7 — Return/refund at the register.** The single biggest gap, and
+      his note 3. The returns engine is good and B4.7 just gave it per-line
+      outcomes — but it is admin-side only. A cashier standing at the counter
+      with a customer holding a receipt has no path to it.
+      **Reuse `returns.service.ts`; do not write a second refund path.** The
+      money math, the restock and the per-line decisions all exist. What is
+      missing is a till-shaped entry point: look up the order, pick lines,
+      refund. `Payment.amount` is already signed for exactly this.
+- [ ] **O9.8 — Exchange.** Same note. Deliberately AFTER O9.7: an exchange is
+      a refund and a sale in one act, so it is only coherent once the refund
+      half exists. Needs a decision on whether the two halves are one
+      transaction or two linked ones (B4.11 already parks "exchange linkage").
+- [ ] **O9.9 — Void a line and void a sale.** Distinct from a refund: a void
+      is before the money moves, a refund after. Standard on every system
+      surveyed and the thing a cashier needs most often after a mis-scan.
+- [ ] **O9.10 — Park / hold a sale.** Customer forgot their wallet; the cart
+      goes on hold and the next customer is served. Without it the cashier's
+      only option is to delete the cart and re-scan everything.
+- [ ] **O9.11 — Discounts, per line and per cart.** Needs a decision on who
+      may apply one and up to what value — which is what makes O9.13 worth
+      doing first or alongside.
+- [ ] **O9.12 — Split payment.** `Payment` is already a TABLE rather than
+      columns on `Order`, chosen in O5.2 precisely so a split (30 cash, rest
+      on card) is expressible. The schema is ready; nothing surfaces it.
+- [ ] **O9.13 — Manager override.** The answer to his note 5's "the admin
+      should be able to cash ppl but its mainly cashiers staff". Rather than
+      building a second parallel screen, the cashier gets a restricted till
+      and a supervisor authorises the exceptions IN PLACE by entering their
+      credentials — the standard pattern across all four systems surveyed.
+      Pairs with O8's owner-editable permissions: what needs an override
+      should be what the role cannot do, read from one place, not a second
+      hardcoded list.
+- [ ] **O9.14 — Cashier notes on a sale.** His "what if he wants to note
+      smth??". A free-text note on the order, visible on the order detail.
+- [ ] **O9.15 — No-sale drawer open, cash drop, payout.** Opening the drawer
+      without a sale is recorded and countable — every system surveyed logs
+      the count of these, because an unrecorded drawer open is the classic
+      shrinkage path.
+- [ ] **O9.16 — X / Z report at close.** `GET /shifts/:id/takings` already
+      computes mid-shift takings and O5.3 already stores the variance. This is
+      the printable end-of-day form of data that mostly exists.
+
+**Ordering matters:** Stage A is independent and ships alone — the stock bug
+means the till currently mis-warns on every real product, so it should not
+wait behind a design conversation. Stage B is blocked on O9.4. In Stage C,
+O9.7 before O9.8, and O9.13 before or with O9.11.
+**Size: comparable to O5 itself.** Stage A is not; ship it first.
+
+---
 
 ## 📦 Carried over from `MASTER_TODO.md`
 
