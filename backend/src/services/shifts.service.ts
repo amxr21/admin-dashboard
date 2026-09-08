@@ -38,6 +38,9 @@ const SHIFT_SELECT = {
   editReason: true,
   editedAt: true,
   note: true,
+  openingFloat: true,
+  closingCount: true,
+  variance: true,
   user: { select: { id: true, name: true, email: true } },
   branch: { select: { id: true, name: true } },
   openedBy: { select: { id: true, name: true, email: true } },
@@ -54,6 +57,12 @@ function serialise(shift: ShiftRow) {
     originalStartedAt: shift.originalStartedAt?.toISOString() ?? null,
     originalEndedAt: shift.originalEndedAt?.toISOString() ?? null,
     editedAt: shift.editedAt?.toISOString() ?? null,
+    // Money as 2dp strings, never numbers — the same rule as every other
+    // amount that crosses this boundary. Null stays null: "no till" is a
+    // different fact from "a float of zero".
+    openingFloat: shift.openingFloat?.toFixed(2) ?? null,
+    closingCount: shift.closingCount?.toFixed(2) ?? null,
+    variance: shift.variance?.toFixed(2) ?? null,
     /** Whether a manager corrected the recorded times. The UI says so rather
      *  than showing edited hours as if they were clocked. */
     wasEdited: shift.editedAt !== null,
@@ -81,7 +90,14 @@ export async function getOpenShift(userId: string) {
  */
 export async function startShift(
   actor: ShiftActor,
-  input: { branchId?: string | undefined; forUserId?: string | undefined; note?: string | undefined },
+  input: {
+    branchId?: string | undefined;
+    forUserId?: string | undefined;
+    note?: string | undefined;
+    /** Cash in the drawer at open (O5.3). Omitted for a shift with no till,
+     *  which is most of them — a picker never opens a drawer. */
+    openingFloat?: string | undefined;
+  },
 ) {
   const userId = input.forUserId ?? actor.id;
 
@@ -132,6 +148,9 @@ export async function startShift(
       openedById: actor.id,
       startedAt: new Date(),
       ...(input.note ? { note: input.note } : {}),
+      ...(input.openingFloat !== undefined
+        ? { openingFloat: new Prisma.Decimal(input.openingFloat) }
+        : {}),
     },
     select: SHIFT_SELECT,
   });
@@ -371,5 +390,98 @@ export async function getShiftSummary(shiftId: string) {
       ...entry,
       createdAt: entry.createdAt.toISOString(),
     })),
+  };
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * TILL SESSION (O5.3)
+ *
+ * A shift and a till session are the same object — the owner's answer,
+ * 2026-09-08 — so opening a drawer is opening a shift WITH a float, and
+ * counting down is closing it with a count.
+ * ───────────────────────────────────────────────────────────────────── */
+
+/** Money taken during a shift, by method. Cash is what a drawer holds. */
+export async function getShiftTakings(shiftId: string) {
+  const rows = await prisma.payment.groupBy({
+    by: ['method'],
+    where: { shiftId },
+    _sum: { amount: true },
+  });
+
+  const byMethod = rows.map((row) => ({
+    method: row.method,
+    // A group with no rows cannot occur here, but `_sum` is nullable in the
+    // type, and a silent 0 would be indistinguishable from a real zero total.
+    total: (row._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+  }));
+
+  const cash = rows
+    .filter((row) => row.method.toLowerCase() === 'cash')
+    .reduce((sum, row) => sum.add(row._sum.amount ?? 0), new Prisma.Decimal(0));
+
+  return { byMethod, cash };
+}
+
+/**
+ * Close a shift and reconcile the drawer.
+ *
+ * ─── VARIANCE IS STORED, NOT RECOMPUTED ──────────────────────────────
+ * `counted - (float + cash takings)`, worked out here and written to the row.
+ * Recomputing it on read would let a refund issued next week silently rewrite
+ * what the cashier signed off tonight — the same snapshot rule as
+ * `Order.total` and `OrderItem.cost`.
+ *
+ * A negative variance is short, a positive one is over. Neither is refused:
+ * the drawer is what it is, and a till that rejects an inconvenient count is
+ * one people stop counting honestly.
+ */
+export async function closeTill(
+  actor: ShiftActor,
+  shiftId: string,
+  closingCount: string,
+  note?: string,
+) {
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: {
+      id: true,
+      userId: true,
+      endedAt: true,
+      openingFloat: true,
+      user: { select: { role: true } },
+    },
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+
+  if (shift.endedAt !== null) {
+    throw AppError.badRequest('That shift has already ended');
+  }
+
+  if (shift.userId !== actor.id && outranks(shift.user.role, actor.role)) {
+    throw AppError.forbidden('You cannot modify someone with more access than you');
+  }
+
+  const counted = new Prisma.Decimal(closingCount);
+  const { cash } = await getShiftTakings(shiftId);
+  const expected = (shift.openingFloat ?? new Prisma.Decimal(0)).add(cash);
+
+  const updated = await prisma.shift.update({
+    where: { id: shiftId },
+    data: {
+      endedAt: new Date(),
+      closingCount: counted,
+      variance: counted.sub(expected),
+      ...(note ? { note } : {}),
+    },
+    select: SHIFT_SELECT,
+  });
+
+  return {
+    shift: serialise(updated),
+    expected: expected.toFixed(2),
+    counted: counted.toFixed(2),
+    variance: counted.sub(expected).toFixed(2),
   };
 }

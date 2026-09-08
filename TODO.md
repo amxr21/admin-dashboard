@@ -489,11 +489,32 @@ till its branch for free.
       comparison. A rota is a separate, larger feature and is not in scope.
       Needs `openedById` distinct from `userId` (who opened it vs. whose shift
       it is) and a `branchId` from the start
-- [ ] O5.2 `Payment` model — amount, method, tendered, change, paidAt, and the
-      order it belongs to. Without it "did the drawer balance?" is
-      unanswerable BY CONSTRUCTION; `Order.paymentMethod` is free text
-- [ ] O5.3 `Shift`/till session — opener, opening float, closing count,
-      variance
+- [x] **O5.2 — DONE 2026-09-08.** `Payment` model, migration
+      `20260908030000_add_payments_and_till`. A TABLE, not columns on `Order`:
+      one free-text `paymentMethod` cannot express a split payment (30 cash,
+      rest on card) or a refund, which is a second money movement rather than
+      an edit of the first. `Order.paymentMethod` is NOT removed — every
+      existing order carries it and the reports reading it keep working.
+      **`amount` is signed** (positive pays, negative refunds), one column
+      rather than a type enum plus a magnitude, for the same reason
+      `StockMovement.delta` is signed: the sum IS what was collected, with no
+      case analysis to get wrong. `tendered`/`change` are STORED, not derived
+      — "did the drawer balance" is arithmetic over what the cashier actually
+      did, and deriving change assumes the case a variance exists to catch.
+      `paidAt` is distinct from `createdAt` (a payment entered next morning
+      after a terminal outage has both)
+- [x] **O5.3 — DONE 2026-09-08.** `openingFloat`/`closingCount`/`variance` on
+      `Shift` — the same object as a till session, per the owner, so no
+      parallel table to keep in step. `POST /shifts/:id/close-till` counts the
+      drawer and ends the shift in ONE act: a till counted but left open, or a
+      shift ended without a count, are both states somebody has to chase.
+      **`variance` is stored, never recomputed** — a refund landing next week
+      would otherwise silently rewrite what the cashier signed off tonight
+      (watched failing). **Only CASH counts against the drawer** — including
+      card would show a shortfall equal to the day's card sales every single
+      day (also watched failing). A short or over count is recorded, never
+      refused: a till that rejects an inconvenient count stops being counted
+      honestly. Also `GET /shifts/:id/takings`, readable mid-shift. 9 tests
 
 #### Stage B — checkout
 - [ ] O5.4 **Move the receipt math out of the seeder** into a shared service —

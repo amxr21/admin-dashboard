@@ -875,6 +875,9 @@ model Order {
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   items         OrderItem[]
+  /// How it was actually paid for (O5.2). Several rows when a sale is split
+  /// across methods, or when a refund is issued against it.
+  payments      Payment[]
   /// Staff-only, never surfaced to the customer — a THREAD (C5.7), not the
   /// single overwritable field this used to be. See `OrderNote`'s own doc
   /// comment for why.
@@ -1722,6 +1725,27 @@ model Shift {
   /// The worker's own note — "covered for Sara", "closed early, power cut".
   note String? @db.VarChar(255)
 
+  /// ─── TILL SESSION (O5.3) ──────────────────────────────────────────
+  /// A shift and a till session are the SAME object — the owner's answer,
+  /// 2026-09-08 — so the money fields live here rather than in a parallel
+  /// table that would have to be kept in step with this one.
+  ///
+  /// All three are NULL on a shift that handled no cash, which is most of
+  /// them: a fulfilment picker works a shift and never opens a drawer. Null
+  /// means "no till", never zero.
+  ///
+  /// `variance` is DERIVED at close and STORED, not computed on read: it is
+  /// counted - (float + takings), and the takings are a sum over `Payment`
+  /// rows that a later refund would change. Recomputing it next month would
+  /// silently rewrite what the cashier signed off at the time — the same
+  /// snapshot rule as `Order.total` and `OrderItem.cost`.
+  openingFloat Decimal? @map("opening_float") @db.Decimal(10, 2)
+  closingCount Decimal? @map("closing_count") @db.Decimal(10, 2)
+  variance     Decimal? @db.Decimal(10, 2)
+
+  /// Money taken during this session.
+  payments Payment[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1771,4 +1795,86 @@ model Supplier {
 
   @@index([isActive])
   @@map("suppliers")
+}
+
+/// How an order was actually paid for (O5.2).
+///
+/// ─── WHY A TABLE AND NOT COLUMNS ON `Order` ──────────────────────────
+/// `Order.paymentMethod` is free text and holds ONE value, which cannot
+/// express the two cases a till hits daily: a split payment (30 in cash, the
+/// rest on a card) and a refund, which is a second money movement against the
+/// same order rather than an edit of the first. A column set would have to
+/// pick one payment and silently lose the rest.
+///
+/// `Order.paymentMethod` is NOT removed. Every existing order carries it,
+/// nothing backfills it, and the reports that read it keep working — the same
+/// additive discipline `Order.subtotal` followed. New sales write both.
+///
+/// ─── WHY `tendered` AND `change` ARE STORED, NOT DERIVED ─────────────
+/// "Did the drawer balance?" is the question this table exists to answer, and
+/// it is arithmetic over what the cashier ACTUALLY did: took 50, gave back
+/// 7.50. Deriving change as `tendered - amount` assumes they were equal, and
+/// the whole point of a variance is catching the times they were not.
+///
+/// Both are NULL for a card payment — nothing was tendered and no change was
+/// given. Null means "not applicable", never zero.
+///
+/// ─── EVERY AMOUNT IS `Decimal`, NEVER A FLOAT ────────────────────────
+/// The same rule as `Order.total` and `OrderItem.price`. A float cannot
+/// represent 0.10 exactly, and a till that is a cent out every hundred sales
+/// is a till nobody can reconcile.
+model Payment {
+  id String @id @default(cuid())
+
+  orderId String @map("order_id")
+  /// Cascade: a payment has no meaning without the order it settles. Orders
+  /// are never deleted in practice (they are history), so this effectively
+  /// only fires for a test fixture.
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  /// What this payment moved. POSITIVE for a payment, NEGATIVE for a refund —
+  /// one signed column rather than a `type` enum plus a magnitude, for the
+  /// same reason `StockMovement.delta` is signed: the sum of payments for an
+  /// order IS what was collected, with no case analysis to get wrong.
+  amount Decimal @db.Decimal(10, 2)
+
+  /// 'cash', 'card', 'transfer'. Free text on purpose, mirroring
+  /// `Order.paymentMethod`: an enum would need a migration every time a shop
+  /// starts taking a new wallet, and this app has no behaviour that branches
+  /// on the value.
+  method String @db.VarChar(48)
+
+  /// What the customer handed over, and what came back. Cash only — see the
+  /// note above on why these are stored rather than derived.
+  tendered Decimal? @db.Decimal(10, 2)
+  change   Decimal? @db.Decimal(10, 2)
+
+  /// When the money moved, which is NOT `createdAt`: a payment recorded the
+  /// next morning after a card terminal outage has both, and reconciling a
+  /// day's takings needs the first.
+  paidAt DateTime @default(now()) @map("paid_at")
+
+  /// Which till session this belongs to (F6.1's `Shift`). Null for a payment
+  /// taken outside any shift — an online order, or a correction entered later
+  /// — which is a real state, not a gap to fill.
+  shiftId String? @map("shift_id")
+  /// SetNull, not Cascade: deleting a shift record must never delete the money
+  /// that moved during it.
+  shift   Shift?  @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+
+  /// Who took it. A plain id, not a relation, exactly like `AuditLog.actorId`
+  /// — the record of who handled money must outlive the staff account.
+  actorId String? @map("actor_id")
+
+  /// The terminal's reference, the transfer id, whatever the paper says.
+  reference String? @db.VarChar(120)
+  note      String? @db.VarChar(255)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// "What did this order collect" and "what did this shift take" are the two
+  /// reads this table exists for.
+  @@index([orderId])
+  @@index([shiftId, paidAt])
+  @@map("payments")
 }
