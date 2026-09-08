@@ -552,13 +552,33 @@ that staleness is why these are consolidated here.
       delivery zones, tax by region
 - [ ] **S7.5** ~~`Location` model~~ — **SUPERSEDED by F8's `Branch`.** One
       model, not two. Kept here only so nobody re-adds it
-- [ ] **F7.9** `Supplier` model — the real remaining half of S7.5's idea.
-      **Unblocks F7.6 and F7.8**
+- [x] **F7.9 — DONE 2026-09-08.** `Supplier` model (name required, contact
+      optional, deactivated rather than deleted). Built WITH F7.8 rather than
+      before it: the batch dates alone are half an answer without knowing who
+      supplied it. Deliberately thin — no payment terms, no lead times, no
+      purchase orders; those belong to a procurement feature nobody asked for.
+      **Still unblocks F7.6** (the reorder email now has a real address to
+      send to). **No UI yet** — suppliers can be created via the API/seed but
+      have no management screen; that is the obvious follow-up
 - [ ] **F7.6** Supplier reorder email, sent on admin approval. Needs F7.9
-- [ ] **F7.8 (rest)** Receipt / delivery date / purchase date — these belong
-      on `StockMovement` (properties of a BATCH arriving), beside `unitCost`
-      and a `supplierId`. **Not on `Product`** — loose columns there would
-      have to be undone
+- [x] **F7.8 (rest) — DONE 2026-09-08.** `deliveredAt`, `purchasedAt`,
+      `reference` and `supplierId` on `StockMovement`, beside `unitCost`.
+      **The owner's case decided the shape**: "buy 50 units then enter one
+      unit's details once" is ONE record per receipt, not fifty identities —
+      and a receipt already WAS one movement row, so nothing new was needed to
+      express it. Per-unit serials were considered and rejected as not what
+      was asked for.
+      On `StockMovement`, never `Product`: a product bought three times from
+      two suppliers has three answers to "when did it arrive", and a column on
+      the product could hold only the newest, silently overwriting the history
+      the log exists to keep.
+      `deliveredAt` is deliberately distinct from `createdAt` — a batch
+      entered the next morning has both, and collapsing them makes "how long
+      does this supplier take" unanswerable. All four are REFUSED on an
+      outgoing movement (nothing was delivered when stock is written off), and
+      a bad `supplierId` is a 400 naming the field rather than a raw FK
+      violation surfacing as a 500. FK is SetNull: deleting a supplier must
+      never delete stock history. 6 tests, both guards watched failing
 - [ ] **F3.5** Bulk receive — import is create-only
       (`assertPermitted(config, 'create')`), so this is real work, not wiring
 

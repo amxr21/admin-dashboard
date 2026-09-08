@@ -145,6 +145,9 @@ afterAll(async () => {
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.notification.deleteMany({ where: { title: { contains: RUN } } });
+  // Suppliers are not cascaded from the product — the movement's FK is
+  // SetNull precisely so stock history survives a deleted supplier.
+  await prisma.supplier.deleteMany({ where: { name: { contains: RUN } } });
   await prisma.setting.deleteMany({
     where: { key: { in: ['inventory.lowStockThreshold', 'notifications.lowStockAlerts'] } },
   });
@@ -579,5 +582,159 @@ describe('crossing into low stock notifies staff', () => {
         where: { type: 'inventory.low-stock', title: product.name },
       }),
     ).toBe(0);
+  });
+});
+
+describe('a received batch records its own delivery detail (F7.8)', () => {
+  /**
+   * The owner's case, 2026-09-08: "buy the stock of 50 units then enter one
+   * unit details once". A receipt of 50 is ALREADY one movement row, so the
+   * batch's facts belong on that row — not on `Product`, where a column could
+   * hold only the most recent delivery and would silently overwrite the
+   * history this log exists to keep.
+   *
+   * Per-unit serials were considered and are NOT what was asked for: they
+   * need a different inventory model entirely, since a count plus a movement
+   * log cannot express "unit #47 came back faulty".
+   */
+  async function makeSupplier(name: string) {
+    const supplier = await prisma.supplier.create({ data: { name } });
+    return supplier.id;
+  }
+
+  it('stores the dates, reference and supplier on the movement', async () => {
+    const id = await makeProduct(0);
+    const supplierId = await makeSupplier(`${RUN} Acme Coffee`);
+
+    const res = await adjust(id, {
+      delta: 50,
+      reason: 'RECEIVED',
+      unitCost: '3.10',
+      deliveredAt: '2026-08-20T09:00:00.000Z',
+      purchasedAt: '2026-08-12T00:00:00.000Z',
+      reference: 'INV-88213',
+      supplierId,
+    });
+
+    expect(res.status).toBe(201);
+
+    const movement = await prisma.stockMovement.findFirst({
+      where: { productId: id },
+      select: {
+        delta: true,
+        deliveredAt: true,
+        purchasedAt: true,
+        reference: true,
+        supplierId: true,
+      },
+    });
+
+    // ONE row for fifty units — the whole point.
+    expect(movement?.delta).toBe(50);
+    expect(movement?.reference).toBe('INV-88213');
+    expect(movement?.supplierId).toBe(supplierId);
+    expect(movement?.deliveredAt?.toISOString()).toBe('2026-08-20T09:00:00.000Z');
+    expect(movement?.purchasedAt?.toISOString()).toBe('2026-08-12T00:00:00.000Z');
+  });
+
+  it('keeps delivery date separate from when it was recorded', async () => {
+    // A batch entered the next morning has a `createdAt` of today and a
+    // `deliveredAt` of yesterday. Collapsing them would make "how long does
+    // this supplier take" unanswerable.
+    const id = await makeProduct(0);
+
+    await adjust(id, {
+      delta: 5,
+      reason: 'RECEIVED',
+      deliveredAt: '2026-08-01T00:00:00.000Z',
+    });
+
+    const movement = await prisma.stockMovement.findFirst({
+      where: { productId: id },
+      select: { deliveredAt: true, createdAt: true },
+    });
+
+    expect(movement?.deliveredAt?.toISOString()).toBe('2026-08-01T00:00:00.000Z');
+    expect(movement?.createdAt.getTime()).toBeGreaterThan(
+      movement!.deliveredAt!.getTime(),
+    );
+  });
+
+  it('refuses delivery detail on an OUTGOING movement', async () => {
+    // Nothing was delivered when stock is written off as damaged. Storing a
+    // delivery date there would be a fact nothing can interpret later, and
+    // dropping it silently would lose data the user believed they entered.
+    const id = await makeProduct(10);
+
+    const res = await adjust(id, {
+      delta: -2,
+      reason: 'DAMAGED',
+      deliveredAt: '2026-08-20T09:00:00.000Z',
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('400s on a supplier that does not exist, naming the field', async () => {
+    // Left to the foreign key this would be a raw Prisma violation — a 500
+    // naming a constraint, which tells whoever is receiving stock nothing.
+    const id = await makeProduct(0);
+
+    const res = await adjust(id, {
+      delta: 5,
+      reason: 'RECEIVED',
+      supplierId: 'no-such-supplier',
+    });
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error: { message: string } }).error.message).toMatch(/supplier/i);
+
+    // Nothing was written — a rejected receipt must not move stock.
+    const count = await prisma.stockMovement.count({ where: { productId: id } });
+    expect(count).toBe(0);
+  });
+
+  it('leaves the batch fields null when none are given', async () => {
+    // Every field is optional: an owner receiving stock without paperwork
+    // must not be blocked, and a null is honest where an invented date is not.
+    const id = await makeProduct(0);
+
+    await adjust(id, { delta: 3, reason: 'RECEIVED' });
+
+    const movement = await prisma.stockMovement.findFirst({
+      where: { productId: id },
+      select: { deliveredAt: true, purchasedAt: true, reference: true, supplierId: true },
+    });
+
+    expect(movement?.deliveredAt).toBeNull();
+    expect(movement?.purchasedAt).toBeNull();
+    expect(movement?.reference).toBeNull();
+    expect(movement?.supplierId).toBeNull();
+  });
+
+  it('surfaces the batch detail in the movement log', async () => {
+    const id = await makeProduct(0);
+    const supplierId = await makeSupplier(`${RUN} Bean Bros`);
+
+    await adjust(id, {
+      delta: 20,
+      reason: 'RECEIVED',
+      reference: 'DN-4471',
+      supplierId,
+    });
+
+    const res = await request(app)
+      .get(`/api/v1/inventory/${id}/movements`)
+      .set(auth(ownerToken));
+
+    const first = (
+      res.body as {
+        data: { movements: { reference: string | null; supplier: { name: string } | null }[] };
+      }
+    ).data.movements[0];
+
+    // The log answers "where did this come from" without a second lookup.
+    expect(first?.reference).toBe('DN-4471');
+    expect(first?.supplier?.name).toContain('Bean Bros');
   });
 });
