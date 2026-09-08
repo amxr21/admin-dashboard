@@ -1,67 +1,130 @@
 # TODO — the one list
 
-Updated 2026-09-07. **This is the only task list.** `MASTER_TODO.md`,
+Updated **2026-09-08**. **This is the only task list.** `MASTER_TODO.md`,
 `O7-PLAN.md` and the old `TODO.md` were merged into this file; `SETUP_TODO.md`
 stays separate on purpose (it is the OWNER's config/secrets checklist, not code
 work).
-
-**`SETUP_TODO.md` stays separate and is still live** — 13 open items there.
-It is config, secrets and hosting decisions only the owner can make; this file
-is code work. Merging them would bury "generate fresh secrets" among eighty
-engineering tasks. Two items appear in both by design, because each side owns
-half: the **Arabic review** (the native-speaker pass is the owner's; the wiring
-is done) and **E2E** (rewriting the workflow is code; providing a database is
-the owner's).
-
-Its highest-priority item: **`prod` has no database of its own** — `_PROD` and
-`_LOCAL` are not yet fully separated. Also two real gaps it tracks that are
-still true: `frontend/public/` **does not exist at all** (so every deployment
-serves a default favicon) and the browser tab title is still the literal
-placeholder `'admin-dashboard'`.
 
 `.claude-workbook/ROADMAP.md` remains the historical archive — read it for the
 reasoning behind decisions already made, not for what is open.
 
 ---
 
-## 📬 Open PRs — the 2026-09-08 stack
+# 📊 STATUS AT A GLANCE — 2026-09-08
 
-**8 merged, 6 open.** Merge bottom-up; each shows only its own diff.
+**16 open · 82 done.** Started this session at 87 open.
 
-| PR | Branch | Base | What |
-|---|---|---|---|
-| #165 | `stack/09-two-factor-login` | **`dev`** | O3b — 2FA login + settings panels |
-| #171 | `stack/10b-shifts-backend` | #165 | F6.1 — shift model + API |
-| #167 | `stack/11-shifts-ui` | #171 | F6.3/6.5 — shift UI + staff activity |
-| #168 | `stack/12-shift-summary` | #167 | F6.4 — shift summary |
-| #169 | `stack/13-low-stock-alert-test` | #168 | F7.5 — low-stock email test |
-| #170 | `stack/14-bulk-progress` | #169 | §U — bulk-delete progress |
+| | Track | State |
+|---|---|---|
+| ✅ | **O1** branch named on lists | merged |
+| ✅ | **O2** couriers serve branches | merged |
+| ✅ | **O3** per-role landing pages | merged |
+| ✅ | **O3b** 2FA login + settings panels | merged |
+| ✅ | **O6** courier card-blanking bug | merged |
+| ✅ | **O7** businesses/branches/roster (4 stages) | merged |
+| ✅ | **F6** shifts (5 items) | merged |
+| ✅ | **F7.5** low-stock email (verified, not rebuilt) | merged |
+| ✅ | **F7.8 / F7.9** batch detail + `Supplier` | merged |
+| ⏳ | **F3.5** bulk receive | **PR #174** |
+| ⏳ | **O5** POS / till (11 items) | **PRs #175–#182** |
+| ⏳ | **O8** owner-editable permissions (6 items) | **PRs #183–#184** |
+| 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, unpushed |
+| 📋 | 16 items | see PENDING below |
 
-Merged: #156-#163 (O6, O7 §1-3, docs, O1, O2, O3).
+**Verification at this point:** backend 1001/1001 (47 files) · frontend
+1077/1077 (119 files) · tsc, eslint and `check:merge` clean both sides ·
+en/ar parity 1727/1727 · 6 additive migrations applied locally.
 
-### ⚠️ What went wrong on 2026-09-07, and how it was fixed
+---
 
-**#166 was merged into `stack/09-two-factor-login` instead of `dev`.** GitHub
-marked it MERGED and closed it, but the F6.1 shift work never reached `dev` —
-`backend/src/services/shifts.service.ts` was simply absent from it, with no
-open PR left to bring it in. Nothing was lost, but nothing would have shipped
-either, and the closed PR made it look done.
+# ⏳ IN FLIGHT — the PR stack (#174 → #184)
 
-Reopened as **#171** on `stack/10b-shifts-backend` (a new branch name: the old
-one is bound to the closed PR).
+**11 PRs, all MERGEABLE. Merge #174 FIRST, then upward.**
 
-**The lesson for a stack: merge each PR into `dev`, not into its base branch.**
-GitHub retargets the next PR to `dev` automatically as each one lands — that
-retarget is the mechanism, and merging into the base short-circuits it.
+Only #174 targets `dev`; each one above targets the branch below it, so it
+cannot merge until that one lands. GitHub retargets the next PR to `dev`
+automatically as each one merges.
 
-**#165's "conflict" was fake, as this file's own rule predicts.** `merge-tree`
-returned a clean tree; `git rebase origin/dev` skipped 8 already-applied
-commits and produced zero conflicts. #167/#168 had a REAL conflict of the same
-family — each branch carried its own copy of a parent's commit under a
-different SHA — fixed by rebasing each onto its actual base, not by hand.
+| PR | What | Base |
+|---|---|---|
+| #174 | F3.5 bulk receive | **`dev`** ← start here |
+| #175 | O5.2/5.3 payments + till session | #174 |
+| #176 | O5.4 shared receipt math | #175 |
+| #177 | O5.6 barcode scan | #176 |
+| #178 | O5.7/5.8 checkout | #177 |
+| #179 | O5.10 CASHIER role | #178 |
+| #180 | O5.5 sale screen | #179 |
+| #181 | O5.9 thermal receipt | #180 |
+| #182 | O5.11 till drawer UI | #181 |
+| #183 | O8.1–8.3/8.6 editable permissions | #182 |
+| #184 | O8.4/8.5 permissions matrix UI | #183 ← last |
 
-All six verified after the rebase: backend 922/922, frontend 1050/1050, tsc,
-eslint and `check:merge` clean on the stack tip.
+**Merge each into `dev`, never into its base branch.** That is the mistake
+that made #166 show as "merged" while its work never reached `dev` — see the
+2026-09-07 note further down.
+
+**Expect fake conflicts partway up.** Squash-merging rewrites SHAs, so each
+branch carries pre-squash copies of everything below it. `git rebase
+origin/dev` clears them; do not hand-resolve.
+
+**Not yet pushed:** B4.7/B4.8 (per-line and partial returns) is committed on
+`work/pos-and-roles` and needs its own PR once the stack lands.
+
+---
+
+# 📋 PENDING — the 16 that are left
+
+Full detail for each is further down under its own track heading; this is the
+index.
+
+## Needs nothing from the owner (10)
+
+**Returns lifecycle (3)**
+- **S7.8** `ReturnStatus` 3 → ~8 values (label sent → in transit → received →
+  inspected → resolved). More useful now that B4.7 gives per-line outcomes
+- **B4.10** Refund without a return — a standalone model, independent of RMA
+- **B4.11** Policy window, restocking fees, exchange linkage — biggest of the
+  three
+
+**Catalogue (4)**
+- **A5.8** Per-locale product content (EN/AR) + completeness indicator
+- **A5.9** Version history with restore; bulk import; vendor/collections
+- **S7.6** `Category.parentId` → the category tree
+- **S7.9** Tags — no model or field exists yet
+
+**Schema + UI (3)**
+- **S7.1** `Address` model → shipping/billing, customer addresses, tax by region
+- **Optimistic row updates with rollback** — a real refactor of every table's
+  write path
+- **Loading-overlay blur / nav-transition smoothness**
+
+## Scoped, ready to build (1)
+
+- **F7.6** Supplier reorder email — **the SMALL approach**, per the owner
+  2026-09-08: a "email this supplier about low stock" action sending a
+  pre-filled message via the existing `sendAlertEmail`. NOT purchase orders
+  with a request→approve→send workflow; that is procurement and its own track
+
+## Waiting on the owner (4)
+
+- **Design Fix Checklist Phases 6–7** — the text was never transcribed into
+  this repo. **Needs re-pasting**; do not reconstruct from memory. (Asked
+  2026-09-08; the answer described O8, which is a different and now-shipped
+  thing)
+- **Arabic review** — parity holds at 1727/1727, but every string is
+  machine/self-translated MSA. Blocks a client demo. NOT self-certifiable
+- **E2E** — `.github/workflows/e2e.yml` still written around Vercel preview
+  URLs + `RENDER_DEV_BACKEND_URL`. Disabled, so it breaks nothing, but needs
+  rewriting for Coolify
+- **Sentry prod DSN** — on hold, the trial ended
+
+*The owner said 2026-09-08 to leave the last two alone for now.*
+
+## Explicitly parked, not forgotten (2)
+
+- **S7.5** ~~`Location` model~~ — **superseded by F8's `Branch`.** Listed only
+  so nobody re-adds it
+- **F7.10** re-seed the demo data — postponed by the owner 2026-09-08
 
 ---
 
