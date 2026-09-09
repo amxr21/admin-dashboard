@@ -60,7 +60,7 @@ to know whether the work actually reached `dev` is to look for the files.
 
 ---
 
-# 📋 PENDING — the 18 that are left
+# 📋 PENDING — the 17 that are left
 
 Full detail for each is further down under its own track heading; this is the
 index.
@@ -93,10 +93,9 @@ Returns lifecycle is now empty: **B4.11** and **B4.10** both shipped
 own entry below — it describes a mail-order shipping-label flow that
 doesn't fit a physical till).
 
-**Catalogue (3)**
+**Catalogue (2)**
 - **A5.8** Per-locale product content (EN/AR) + completeness indicator
 - **A5.9** Version history with restore; bulk import; vendor/collections
-- **S7.9** Tags — no model or field exists yet
 
 **Schema + UI (2)**
 - **S7.1** checked 2026-09-09, deliberately skipped — see its own entry
@@ -1298,8 +1297,23 @@ that staleness is why these are consolidated here.
       parent picker from config alone.
       Verification: backend 1102/1102 (48 files), frontend 1113/1113 +1
       skipped (125 files), tsc/eslint clean both sides. Commit `7f9ed1d`.
-- [ ] **S7.9** Tags — tag columns, filters, bulk-tag on every list page. No
-      model or field exists yet
+- [x] **S7.9 — DONE 2026-09-09.** New `Tag` model, many-to-many with
+      `Product` via an implicit join table. Owner's decisions: products
+      only (not applied to other resources); free-text vocabulary,
+      reused by name rather than picked from an existing list. New
+      `tags` field type — genuinely different from `multiRelation`
+      (names, not ids; find-or-create via `connectOrCreate` keyed on
+      `Tag.name`'s unique constraint, not pick-existing) — wired into
+      every dispatch site in `resource.service.ts` (select, serialize,
+      label attach, write coercion, CSV import). Real bug caught before
+      merge: `coerceTagsValue` sent `set: []` on CREATE, which Prisma's
+      nested create input rejects (no `set` key exists there) — the
+      same lesson `coerceMultiRelationValue`'s own comment already
+      documented, now fixed to only emit `set` on UPDATE. No standalone
+      management screen; tags are reachable only through the product
+      form's picker.
+      Verification: backend 1110/1110 (49 files), frontend 1113/1113 +1
+      skipped (125 files), tsc/eslint clean both sides. Commit `f0b53d7`.
 
 ### Schema, still unstarted
 - [ ] **S7.1 — CHECKED 2026-09-09, deliberately skipped, not built.** `Address`
