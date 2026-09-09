@@ -196,3 +196,25 @@ export async function fetchTillEvents(shiftId: string): Promise<TillEvent[]> {
   const result = await apiFetch<{ events: TillEvent[] }>(`/shifts/${shiftId}/events`);
   return result.events;
 }
+
+/**
+ * The X/Z report (O9 Tier 4) — the printable end-of-shift summary. Same
+ * shape whether the shift is still open (an X report, `isFinal: false`) or
+ * already closed (a Z report, `isFinal: true`); the caller decides which it
+ * is by asking before or after `closeTill`, not this type.
+ */
+export interface TillReport {
+  shift: Shift;
+  byMethod: { method: string; total: string }[];
+  cash: string;
+  expectedCash: string;
+  noSaleCount: number;
+  cashDropTotal: string;
+  payoutTotal: string;
+  events: TillEvent[];
+  isFinal: boolean;
+}
+
+export async function fetchTillReport(shiftId: string): Promise<TillReport> {
+  return apiFetch<TillReport>(`/shifts/${shiftId}/report`);
+}

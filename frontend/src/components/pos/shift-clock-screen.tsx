@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Clock, LogIn, LogOut } from 'lucide-react';
+import { Clock, LogIn, LogOut, Printer } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { elapsedLabel, useShiftClock } from '@/hooks/useShiftClock';
 import { TillEventControls } from '@/components/pos/till-event-controls';
+import { TillReportView } from '@/components/pos/till-report-view';
+import { fetchTillReport, type TillReport } from '@/lib/shifts-api';
 
 /**
  * The interactive clock (owner's note, 2026-09-09).
@@ -45,6 +47,13 @@ export function ShiftClockScreen() {
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [closingCount, setClosingCount] = useState('');
   const [expectedCash, setExpectedCash] = useState<string | null>(null);
+  /** The X/Z report (O9 Tier 4) — held here rather than fetched fresh every
+   *  render, since a Z report must show the shift as it was AT CLOSE: the
+   *  shift itself becomes `null` the moment `finish()` succeeds (that is
+   *  what drives the "not on shift" screen), so the id has to be captured
+   *  before that happens or there is nothing left to ask the report for. */
+  const [report, setReport] = useState<TillReport | null>(null);
+  const [isLoadingReport, setIsLoadingReport] = useState(false);
 
   async function openEndDialog() {
     setConfirmEnd(true);
@@ -52,9 +61,40 @@ export function ShiftClockScreen() {
   }
 
   async function handleFinish() {
+    // Captured BEFORE finish() runs — `shift` becomes null the instant it
+    // succeeds (see the state comment above), and there would be nothing
+    // left to ask the Z report for.
+    const closedShiftId = shift?.id ?? null;
+
     await finish(closingCount);
     setClosingCount('');
     setConfirmEnd(false);
+
+    if (closedShiftId) {
+      setIsLoadingReport(true);
+      try {
+        setReport(await fetchTillReport(closedShiftId));
+      } catch {
+        // The shift closed regardless — a report that failed to load is a
+        // missed convenience, never a reason to look like closing failed.
+        setReport(null);
+      } finally {
+        setIsLoadingReport(false);
+      }
+    }
+  }
+
+  async function showXReport() {
+    if (!shift) return;
+
+    setIsLoadingReport(true);
+    try {
+      setReport(await fetchTillReport(shift.id));
+    } catch {
+      setReport(null);
+    } finally {
+      setIsLoadingReport(false);
+    }
   }
 
   if (!isReady) {
@@ -77,6 +117,25 @@ export function ShiftClockScreen() {
             </p>
             <Button variant="ghost" size="sm" onClick={dismissVariance}>
               {t('dismiss')}
+            </Button>
+          </div>
+        ) : null}
+
+        {/* The Z report — only reachable right here, right after close: the
+            shift id that produced it is gone the moment this screen shows
+            (see the `report` state's own comment), so there is no "view it
+            again later from this page" path by design. A closed shift's
+            full history stays readable from the staff activity view. */}
+        {report ? (
+          <div className="space-y-2 rounded-md border p-3 text-start">
+            <TillReportView report={report} />
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => window.print()}
+            >
+              <Printer className="size-4" aria-hidden />
+              {t('printReport')}
             </Button>
           </div>
         ) : null}
@@ -132,6 +191,31 @@ export function ShiftClockScreen() {
           </p>
           <TillEventControls shiftId={shift.id} />
         </>
+      ) : null}
+
+      {/* An X report — mid-shift, non-destructive, printable any number of
+          times. Same shape the Z report shows after close; only `isFinal`
+          differs, and that comes from the SERVER (whether closeTill has
+          actually run), never guessed at here. */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="w-full"
+        onClick={() => void showXReport()}
+        disabled={isLoadingReport}
+      >
+        <Printer className="size-4" aria-hidden />
+        {isLoadingReport ? t('loadingReport') : t('viewXReport')}
+      </Button>
+
+      {report && !report.isFinal ? (
+        <div className="space-y-2 rounded-md border p-3 text-start">
+          <TillReportView report={report} />
+          <Button variant="outline" className="w-full" onClick={() => window.print()}>
+            <Printer className="size-4" aria-hidden />
+            {t('printReport')}
+          </Button>
+        </div>
       ) : null}
 
       <Button

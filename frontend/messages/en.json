@@ -2342,6 +2342,27 @@
         "CASH_DROP": "Cash drop logged",
         "PAYOUT": "Payout logged"
       }
+    },
+    "viewXReport": "View X report",
+    "loadingReport": "Loading...",
+    "printReport": "Print report",
+    "report": {
+      "xTitle": "X REPORT (mid-shift)",
+      "zTitle": "Z REPORT (final)",
+      "cashier": "Cashier",
+      "started": "Started",
+      "ended": "Ended",
+      "salesByMethod": "Sales by method",
+      "noSales": "No sales yet",
+      "openingFloat": "Opening float",
+      "cashSales": "Cash sales",
+      "cashDrops": "Cash drops",
+      "payouts": "Payouts",
+      "expectedInDrawer": "Expected in drawer",
+      "counted": "Counted",
+      "variance": "Variance",
+      "noSaleOpens": "No-sale opens",
+      "printedAt": "Printed {time}"
     }
   },
   "staffActivity": {

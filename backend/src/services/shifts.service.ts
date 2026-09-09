@@ -594,3 +594,53 @@ export async function listTillEvents(shiftId: string) {
     actorId: event.actorId,
   }));
 }
+
+/**
+ * The X/Z report (O9 Tier 4) — the printable end-of-day summary. "X" and
+ * "Z" in standard POS terms are the same shape at different moments: an X
+ * report is this, run mid-shift, non-destructive; a Z report is this, run
+ * after `closeTill` has already finalised the shift. Nothing here decides
+ * which is which — the CALLER does, by asking before or after close — so
+ * there is one function, not two.
+ */
+export async function getTillReport(shiftId: string) {
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: SHIFT_SELECT,
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+
+  const [takings, events] = await Promise.all([
+    getShiftTakings(shiftId),
+    listTillEvents(shiftId),
+  ]);
+
+  const noSaleCount = events.filter((event) => event.type === TillEventType.NO_SALE).length;
+  const cashDrops = events.filter((event) => event.type === TillEventType.CASH_DROP);
+  const payouts = events.filter((event) => event.type === TillEventType.PAYOUT);
+
+  const sumAmounts = (rows: typeof events) =>
+    rows
+      .reduce((sum, row) => sum.add(row.amount ?? '0'), new Prisma.Decimal(0))
+      .toFixed(2);
+
+  return {
+    shift: serialise(shift),
+    byMethod: takings.byMethod,
+    // `getShiftTakings` returns these as `Prisma.Decimal` — fine when a
+    // ROUTE hands them straight to `res.json()` (Decimal serialises to a
+    // string via its own `toJSON`), but this function is called BY a
+    // service, not a route, so the conversion has to happen explicitly here
+    // rather than relying on a JSON boundary that may not exist.
+    cash: takings.cash.toFixed(2),
+    expectedCash: takings.expectedCash.toFixed(2),
+    noSaleCount,
+    cashDropTotal: sumAmounts(cashDrops),
+    payoutTotal: sumAmounts(payouts),
+    events,
+    /** Only meaningful once the shift is actually closed — null on an X
+     *  report taken mid-shift, since `closeTill` has not run yet. */
+    isFinal: shift.endedAt !== null,
+  };
+}

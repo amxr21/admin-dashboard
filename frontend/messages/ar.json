@@ -2342,6 +2342,27 @@
         "CASH_DROP": "تم تسجيل السحب النقدي",
         "PAYOUT": "تم تسجيل الدفعة النقدية"
       }
+    },
+    "viewXReport": "عرض تقرير X",
+    "loadingReport": "جارٍ التحميل...",
+    "printReport": "طباعة التقرير",
+    "report": {
+      "xTitle": "تقرير X (أثناء الوردية)",
+      "zTitle": "تقرير Z (نهائي)",
+      "cashier": "الكاشير",
+      "started": "بدأت",
+      "ended": "انتهت",
+      "salesByMethod": "المبيعات حسب طريقة الدفع",
+      "noSales": "لا مبيعات بعد",
+      "openingFloat": "المبلغ الافتتاحي",
+      "cashSales": "المبيعات النقدية",
+      "cashDrops": "السحوبات النقدية",
+      "payouts": "الدفعات النقدية",
+      "expectedInDrawer": "المتوقع في الدرج",
+      "counted": "المعدود",
+      "variance": "الفارق",
+      "noSaleOpens": "فتحات بلا بيع",
+      "printedAt": "طُبع في {time}"
     }
   },
   "staffActivity": {

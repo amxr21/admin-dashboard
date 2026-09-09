@@ -745,4 +745,89 @@ describe('the till (O5.2 / O5.3)', () => {
       expect(res.status).toBe(403);
     });
   });
+
+  describe('the X/Z report (O9 Tier 4)', () => {
+    it('is NOT final while the shift is still open (an X report)', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'report-x');
+      const shift = await openTill(cashier.id, '100.00');
+
+      const res = await request(app)
+        .get(`/api/v1/shifts/${shift.id}/report`)
+        .set(auth(signToken(cashier)));
+
+      expect(res.status).toBe(200);
+      expect((res.body as { data: { isFinal: boolean } }).data.isFinal).toBe(false);
+    });
+
+    it('is final once the shift has closed (a Z report)', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'report-z');
+      const shift = await openTill(cashier.id, '100.00');
+
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/close-till`)
+        .set(auth(signToken(cashier)))
+        .send({ closingCount: '100.00' });
+
+      const res = await request(app)
+        .get(`/api/v1/shifts/${shift.id}/report`)
+        .set(auth(signToken(cashier)));
+
+      expect(res.status).toBe(200);
+      expect((res.body as { data: { isFinal: boolean } }).data.isFinal).toBe(true);
+    });
+
+    it('totals cash drops and payouts separately from sales', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'report-totals');
+      const order = await seedOrder('25.00');
+      const shift = await openTill(cashier.id, '100.00');
+
+      await pay(shift.id, order, '25.00', 'cash');
+
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'CASH_DROP', amount: '10.00' });
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'PAYOUT', amount: '5.00' });
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'NO_SALE' });
+
+      const res = await request(app)
+        .get(`/api/v1/shifts/${shift.id}/report`)
+        .set(auth(signToken(cashier)));
+
+      const body = res.body as {
+        data: {
+          cash: string;
+          expectedCash: string;
+          cashDropTotal: string;
+          payoutTotal: string;
+          noSaleCount: number;
+        };
+      };
+
+      // Raw sales, untouched by the drop/payout.
+      expect(body.data.cash).toBe('25.00');
+      // Drops and payouts subtracted.
+      expect(body.data.expectedCash).toBe('10.00');
+      expect(body.data.cashDropTotal).toBe('10.00');
+      expect(body.data.payoutTotal).toBe('5.00');
+      expect(body.data.noSaleCount).toBe(1);
+    });
+
+    it('refuses reading another person\'s report without `staff`', async () => {
+      const other = await makeUser(StaffRole.SUPPORT, 'report-other');
+      const shift = await seedShift(other.id, new Date(), null);
+
+      const res = await request(app)
+        .get(`/api/v1/shifts/${shift.id}/report`)
+        .set(auth(workerToken));
+
+      expect(res.status).toBe(403);
+    });
+  });
 });

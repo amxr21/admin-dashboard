@@ -15,6 +15,7 @@ import {
   getOpenShift,
   getShiftSummary,
   getShiftTakings,
+  getTillReport,
   listShifts,
   listTillEvents,
   recordTillEvent,
@@ -310,6 +311,30 @@ shiftsRouter.get('/shifts/:id/events', authenticate, async (req, res) => {
   }
 
   res.status(200).json({ data: { events: await listTillEvents(shiftId) } });
+});
+
+/**
+ * The X/Z report (O9 Tier 4) — same shape whether the shift is still open
+ * (an X report) or already closed (a Z report); the report itself does not
+ * decide which, the caller does by asking before or after `close-till`.
+ * Same ownership rule as `/takings` and `/events`.
+ */
+shiftsRouter.get('/shifts/:id/report', authenticate, async (req, res) => {
+  const user = requireUser(req);
+  const shiftId = String(req.params.id);
+
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: { userId: true },
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+
+  if (shift.userId !== user.id && !(await canAccessAreaResolved(user.role, 'staff'))) {
+    throw AppError.forbidden("You cannot view someone else's till report");
+  }
+
+  res.status(200).json({ data: await getTillReport(shiftId) });
 });
 
 const closeTillSchema = z.object({
