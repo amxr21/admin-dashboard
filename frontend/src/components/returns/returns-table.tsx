@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { Search } from 'lucide-react';
+import { AlertTriangle, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { CopyableId } from '@/components/copyable-id';
@@ -171,7 +171,19 @@ export function ReturnsTable() {
     {
       id: 'createdAt',
       header: t('columns.requested'),
-      cell: (row) => <Timestamp value={row.createdAt} />,
+      cell: (row) => (
+        <div className="flex items-center gap-1.5">
+          <Timestamp value={row.createdAt} />
+          {/* A warning, not a gate (B4.11) — the return still processes
+              normally; this only flags it as past the window. */}
+          {!row.withinWindow ? (
+            <AlertTriangle
+              className="text-warning size-3.5 shrink-0"
+              aria-label={t('pastWindow')}
+            />
+          ) : null}
+        </div>
+      ),
       sortValue: (row) => new Date(row.createdAt),
     },
     {

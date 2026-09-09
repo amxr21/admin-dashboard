@@ -340,6 +340,43 @@ export const SETTINGS = {
     description: 'Notify staff when a customer return is requested.',
   },
 
+  // ─── Returns (B4.11) ─────────────────────────────────────────────────
+  /**
+   * A WARNING, not a gate — the owner's own call. A return past the window
+   * still goes through; the person approving it sees the request is late and
+   * decides with judgment (a good customer, a defect found late), the same
+   * "warn, don't block" shape the till already uses for over-stock and the
+   * discount cap. 0 means no window at all — every return is always within
+   * it, never treated as "unset".
+   */
+  'returns.windowDays': {
+    type: 'number',
+    default: 30,
+    area: 'settings',
+    min: 0,
+    max: 3650,
+    label: 'Return window (days)',
+    description:
+      'How many days after an order was placed a return is considered on-time. Past this, a request still goes through — staff just sees it is late. Set to 0 for no window at all.',
+  },
+  /**
+   * A DEFAULT, not the whole answer (the owner's own call, matching how
+   * `pos.maxCashierDiscountPercent` already works) — the person approving a
+   * return may raise or waive it for that one case (a manufacturing defect
+   * gets 0%, "changed my mind" gets the full store rate), rather than the
+   * number being locked in everywhere it applies.
+   */
+  'returns.restockingFeePercent': {
+    type: 'number',
+    default: 0,
+    area: 'settings',
+    min: 0,
+    max: 100,
+    label: 'Restocking fee (%)',
+    description:
+      'Deducted from the refund cap by default when a return is approved. The person approving can still adjust or waive it for an individual return.',
+  },
+
   // ─── Email ──────────────────────────────────────────────────────────
   // Only the non-secret half of email config lives here — the SMTP host,
   // port, username and password are `SMTP_*` environment variables (see

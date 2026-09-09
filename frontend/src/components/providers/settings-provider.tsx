@@ -69,6 +69,15 @@ interface SettingsContextValue {
    *  local copy only ever makes the till's own nudge wrong, never a way
    *  around the check. */
   maxCashierDiscountPercent: number;
+  /** The live `returns.restockingFeePercent` (B4.11) — a DEFAULT the return
+   *  detail sheet pre-fills; the person approving may still raise or waive
+   *  it for that one return. The server applies the same default when the
+   *  field is omitted entirely, so a stale local copy only ever makes the
+   *  pre-filled value wrong, never a way around the real one. */
+  restockingFeePercent: number;
+  /** The live `returns.windowDays` (B4.11) — 0 means no window. Display
+   *  only; the server computes `withinWindow` itself on every return. */
+  returnWindowDays: number;
   /** The live `staff.defaultInviteRole` — pre-selects the invite form's role
    *  picker. A courtesy default only; `canAssignRole` is still enforced
    *  server-side regardless of what this is set to. */
@@ -127,6 +136,8 @@ const DEFAULT_VALUE: SettingsContextValue = {
   // Mirrors `settings.config.ts`'s declared default, used only until the
   // real registry loads.
   maxCashierDiscountPercent: 20,
+  restockingFeePercent: 0,
+  returnWindowDays: 30,
   defaultInviteRole: 'SUPPORT',
   editPanelMode: 'drawer',
   sidebarMode: 'sticky',
@@ -235,6 +246,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const pageSize = Number(effective['dashboard.tablePageSize'] ?? 20);
   const minPassword = Number(effective['security.minPasswordLength'] ?? 12);
   const maxCashierDiscount = Number(effective['pos.maxCashierDiscountPercent'] ?? 20);
+  const restockingFee = Number(effective['returns.restockingFeePercent'] ?? 0);
+  const returnWindow = Number(effective['returns.windowDays'] ?? 30);
 
   // A THREE-letter check, not a hardcoded AED/SAR/USD/EUR/GBP allowlist — the
   // server (`settings.config.ts`) is the one place that enum is declared;
@@ -275,6 +288,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       Number.isFinite(maxCashierDiscount) && maxCashierDiscount >= 0
         ? maxCashierDiscount
         : 20,
+    // 0 is a legitimate value here too (no restocking fee at all) — same
+    // "only replace a genuinely malformed reading" guard as the discount
+    // cap above.
+    restockingFeePercent:
+      Number.isFinite(restockingFee) && restockingFee >= 0 ? restockingFee : 0,
+    // 0 is legitimate here too — it means "no window at all", not malformed.
+    returnWindowDays: Number.isFinite(returnWindow) && returnWindow >= 0 ? returnWindow : 30,
     defaultInviteRole: String(effective['staff.defaultInviteRole'] ?? 'SUPPORT'),
     editPanelMode: effective['ui.editPanelMode'] === 'modal' ? 'modal' : 'drawer',
     sidebarMode: effective['ui.sidebarMode'] === 'floating' ? 'floating' : 'sticky',

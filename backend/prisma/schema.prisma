@@ -1077,6 +1077,15 @@ model Return {
   /// Set only when resolution = REFUND. Capped at approval time to the sum of
   /// the RETURNED line items' recorded price — never the order's live total.
   refundAmount    Decimal?         @map("refund_amount") @db.Decimal(10, 2)
+  /// The restocking fee ACTUALLY applied at approval (B4.11), 0-100. NULL
+  /// means none was ever applied — never "unset defaulting to 0", since a
+  /// genuine 0% fee (waived on purpose) and "not resolved as a refund yet"
+  /// are different facts. Snapshotted at approval time, same discipline as
+  /// `refundAmount` itself: `returns.restockingFeePercent` is a DEFAULT the
+  /// approving person may raise or waive per return, so a later change to
+  /// the store setting must not silently rewrite what a past return actually
+  /// charged.
+  restockingFeePercent Decimal?    @map("restocking_fee_percent") @db.Decimal(5, 2)
   /// Whether approving created a matching StockMovement per item. Recorded
   /// here so the return's own history says whether stock was ever adjusted,
   /// without re-deriving it from the movement log.

@@ -80,6 +80,8 @@ const approveBody = z
       .string()
       .regex(/^\d+(\.\d{1,2})?$/, 'Enter an amount like 49.99')
       .optional(),
+    /** A restocking fee (B4.11), 0-100. Omit to use the store default. */
+    restockingFeePercent: z.number().min(0).max(100).optional(),
     restock: z.boolean(),
     /**
      * Per-line decisions (B4.7 / B4.8). Omit to accept every line in full —

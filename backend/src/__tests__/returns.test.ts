@@ -29,10 +29,13 @@ interface ReturnBody {
       resolution: string;
       category: string | null;
       refundAmount: string | null;
+      restockingFeePercent: string | null;
       restocked: boolean;
       rejectionReason: string | null;
       order: { id: string; status?: OrderStatus };
       items: { orderItemId: string; quantity: number }[];
+      withinWindow: boolean;
+      daysSincePurchase: number;
     };
   };
 }
@@ -78,7 +81,7 @@ async function makeProduct(stock = 10) {
 }
 
 /** An order with one line item of the given quantity, at the given status. */
-async function makeOrder(status: OrderStatus, quantity = 4) {
+async function makeOrder(status: OrderStatus, quantity = 4, placedAt?: Date) {
   const productId = await makeProduct();
 
   const order = await prisma.order.create({
@@ -88,6 +91,9 @@ async function makeOrder(status: OrderStatus, quantity = 4) {
       total: new Prisma.Decimal('25.00').mul(quantity),
       customerId,
       branchId,
+      // Omitted uses the column default (now()) — only the return-window
+      // tests (B4.11) need to backdate this.
+      ...(placedAt ? { placedAt } : {}),
       items: { create: [{ productId, quantity, price: new Prisma.Decimal('25.00') }] },
     },
     include: { items: true },
@@ -442,6 +448,153 @@ describe('approving a return', () => {
       }),
     );
     expect(entry).not.toBeNull();
+  });
+});
+
+describe('return window and restocking fee (B4.11)', () => {
+  afterEach(async () => {
+    await prisma.setting.deleteMany({
+      where: { key: { in: ['returns.windowDays', 'returns.restockingFeePercent'] } },
+    });
+  });
+
+  it('a return within the default window reports withinWindow: true', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+
+    const body = created.body as ReturnBody;
+    expect(body.data.return.withinWindow).toBe(true);
+  });
+
+  it('a return past the window still processes — a warning, not a gate', async () => {
+    await prisma.setting.upsert({
+      where: { key: 'returns.windowDays' },
+      create: { key: 'returns.windowDays', value: 7 },
+      update: { value: 7 },
+    });
+
+    const longAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED, 4, longAgo);
+
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+
+    expect(created.status).toBe(201);
+    const body = created.body as ReturnBody;
+    expect(body.data.return.withinWindow).toBe(false);
+    expect(body.data.return.daysSincePurchase).toBeGreaterThanOrEqual(30);
+
+    // Still approvable — nothing about being late refuses the request.
+    const id = body.data.return.id;
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'REPLACEMENT', restock: false });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('windowDays: 0 means no window — always within it, however old', async () => {
+    await prisma.setting.upsert({
+      where: { key: 'returns.windowDays' },
+      create: { key: 'returns.windowDays', value: 0 },
+      update: { value: 0 },
+    });
+
+    const yearsAgo = new Date(Date.now() - 800 * 24 * 60 * 60 * 1000);
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED, 4, yearsAgo);
+
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+
+    expect((created.body as ReturnBody).data.return.withinWindow).toBe(true);
+  });
+
+  it('the store default restocking fee reduces the refund cap', async () => {
+    await prisma.setting.upsert({
+      where: { key: 'returns.restockingFeePercent' },
+      create: { key: 'returns.restockingFeePercent', value: 20 },
+      update: { value: 20 },
+    });
+
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED, 4);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 2 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    // 2 items at 25.00 = 50.00, minus a 20% fee = 40.00 cap.
+    const overCap = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'REFUND', refundAmount: '45.00', restock: false });
+    expect(overCap.status).toBe(400);
+    expect((overCap.body as ErrorBody).error.details?.max).toBe('40.00');
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'REFUND', refundAmount: '40.00', restock: false });
+    expect(res.status).toBe(200);
+    expect((res.body as ReturnBody).data.return.restockingFeePercent).toBe('20.00');
+  });
+
+  it('the approving person can waive the store default fee for one return', async () => {
+    await prisma.setting.upsert({
+      where: { key: 'returns.restockingFeePercent' },
+      create: { key: 'returns.restockingFeePercent', value: 20 },
+      update: { value: 20 },
+    });
+
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED, 4);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'defective', items: [{ orderItemId, quantity: 2 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    // Waived to 0% for this one return — the full 50.00 is now the cap.
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '50.00',
+        restockingFeePercent: 0,
+        restock: false,
+      });
+
+    expect(res.status).toBe(200);
+    expect((res.body as ReturnBody).data.return.restockingFeePercent).toBe('0.00');
+  });
+
+  it('refuses an out-of-range restocking fee', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED, 4);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '10.00',
+        restockingFeePercent: 150,
+        restock: false,
+      });
+
+    expect(res.status).toBe(400);
   });
 });
 

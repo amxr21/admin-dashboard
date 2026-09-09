@@ -2129,6 +2129,7 @@
       "requested": "تاريخ الطلب",
       "status": "الحالة"
     },
+    "pastWindow": "تجاوز مهلة الإرجاع",
     "search": {
       "label": "بحث",
       "placeholder": "رقم الإرجاع أو رقم الطلب"
@@ -2162,6 +2163,10 @@
         "STORE_CREDIT": "رصيد للمتجر",
         "REPLACEMENT": "استبدال"
       },
+      "restockingFeeLabel": "رسوم إعادة التخزين",
+      "restockingFeeHint": "مُعبّأة مسبقًا من الإعداد الافتراضي للمتجر — يمكن رفعها أو إلغاؤها لهذا الإرجاع.",
+      "restockingFeeApplied": "رسوم إعادة التخزين",
+      "pastWindowBody": "تم تقديم هذا الطلب منذ {days, plural, zero {أقل من يوم} one {يوم واحد} two {يومين} few {# أيام} many {# يومًا} other {# يوم}}، بعد مهلة الإرجاع الخاصة بالمتجر. لا يزال يمكن قبوله.",
       "refundAmountLabel": "مبلغ الاسترداد (حتى {max})",
       "restock": "إعادة العناصر المرتجعة إلى المخزون",
       "reject": "رفض",

@@ -2129,6 +2129,7 @@
       "requested": "Requested",
       "status": "Status"
     },
+    "pastWindow": "Past the return window",
     "search": {
       "label": "Search",
       "placeholder": "RMA number or order number"
@@ -2162,6 +2163,10 @@
         "STORE_CREDIT": "Store credit",
         "REPLACEMENT": "Replacement"
       },
+      "restockingFeeLabel": "Restocking fee",
+      "restockingFeeHint": "Pre-filled from the store default — raise or waive it for this return.",
+      "restockingFeeApplied": "Restocking fee",
+      "pastWindowBody": "This order was placed {days, plural, one {# day} other {# days}} ago, past the store's return window. It can still be approved.",
       "refundAmountLabel": "Refund amount (up to {max})",
       "restock": "Put the returned items back in stock",
       "reject": "Reject",
