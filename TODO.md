@@ -12,7 +12,7 @@ reasoning behind decisions already made, not for what is open.
 
 # 📊 STATUS AT A GLANCE — 2026-09-08
 
-**22 open · 93 done.** Started this session at 87 open, closed 11, then the
+**21 open · 94 done.** Started this session at 87 open, closed 11, then the
 owner used the merged build and opened **O9** (16 items) — see below.
 
 | | Track | State |
@@ -30,7 +30,7 @@ owner used the merged build and opened **O9** (16 items) — see below.
 | ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
 | ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
 | 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
-| 🔨 | **O9** the till: a counter, not an endpoint list | 10 done, 7 left |
+| 🔨 | **O9** the till: a counter, not an endpoint list | 11 done, 6 left |
 | 📋 | 16 items | see PENDING below |
 
 **Verification at this point:** backend 1001/1001 (47 files) · frontend
@@ -910,9 +910,30 @@ Nothing here is missing machinery; each is small. Together they are the
 difference between a demo and a till. Sourced from what standard retail POS
 systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6).
 
-- [ ] **O9.11b — Discounts, per line and per cart.** The damaged-item case,
-      and the most-asked-for of this group. Needs a decision on who may apply
-      one and up to what value, which is why O9.13 pairs with it.
+- [x] **O9.11b — DONE 2026-09-09.** Discounts. Percent per line (owner's
+      answer), NOT a coupon code — the existing `Discount` model is a
+      different, later feature. `OrderItem.discountPercent` is a SEPARATE
+      column from `price`: writing the discounted figure into `price` would
+      corrupt margin/revenue/invoice readers that all read it as the true
+      unit price. NULL, never 0, same discipline as `OrderItem.cost`.
+      New `pos.maxCashierDiscountPercent` setting (default 20, owner
+      configurable). Above it, checkout requires `overrideToken` from
+      O9.13's manager-override endpoint, verified server-side against the
+      signature — never a client-supplied approver id taken on faith (same
+      class of bug O9.17 fixed for `shiftId`). Frontend cap-check is a NUDGE
+      only; the server re-verifies every line regardless.
+      **A real closure-timing bug caught while writing this feature's own
+      tests**: a `const branchId2 = branchId` taken at `describe()`-body
+      scope froze the empty string held before `beforeAll` ran (a
+      `describe` body runs at collection time, before any hook) — every
+      request using it then hit O9.18's genuine multi-business refusal,
+      which read at first like a bug in the discount logic itself.
+      Verification: backend 1033/1033, frontend 1080/1080 +1 skipped,
+      tsc/eslint clean both sides, en/ar parity 1786/1786. Commit `9913f18`.
+      **Per-cart discount (apply one percent to every line) was not built
+      separately** — the per-line control already covers it by setting the
+      same value on every line; a dedicated "whole cart" button is a small
+      follow-up if the owner asks for it specifically.
 - [ ] **O9.12b — Park / hold a sale.** Customer forgot their wallet. Without
       it the cashier's only option is to delete the cart and re-scan.
 - [ ] **O9.9 — Void a line and void a sale.** Distinct from a refund: a void
