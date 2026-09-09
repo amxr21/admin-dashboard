@@ -60,7 +60,7 @@ to know whether the work actually reached `dev` is to look for the files.
 
 ---
 
-# 📋 PENDING — the 19 that are left
+# 📋 PENDING — the 18 that are left
 
 Full detail for each is further down under its own track heading; this is the
 index.
@@ -86,21 +86,20 @@ the two most important items were not on it at all. Now:
 - **Tier 5 — minor.** The shift dialog and hiding the clock from the owner
 - **⏳ Three questions block Tier 1** — barcodes or not, shop type, and O9.4
 
-## Needs nothing from the owner (7)
+## Needs nothing from the owner (5)
 
 Returns lifecycle is now empty: **B4.11** and **B4.10** both shipped
 2026-09-09; **S7.8** checked the same day and deliberately skipped (see its
 own entry below — it describes a mail-order shipping-label flow that
 doesn't fit a physical till).
 
-**Catalogue (4)**
+**Catalogue (3)**
 - **A5.8** Per-locale product content (EN/AR) + completeness indicator
 - **A5.9** Version history with restore; bulk import; vendor/collections
-- **S7.6** `Category.parentId` → the category tree
 - **S7.9** Tags — no model or field exists yet
 
-**Schema + UI (3)**
-- **S7.1** `Address` model → shipping/billing, customer addresses, tax by region
+**Schema + UI (2)**
+- **S7.1** checked 2026-09-09, deliberately skipped — see its own entry
 - **Optimistic row updates with rollback** — a real refactor of every table's
   write path
 - **Loading-overlay blur / nav-transition smoothness**
@@ -1285,8 +1284,20 @@ that staleness is why these are consolidated here.
 - [ ] **A5.8** Per-locale product content (EN/AR) + a completeness indicator
 - [ ] **A5.9** Version history with restore; bulk import; vendor / collections
       / related products
-- [ ] **S7.6** `Category.parentId` → the category tree (nesting, reparent,
-      delete guard)
+- [x] **S7.6 — DONE 2026-09-09.** `Category.parentId` → the category tree.
+      Owner's decisions: nesting capped at 3 levels; deleting a category
+      with children is blocked outright, never a silent reparent. `slug`
+      stays globally unique, not per-parent — the storefront resolves a
+      category by slug alone. New `beforeWrite` resource hook (the first
+      hook in the generic engine that can refuse a write before it
+      commits — depth/cycle checks have to run before Prisma writes a bad
+      parent, since `afterCreate`/`afterUpdate` only run once the row
+      already exists). One upward walk from the proposed parent catches
+      both depth and circular parents in one pass. No frontend changes
+      needed — the existing `relation` field type already renders a
+      parent picker from config alone.
+      Verification: backend 1102/1102 (48 files), frontend 1113/1113 +1
+      skipped (125 files), tsc/eslint clean both sides. Commit `7f9ed1d`.
 - [ ] **S7.9** Tags — tag columns, filters, bulk-tag on every list page. No
       model or field exists yet
 
