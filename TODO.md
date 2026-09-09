@@ -60,12 +60,12 @@ to know whether the work actually reached `dev` is to look for the files.
 
 ---
 
-# 📋 PENDING — the 32 that are left
+# 📋 PENDING — the 23 that are left
 
 Full detail for each is further down under its own track heading; this is the
 index.
 
-## 🆕 O9 — the till (11 left)
+## 🆕 O9 — the till (2 left)
 
 Opened 2026-09-08 from six notes the owner raised after using the merged O5
 build; **re-prioritised 2026-09-09 at his request — experience, then bugs,
@@ -1031,9 +1031,21 @@ systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6)
       mid-shift use. Logged in the (private) error log.
       Verification: backend 1058/1058, frontend 1094/1094 +1 skipped,
       tsc/eslint clean both sides, en/ar parity 1841/1841. Commit `2f933b9`.
-- [ ] **O9.16 — X / Z report at close.** `GET /shifts/:id/takings` already
-      computes mid-shift takings and O5.3 already stores the variance. This is
-      the printable end-of-day form of data that mostly exists.
+- [x] **O9.16 — DONE 2026-09-09.** X / Z report. One `getTillReport()` serves
+      both shapes — mid-shift (X, non-destructive, printable any number of
+      times) and final (Z, after close) — combining the shift, `getShiftTakings()`,
+      and O9.15's till events into one report; `isFinal` reads `shift.endedAt`
+      server-side, never guessed client-side. New `GET /shifts/:id/report`
+      (owner of the shift, or `staff` area). `TillReportView` reuses
+      `thermal-receipt.tsx`'s print-scoping technique (styling scoped to
+      `#till-report`, not `globals.css`). The Z report's shift id is captured
+      BEFORE `finish()` runs, since `useShiftClock` clears `shift` to `null`
+      the instant it succeeds — there would be nothing left to fetch a report
+      for otherwise; a regression test covers the fetch happening with the
+      right id.
+      Verification: backend 1062/1062 (47 files), frontend 1096/1096 +1
+      skipped (124 files), tsc/eslint clean both sides, en/ar parity
+      1860/1860. Commit `34557ec`.
 - [ ] **O9.8 — Exchange.** Deliberately last of the customer-facing work: an
       exchange is a refund and a sale in one act, so it is only coherent once
       O9.7 exists. Needs a decision on whether the halves are one transaction
