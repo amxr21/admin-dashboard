@@ -134,7 +134,13 @@ export default async function LocaleLayout({
       // client markup legitimately differ on this one element.
       suppressHydrationWarning
     >
-      <body className="bg-background text-foreground font-sans antialiased">
+      {/* Browser extensions (Grammarly, etc.) inject attributes like
+          data-gr-ext-installed onto <body> before React hydrates — a real
+          mismatch, but not one this app can or should react to. */}
+      <body
+        className="bg-background text-foreground font-sans antialiased"
+        suppressHydrationWarning
+      >
         {/* Blocking, runs before hydration — same reasoning as next-themes'
             own script (see theme-provider.tsx): paints the last-known accent
             color/corner radius/density from localStorage immediately, so a
