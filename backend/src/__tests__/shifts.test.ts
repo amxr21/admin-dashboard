@@ -618,4 +618,131 @@ describe('the till (O5.2 / O5.3)', () => {
 
     expect(res.status).toBe(403);
   });
+
+  describe('till events — no-sale, cash drop, payout (O9 Tier 4)', () => {
+    it('logs a no-sale open with no amount', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'event-no-sale');
+      const shift = await seedShift(cashier.id, new Date(), null);
+
+      const res = await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'NO_SALE' });
+
+      expect(res.status).toBe(201);
+      expect((res.body as { data: { event: { amount: string | null } } }).data.event.amount).toBeNull();
+    });
+
+    it('refuses a no-sale carrying an amount', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'event-no-sale-amt');
+      const shift = await seedShift(cashier.id, new Date(), null);
+
+      const res = await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'NO_SALE', amount: '5.00' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('refuses a cash drop with no amount', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'event-drop-no-amt');
+      const shift = await seedShift(cashier.id, new Date(), null);
+
+      const res = await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'CASH_DROP' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('refuses logging an event on someone else\'s shift', async () => {
+      const owner = await makeUser(StaffRole.SUPPORT, 'event-owner');
+      const other = await makeUser(StaffRole.SUPPORT, 'event-other');
+      const shift = await seedShift(owner.id, new Date(), null);
+
+      const res = await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(other)))
+        .send({ type: 'NO_SALE' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('refuses logging an event on an already-ended shift', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'event-ended');
+      const shift = await seedShift(cashier.id, new Date(), new Date());
+
+      const res = await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'NO_SALE' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('reduces expected drawer cash by drops and payouts at close', async () => {
+      // float 100 + cash sales 25 - drop 10 - payout 5 = 110 expected.
+      // Counted 110 → balanced, where reading raw cash sales alone (125)
+      // would have reported a false 15 shortage.
+      const cashier = await makeUser(StaffRole.SUPPORT, 'event-variance');
+      const order = await seedOrder('25.00');
+      const shift = await openTill(cashier.id, '100.00');
+
+      await pay(shift.id, order, '25.00', 'cash');
+
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'CASH_DROP', amount: '10.00' });
+
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'PAYOUT', amount: '5.00', note: 'courier tip' });
+
+      const res = await request(app)
+        .post(`/api/v1/shifts/${shift.id}/close-till`)
+        .set(auth(signToken(cashier)))
+        .send({ closingCount: '110.00' });
+
+      expect(res.status).toBe(200);
+      expect((res.body as { data: { variance: string } }).data.variance).toBe('0.00');
+    });
+
+    it('lists events for the shift, newest first', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'event-list');
+      const shift = await seedShift(cashier.id, new Date(), null);
+
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'NO_SALE' });
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'CASH_DROP', amount: '20.00' });
+
+      const res = await request(app)
+        .get(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)));
+
+      expect(res.status).toBe(200);
+      const events = (res.body as { data: { events: { type: string }[] } }).data.events;
+      expect(events).toHaveLength(2);
+      expect(events[0]?.type).toBe('CASH_DROP');
+    });
+
+    it('refuses reading another person\'s events without `staff`', async () => {
+      const other = await makeUser(StaffRole.SUPPORT, 'event-other-read');
+      const shift = await seedShift(other.id, new Date(), null);
+
+      const res = await request(app)
+        .get(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(workerToken));
+
+      expect(res.status).toBe(403);
+    });
+  });
 });

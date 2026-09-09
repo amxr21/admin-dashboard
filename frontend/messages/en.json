@@ -2321,7 +2321,28 @@
     "lastTillVariance": "Last till closed with a variance of",
     "floatOnRecord": "Opened with a {float} float",
     "elapsedHint": "Time on shift",
-    "notOnShiftShort": "Off shift"
+    "notOnShiftShort": "Off shift",
+    "tillEvents": {
+      "noSale": "No sale",
+      "cashDrop": "Cash drop",
+      "payout": "Payout",
+      "titles": {
+        "NO_SALE": "Log a no-sale open",
+        "CASH_DROP": "Log a cash drop",
+        "PAYOUT": "Log a payout"
+      },
+      "amountLabel": "Amount",
+      "noteLabel": "Note (optional)",
+      "notePlaceholder": "e.g. deposit run, courier tip",
+      "cancel": "Cancel",
+      "confirm": "Log it",
+      "logging": "Logging...",
+      "logged": {
+        "NO_SALE": "No-sale open logged",
+        "CASH_DROP": "Cash drop logged",
+        "PAYOUT": "Payout logged"
+      }
+    }
   },
   "staffActivity": {
     "title": "Staff activity",

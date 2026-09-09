@@ -1799,6 +1799,11 @@ model Shift {
   /// Money taken during this session.
   payments Payment[]
 
+  /// No-sale opens, cash drops, payouts — money events with no sale behind
+  /// them (O9 Tier 4), read by `closeTill`'s own variance math alongside
+  /// `payments` above.
+  tillEvents TillEvent[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1930,6 +1935,53 @@ model Payment {
   @@index([orderId])
   @@index([shiftId, paidAt])
   @@map("payments")
+}
+
+/// A drawer event with no SALE behind it (O9 Tier 4) — a no-sale open, a
+/// cash drop to the safe, a payout to a courier from the till. Deliberately
+/// NOT a `Payment` with an invented method: a `Payment` always settles an
+/// `Order`, and stretching it to cover money that never touched a sale would
+/// make `orderId` optional for the wrong reason and blur what the table
+/// means. This is a separate, smaller fact.
+enum TillEventType {
+  /// The drawer opened with no sale attached — recorded and countable so an
+  /// unexplained open is visible, the classic shrinkage path every real POS
+  /// system logs. No `amount`.
+  NO_SALE
+  /// Cash removed FROM the drawer TO somewhere else (the safe, typically).
+  /// Reduces what should still be in the drawer at close.
+  CASH_DROP
+  /// Cash paid out of the drawer for something outside a sale (a courier,
+  /// a supplier COD). Also reduces the drawer, same direction as a drop.
+  PAYOUT
+}
+
+model TillEvent {
+  id String @id @default(cuid())
+
+  type TillEventType
+
+  /// NULL only for NO_SALE, which moves nothing. CASH_DROP and PAYOUT
+  /// always carry one — a drop or payout with no amount is not a real event,
+  /// just a note that should have been a Shift note instead.
+  amount Decimal? @db.Decimal(10, 2)
+
+  note String? @db.VarChar(255)
+
+  /// Which shift this happened during — required. An event with no shift has
+  /// no drawer to adjust, and `closeTill`'s own variance math (which reads
+  /// these) has nothing to attribute it to.
+  shiftId String @map("shift_id")
+  shift   Shift  @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  /// Plain id, not a relation — same rule as `AuditLog.actorId`: the record
+  /// of who opened the drawer must outlive the staff account.
+  actorId String @map("actor_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([shiftId, createdAt])
+  @@map("till_events")
 }
 
 /// An owner's override of what one role may reach (O8).

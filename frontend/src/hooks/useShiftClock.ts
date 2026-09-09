@@ -129,7 +129,11 @@ export function useShiftClock() {
 
     try {
       const takings = await fetchShiftTakings(shift.id);
-      return takings.cash;
+      // `expectedCash`, not `cash` (O9 Tier 4) — `cash` is raw sales and
+      // ignores every cash drop/payout logged this shift, which would show
+      // the cashier a hint asking them to count MORE than is actually
+      // supposed to be in the drawer after a legitimate drop.
+      return takings.expectedCash;
     } catch {
       return null;
     }

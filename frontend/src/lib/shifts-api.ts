@@ -127,8 +127,17 @@ export async function fetchShiftSummary(id: string): Promise<ShiftSummary> {
 
 export interface ShiftTakings {
   byMethod: { method: string; total: string }[];
-  /** What should be in the DRAWER — cash only. Card takings never were. */
+  /** Raw cash SALES only — card takings never were in the drawer, and this
+   *  does NOT account for a cash drop or payout since (O9 Tier 4). For
+   *  "what should physically be in the drawer right now", read
+   *  `expectedCash` instead. */
   cash: string;
+  /** What should physically be in the drawer, given cash sales minus any
+   *  cash drops/payouts logged this shift — the figure to compare a count
+   *  against. Was `cash` itself before O9 Tier 4 added drops/payouts; kept
+   *  as a separate field rather than changing what `cash` means, since a
+   *  caller wanting raw sales (not the drawer figure) still needs it. */
+  expectedCash: string;
 }
 
 export async function fetchShiftTakings(id: string): Promise<ShiftTakings> {
@@ -154,4 +163,36 @@ export async function closeTill(
     method: 'POST',
     body: JSON.stringify({ closingCount, ...(note ? { note } : {}) }),
   });
+}
+
+/**
+ * A drawer event with no sale behind it (O9 Tier 4) — a no-sale open, a cash
+ * drop, or a payout. Only the person whose shift it is may log one; only
+ * belongs to an OPEN shift.
+ */
+export type TillEventType = 'NO_SALE' | 'CASH_DROP' | 'PAYOUT';
+
+export interface TillEvent {
+  id: string;
+  type: TillEventType;
+  /** Null for NO_SALE, which moves nothing. */
+  amount: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export async function recordTillEvent(
+  shiftId: string,
+  input: { type: TillEventType; amount?: string; note?: string },
+): Promise<TillEvent> {
+  const result = await apiFetch<{ event: TillEvent }>(`/shifts/${shiftId}/events`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return result.event;
+}
+
+export async function fetchTillEvents(shiftId: string): Promise<TillEvent[]> {
+  const result = await apiFetch<{ events: TillEvent[] }>(`/shifts/${shiftId}/events`);
+  return result.events;
 }

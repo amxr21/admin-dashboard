@@ -7,6 +7,7 @@ import { requireArea } from '../../middleware/authorize.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
 import { audit } from '../../services/audit.service.js';
 import { prisma } from '../../db/prisma.js';
+import { TillEventType } from '@prisma/client';
 import {
   closeTill,
   editShift,
@@ -15,6 +16,8 @@ import {
   getShiftSummary,
   getShiftTakings,
   listShifts,
+  listTillEvents,
+  recordTillEvent,
   startShift,
 } from '../../services/shifts.service.js';
 import { canAccessAreaResolved } from '../../services/role-permissions.service.js';
@@ -246,6 +249,67 @@ shiftsRouter.get('/shifts/:id/takings', authenticate, async (req, res) => {
   }
 
   res.status(200).json({ data: await getShiftTakings(shiftId) });
+});
+
+const tillEventBody = z
+  .object({
+    type: z.nativeEnum(TillEventType),
+    amount: z
+      .string()
+      .regex(/^\d{1,8}(\.\d{1,2})?$/, 'Enter an amount like 20.00')
+      .optional(),
+    note: z.string().trim().max(255).optional(),
+  })
+  .strict();
+
+/**
+ * POST /shifts/:id/events — a no-sale open, cash drop, or payout (O9 Tier
+ * 4). Only the person WHOSE shift it is may log one — unlike takings/summary
+ * reads, a manager cannot record an event for somebody else's drawer, since
+ * the event is a claim about what THAT cashier did with THAT cash.
+ */
+shiftsRouter.post('/shifts/:id/events', authenticate, async (req, res) => {
+  const parsed = tillEventBody.safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+
+  const user = requireUser(req);
+  const shiftId = String(req.params.id);
+
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: { userId: true },
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+  if (shift.userId !== user.id) {
+    throw AppError.forbidden('You can only log an event on your own shift');
+  }
+
+  const event = await recordTillEvent(shiftId, parsed.data, user.id);
+
+  req.log.info({ event: 'shift.tillEvent.recorded', shiftId, type: parsed.data.type });
+
+  res.status(201).json({ data: { event } });
+});
+
+/** Same ownership rule as `/takings` — your own is always readable,
+ *  somebody else's needs `staff`. */
+shiftsRouter.get('/shifts/:id/events', authenticate, async (req, res) => {
+  const user = requireUser(req);
+  const shiftId = String(req.params.id);
+
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: { userId: true },
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+
+  if (shift.userId !== user.id && !(await canAccessAreaResolved(user.role, 'staff'))) {
+    throw AppError.forbidden("You cannot view someone else's till events");
+  }
+
+  res.status(200).json({ data: { events: await listTillEvents(shiftId) } });
 });
 
 const closeTillSchema = z.object({

@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { elapsedLabel, useShiftClock } from '@/hooks/useShiftClock';
+import { TillEventControls } from '@/components/pos/till-event-controls';
 
 /**
  * The interactive clock (owner's note, 2026-09-09).
@@ -125,9 +126,12 @@ export function ShiftClockScreen() {
       </div>
 
       {shift.openingFloat !== null ? (
-        <p className="text-muted-foreground text-sm">
-          {t('floatOnRecord', { float: shift.openingFloat })}
-        </p>
+        <>
+          <p className="text-muted-foreground text-sm">
+            {t('floatOnRecord', { float: shift.openingFloat })}
+          </p>
+          <TillEventControls shiftId={shift.id} />
+        </>
       ) : null}
 
       <Button

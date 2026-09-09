@@ -2321,7 +2321,28 @@
     "lastTillVariance": "أُغلق الدرج الأخير بفارق قدره",
     "floatOnRecord": "بدأت بمبلغ افتتاحي قدره {float}",
     "elapsedHint": "مدة الوردية",
-    "notOnShiftShort": "خارج الوردية"
+    "notOnShiftShort": "خارج الوردية",
+    "tillEvents": {
+      "noSale": "فتح بلا بيع",
+      "cashDrop": "سحب نقدي",
+      "payout": "دفعة نقدية",
+      "titles": {
+        "NO_SALE": "تسجيل فتح الدرج بلا بيع",
+        "CASH_DROP": "تسجيل سحب نقدي",
+        "PAYOUT": "تسجيل دفعة نقدية"
+      },
+      "amountLabel": "المبلغ",
+      "noteLabel": "ملاحظة (اختياري)",
+      "notePlaceholder": "مثال: إيداع، إكرامية للمندوب",
+      "cancel": "إلغاء",
+      "confirm": "تسجيل",
+      "logging": "جارٍ التسجيل...",
+      "logged": {
+        "NO_SALE": "تم تسجيل فتح الدرج بلا بيع",
+        "CASH_DROP": "تم تسجيل السحب النقدي",
+        "PAYOUT": "تم تسجيل الدفعة النقدية"
+      }
+    }
   },
   "staffActivity": {
     "title": "نشاط الموظفين",

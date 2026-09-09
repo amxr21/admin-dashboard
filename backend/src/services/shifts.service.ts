@@ -1,4 +1,4 @@
-import { Prisma, StaffRole } from '@prisma/client';
+import { Prisma, StaffRole, TillEventType } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
@@ -416,11 +416,36 @@ export async function getShiftTakings(shiftId: string) {
     total: (row._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
   }));
 
+  // Raw cash SALES — unchanged meaning, still what the mid-shift "what have
+  // we taken" read shows.
   const cash = rows
     .filter((row) => row.method.toLowerCase() === 'cash')
     .reduce((sum, row) => sum.add(row._sum.amount ?? 0), new Prisma.Decimal(0));
 
-  return { byMethod, cash };
+  // Cash drops and payouts (O9 Tier 4) both remove money FROM the physical
+  // drawer, so both reduce what should still be sitting in it at close —
+  // same direction, summed together rather than tracked separately, since
+  // the variance formula only cares "how much left the drawer outside a
+  // sale", not which of the two reasons it left for.
+  const removed = await prisma.tillEvent.aggregate({
+    where: { shiftId, type: { in: [TillEventType.CASH_DROP, TillEventType.PAYOUT] } },
+    _sum: { amount: true },
+  });
+
+  const removedTotal = removed._sum.amount ?? new Prisma.Decimal(0);
+
+  return {
+    byMethod,
+    cash,
+    // What should physically be in the drawer, given sales and what has
+    // left it since — the figure `closeTill` actually reconciles against.
+    // Distinct from `cash` on purpose: `cash` alone would make the shown
+    // "expected" figure invite the count to be typed to match SALES rather
+    // than the true expected drawer content, exactly the outcome the
+    // shift-close dialog's own ordering (expected shown AFTER the count)
+    // already exists to avoid.
+    expectedCash: cash.sub(removedTotal),
+  };
 }
 
 /**
@@ -464,8 +489,11 @@ export async function closeTill(
   }
 
   const counted = new Prisma.Decimal(closingCount);
-  const { cash } = await getShiftTakings(shiftId);
-  const expected = (shift.openingFloat ?? new Prisma.Decimal(0)).add(cash);
+  // `expectedCash`, not `cash` — sales alone would ignore every drop and
+  // payout since the shift opened (O9 Tier 4), reporting a false shortage
+  // for cash that was deliberately, correctly removed from the drawer.
+  const { expectedCash } = await getShiftTakings(shiftId);
+  const expected = (shift.openingFloat ?? new Prisma.Decimal(0)).add(expectedCash);
 
   const updated = await prisma.shift.update({
     where: { id: shiftId },
@@ -484,4 +512,85 @@ export async function closeTill(
     counted: counted.toFixed(2),
     variance: counted.sub(expected).toFixed(2),
   };
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * TILL EVENTS — no-sale, cash drop, payout (O9 Tier 4)
+ * ───────────────────────────────────────────────────────────────────── */
+
+export interface RecordTillEventInput {
+  type: TillEventType;
+  /** Required for CASH_DROP/PAYOUT, refused for NO_SALE — see `recordTillEvent`. */
+  amount?: string | undefined;
+  note?: string | undefined;
+}
+
+/**
+ * Log a drawer event with no sale behind it. Must belong to an OPEN shift —
+ * an event on a closed one has no drawer left to adjust, and `closeTill`'s
+ * variance math for that shift was already computed and stored.
+ */
+export async function recordTillEvent(
+  shiftId: string,
+  input: RecordTillEventInput,
+  actorId: string,
+) {
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: { id: true, endedAt: true },
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+  if (shift.endedAt !== null) {
+    throw AppError.badRequest('This shift has already ended');
+  }
+
+  if (input.type === TillEventType.NO_SALE) {
+    if (input.amount !== undefined) {
+      throw AppError.badRequest('A no-sale open does not take an amount', { field: 'amount' });
+    }
+  } else if (input.amount === undefined) {
+    // CASH_DROP / PAYOUT
+    throw AppError.badRequest('An amount is required', { field: 'amount' });
+  } else if (new Prisma.Decimal(input.amount).lessThanOrEqualTo(0)) {
+    throw AppError.badRequest('Enter an amount above zero', { field: 'amount' });
+  }
+
+  const event = await prisma.tillEvent.create({
+    data: {
+      shiftId,
+      type: input.type,
+      amount: input.amount === undefined ? null : new Prisma.Decimal(input.amount),
+      note: input.note ?? null,
+      actorId,
+    },
+    select: { id: true, type: true, amount: true, note: true, createdAt: true },
+  });
+
+  return {
+    id: event.id,
+    type: event.type,
+    amount: event.amount?.toFixed(2) ?? null,
+    note: event.note,
+    createdAt: event.createdAt.toISOString(),
+  };
+}
+
+/** The events logged this shift, newest first — the X/Z report's own read
+ *  of the same table `getShiftTakings` aggregates. */
+export async function listTillEvents(shiftId: string) {
+  const events = await prisma.tillEvent.findMany({
+    where: { shiftId },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, type: true, amount: true, note: true, createdAt: true, actorId: true },
+  });
+
+  return events.map((event) => ({
+    id: event.id,
+    type: event.type,
+    amount: event.amount?.toFixed(2) ?? null,
+    note: event.note,
+    createdAt: event.createdAt.toISOString(),
+    actorId: event.actorId,
+  }));
 }
