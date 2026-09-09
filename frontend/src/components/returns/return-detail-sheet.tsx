@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { History } from 'lucide-react';
+import { AlertTriangle, History } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 
 import { StatusBadge } from '@/components/status-badge';
@@ -66,7 +66,7 @@ export function ReturnDetailSheet({
   const formatCurrency = useCurrencyFormat();
   const translateError = useTranslatedApiError();
   const { user } = useAuth();
-  const { editPanelMode } = useAppSettings();
+  const { editPanelMode, restockingFeePercent: defaultFeePercent } = useAppSettings();
   const canViewHistory = canAccessArea((user?.role ?? 'DEMO') as StaffRole, 'staff');
 
   const [item, setItem] = useState<ReturnDetail | null>(null);
@@ -76,6 +76,10 @@ export function ReturnDetailSheet({
   const [resolution, setResolution] = useState<Exclude<ReturnResolution, 'NONE'> | ''>('');
   const [refundAmount, setRefundAmount] = useState('');
   const [restock, setRestock] = useState(true);
+  /** A default the approving person may raise or waive for THIS return
+   *  (B4.11) — pre-filled from the store setting, never re-read after the
+   *  sheet opens, so typing over it can't be silently reverted. */
+  const [feePercent, setFeePercent] = useState(String(defaultFeePercent));
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   /** Reject is a two-step action: clicking Reject reveals a required-reason
@@ -93,6 +97,7 @@ export function ReturnDetailSheet({
     setLoadError(null);
     setResolution('');
     setRefundAmount('');
+    setFeePercent(String(defaultFeePercent));
     setRestock(true);
     setActionError(null);
     setIsRejecting(false);
@@ -118,9 +123,14 @@ export function ReturnDetailSheet({
 
   const money = (value: string | null) => (value === null ? '—' : formatCurrency(Number(value)));
 
-  const maxRefund = item
-    ? item.items.reduce((sum, row) => sum + Number(row.lineTotal), 0)
-    : 0;
+  const itemsValue = item ? item.items.reduce((sum, row) => sum + Number(row.lineTotal), 0) : 0;
+  const parsedFeePercent = Number(feePercent);
+  const isValidFeePercent = Number.isFinite(parsedFeePercent) && parsedFeePercent >= 0 && parsedFeePercent <= 100;
+  // Mirrors the server's own math (B4.11) — a fee reduces the CAP, never
+  // forces the refund amount itself.
+  const maxRefund = isValidFeePercent
+    ? (itemsValue * (100 - parsedFeePercent)) / 100
+    : itemsValue;
 
   async function submitApprove() {
     if (!item || !resolution) return;
@@ -131,7 +141,9 @@ export function ReturnDetailSheet({
     try {
       const updated = await approveReturn(item.id, {
         resolution,
-        ...(resolution === 'REFUND' ? { refundAmount } : {}),
+        ...(resolution === 'REFUND'
+          ? { refundAmount, restockingFeePercent: parsedFeePercent }
+          : {}),
         restock,
       });
       onChanged(t('approved', { rma: updated.rmaNumber }));
@@ -171,7 +183,11 @@ export function ReturnDetailSheet({
   const refundValue = Number(refundAmount);
   const isValidRefund =
     resolution !== 'REFUND' ||
-    (refundAmount.trim() !== '' && Number.isFinite(refundValue) && refundValue >= 0 && refundValue <= maxRefund);
+    (isValidFeePercent &&
+      refundAmount.trim() !== '' &&
+      Number.isFinite(refundValue) &&
+      refundValue >= 0 &&
+      refundValue <= maxRefund);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -224,6 +240,16 @@ export function ReturnDetailSheet({
               </p>
             </div>
 
+            {/* A warning, not a gate (B4.11) — the return still processes
+                normally either way; this only flags it as late so the
+                person approving can weigh it. */}
+            {!item.withinWindow ? (
+              <div className="bg-warning/10 text-warning-foreground flex items-center gap-2 rounded-md px-3 py-2 text-sm">
+                <AlertTriangle className="size-4 shrink-0" aria-hidden />
+                {t('pastWindowBody', { days: item.daysSincePurchase })}
+              </div>
+            ) : null}
+
             <div className="space-y-1">
               <p className="text-muted-foreground text-sm font-medium">{t('reason')}</p>
               <p className="text-sm">{item.reason}</p>
@@ -268,6 +294,15 @@ export function ReturnDetailSheet({
                         <span className="tabular-nums">{money(item.refundAmount)}</span>
                       </div>
                     ) : null}
+                    {item.restockingFeePercent !== null &&
+                    Number(item.restockingFeePercent) > 0 ? (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">{t('restockingFeeApplied')}</span>
+                        <span className="tabular-nums">
+                          {Number(item.restockingFeePercent).toFixed(0)}%
+                        </span>
+                      </div>
+                    ) : null}
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-muted-foreground">{t('restocked')}</span>
                       <span>{item.restocked ? t('yes') : t('no')}</span>
@@ -297,22 +332,46 @@ export function ReturnDetailSheet({
                 </div>
 
                 {resolution === 'REFUND' ? (
-                  <div className="space-y-2">
-                    <Label htmlFor="return-refund-amount">
-                      {t('refundAmountLabel', { max: money(maxRefund.toFixed(2)) })}
-                    </Label>
-                    <Input
-                      id="return-refund-amount"
-                      type="number"
-                      min={0}
-                      max={maxRefund}
-                      step={0.01}
-                      inputMode="decimal"
-                      value={refundAmount}
-                      onChange={(event) => setRefundAmount(event.target.value)}
-                      aria-invalid={!isValidRefund ? true : undefined}
-                    />
-                  </div>
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="return-restocking-fee">{t('restockingFeeLabel')}</Label>
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          id="return-restocking-fee"
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={1}
+                          inputMode="decimal"
+                          className="w-24"
+                          value={feePercent}
+                          onChange={(event) => setFeePercent(event.target.value)}
+                          aria-invalid={!isValidFeePercent ? true : undefined}
+                        />
+                        <span className="text-muted-foreground text-sm">%</span>
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        {t('restockingFeeHint')}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="return-refund-amount">
+                        {t('refundAmountLabel', { max: money(maxRefund.toFixed(2)) })}
+                      </Label>
+                      <Input
+                        id="return-refund-amount"
+                        type="number"
+                        min={0}
+                        max={maxRefund}
+                        step={0.01}
+                        inputMode="decimal"
+                        value={refundAmount}
+                        onChange={(event) => setRefundAmount(event.target.value)}
+                        aria-invalid={!isValidRefund ? true : undefined}
+                      />
+                    </div>
+                  </>
                 ) : null}
 
                 <label className="flex items-center gap-2 text-sm">

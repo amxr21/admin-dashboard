@@ -604,11 +604,24 @@ model Notification {
 // CATALOGUE
 // ═══════════════════════════════════════════════════════════════════
 
+/// The category tree (S7.6). `slug` stays globally unique, not per-parent —
+/// the storefront resolves a category by slug alone (`/category/:slug`),
+/// which needs one flat namespace regardless of nesting; two categories
+/// sharing a slug under different parents would make that route ambiguous.
 model Category {
   id       String  @id @default(cuid())
   name     String  @db.VarChar(160)
   slug     String  @unique @db.VarChar(160)
   isActive Boolean @default(true) @map("is_active")
+
+  /// NULL means a top-level category — every existing row on migration,
+  /// needing no backfill. Depth is capped at 3 and cycles are refused by
+  /// `resource-hooks.ts`'s `beforeWrite`, not by the database: MySQL has no
+  /// portable recursive CHECK constraint, so the app is the one place both
+  /// rules can actually be enforced before a bad write commits.
+  parentId String?    @map("parent_id")
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children Category[] @relation("CategoryTree")
 
   products  Product[]
   discounts Discount[]
@@ -616,7 +629,35 @@ model Category {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([parentId])
   @@map("categories")
+}
+
+/// A product tag (S7.9) — free-text, reused by NAME (the owner's own call):
+/// any staff member types one while editing a product, and typing the same
+/// text again reuses the existing row rather than creating a near-duplicate.
+/// No management screen, no separate "who may create a tag" rule — the
+/// permission that already governs editing a product is the only one that
+/// applies. Products only for now, not customers/orders — a smaller,
+/// lower-risk scope than tagging every resource in one pass.
+model Tag {
+  id   String @id @default(cuid())
+  /// Unique so "reused by name" has something to match against — a create
+  /// that names an existing tag attaches the existing row, it never inserts
+  /// a second one differing only by case (name comparison and storage both
+  /// happen through `resource-hooks.ts`, not a DB-level case-insensitive
+  /// collation, which MySQL's default utf8mb4 collation already gives for
+  /// free but this app does not rely on implicitly).
+  name String @unique @db.VarChar(60)
+
+  /// Plain implicit many-to-many, same convention `Discount.products` above
+  /// already uses — no extra columns on the join, so Prisma manages the
+  /// table itself.
+  products Product[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("tags")
 }
 
 model Product {
@@ -699,6 +740,7 @@ model Product {
   redirects     ProductRedirect[]
   cartItems     CartItem[]
   wishlistItems WishlistItem[]
+  tags          Tag[]
 
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
@@ -1077,6 +1119,15 @@ model Return {
   /// Set only when resolution = REFUND. Capped at approval time to the sum of
   /// the RETURNED line items' recorded price — never the order's live total.
   refundAmount    Decimal?         @map("refund_amount") @db.Decimal(10, 2)
+  /// The restocking fee ACTUALLY applied at approval (B4.11), 0-100. NULL
+  /// means none was ever applied — never "unset defaulting to 0", since a
+  /// genuine 0% fee (waived on purpose) and "not resolved as a refund yet"
+  /// are different facts. Snapshotted at approval time, same discipline as
+  /// `refundAmount` itself: `returns.restockingFeePercent` is a DEFAULT the
+  /// approving person may raise or waive per return, so a later change to
+  /// the store setting must not silently rewrite what a past return actually
+  /// charged.
+  restockingFeePercent Decimal?    @map("restocking_fee_percent") @db.Decimal(5, 2)
   /// Whether approving created a matching StockMovement per item. Recorded
   /// here so the return's own history says whether stock was ever adjusted,
   /// without re-deriving it from the movement log.

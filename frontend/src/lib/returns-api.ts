@@ -35,6 +35,9 @@ export interface ReturnListRow {
   /** Which branch this belongs to. Null when it predates branch scoping, or
    *  its branch was removed — the UI shows nothing rather than a guess. */
   branch: { id: string; name: string; code: string | null } | null;
+  /** A WARNING, not a gate (B4.11) — a return past the window still shows
+   *  up here and can still be approved; this just flags it. */
+  withinWindow: boolean;
 }
 
 export interface ReturnItemDetail {
@@ -54,6 +57,11 @@ export interface ReturnDetail {
   status: ReturnStatus;
   resolution: ReturnResolution;
   refundAmount: string | null;
+  /** The restocking fee actually applied at approval (B4.11), 0-100 as a 2dp
+   *  string. Null until a REFUND resolves — never "0 defaulting silently",
+   *  since a genuine 0% (waived on purpose) and "not resolved yet" are
+   *  different facts. */
+  restockingFeePercent: string | null;
   restocked: boolean;
   /** Staff's own words for the rejection. Null on anything not (yet) rejected. */
   rejectionReason: string | null;
@@ -61,6 +69,9 @@ export interface ReturnDetail {
   order: { id: string; orderNumber: string; status: string };
   customer: { id: string; name: string; email: string } | null;
   items: ReturnItemDetail[];
+  /** A warning, not a gate (B4.11) — see `ReturnListRow.withinWindow`. */
+  withinWindow: boolean;
+  daysSincePurchase: number;
 }
 
 export interface ReturnListResult {
@@ -118,6 +129,9 @@ export interface ApproveReturnInput {
    *  a cashier, ignored otherwise. Verified server-side against the
    *  signature, never trusted as a bare claim. */
   overrideToken?: string;
+  /** A restocking fee (B4.11), 0-100. Omit to use the store default — the
+   *  person approving may still raise or waive it for this one return. */
+  restockingFeePercent?: number;
 }
 
 export async function approveReturn(

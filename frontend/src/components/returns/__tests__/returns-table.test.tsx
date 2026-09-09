@@ -70,6 +70,7 @@ function makeRow(overrides: Partial<ReturnListRow> = {}): ReturnListRow {
     order: { id: 'o1', orderNumber: 'ORD-1024' },
     customer: { id: 'c1', name: 'Ali' },
     itemCount: 1,
+    withinWindow: true,
     ...overrides,
   };
 }
@@ -83,6 +84,7 @@ function makeDetail(overrides: Partial<ReturnDetail> = {}): ReturnDetail {
     status: 'REQUESTED',
     resolution: 'NONE',
     refundAmount: null,
+    restockingFeePercent: null,
     restocked: false,
     rejectionReason: null,
     createdAt: '2026-07-20T00:00:00.000Z',
@@ -98,6 +100,8 @@ function makeDetail(overrides: Partial<ReturnDetail> = {}): ReturnDetail {
         product: { id: 'p1', name: 'Ceramic Planter', sku: 'SKU-1' },
       },
     ],
+    withinWindow: true,
+    daysSincePurchase: 0,
     ...overrides,
   };
 }
@@ -132,6 +136,24 @@ describe('the queue', () => {
     // to the row rather than the whole page.
     const row = screen.getByText('RMA-ABCD1234').closest('tr');
     expect(within(row as HTMLElement).getByText('Requested')).toBeInTheDocument();
+  });
+
+  it('flags a return past the window — a warning icon, not a refusal (B4.11)', async () => {
+    resolveList([makeRow({ withinWindow: false })]);
+
+    render(<ReturnsTable />);
+
+    const row = (await screen.findByText('RMA-ABCD1234')).closest('tr');
+    expect(within(row as HTMLElement).getByLabelText(/past the return window/i)).toBeInTheDocument();
+  });
+
+  it('does not flag a return within the window', async () => {
+    resolveList([makeRow({ withinWindow: true })]);
+
+    render(<ReturnsTable />);
+
+    const row = (await screen.findByText('RMA-ABCD1234')).closest('tr');
+    expect(within(row as HTMLElement).queryByLabelText(/past the return window/i)).not.toBeInTheDocument();
   });
 });
 
@@ -172,6 +194,47 @@ describe('approving', () => {
     await user.type(within(dialog).getByLabelText(/refund amount/i), '50');
 
     expect(within(dialog).getByRole('button', { name: /^approve$/i })).not.toBeDisabled();
+  });
+
+  it('a restocking fee reduces the refund cap and is sent with the approval', async () => {
+    resolveList([makeRow()]);
+    fetchReturn.mockResolvedValue(makeDetail());
+    approveReturn.mockResolvedValue(
+      makeDetail({ status: 'APPROVED', resolution: 'REFUND', refundAmount: '40.00' }),
+    );
+    const user = userEvent.setup();
+
+    render(
+      <>
+        <ReturnsTable />
+        <Toaster />
+      </>,
+    );
+    await user.click(await screen.findByText('RMA-ABCD1234'));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('Arrived damaged');
+
+    await user.click(within(dialog).getByRole('combobox'));
+    await user.click(await screen.findByRole('option', { name: 'Refund' }));
+
+    const feeField = within(dialog).getByLabelText(/restocking fee/i);
+    await user.clear(feeField);
+    await user.type(feeField, '20');
+
+    // 50.00 minus a 20% fee = 40.00 — the label now shows the reduced cap.
+    expect(within(dialog).getByText(/40\.00/)).toBeInTheDocument();
+
+    await user.type(within(dialog).getByLabelText(/refund amount/i), '40');
+    await user.click(within(dialog).getByRole('button', { name: /^approve$/i }));
+
+    await waitFor(() => {
+      expect(approveReturn).toHaveBeenCalledWith('r1', {
+        resolution: 'REFUND',
+        refundAmount: '40',
+        restockingFeePercent: 20,
+        restock: true,
+      });
+    });
   });
 
   it('approves with store credit and restocking, and refreshes the list', async () => {

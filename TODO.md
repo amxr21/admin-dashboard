@@ -60,7 +60,7 @@ to know whether the work actually reached `dev` is to look for the files.
 
 ---
 
-# 📋 PENDING — the 21 that are left
+# 📋 PENDING — the 17 that are left
 
 Full detail for each is further down under its own track heading; this is the
 index.
@@ -86,23 +86,19 @@ the two most important items were not on it at all. Now:
 - **Tier 5 — minor.** The shift dialog and hiding the clock from the owner
 - **⏳ Three questions block Tier 1** — barcodes or not, shop type, and O9.4
 
-## Needs nothing from the owner (10)
+## Needs nothing from the owner (5)
 
-**Returns lifecycle (3)**
-- **S7.8** `ReturnStatus` 3 → ~8 values (label sent → in transit → received →
-  inspected → resolved). More useful now that B4.7 gives per-line outcomes
-- **B4.10** Refund without a return — a standalone model, independent of RMA
-- **B4.11** Policy window, restocking fees, exchange linkage — biggest of the
-  three
+Returns lifecycle is now empty: **B4.11** and **B4.10** both shipped
+2026-09-09; **S7.8** checked the same day and deliberately skipped (see its
+own entry below — it describes a mail-order shipping-label flow that
+doesn't fit a physical till).
 
-**Catalogue (4)**
+**Catalogue (2)**
 - **A5.8** Per-locale product content (EN/AR) + completeness indicator
 - **A5.9** Version history with restore; bulk import; vendor/collections
-- **S7.6** `Category.parentId` → the category tree
-- **S7.9** Tags — no model or field exists yet
 
-**Schema + UI (3)**
-- **S7.1** `Address` model → shipping/billing, customer addresses, tax by region
+**Schema + UI (2)**
+- **S7.1** checked 2026-09-09, deliberately skipped — see its own entry
 - **Optimistic row updates with rollback** — a real refactor of every table's
   write path
 - **Loading-overlay blur / nav-transition smoothness**
@@ -1122,6 +1118,25 @@ present).
       personnel data any more from the new area than the old one) — frontend
       full suite green, tsc/eslint clean both sides, en/ar parity
       1900/1900. Commit `da8184d`.
+      **Follow-up 2026-09-09**: the owner sent a reference screenshot
+      (Apple Sleep's bedtime dial — drag two handles on a 24h ring to set
+      future start/end times) asking for "an interactive clock to set the
+      shift, smth like [it]." Checked against the schema first: `Shift`'s
+      own doc comment already rules this out on purpose — "no planned
+      start, no rota, no schedule editor," the owner's own call from
+      2026-09-08, one day earlier. Asked rather than guessed which
+      reading was meant; confirmed: visualize the EXISTING real-time
+      clock-on/clock-off facts as a dial, not add scheduling. New
+      `ShiftClockDial` — a 24h ring, hour ticks, one handle at the
+      shift's actual start, a gradient arc start→now, duration in the
+      center. Deliberately not draggable: neither end is a free variable
+      here (start is "when Start was pressed," the arc's end is "now"),
+      so dragging would either no-op or silently rewrite a timestamp the
+      correction flow's `originalStartedAt`/`editedById` fields exist to
+      keep honest. Drop-in for the plain elapsed-time string on both
+      states of `shift-clock-screen.tsx`; `useShiftClock`/`elapsedLabel`
+      and the start/finish flow untouched — both existing tests for that
+      screen still pass unmodified. Commit `4920399`.
 
 ## 🔧 TIER 5 — MINOR — ✅ COMPLETE (superseded, not built as originally scoped)
 
@@ -1236,25 +1251,106 @@ that staleness is why these are consolidated here.
       line" passed with the skip removed, because a rejected line carries
       quantity 0 and restocking it adds zero. Now asserts NO movement row
       exists, then watched failing. 9 tests
-- [ ] **B4.10** Refund without a return — needs a standalone model,
-      independent of the RMA flow
-- [ ] **B4.11** Policy window check, restocking fees, exchange linkage — the
-      biggest of the five
-- [ ] **S7.8** `ReturnStatus` 3 → ~8 values (label sent → in transit →
-      received → inspected → resolved)
+- [x] **B4.10 — DONE 2026-09-09.** Refund without a return. No standalone
+      model in the end — a negative `Payment` row, the same mechanism
+      `voidSale`'s own reversal already uses (`method: 'goodwill-refund'`
+      distinguishes it from an ordinary void). Owner's decisions: gated by
+      the same `returns` area as approving a return (not `orders`, not
+      manager-only), capped at the order's own total — specifically the
+      NET already paid (every payment row summed, refunds/voids already
+      negative), never the raw total, so the same money cannot be
+      refunded twice across separate goodwill refunds or returns.
+      Deliberately NOT tied to `nextStatuses`/RETURNED the way "Request a
+      return" is — a goodwill gesture applies regardless of order status.
+      New `RefundOrderDialog` on the order detail page.
+      Verification: backend 1091/1091 (47 files), frontend 1113/1113 +1
+      skipped (125 files), tsc/eslint clean both sides, en/ar parity
+      1915/1915. Commit `f21c4b3`.
+- [x] **B4.11 — DONE 2026-09-09.** Return window + restocking fee (exchange
+      linkage was already covered by O9.8's `Return.exchangeOrderId`, built
+      earlier this session — see O9.19's own entry). Both owner decisions:
+      the window is a WARNING, not a gate — a late return still processes,
+      staff just sees it flagged and decides with judgment, the same
+      "warn, don't block" shape the till already uses. The restocking fee is
+      a store-wide DEFAULT (`returns.restockingFeePercent`) the person
+      approving may raise or waive per return, not a fixed rule. New
+      `returns.windowDays` (default 30, 0 = no window) setting;
+      `createReturn`/`listReturns` surface `withinWindow`/
+      `daysSincePurchase` against the order's `placedAt`, never the return's
+      own requested date. The fee actually applied is snapshotted on
+      `Return.restockingFeePercent` — a later change to the store default
+      cannot rewrite what a past return charged.
+      Verification: backend 1086/1086 (47 files), frontend 1109/1109 +1
+      skipped (125 files), tsc/eslint clean both sides, en/ar parity
+      1905/1905. Commit `168c30d`.
+- [ ] **S7.8 — CHECKED 2026-09-09, deliberately skipped, not built.** The
+      "label sent → in transit → received → inspected → resolved" states
+      describe a MAIL-ORDER return with shipping labels and carrier transit
+      tracking. This shop runs a physical till (O5/O9) — a customer hands
+      the item back in person at the counter, so there is no "in transit"
+      state for something someone is standing there holding. Worth
+      remembering: `ReturnStatus` was ALREADY a 5-value enum once
+      (RECEIVED, REFUNDED alongside today's three) and was deliberately
+      reverted to 3 — see the schema's own comment on `ReturnStatus` —
+      because those extra states were dead, never set or checked by any
+      route. Building this without a genuinely different physical/receiving
+      workflow behind it would very likely repeat that exact mistake. Only
+      worth revisiting if the business ever adds mail-in returns as a real,
+      separate flow from the till.
 
 ### Catalogue
 - [ ] **A5.8** Per-locale product content (EN/AR) + a completeness indicator
 - [ ] **A5.9** Version history with restore; bulk import; vendor / collections
       / related products
-- [ ] **S7.6** `Category.parentId` → the category tree (nesting, reparent,
-      delete guard)
-- [ ] **S7.9** Tags — tag columns, filters, bulk-tag on every list page. No
-      model or field exists yet
+- [x] **S7.6 — DONE 2026-09-09.** `Category.parentId` → the category tree.
+      Owner's decisions: nesting capped at 3 levels; deleting a category
+      with children is blocked outright, never a silent reparent. `slug`
+      stays globally unique, not per-parent — the storefront resolves a
+      category by slug alone. New `beforeWrite` resource hook (the first
+      hook in the generic engine that can refuse a write before it
+      commits — depth/cycle checks have to run before Prisma writes a bad
+      parent, since `afterCreate`/`afterUpdate` only run once the row
+      already exists). One upward walk from the proposed parent catches
+      both depth and circular parents in one pass. No frontend changes
+      needed — the existing `relation` field type already renders a
+      parent picker from config alone.
+      Verification: backend 1102/1102 (48 files), frontend 1113/1113 +1
+      skipped (125 files), tsc/eslint clean both sides. Commit `7f9ed1d`.
+- [x] **S7.9 — DONE 2026-09-09.** New `Tag` model, many-to-many with
+      `Product` via an implicit join table. Owner's decisions: products
+      only (not applied to other resources); free-text vocabulary,
+      reused by name rather than picked from an existing list. New
+      `tags` field type — genuinely different from `multiRelation`
+      (names, not ids; find-or-create via `connectOrCreate` keyed on
+      `Tag.name`'s unique constraint, not pick-existing) — wired into
+      every dispatch site in `resource.service.ts` (select, serialize,
+      label attach, write coercion, CSV import). Real bug caught before
+      merge: `coerceTagsValue` sent `set: []` on CREATE, which Prisma's
+      nested create input rejects (no `set` key exists there) — the
+      same lesson `coerceMultiRelationValue`'s own comment already
+      documented, now fixed to only emit `set` on UPDATE. No standalone
+      management screen; tags are reachable only through the product
+      form's picker.
+      Verification: backend 1110/1110 (49 files), frontend 1113/1113 +1
+      skipped (125 files), tsc/eslint clean both sides. Commit `f0b53d7`.
 
 ### Schema, still unstarted
-- [ ] **S7.1** `Address` model → order shipping/billing, customer addresses,
-      delivery zones, tax by region
+- [ ] **S7.1 — CHECKED 2026-09-09, deliberately skipped, not built.** `Address`
+      model → order shipping/billing, customer addresses, delivery zones,
+      tax by region. This item was ALREADY flagged in its own original
+      scoping note as "decide whether you need it" — no guess needed here,
+      the doc said so directly. Today delivery addresses are captured
+      ad-hoc by staff on `DeliveryAssignment` at the moment a courier is
+      assigned (free-text `address`/`city`/`country`), which already works
+      for a single-branch/regional delivery business with no stated need
+      for a saved customer address book or tax-by-region logic. The full
+      version is also explicitly tangled with S7.2-S7.4 (a much bigger
+      money-model rework the docs separately flag as "do not attempt as a
+      first session" — highest-risk item on the whole list). Building
+      speculative infrastructure for a need nobody has stated would be the
+      same mistake `ReturnStatus`'s 5→3 revert already documents. Worth
+      revisiting only if a real driving need shows up (repeat customers
+      wanting saved addresses, multi-region tax requirements).
 - [ ] **S7.5** ~~`Location` model~~ — **SUPERSEDED by F8's `Branch`.** One
       model, not two. Kept here only so nobody re-adds it
 - [x] **F7.9 — DONE 2026-09-08.** `Supplier` model (name required, contact

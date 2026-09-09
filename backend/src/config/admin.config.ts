@@ -42,7 +42,18 @@ export type FieldType =
    *  but the value is an array of ids rather than one. Renders as a
    *  checkbox-list picker; written via Prisma's `{ set: [...] }`, which
    *  replaces the whole relation list atomically. */
-  | 'multiRelation';
+  | 'multiRelation'
+  /**
+   * Free-text many-to-many (S7.9) — the value is an array of NAMES, not
+   * ids. Genuinely different from `multiRelation`: that type picks among
+   * EXISTING rows by id (a checkbox list), this type accepts text a staff
+   * member just typed and reuses-by-name or creates the row on the fly.
+   * `relation.resource` still names the target table (for the unique-name
+   * lookup), but there is no `relation.labelField` to configure — the name
+   * IS the value on both sides, so there is nothing else to look up a
+   * label from.
+   */
+  | 'tags';
 
 export interface RelationSpec {
   /** Resource name to resolve labels from. Must itself be configured. */
@@ -146,6 +157,16 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         type: 'relation',
         relation: { resource: 'categories', labelField: 'name' },
       },
+      // Free-text, reused by name (S7.9, the owner's own call) — genuinely
+      // different from the `multiRelation` pickers above/below: this one
+      // accepts text a staff member just typed, not a selection from an
+      // existing list. See the FieldType's own comment for why.
+      {
+        name: 'tags',
+        label: 'Tags',
+        type: 'tags',
+        relation: { resource: 'tags', labelField: 'name' },
+      },
       {
         name: 'status',
         label: 'Status',
@@ -224,7 +245,43 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
       { name: 'name', label: 'Name', type: 'text', required: true, searchable: true, sortable: true },
       { name: 'slug', label: 'Slug', type: 'text', required: true, searchable: true },
+      // Depth cap and circular-parent prevention are enforced server-side
+      // (resource-hooks.ts's beforeWrite, S7.6) — a resource with no field
+      // rule for "cannot select an id below a certain depth" leans on that,
+      // not on this config.
+      {
+        name: 'parentId',
+        label: 'Parent category',
+        type: 'relation',
+        relation: { resource: 'categories', labelField: 'name' },
+      },
       { name: 'isActive', label: 'Active', type: 'boolean', sortable: true },
+      { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
+    ],
+  },
+  /**
+   * Product tags (S7.9) — exists as a resource only so the `tags` FIELD
+   * TYPE on products can resolve `requireResource('tags')` and so a tag
+   * can be searched/filtered like anything else. No separate management
+   * screen (the owner's own call): every write to this table goes through
+   * `resource-hooks.ts`'s find-or-create on the PRODUCT form, never a
+   * direct create/update/delete here — hence every permission below is
+   * false. Excluded from the sidebar in navigation.ts for the same reason
+   * `notifications` is: reachable through `/r/tags` for read/filter needs,
+   * not a page anyone navigates to on its own.
+   */
+  {
+    resource: 'tags',
+    model: 'tag',
+    label: 'Tags',
+    group: 'catalogue',
+    labelField: 'name',
+    permissionArea: 'products',
+    defaultSort: { field: 'name', dir: 'asc' },
+    permissions: { create: false, update: false, delete: false },
+    fields: [
+      { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
+      { name: 'name', label: 'Name', type: 'text', required: true, searchable: true, sortable: true },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],
   },

@@ -56,6 +56,26 @@ function money(value: Prisma.Decimal | null | undefined): string | null {
   return value === null || value === undefined ? null : value.toFixed(2);
 }
 
+/**
+ * The return-window check (B4.11) — a WARNING, never a gate. Days elapsed
+ * since the order was PLACED, not since the return was requested: the
+ * window is a promise about the purchase, not about how quickly someone
+ * files the paperwork. `windowDays: 0` means no window at all.
+ */
+function returnWindowStatus(
+  placedAt: Date,
+  windowDays: number,
+): { daysSincePurchase: number; withinWindow: boolean } {
+  const daysSincePurchase = Math.floor(
+    (Date.now() - placedAt.getTime()) / (24 * 60 * 60 * 1000),
+  );
+
+  return {
+    daysSincePurchase,
+    withinWindow: windowDays === 0 || daysSincePurchase <= windowDays,
+  };
+}
+
 export interface ReturnListParams {
   page?: number;
   pageSize?: number;
@@ -105,7 +125,7 @@ export async function listReturns(params: ReturnListParams) {
         // O1: reached THROUGH the order, because a return has no branch of
         // its own — it carries a required `orderId` and the order already
         // records the branch, so a second copy could only drift from it.
-        order: { select: { id: true, orderNumber: true, branchId: true } },
+        order: { select: { id: true, orderNumber: true, branchId: true, placedAt: true } },
         customer: { select: { id: true, name: true } },
         _count: { select: { items: true } },
       },
@@ -114,6 +134,7 @@ export async function listReturns(params: ReturnListParams) {
   ]);
 
   const branches = await resolveBranchLabels(rows.map((row) => row.order.branchId));
+  const windowDays = Number(await getSettingValue('returns.windowDays'));
 
   return {
     returns: rows.map((row) => ({
@@ -124,6 +145,8 @@ export async function listReturns(params: ReturnListParams) {
       category: row.category,
       createdAt: row.createdAt.toISOString(),
       order: { id: row.order.id, orderNumber: row.order.orderNumber },
+      // A warning, not a gate (B4.11) — see `returnWindowStatus`'s own note.
+      withinWindow: returnWindowStatus(row.order.placedAt, windowDays).withinWindow,
       customer: row.customer,
       branch: row.order.branchId ? (branches.get(row.order.branchId) ?? null) : null,
       itemCount: row._count.items,
@@ -146,10 +169,11 @@ async function serialiseReturn(id: string) {
       status: true,
       resolution: true,
       refundAmount: true,
+      restockingFeePercent: true,
       restocked: true,
       rejectionReason: true,
       createdAt: true,
-      order: { select: { id: true, orderNumber: true, status: true } },
+      order: { select: { id: true, orderNumber: true, status: true, placedAt: true } },
       // Exchange (O9.8) — null until the replacement sale completes, a real
       // "started but not finished" state, not a gap to hide.
       exchangeOrder: { select: { id: true, orderNumber: true } },
@@ -173,6 +197,8 @@ async function serialiseReturn(id: string) {
 
   if (!row) throw AppError.notFound('Return not found');
 
+  const windowDays = Number(await getSettingValue('returns.windowDays'));
+
   return {
     id: row.id,
     rmaNumber: row.rmaNumber,
@@ -181,10 +207,14 @@ async function serialiseReturn(id: string) {
     status: row.status,
     resolution: row.resolution,
     refundAmount: money(row.refundAmount),
+    restockingFeePercent: row.restockingFeePercent?.toFixed(2) ?? null,
     restocked: row.restocked,
     rejectionReason: row.rejectionReason,
     createdAt: row.createdAt.toISOString(),
-    order: row.order,
+    order: { id: row.order.id, orderNumber: row.order.orderNumber, status: row.order.status },
+    // A warning, not a gate (B4.11) — surfaced so the approving screen can
+    // show "this is past the return window" without refusing anything.
+    ...returnWindowStatus(row.order.placedAt, windowDays),
     exchangeOrder: row.exchangeOrder,
     customer: row.customer,
     items: row.items.map((item) => ({
@@ -354,12 +384,25 @@ export interface ApproveReturnInput {
   actorId: string;
   /** Which branch the stock comes back to (F8.2). */
   branchId?: string | undefined;
+  /**
+   * A restocking fee (B4.11), 0-100. Omit to use the store default
+   * (`returns.restockingFeePercent`) — a default, not the whole answer: the
+   * person approving may raise or waive it for this one return (a defect
+   * gets 0%, "changed my mind" gets the full rate). Reduces the refund CAP,
+   * never forces the refund amount itself — the operator still enters what
+   * was actually paid back, same as before this existed.
+   */
+  restockingFeePercent?: number | undefined;
 }
 
 export async function approveReturn(id: string, input: ApproveReturnInput, req: Request) {
   if (input.resolution === ReturnResolution.REFUND && !input.refundAmount) {
     throw AppError.badRequest('Enter a refund amount', { field: 'refundAmount' });
   }
+
+  // Declared outside the transaction so the audit call below can read what
+  // was actually applied — the transaction only WRITES it.
+  let appliedRestockingFeePercent: Prisma.Decimal | null = null;
 
   await prisma.$transaction(async (tx) => {
     const existing = await tx.return.findUnique({
@@ -484,27 +527,52 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
     }
 
     let refundAmount: Prisma.Decimal | null = null;
+    let restockingFeePercent: Prisma.Decimal | null = null;
 
     if (input.resolution === ReturnResolution.REFUND) {
+      // A default the approving person may raise or waive per return
+      // (B4.11) — never re-reads the store setting later, so a change to it
+      // cannot silently rewrite what a past return actually charged.
+      const feePercent =
+        input.restockingFeePercent ?? Number(await getSettingValue('returns.restockingFeePercent'));
+
+      if (!Number.isFinite(feePercent) || feePercent < 0 || feePercent > 100) {
+        throw AppError.badRequest('Restocking fee must be between 0 and 100', {
+          field: 'restockingFeePercent',
+        });
+      }
+
+      restockingFeePercent = new Prisma.Decimal(feePercent);
+
       // Capped to what was ACCEPTED, not what was asked (B4.8) — refunding
       // the full request after refusing a line would pay for goods the shop
       // never took back. Still the line-item price recorded AT THE TIME OF
-      // ORDER, never a live product price.
-      const maxRefund = decisions.reduce(
+      // ORDER, never a live product price. The fee then reduces the CAP —
+      // the operator still enters what was actually paid back, same as
+      // before this existed.
+      const itemsValue = decisions.reduce(
         (sum, decision) =>
           sum.add(decision.item.orderItem.price.mul(decision.quantity)),
         new Prisma.Decimal(0),
       );
+      const maxRefund = itemsValue
+        .mul(new Prisma.Decimal(100).minus(restockingFeePercent))
+        .dividedBy(100);
       const requested = new Prisma.Decimal(input.refundAmount as string);
 
       if (requested.isNegative() || requested.greaterThan(maxRefund)) {
         throw AppError.badRequest(
-          `Refund cannot exceed ${maxRefund.toFixed(2)} — the value of the returned items`,
+          `Refund cannot exceed ${maxRefund.toFixed(2)} — the value of the returned items${
+            restockingFeePercent.greaterThan(0)
+              ? ` minus a ${restockingFeePercent.toFixed(0)}% restocking fee`
+              : ''
+          }`,
           { field: 'refundAmount', max: maxRefund.toFixed(2) },
         );
       }
 
       refundAmount = requested;
+      appliedRestockingFeePercent = restockingFeePercent;
     }
 
     // Same three-write shape as changeOrderStatus: status, history, assignment
@@ -592,6 +660,7 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
         status: ReturnStatus.APPROVED,
         resolution: input.resolution,
         refundAmount,
+        restockingFeePercent,
         restocked: input.restock,
       },
     });
@@ -605,6 +674,9 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
       status: { from: 'REQUESTED', to: 'APPROVED' },
       resolution: { to: input.resolution },
       restocked: { to: input.restock },
+      ...(appliedRestockingFeePercent !== null
+        ? { restockingFeePercent: { to: (appliedRestockingFeePercent as Prisma.Decimal).toFixed(2) } }
+        : {}),
     },
   });
 

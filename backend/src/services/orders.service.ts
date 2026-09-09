@@ -1,8 +1,10 @@
+import type { Request } from 'express';
 import { OrderStatus, Prisma } from '@prisma/client';
 import { resolveBranchLabels } from './branches.service.js';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
+import { audit } from './audit.service.js';
 import {
   ASSIGNMENT_ON_ORDER_STATUS,
   canTransition,
@@ -694,4 +696,93 @@ export async function addOrderNote(id: string, body: string, actorId: string) {
   await prisma.orderNote.create({ data: { orderId: id, body, authorId: actorId } });
 
   return getOrder(id);
+}
+
+/**
+ * A goodwill refund (B4.10) — money handed back with no return behind it.
+ * Nothing comes back, nothing is restocked, no `Return` row exists: a
+ * customer service gesture ("we're sorry, here's your money"), a
+ * price-match, a correction. `Return.refundAmount` was the only place a
+ * refund could be recorded before this, which meant recording ANY refund
+ * needed inventing a fake RMA request for something that never physically
+ * came back.
+ *
+ * ─── SAME MECHANISM AS voidSale's REVERSAL, NOT A NEW MODEL ─────────────
+ * A negative `Payment` row, exactly like a void's reversal — `Payment`
+ * already models signed money against an order with no `Return` required,
+ * and a dedicated table for "a refund with no return" would very likely
+ * repeat the mistake `ReturnStatus`'s own 5→3 revert already made: a second
+ * place to record the same fact, half of it dead. `method: 'goodwill-refund'`
+ * makes it a distinct, queryable kind of payment row rather than
+ * indistinguishable from an ordinary void.
+ *
+ * ─── CAPPED TO WHAT HASN'T ALREADY BEEN REFUNDED ─────────────────────────
+ * The owner's own call: capped at the order's total, but against the NET
+ * already paid (sum of every payment row, refunds and voids already
+ * negative) — capping against the raw total alone would let the same money
+ * be refunded more than once across separate goodwill refunds or returns.
+ */
+export async function refundOrder(
+  orderId: string,
+  input: { amount: string; reason: string },
+  actorId: string,
+  req: Request,
+) {
+  const trimmedReason = input.reason.trim();
+  if (!trimmedReason) {
+    throw AppError.badRequest('Enter a reason for this refund', { field: 'reason' });
+  }
+
+  const requested = new Prisma.Decimal(input.amount);
+  if (requested.isNegative() || requested.isZero()) {
+    throw AppError.badRequest('Enter a refund amount above zero', { field: 'amount' });
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        total: true,
+        payments: { select: { amount: true } },
+      },
+    });
+
+    if (!order) throw AppError.notFound('Order not found');
+
+    const netPaid = order.payments.reduce(
+      (sum, payment) => sum.add(payment.amount),
+      new Prisma.Decimal(0),
+    );
+
+    if (requested.greaterThan(netPaid)) {
+      throw AppError.badRequest(
+        `Refund cannot exceed ${netPaid.toFixed(2)} — what remains paid on this order`,
+        { field: 'amount', max: netPaid.toFixed(2) },
+      );
+    }
+
+    return tx.payment.create({
+      data: {
+        orderId,
+        amount: requested.negated(),
+        method: 'goodwill-refund',
+        actorId,
+        note: trimmedReason,
+      },
+      select: { id: true, amount: true },
+    });
+  });
+
+  audit(req, {
+    action: 'order.goodwill_refund',
+    entity: 'orders',
+    entityId: orderId,
+    changes: {
+      amount: { from: null, to: created.amount.negated().toFixed(2) },
+      reason: { from: null, to: trimmedReason },
+    },
+  });
+
+  return getOrder(orderId);
 }

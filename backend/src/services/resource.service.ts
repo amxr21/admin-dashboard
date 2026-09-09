@@ -41,7 +41,14 @@ import { audit, diff } from './audit.service.js';
  * someone adds a config entry, which is exactly the hole the allowlist exists
  * to close. Adding a resource means adding a line here, on purpose.
  */
-type DelegateName = 'category' | 'customer' | 'discount' | 'notification' | 'review' | 'product';
+type DelegateName =
+  | 'category'
+  | 'customer'
+  | 'discount'
+  | 'notification'
+  | 'review'
+  | 'product'
+  | 'tag';
 
 /** Minimal shape shared by every Prisma model delegate we use. */
 interface ModelDelegate {
@@ -65,6 +72,7 @@ function delegatesFrom(client: PrismaClientOrTx): Record<DelegateName, ModelDele
     notification: client.notification,
     review: client.review,
     product: client.product,
+    tag: client.tag,
   } as unknown as Record<DelegateName, ModelDelegate>;
 }
 
@@ -142,7 +150,7 @@ function serializeRow(
   for (const [key, value] of Object.entries(row)) {
     const field = byName.get(key);
 
-    if (field?.type === 'multiRelation') {
+    if (field?.type === 'multiRelation' || field?.type === 'tags') {
       // Prisma returns the nested rows selected below (`{ id: true }`); sorted
       // so the id array has a STABLE order regardless of the join table's own
       // row order — otherwise the same set written twice could diff as
@@ -160,11 +168,13 @@ function serializeRow(
   return out;
 }
 
-/** `select` built from config — the reason an undeclared column can't leak. */
+/** `select` built from config — the reason an undeclared column can't leak.
+ *  `tags` reads exactly like `multiRelation` here (a set of ids) — the two
+ *  differ only in how a WRITE is coerced, never in how a read is shaped. */
 function selectFor(config: ResourceConfig): Record<string, unknown> {
   return Object.fromEntries(
     config.fields.map((field): [string, unknown] =>
-      field.type === 'multiRelation'
+      field.type === 'multiRelation' || field.type === 'tags'
         ? [field.name, { select: { id: true } }]
         : [field.name, true],
     ),
@@ -314,12 +324,16 @@ async function attachRelationLabels(
     // Destructured so the narrowing survives into the async callbacks below —
     // TypeScript cannot keep `field.relation` narrowed across an await.
     const relation = field.relation;
-    if (!relation || (field.type !== 'relation' && field.type !== 'multiRelation')) continue;
+    if (
+      !relation ||
+      (field.type !== 'relation' && field.type !== 'multiRelation' && field.type !== 'tags')
+    )
+      continue;
 
     const target = getResourceConfig(relation.resource);
     if (!target) continue;
 
-    if (field.type === 'multiRelation') {
+    if (field.type === 'multiRelation' || field.type === 'tags') {
       const ids = [
         ...new Set(
           rows.flatMap((row) => (Array.isArray(row[field.name]) ? (row[field.name] as string[]) : [])),
@@ -418,7 +432,9 @@ async function buildWriteData(
     data[field.name] =
       field.type === 'multiRelation'
         ? await coerceMultiRelationValue(field, body[field.name], { partial })
-        : await coerceWriteValue(field, body[field.name]);
+        : field.type === 'tags'
+          ? coerceTagsValue(field, body[field.name], { partial })
+          : await coerceWriteValue(field, body[field.name]);
   }
 
   if (Object.keys(data).length === 0) {
@@ -482,6 +498,55 @@ async function coerceMultiRelationValue(
 
   const refs = ids.map((id) => ({ id }));
   return partial ? { set: refs } : { connect: refs };
+}
+
+/**
+ * A `tags` field's value is an array of NAMES a staff member just typed
+ * (S7.9), not ids — reused by name, never inserted twice for the same text.
+ * `connectOrCreate` is exactly this: attach the row if a tag with this name
+ * already exists, create it if not, in the same write as the product. No
+ * existence check needed the way `coerceMultiRelationValue` needs one for
+ * ids — there is no "unknown tag" here, an unrecognised name IS a new tag.
+ *
+ * Trimmed and de-duplicated case-sensitively (MySQL's default utf8mb4
+ * collation on `Tag.name` is already case-insensitive for the UNIQUE
+ * constraint itself, so "Sale" and "sale" collide at the database and the
+ * second `connectOrCreate` in one request would attach the same row — this
+ * only removes an EXACT duplicate before that point, not a near-duplicate).
+ *
+ * `set` is UPDATE-ONLY, same as `coerceMultiRelationValue`'s own note above
+ * — Prisma's nested `create` input has no `set` key at all (there is
+ * nothing yet to replace), so a create must send bare `connectOrCreate`
+ * with no `set`, while an update sends `set: []` first so the write REPLACES
+ * the whole list rather than only adding to it.
+ */
+function coerceTagsValue(
+  field: FieldConfig,
+  value: unknown,
+  { partial }: { partial: boolean },
+):
+  | { connectOrCreate: { where: { name: string }; create: { name: string } }[] }
+  | { set: []; connectOrCreate: { where: { name: string }; create: { name: string } }[] }
+  | undefined {
+  if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {
+    throw AppError.badRequest(`"${field.label}" must be a list of tag names`, {
+      field: field.name,
+    });
+  }
+
+  const names = [
+    ...new Set(
+      (value as string[]).map((name) => name.trim()).filter((name) => name.length > 0),
+    ),
+  ];
+
+  if (names.length === 0) {
+    return partial ? { set: [], connectOrCreate: [] } : undefined;
+  }
+
+  const connectOrCreate = names.map((name) => ({ where: { name }, create: { name } }));
+
+  return partial ? { set: [], connectOrCreate } : { connectOrCreate };
 }
 
 /**
@@ -684,6 +749,10 @@ export async function createResourceRow(
 
   const data = await buildWriteData(config, body, { partial: false });
 
+  // Refuses the write outright when it fails — the only hook that can, since
+  // the row does not exist yet for anything else to roll back.
+  await hooksFor(config.resource)?.beforeWrite?.(data, null);
+
   try {
     const row = await delegateFor(config).create({ data, select: selectFor(config) });
     const serialized = serializeRow(row, config);
@@ -720,6 +789,8 @@ export async function updateResourceRow(
   const before = await getResourceRow(config, id);
 
   const data = await buildWriteData(config, body, { partial: true });
+
+  await hooksFor(config.resource)?.beforeWrite?.(data, id);
 
   try {
     const row = await delegateFor(config).update({
@@ -1012,6 +1083,15 @@ function csvRowToBody(
         body[field.name] = labels.map((label) => table?.get(label.toLowerCase()) ?? label);
         break;
       }
+
+      case 'tags':
+        // No lookup needed — unlike multiRelation, the cell's text IS the
+        // value (find-or-create by name), not a label to resolve to an id.
+        body[field.name] = raw
+          .split(MULTI_VALUE_SEPARATOR)
+          .map((name) => name.trim())
+          .filter((name) => name.length > 0);
+        break;
 
       default:
         body[field.name] = raw;

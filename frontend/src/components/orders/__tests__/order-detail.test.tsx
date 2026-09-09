@@ -51,6 +51,7 @@ const fetchOrderTimeline = vi.hoisted(() => vi.fn());
 const changeOrderStatus = vi.hoisted(() => vi.fn());
 const addOrderNote = vi.hoisted(() => vi.fn());
 const createReturn = vi.hoisted(() => vi.fn());
+const refundOrder = vi.hoisted(() => vi.fn());
 const fetchCouriers = vi.hoisted(() => vi.fn());
 const assignCourier = vi.hoisted(() => vi.fn());
 const unassignCourier = vi.hoisted(() => vi.fn());
@@ -66,6 +67,7 @@ vi.mock('@/lib/orders-api', async (importOriginal) => {
     fetchOrderTimeline,
     changeOrderStatus,
     addOrderNote,
+    refundOrder,
   };
 });
 
@@ -73,6 +75,18 @@ vi.mock('@/lib/audit-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/audit-api')>();
   return { ...actual, fetchAudit };
 });
+
+// The refund button's own gating reads the caller's role (B4.10) — a
+// rendering hint only, so a fixed OWNER stand-in is fine for every test
+// here, same as the returns detail sheet's own "view history" gate.
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({
+    user: { id: 'u1', email: 'owner@example.test', name: 'Owner', role: 'OWNER' },
+    isLoading: false,
+    signIn: vi.fn(),
+    signOut: vi.fn(),
+  }),
+}));
 
 vi.mock('@/lib/returns-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/returns-api')>();
@@ -174,6 +188,7 @@ beforeEach(() => {
   changeOrderStatus.mockReset();
   addOrderNote.mockReset();
   createReturn.mockReset();
+  refundOrder.mockReset();
   fetchCouriers.mockReset();
   assignCourier.mockReset();
   unassignCourier.mockReset();
@@ -621,6 +636,82 @@ describe('requesting a return', () => {
 
     expect(within(dialog).getByRole('button', { name: /request return/i })).toBeDisabled();
     expect(createReturn).not.toHaveBeenCalled();
+  });
+});
+
+describe('a goodwill refund, no return behind it (B4.10)', () => {
+  it('is offered regardless of nextStatuses — not tied to the return transition', async () => {
+    fetchOrder.mockResolvedValue(makeOrder({ status: 'DELIVERED', nextStatuses: [] }));
+
+    render(<OrderDetail id="o1" />);
+    await screen.findByText('Ceramic Planter');
+
+    // No "Request return" here (nextStatuses is empty), but Refund still is.
+    expect(screen.queryByRole('button', { name: /request return/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^refund$/i })).toBeInTheDocument();
+  });
+
+  it('submits the amount and reason, then shows the confirmation', async () => {
+    fetchOrder.mockResolvedValue(makeOrder());
+    refundOrder.mockResolvedValue(makeOrder());
+
+    render(
+      <>
+        <OrderDetail id="o1" />
+      </>,
+    );
+    await screen.findByText('Ceramic Planter');
+
+    await userEvent.click(screen.getByRole('button', { name: /^refund$/i }));
+    const dialog = await screen.findByRole('alertdialog');
+
+    await userEvent.type(within(dialog).getByLabelText(/amount/i), '20');
+    await userEvent.type(within(dialog).getByLabelText(/reason/i), 'Goodwill — arrived late');
+    await userEvent.click(within(dialog).getByRole('button', { name: /^refund$/i }));
+
+    await waitFor(() => {
+      expect(refundOrder).toHaveBeenCalledWith('o1', {
+        amount: '20',
+        reason: 'Goodwill — arrived late',
+      });
+    });
+  });
+
+  it('disables the confirm button until both an amount and a reason are entered', async () => {
+    fetchOrder.mockResolvedValue(makeOrder());
+
+    render(<OrderDetail id="o1" />);
+    await screen.findByText('Ceramic Planter');
+
+    await userEvent.click(screen.getByRole('button', { name: /^refund$/i }));
+    const dialog = await screen.findByRole('alertdialog');
+
+    expect(within(dialog).getByRole('button', { name: /^refund$/i })).toBeDisabled();
+
+    await userEvent.type(within(dialog).getByLabelText(/amount/i), '20');
+    expect(within(dialog).getByRole('button', { name: /^refund$/i })).toBeDisabled();
+
+    await userEvent.type(within(dialog).getByLabelText(/reason/i), 'x');
+    expect(within(dialog).getByRole('button', { name: /^refund$/i })).toBeEnabled();
+  });
+
+  it('surfaces the server refusal — e.g. over the cap — instead of failing silently', async () => {
+    fetchOrder.mockResolvedValue(makeOrder());
+    refundOrder.mockRejectedValue(
+      new ApiError(400, 'BAD_REQUEST', 'Refund cannot exceed 19.98 — what remains paid on this order'),
+    );
+
+    render(<OrderDetail id="o1" />);
+    await screen.findByText('Ceramic Planter');
+
+    await userEvent.click(screen.getByRole('button', { name: /^refund$/i }));
+    const dialog = await screen.findByRole('alertdialog');
+
+    await userEvent.type(within(dialog).getByLabelText(/amount/i), '50');
+    await userEvent.type(within(dialog).getByLabelText(/reason/i), 'x');
+    await userEvent.click(within(dialog).getByRole('button', { name: /^refund$/i }));
+
+    expect(await screen.findByText(/cannot exceed 19\.98/i)).toBeInTheDocument();
   });
 });
 

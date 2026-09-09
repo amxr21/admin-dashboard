@@ -710,6 +710,18 @@
     "empty": "No orders yet.",
     "guest": "Guest",
     "requestReturn": "Request return",
+    "refund": {
+      "action": "Refund",
+      "title": "Refund this order",
+      "body": "Money handed back with no return — nothing needs to come back for this. Capped at what remains paid on this order.",
+      "amountLabel": "Amount",
+      "reasonLabel": "Reason",
+      "reasonPlaceholder": "e.g. arrived late, price-matched a competitor",
+      "cancel": "Cancel",
+      "confirm": "Refund",
+      "saving": "Refunding…",
+      "done": "Refunded {amount}"
+    },
     "placedOn": "Placed on {date}",
     "total": "{count, plural, one {# order} other {# orders}}",
     "exportCsv": "Export CSV",
@@ -2129,6 +2141,7 @@
       "requested": "Requested",
       "status": "Status"
     },
+    "pastWindow": "Past the return window",
     "search": {
       "label": "Search",
       "placeholder": "RMA number or order number"
@@ -2162,6 +2175,10 @@
         "STORE_CREDIT": "Store credit",
         "REPLACEMENT": "Replacement"
       },
+      "restockingFeeLabel": "Restocking fee",
+      "restockingFeeHint": "Pre-filled from the store default — raise or waive it for this return.",
+      "restockingFeeApplied": "Restocking fee",
+      "pastWindowBody": "This order was placed {days, plural, one {# day} other {# days}} ago, past the store's return window. It can still be approved.",
       "refundAmountLabel": "Refund amount (up to {max})",
       "restock": "Put the returned items back in stock",
       "reject": "Reject",
