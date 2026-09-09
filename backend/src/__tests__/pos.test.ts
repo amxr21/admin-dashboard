@@ -1079,3 +1079,144 @@ describe('voiding a sale at the till (O9 Tier 3)', () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe('split payment (O9 Tier 3)', () => {
+  function sellSplit(body: Record<string, unknown>, token = ownerToken) {
+    return request(app)
+      .post('/api/v1/pos/checkout')
+      .set(auth(token))
+      .set('X-Branch-Id', branchId)
+      .send(body);
+  }
+
+  async function stockAt(productId: string, quantity: number) {
+    await prisma.branchStock.upsert({
+      where: { productId_branchId: { productId, branchId } },
+      create: { productId, branchId, quantity },
+      update: { quantity },
+    });
+    await prisma.product.update({ where: { id: productId }, data: { stock: quantity } });
+  }
+
+  it('writes one Payment row per entry', async () => {
+    const product = await makeProduct({ sku: `${RUN}-SPLIT-1`, price: '20.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sellSplit({
+      lines: [{ productId: product.id, quantity: 1 }],
+      splitPayments: [
+        { method: 'cash', amount: '10.00' },
+        { method: 'card', amount: '10.00' },
+      ],
+    });
+
+    expect(res.status).toBe(201);
+
+    const payments = await prisma.payment.findMany({
+      where: { orderId: (res.body as { data: { orderId: string } }).data.orderId },
+      orderBy: { method: 'asc' },
+    });
+
+    expect(payments).toHaveLength(2);
+    expect(payments.map((p) => p.amount.toFixed(2)).sort()).toEqual(['10.00', '10.00']);
+    expect(payments.map((p) => p.method).sort()).toEqual(['card', 'cash']);
+  });
+
+  it('records the order paymentMethod as "split"', async () => {
+    const product = await makeProduct({ sku: `${RUN}-SPLIT-2`, price: '20.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sellSplit({
+      lines: [{ productId: product.id, quantity: 1 }],
+      splitPayments: [
+        { method: 'cash', amount: '10.00' },
+        { method: 'card', amount: '10.00' },
+      ],
+    });
+
+    const order = await prisma.order.findUnique({
+      where: { id: (res.body as { data: { orderId: string } }).data.orderId },
+    });
+
+    expect(order?.paymentMethod).toBe('split');
+  });
+
+  it('refuses when the split does not sum to the total', async () => {
+    const product = await makeProduct({ sku: `${RUN}-SPLIT-3`, price: '20.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sellSplit({
+      lines: [{ productId: product.id, quantity: 1 }],
+      splitPayments: [
+        { method: 'cash', amount: '5.00' },
+        { method: 'card', amount: '5.00' },
+      ],
+    });
+
+    expect(res.status).toBe(400);
+
+    // Nothing written — no stock movement for a refused sale.
+    const movements = await prisma.stockMovement.count({ where: { productId: product.id } });
+    expect(movements).toBe(0);
+  });
+
+  it('refuses a single-entry split — not what the shape is for', async () => {
+    const product = await makeProduct({ sku: `${RUN}-SPLIT-4`, price: '20.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sellSplit({
+      lines: [{ productId: product.id, quantity: 1 }],
+      splitPayments: [{ method: 'cash', amount: '20.00' }],
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses sending both method and splitPayments', async () => {
+    const product = await makeProduct({ sku: `${RUN}-SPLIT-5`, price: '20.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sellSplit({
+      lines: [{ productId: product.id, quantity: 1 }],
+      method: 'cash',
+      splitPayments: [
+        { method: 'cash', amount: '10.00' },
+        { method: 'card', amount: '10.00' },
+      ],
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('computes change on the cash leg only', async () => {
+    const product = await makeProduct({ sku: `${RUN}-SPLIT-6`, price: '15.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sellSplit({
+      lines: [{ productId: product.id, quantity: 1 }],
+      splitPayments: [
+        { method: 'cash', amount: '10.00', tendered: '15.00' },
+        { method: 'card', amount: '5.00' },
+      ],
+    });
+
+    expect(res.status).toBe(201);
+    // 15.00 tendered against a 10.00 cash leg = 5.00 change.
+    expect((res.body as { data: { change: string | null } }).data.change).toBe('5.00');
+  });
+
+  it('refuses tendered less than a cash leg amount', async () => {
+    const product = await makeProduct({ sku: `${RUN}-SPLIT-7`, price: '15.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sellSplit({
+      lines: [{ productId: product.id, quantity: 1 }],
+      splitPayments: [
+        { method: 'cash', amount: '10.00', tendered: '5.00' },
+        { method: 'card', amount: '5.00' },
+      ],
+    });
+
+    expect(res.status).toBe(400);
+  });
+});

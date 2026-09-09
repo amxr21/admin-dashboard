@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -103,6 +104,16 @@ export function SaleScreen() {
   const [code, setCode] = useState('');
   const [method, setMethod] = useState('cash');
   const [tendered, setTendered] = useState('');
+  /** Split payment (O9 Tier 3) — replaces `method`/`tendered` entirely when
+   *  on, never combined with them (matches the server's own "one shape or
+   *  the other" rule). Two entries to start: a split of one is not a split. */
+  const [isSplitting, setIsSplitting] = useState(false);
+  const [splitLines, setSplitLines] = useState<
+    { method: string; amount: string; tendered: string }[]
+  >([
+    { method: 'cash', amount: '', tendered: '' },
+    { method: 'card', amount: '', tendered: '' },
+  ]);
   /** The card terminal's own receipt/reference number — asked for in the
    *  confirm dialog, not the sidebar, since it only makes sense once the
    *  method is card. See the schema comment on `Payment.reference`. */
@@ -258,6 +269,31 @@ export function SaleScreen() {
     refocus();
   }
 
+  function updateSplitLine(index: number, patch: Partial<(typeof splitLines)[number]>) {
+    setSplitLines((current) =>
+      current.map((line, i) => (i === index ? { ...line, ...patch } : line)),
+    );
+  }
+
+  function addSplitLine() {
+    // 6 is the server's own cap — a split beyond that is almost certainly a
+    // mistake, not a real till scenario.
+    if (splitLines.length >= 6) return;
+    setSplitLines((current) => [...current, { method: 'cash', amount: '', tendered: '' }]);
+  }
+
+  function removeSplitLine(index: number) {
+    // Never below two — one entry is the single-payment path wearing the
+    // split shape, which the server refuses outright.
+    if (splitLines.length <= 2) return;
+    setSplitLines((current) => current.filter((_, i) => i !== index));
+  }
+
+  const splitTotal = useMemo(
+    () => splitLines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0),
+    [splitLines],
+  );
+
   async function takePayment() {
     if (lines.length === 0 || isSelling) return;
 
@@ -271,9 +307,24 @@ export function SaleScreen() {
           quantity: line.quantity,
           ...(line.discountPercent !== null ? { discountPercent: line.discountPercent } : {}),
         })),
-        method,
-        ...(method === 'cash' && tendered.trim() !== '' ? { tendered: tendered.trim() } : {}),
-        ...(method === 'card' && reference.trim() !== '' ? { reference: reference.trim() } : {}),
+        // Exactly one shape, never both — matches the server's own rule.
+        ...(isSplitting
+          ? {
+              splitPayments: splitLines.map((line) => ({
+                method: line.method,
+                amount: line.amount.trim(),
+                ...(line.method === 'cash' && line.tendered.trim() !== ''
+                  ? { tendered: line.tendered.trim() }
+                  : {}),
+              })),
+            }
+          : {
+              method,
+              ...(method === 'cash' && tendered.trim() !== '' ? { tendered: tendered.trim() } : {}),
+              ...(method === 'card' && reference.trim() !== ''
+                ? { reference: reference.trim() }
+                : {}),
+            }),
         ...(overrideToken ? { overrideToken } : {}),
       });
 
@@ -304,6 +355,11 @@ export function SaleScreen() {
       setLines([]);
       setTendered('');
       setReference('');
+      setIsSplitting(false);
+      setSplitLines([
+        { method: 'cash', amount: '', tendered: '' },
+        { method: 'card', amount: '', tendered: '' },
+      ]);
       setConfirmOpen(false);
       // The approval is for THIS sale only — the next customer's discount
       // (if any) needs its own manager, never inherited from the last one.
@@ -526,33 +582,101 @@ export function SaleScreen() {
             which applies tax with the shared receipt math. */}
         <p className="text-muted-foreground text-xs">{t('estimateNote')}</p>
 
-        <div className="space-y-2">
-          <Label htmlFor="pos-method">{t('method')}</Label>
-          <Select value={method} onValueChange={setMethod}>
-            <SelectTrigger id="pos-method">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="cash">{t('methods.cash')}</SelectItem>
-              <SelectItem value="card">{t('methods.card')}</SelectItem>
-              <SelectItem value="transfer">{t('methods.transfer')}</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="pos-split"
+            checked={isSplitting}
+            onCheckedChange={(checked) => setIsSplitting(checked === true)}
+          />
+          <Label htmlFor="pos-split">{t('splitPayment')}</Label>
         </div>
 
-        {method === 'cash' ? (
+        {!isSplitting ? (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="pos-method">{t('method')}</Label>
+              <Select value={method} onValueChange={setMethod}>
+                <SelectTrigger id="pos-method">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">{t('methods.cash')}</SelectItem>
+                  <SelectItem value="card">{t('methods.card')}</SelectItem>
+                  <SelectItem value="transfer">{t('methods.transfer')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {method === 'cash' ? (
+              <div className="space-y-2">
+                <Label htmlFor="pos-tendered">{t('tendered')}</Label>
+                <Input
+                  id="pos-tendered"
+                  value={tendered}
+                  onChange={(event) => setTendered(event.target.value)}
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  className="force-ltr"
+                />
+              </div>
+            ) : null}
+          </>
+        ) : (
           <div className="space-y-2">
-            <Label htmlFor="pos-tendered">{t('tendered')}</Label>
-            <Input
-              id="pos-tendered"
-              value={tendered}
-              onChange={(event) => setTendered(event.target.value)}
-              inputMode="decimal"
-              placeholder="0.00"
-              className="force-ltr"
-            />
+            {splitLines.map((line, index) => (
+              <div key={index} className="flex items-center gap-1.5">
+                <Select
+                  value={line.method}
+                  onValueChange={(value) => updateSplitLine(index, { method: value })}
+                >
+                  <SelectTrigger
+                    className="w-28"
+                    aria-label={t('splitMethodLabel', { index: index + 1 })}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">{t('methods.cash')}</SelectItem>
+                    <SelectItem value="card">{t('methods.card')}</SelectItem>
+                    <SelectItem value="transfer">{t('methods.transfer')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={line.amount}
+                  onChange={(event) => updateSplitLine(index, { amount: event.target.value })}
+                  placeholder="0.00"
+                  inputMode="decimal"
+                  className="force-ltr"
+                  aria-label={t('splitAmountLabel', { index: index + 1 })}
+                />
+                {splitLines.length > 2 ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeSplitLine(index)}
+                    aria-label={t('removeSplitLine', { index: index + 1 })}
+                  >
+                    <Trash2 className="size-4" aria-hidden />
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+
+            {splitLines.length < 6 ? (
+              <Button variant="ghost" size="sm" onClick={addSplitLine}>
+                <Plus className="size-4" aria-hidden />
+                {t('addSplitLine')}
+              </Button>
+            ) : null}
+
+            {/* Shown as context, not enforced client-side — the server is
+                the one that refuses a mismatched sum, the same "warn, don't
+                block" split every other till check in this file follows. */}
+            <p className="text-muted-foreground text-xs tabular-nums">
+              {t('splitTotal', { total: splitTotal.toFixed(2), estimate })}
+            </p>
           </div>
-        ) : null}
+        )}
 
         <Button
           className="w-full"

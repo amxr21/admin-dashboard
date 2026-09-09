@@ -2445,6 +2445,12 @@
     "notePlaceholder": "مثال: طلب العميل الاحتفاظ به للاستلام",
     "saveNote": "حفظ",
     "savingNote": "جارٍ الحفظ...",
-    "noteSaved": "تم حفظ الملاحظة"
+    "noteSaved": "تم حفظ الملاحظة",
+    "splitPayment": "دفع مقسّم",
+    "splitMethodLabel": "طريقة الدفعة {index}",
+    "splitAmountLabel": "مبلغ الدفعة {index}",
+    "removeSplitLine": "إزالة الدفعة {index}",
+    "addSplitLine": "إضافة دفعة أخرى",
+    "splitTotal": "المُدخل: {total} من {estimate}"
   }
 }

@@ -2445,6 +2445,12 @@
     "notePlaceholder": "e.g. customer asked to hold at pickup",
     "saveNote": "Save",
     "savingNote": "Saving...",
-    "noteSaved": "Note saved"
+    "noteSaved": "Note saved",
+    "splitPayment": "Split payment",
+    "splitMethodLabel": "Payment {index} method",
+    "splitAmountLabel": "Payment {index} amount",
+    "removeSplitLine": "Remove payment {index}",
+    "addSplitLine": "Add another payment",
+    "splitTotal": "Entered: {total} of {estimate}"
   }
 }

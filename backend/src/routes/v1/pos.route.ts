@@ -120,12 +120,35 @@ const checkoutSchema = z.object({
     .min(1)
     // A basket bigger than this is a script, not a shopper.
     .max(200),
-  method: z.string().trim().min(1).max(48),
+  // Optional here — send either this or `splitPayments`, not both; the
+  // service is where "exactly one of the two" is actually enforced, since
+  // Zod validating shape and the service validating "the RIGHT one of two
+  // shapes for this sale" are different questions.
+  method: z.string().trim().min(1).max(48).optional(),
   /** Cash handed over, as a string — money never crosses as a float. */
   tendered: z
     .string()
     .trim()
     .regex(/^\d{1,8}(\.\d{1,2})?$/, 'Enter an amount like 20.00')
+    .optional(),
+  /** Split payment (O9 Tier 3) — 30 cash, rest on card. Each entry becomes
+   *  its own `Payment` row; amounts must sum to the sale total exactly,
+   *  checked in the service once the real total is known. */
+  splitPayments: z
+    .array(
+      z.object({
+        method: z.string().trim().min(1).max(48),
+        amount: z.string().regex(/^\d{1,8}(\.\d{1,2})?$/, 'Enter an amount like 20.00'),
+        tendered: z
+          .string()
+          .trim()
+          .regex(/^\d{1,8}(\.\d{1,2})?$/, 'Enter an amount like 20.00')
+          .optional(),
+        reference: z.string().trim().max(120).optional(),
+      }),
+    )
+    .min(2)
+    .max(6)
     .optional(),
   /**
    * `shiftId` is deliberately NOT accepted here (O9.17).

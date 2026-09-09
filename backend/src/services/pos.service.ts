@@ -242,8 +242,9 @@ export interface CheckoutLine {
 
 export interface CheckoutInput {
   lines: CheckoutLine[];
-  /** 'cash' | 'card' | … — free text, mirroring `Order.paymentMethod`. */
-  method: string;
+  /** 'cash' | 'card' | … — free text, mirroring `Order.paymentMethod`.
+   *  Required UNLESS `splitPayments` is given instead — see its own note. */
+  method?: string | undefined;
   /** Cash handed over. Omitted for a card sale, where nothing is tendered. */
   tendered?: string | undefined;
   branchId?: string | undefined;
@@ -269,6 +270,27 @@ export interface CheckoutInput {
    * (and re-verified server-side) otherwise.
    */
   overrideToken?: string | undefined;
+  /**
+   * Split payment (O9 Tier 3) — 30 cash, rest on card, and so on. When
+   * present, this REPLACES `method`/`tendered` entirely rather than the two
+   * combining; a sale is either single-method or split, never a mix of
+   * both shapes read together. Each entry becomes its OWN `Payment` row —
+   * exactly why `Payment` was built as a table rather than columns on
+   * `Order` in the first place (O5.2). Amounts must sum to the total
+   * exactly; a split that leaves a gap or overshoots is refused, not
+   * silently rounded.
+   */
+  splitPayments?: SplitPaymentInput[] | undefined;
+}
+
+export interface SplitPaymentInput {
+  method: string;
+  /** What THIS payment covers — not the sale's total. */
+  amount: string;
+  /** Only meaningful when `method` is cash; change is computed per-entry,
+   *  same as the single-payment path. */
+  tendered?: string | undefined;
+  reference?: string | undefined;
 }
 
 /**
@@ -310,6 +332,32 @@ function generateOrderNumber(): string {
 export async function checkout(input: CheckoutInput, actorId: string, req: Request) {
   if (input.lines.length === 0) {
     throw AppError.badRequest('Add something to the sale first');
+  }
+
+  // Exactly one shape, never both read together — a `method` alongside
+  // `splitPayments` would leave "which one is the real payment" ambiguous,
+  // and silently preferring one would make the other look accepted when it
+  // was quietly ignored.
+  const isSplit = input.splitPayments !== undefined;
+
+  if (isSplit && input.method !== undefined) {
+    throw AppError.badRequest('Send either method or splitPayments, not both', {
+      field: 'method',
+    });
+  }
+
+  if (!isSplit && input.method === undefined) {
+    throw AppError.badRequest('A payment method is required', { field: 'method' });
+  }
+
+  if (isSplit && (input.splitPayments?.length ?? 0) < 2) {
+    // One entry is not a split — it is the single-payment path wearing the
+    // split shape for no reason, and it would skip the single-payment
+    // route's own validation (e.g. `tendered` less than the total) if let
+    // through as one payment of the whole amount.
+    throw AppError.badRequest('A split needs at least two payments', {
+      field: 'splitPayments',
+    });
   }
 
   const productIds = [...new Set(input.lines.map((line) => line.productId))];
@@ -468,7 +516,11 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
         // Denormalised on purpose — every Reports/Dashboard revenue figure
         // reads THIS, never a recomputation.
         total: totals.total,
-        paymentMethod: input.method,
+        // 'split' is a real, distinct value here, not a fallback — a report
+        // reading `paymentMethod` must be able to tell a split sale apart
+        // from a single cash/card one rather than seeing an arbitrary first
+        // method and assuming that is the whole story.
+        paymentMethod: isSplit ? 'split' : (input.method as string),
         branchId,
         ...(input.customerId ? { customerId: input.customerId } : {}),
         items: {
@@ -513,30 +565,83 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
       });
     }
 
-    const tendered = input.tendered === undefined ? null : new Prisma.Decimal(input.tendered);
+    let totalChange: Prisma.Decimal | null = null;
 
-    if (tendered !== null && tendered.lessThan(totals.total)) {
-      throw AppError.badRequest('That is less than the total', { field: 'tendered' });
+    if (isSplit) {
+      const entries = input.splitPayments ?? [];
+      const amounts = entries.map((entry) => new Prisma.Decimal(entry.amount));
+      const sum = amounts.reduce((total, amount) => total.plus(amount), new Prisma.Decimal(0));
+
+      // Exact, not "close enough" — a split that leaves a gap is a sale
+      // nobody actually paid for in full, and one that overshoots is a
+      // refund nobody recorded as one. Both are wrong in ways the till must
+      // catch here, not leave for someone reconciling the drawer to find.
+      if (!sum.equals(totals.total)) {
+        throw AppError.badRequest(
+          `Split payments total ${sum.toFixed(2)}, which does not match the sale total ${totals.total.toFixed(2)}`,
+          { field: 'splitPayments' },
+        );
+      }
+
+      for (const entry of entries) {
+        const amount = new Prisma.Decimal(entry.amount);
+        const entryTendered =
+          entry.tendered === undefined ? null : new Prisma.Decimal(entry.tendered);
+
+        if (entryTendered !== null && entryTendered.lessThan(amount)) {
+          throw AppError.badRequest('That is less than this payment', {
+            field: 'splitPayments',
+          });
+        }
+
+        const change = entryTendered === null ? null : entryTendered.sub(amount);
+        // Only cash ever hands back change; summing null with a real
+        // Decimal would need its own case, and a split with no cash leg at
+        // all correctly reports no change to give.
+        if (change !== null) totalChange = (totalChange ?? new Prisma.Decimal(0)).plus(change);
+
+        await tx.payment.create({
+          data: {
+            orderId: order.id,
+            amount,
+            method: entry.method,
+            tendered: entryTendered,
+            change,
+            ...(input.shiftId ? { shiftId: input.shiftId } : {}),
+            actorId,
+            ...(input.note ? { note: input.note } : {}),
+            ...(entry.reference ? { reference: entry.reference } : {}),
+          },
+        });
+      }
+    } else {
+      const tendered = input.tendered === undefined ? null : new Prisma.Decimal(input.tendered);
+
+      if (tendered !== null && tendered.lessThan(totals.total)) {
+        throw AppError.badRequest('That is less than the total', { field: 'tendered' });
+      }
+
+      totalChange = tendered === null ? null : tendered.sub(totals.total);
+
+      await tx.payment.create({
+        data: {
+          orderId: order.id,
+          amount: totals.total,
+          method: input.method as string,
+          tendered,
+          // Stored, not derived at read time — the drawer is reconciled
+          // against what the cashier actually did (see `Payment`'s own
+          // note).
+          change: totalChange,
+          ...(input.shiftId ? { shiftId: input.shiftId } : {}),
+          actorId,
+          ...(input.note ? { note: input.note } : {}),
+          ...(input.reference ? { reference: input.reference } : {}),
+        },
+      });
     }
 
-    const payment = await tx.payment.create({
-      data: {
-        orderId: order.id,
-        amount: totals.total,
-        method: input.method,
-        tendered,
-        // Stored, not derived at read time — the drawer is reconciled against
-        // what the cashier actually did (see `Payment`'s own note).
-        change: tendered === null ? null : tendered.sub(totals.total),
-        ...(input.shiftId ? { shiftId: input.shiftId } : {}),
-        actorId,
-        ...(input.note ? { note: input.note } : {}),
-        ...(input.reference ? { reference: input.reference } : {}),
-      },
-      select: { id: true, change: true },
-    });
-
-    return { order, totals, payment, lineCount: priced.length };
+    return { order, totals, change: totalChange, lineCount: priced.length };
   });
 
   audit(req, {
@@ -546,7 +651,7 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
     changes: {
       orderNumber: { from: null, to: created.order.orderNumber },
       total: { from: null, to: created.totals.total.toFixed(2) },
-      method: { from: null, to: input.method },
+      method: { from: null, to: isSplit ? 'split' : input.method },
       lines: { from: null, to: created.lineCount },
       // Present only when a discount actually needed a manager — "who
       // approved this" is the whole question a reviewer asks of an
@@ -562,7 +667,7 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
     subtotal: created.totals.subtotal.toFixed(2),
     taxAmount: created.totals.taxAmount.toFixed(2),
     total: created.totals.total.toFixed(2),
-    change: created.payment.change?.toFixed(2) ?? null,
+    change: created.change?.toFixed(2) ?? null,
   };
 }
 

@@ -561,3 +561,62 @@ describe('a note on the sale (O9 Tier 3)', () => {
     expect(addOrderNote).not.toHaveBeenCalled();
   });
 });
+
+describe('split payment (O9 Tier 3)', () => {
+  it('sends splitPayments instead of method when the split toggle is on', async () => {
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({
+      orderId: 'o1',
+      orderNumber: 'POS-1',
+      subtotal: '4.50',
+      taxAmount: '0.00',
+      total: '4.50',
+      change: null,
+    });
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+
+    await userEvent.click(screen.getByLabelText(/split payment/i));
+
+    const amountFields = screen.getAllByLabelText(/payment \d amount/i);
+    await userEvent.type(amountFields[0]!, '2.00');
+    await userEvent.type(amountFields[1]!, '2.50');
+
+    await takePaymentThroughConfirm();
+
+    await waitFor(() => {
+      expect(checkout).toHaveBeenCalledWith(
+        expect.objectContaining({
+          splitPayments: [
+            { method: 'cash', amount: '2.00' },
+            { method: 'card', amount: '2.50' },
+          ],
+        }),
+      );
+      // Not present at all, not even as undefined-through — the server
+      // refuses seeing both shapes together.
+      expect(checkout.mock.calls[0]?.[0]).not.toHaveProperty('method');
+    });
+  });
+
+  it('can add and remove a payment line, never below two', async () => {
+    scanProduct.mockResolvedValue(makeProduct());
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+    await userEvent.click(screen.getByLabelText(/split payment/i));
+
+    expect(screen.getAllByLabelText(/payment \d amount/i)).toHaveLength(2);
+    // No remove button yet — never below two entries.
+    expect(screen.queryByRole('button', { name: /remove payment/i })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /add another payment/i }));
+    expect(screen.getAllByLabelText(/payment \d amount/i)).toHaveLength(3);
+
+    await userEvent.click(screen.getAllByRole('button', { name: /remove payment/i })[0]!);
+    expect(screen.getAllByLabelText(/payment \d amount/i)).toHaveLength(2);
+  });
+});

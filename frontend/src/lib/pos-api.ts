@@ -96,9 +96,19 @@ export interface CheckoutResult {
   change: string | null;
 }
 
+export interface SplitPayment {
+  method: string;
+  /** What THIS payment covers — not the sale's total. */
+  amount: string;
+  tendered?: string;
+  reference?: string;
+}
+
 export async function checkout(input: {
   lines: CheckoutLine[];
-  method: string;
+  /** Required UNLESS `splitPayments` is given instead — send one or the
+   *  other, never both (the server refuses both together). */
+  method?: string;
   tendered?: string;
   /** Removed (O9.17) — the server resolves the shift from the signed-in user.
    *  A client-supplied one went stale when the cashier clocked out and
@@ -113,6 +123,10 @@ export async function checkout(input: {
    *  server-side against the signature, never trusted as a bare claim.
    *  Was also missing from this type — see the note on `CheckoutLine`. */
   overrideToken?: string;
+  /** Split payment (O9 Tier 3) — 30 cash, rest on card. At least two
+   *  entries, summing to the sale total EXACTLY — the server re-verifies
+   *  this against its own computed total, never trusting the client's math. */
+  splitPayments?: SplitPayment[];
 }): Promise<CheckoutResult> {
   return apiFetch<CheckoutResult>('/pos/checkout', {
     method: 'POST',
