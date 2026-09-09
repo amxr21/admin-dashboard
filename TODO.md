@@ -1118,6 +1118,25 @@ present).
       personnel data any more from the new area than the old one) — frontend
       full suite green, tsc/eslint clean both sides, en/ar parity
       1900/1900. Commit `da8184d`.
+      **Follow-up 2026-09-09**: the owner sent a reference screenshot
+      (Apple Sleep's bedtime dial — drag two handles on a 24h ring to set
+      future start/end times) asking for "an interactive clock to set the
+      shift, smth like [it]." Checked against the schema first: `Shift`'s
+      own doc comment already rules this out on purpose — "no planned
+      start, no rota, no schedule editor," the owner's own call from
+      2026-09-08, one day earlier. Asked rather than guessed which
+      reading was meant; confirmed: visualize the EXISTING real-time
+      clock-on/clock-off facts as a dial, not add scheduling. New
+      `ShiftClockDial` — a 24h ring, hour ticks, one handle at the
+      shift's actual start, a gradient arc start→now, duration in the
+      center. Deliberately not draggable: neither end is a free variable
+      here (start is "when Start was pressed," the arc's end is "now"),
+      so dragging would either no-op or silently rewrite a timestamp the
+      correction flow's `originalStartedAt`/`editedById` fields exist to
+      keep honest. Drop-in for the plain elapsed-time string on both
+      states of `shift-clock-screen.tsx`; `useShiftClock`/`elapsedLabel`
+      and the start/finish flow untouched — both existing tests for that
+      screen still pass unmodified. Commit `4920399`.
 
 ## 🔧 TIER 5 — MINOR — ✅ COMPLETE (superseded, not built as originally scoped)
 
