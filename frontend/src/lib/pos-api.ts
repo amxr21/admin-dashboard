@@ -78,6 +78,12 @@ export async function browseCategories(): Promise<BrowseCategory[]> {
 export interface CheckoutLine {
   productId: string;
   quantity: number;
+  /** A cashier's ad-hoc discount on THIS line (O9 Tier 3), 0-100. Was
+   *  missing from this interface entirely — `sale-screen.tsx` sent it via an
+   *  inferred array literal, which TypeScript never checked against this
+   *  type, so the mismatch compiled clean while genuinely being out of
+   *  sync. Found while adding the void feature and reading this file fresh. */
+  discountPercent?: number;
 }
 
 export interface CheckoutResult {
@@ -103,9 +109,34 @@ export async function checkout(input: {
   /** The card terminal's own receipt/reference number — optional, cash never
    *  has one. See the schema comment on `Payment.reference`. */
   reference?: string;
+  /** Proof a manager approved a discount above the cap (O9.13) — verified
+   *  server-side against the signature, never trusted as a bare claim.
+   *  Was also missing from this type — see the note on `CheckoutLine`. */
+  overrideToken?: string;
 }): Promise<CheckoutResult> {
   return apiFetch<CheckoutResult>('/pos/checkout', {
     method: 'POST',
     body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Void a just-completed sale (O9 Tier 3) — distinct from a return: same
+ * sale, undone at the same register moments later, not a customer bringing
+ * something back days on. Requires `overrideToken` when the caller is a
+ * cashier — see the backend's own doc comment on `voidSale`.
+ */
+export interface VoidSaleResult {
+  orderId: string;
+  orderNumber: string;
+}
+
+export async function voidSale(
+  orderId: string,
+  overrideToken?: string,
+): Promise<VoidSaleResult> {
+  return apiFetch<VoidSaleResult>(`/pos/orders/${orderId}/void`, {
+    method: 'POST',
+    body: JSON.stringify(overrideToken ? { overrideToken } : {}),
   });
 }

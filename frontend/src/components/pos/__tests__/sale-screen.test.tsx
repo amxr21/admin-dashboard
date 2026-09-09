@@ -22,14 +22,21 @@ import type { ScannedProduct } from '@/lib/pos-api';
  *    flattened "something went wrong" leaves them stuck at the counter.
  */
 
-const { scanProduct, checkout, browseProducts, browseCategories, requestManagerOverride } =
-  vi.hoisted(() => ({
-    scanProduct: vi.fn(),
-    checkout: vi.fn(),
-    browseProducts: vi.fn(),
-    browseCategories: vi.fn(),
-    requestManagerOverride: vi.fn(),
-  }));
+const {
+  scanProduct,
+  checkout,
+  browseProducts,
+  browseCategories,
+  requestManagerOverride,
+  voidSale,
+} = vi.hoisted(() => ({
+  scanProduct: vi.fn(),
+  checkout: vi.fn(),
+  browseProducts: vi.fn(),
+  browseCategories: vi.fn(),
+  requestManagerOverride: vi.fn(),
+  voidSale: vi.fn(),
+}));
 
 vi.mock('@/lib/pos-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/pos-api')>()),
@@ -37,6 +44,7 @@ vi.mock('@/lib/pos-api', async (importOriginal) => ({
   checkout,
   browseProducts,
   browseCategories,
+  voidSale,
 }));
 
 vi.mock('@/lib/auth-api', async (importOriginal) => ({
@@ -411,5 +419,80 @@ describe('discounts (O9 Tier 3)', () => {
 
     expect(await screen.findByText(/confirm sale/i)).toBeInTheDocument();
     expect(screen.queryByText(/manager approval needed/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('voiding a sale (O9 Tier 3)', () => {
+  async function completeASale() {
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({
+      orderId: 'o1',
+      orderNumber: 'POS-1',
+      subtotal: '4.50',
+      taxAmount: '0.00',
+      total: '4.50',
+      change: null,
+    });
+
+    render(
+      <>
+        <SaleScreen />
+        <Toaster />
+      </>,
+    );
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+    await takePaymentThroughConfirm();
+    await screen.findByText(/sale pos-1/i);
+  }
+
+  it('voids the sale that was just rung up', async () => {
+    voidSale.mockResolvedValue({ orderId: 'o1', orderNumber: 'POS-1' });
+
+    await completeASale();
+    await userEvent.click(screen.getByRole('button', { name: /void this sale/i }));
+
+    await waitFor(() => {
+      expect(voidSale).toHaveBeenCalledWith('o1', undefined);
+    });
+    // The receipt panel (and the void button with it) is gone — nothing
+    // left to void twice.
+    expect(screen.queryByRole('button', { name: /void this sale/i })).not.toBeInTheDocument();
+  });
+
+  it('opens the manager override dialog when voiding is refused, then retries with the token', async () => {
+    voidSale
+      .mockRejectedValueOnce(
+        new ApiError(403, 'FORBIDDEN', 'A manager needs to approve this in place'),
+      )
+      .mockResolvedValueOnce({ orderId: 'o1', orderNumber: 'POS-1' });
+    requestManagerOverride.mockResolvedValue({
+      approverId: 'm1',
+      approverName: 'Sara',
+      overrideToken: 'signed-token',
+    });
+
+    await completeASale();
+    await userEvent.click(screen.getByRole('button', { name: /void this sale/i }));
+
+    expect(await screen.findByText(/manager approval needed/i)).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/manager email/i), 'sara@example.test');
+    await userEvent.type(screen.getByLabelText(/manager password/i), 'correct-password');
+    await userEvent.click(screen.getByRole('button', { name: /^approve$/i }));
+
+    await waitFor(() => {
+      expect(voidSale).toHaveBeenLastCalledWith('o1', 'signed-token');
+    });
+  });
+
+  it('has no order left to void once a new item starts a fresh sale', async () => {
+    await completeASale();
+
+    // Starting the next customer's sale clears the previous receipt AND the
+    // ability to void it from here — see the comment in addToCart().
+    await scan('5012345678900');
+
+    expect(screen.queryByRole('button', { name: /void this sale/i })).not.toBeInTheDocument();
   });
 });

@@ -932,3 +932,150 @@ describe('discounts at the till (O9 Tier 3)', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('voiding a sale at the till (O9 Tier 3)', () => {
+  function voidSaleAs(orderId: string, body: Record<string, unknown> = {}, token = ownerToken) {
+    return request(app)
+      .post(`/api/v1/pos/orders/${orderId}/void`)
+      .set(auth(token))
+      .set('X-Branch-Id', branchId)
+      .send(body);
+  }
+
+  async function stockAt(productId: string, quantity: number) {
+    await prisma.branchStock.upsert({
+      where: { productId_branchId: { productId, branchId } },
+      create: { productId, branchId, quantity },
+      update: { quantity },
+    });
+    await prisma.product.update({ where: { id: productId }, data: { stock: quantity } });
+  }
+
+  it('gives the stock back and reverses the payment', async () => {
+    const product = await makeProduct({ sku: `${RUN}-VOID-1`, price: '10.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const sale = await request(app)
+      .post('/api/v1/pos/checkout')
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
+      .send({ lines: [{ productId: product.id, quantity: 2 }], method: 'cash', tendered: '20.00' });
+
+    const orderId = (sale.body as { data: { orderId: string } }).data.orderId;
+
+    const res = await voidSaleAs(orderId);
+
+    expect(res.status).toBe(200);
+
+    const [branchStock, product2, order, payments] = await Promise.all([
+      prisma.branchStock.findUnique({
+        where: { productId_branchId: { productId: product.id, branchId } },
+      }),
+      prisma.product.findUnique({ where: { id: product.id } }),
+      prisma.order.findUnique({ where: { id: orderId } }),
+      prisma.payment.findMany({ where: { orderId } }),
+    ]);
+
+    // Back to 5 — the 2 sold were given back.
+    expect(branchStock?.quantity).toBe(5);
+    expect(product2?.stock).toBe(5);
+    expect(order?.status).toBe('CANCELED');
+
+    // Two payment rows now: the original +20.00 and a reversal -20.00.
+    expect(payments).toHaveLength(2);
+    const total = payments.reduce((sum, p) => sum.plus(p.amount), new Prisma.Decimal(0));
+    expect(total.toFixed(2)).toBe('0.00');
+  });
+
+  it('records a stock movement explaining the void', async () => {
+    const product = await makeProduct({ sku: `${RUN}-VOID-2`, price: '5.00', stock: 3 });
+    await stockAt(product.id, 3);
+
+    const sale = await request(app)
+      .post('/api/v1/pos/checkout')
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
+      .send({ lines: [{ productId: product.id, quantity: 1 }], method: 'cash', tendered: '5.00' });
+
+    const orderId = (sale.body as { data: { orderId: string } }).data.orderId;
+    await voidSaleAs(orderId);
+
+    const movement = await prisma.stockMovement.findFirst({
+      where: { productId: product.id, reason: 'CORRECTION' },
+    });
+
+    expect(movement).not.toBeNull();
+    expect(movement?.delta).toBe(1);
+  });
+
+  it('refuses to void an order that already moved on', async () => {
+    const product = await makeProduct({ sku: `${RUN}-VOID-3`, price: '5.00', stock: 3 });
+    await stockAt(product.id, 3);
+
+    const sale = await request(app)
+      .post('/api/v1/pos/checkout')
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
+      .send({ lines: [{ productId: product.id, quantity: 1 }], method: 'cash', tendered: '5.00' });
+
+    const orderId = (sale.body as { data: { orderId: string } }).data.orderId;
+    await prisma.order.update({ where: { id: orderId }, data: { status: 'DELIVERED' } });
+
+    const res = await voidSaleAs(orderId);
+
+    expect(res.status).toBe(400);
+
+    // Refused before anything moved — stock stays as the (already reduced)
+    // sale left it.
+    const branchStock = await prisma.branchStock.findUnique({
+      where: { productId_branchId: { productId: product.id, branchId } },
+    });
+    expect(branchStock?.quantity).toBe(2);
+  });
+
+  it('refuses a cashier voiding with no manager override', async () => {
+    const cashier = await makeUser(StaffRole.CASHIER, 'void-cashier-1');
+    const product = await makeProduct({ sku: `${RUN}-VOID-4`, price: '5.00', stock: 3 });
+    await stockAt(product.id, 3);
+
+    const sale = await request(app)
+      .post('/api/v1/pos/checkout')
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
+      .send({ lines: [{ productId: product.id, quantity: 1 }], method: 'cash', tendered: '5.00' });
+
+    const orderId = (sale.body as { data: { orderId: string } }).data.orderId;
+
+    const res = await voidSaleAs(orderId, {}, signToken(cashier));
+
+    expect(res.status).toBe(403);
+  });
+
+  it('approves once a real manager override token verifies', async () => {
+    const cashier = await makeUser(StaffRole.CASHIER, 'void-cashier-2');
+    const manager = await makeUser(StaffRole.MANAGER, 'void-manager-1');
+    const approval = await verifyManagerOverride(
+      manager.email,
+      'correct-horse-battery-staple',
+    );
+
+    const product = await makeProduct({ sku: `${RUN}-VOID-5`, price: '5.00', stock: 3 });
+    await stockAt(product.id, 3);
+
+    const sale = await request(app)
+      .post('/api/v1/pos/checkout')
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
+      .send({ lines: [{ productId: product.id, quantity: 1 }], method: 'cash', tendered: '5.00' });
+
+    const orderId = (sale.body as { data: { orderId: string } }).data.orderId;
+
+    const res = await voidSaleAs(
+      orderId,
+      { overrideToken: approval.overrideToken },
+      signToken(cashier),
+    );
+
+    expect(res.status).toBe(200);
+  });
+});

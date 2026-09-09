@@ -2403,7 +2403,8 @@
       "cancel": "Cancel",
       "approve": "Approve",
       "approving": "Checking...",
-      "discountReason": "A discount above {max}% is being applied to this sale."
+      "discountReason": "A discount above {max}% is being applied to this sale.",
+      "voidReason": "Voiding a completed sale needs a manager's approval."
     },
     "discountLabel": "Discount on {name}",
     "discountPlaceholder": "0",
@@ -2436,6 +2437,9 @@
       "processing": "Processing...",
       "done": "Return processed",
       "managerOverrideReason": "A return needs a manager's approval."
-    }
+    },
+    "voided": "Sale voided",
+    "voiding": "Voiding...",
+    "voidSale": "Void this sale"
   }
 }

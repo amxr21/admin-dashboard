@@ -1,11 +1,19 @@
+import { StaffRole } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
-import { withBranchContext } from '../../middleware/branch-context.js';
-import { browseCategories, browseProducts, checkout, scanProduct } from '../../services/pos.service.js';
+import { effectiveRole, withBranchContext } from '../../middleware/branch-context.js';
+import { verifyOverrideToken } from '../../services/auth.service.js';
+import {
+  browseCategories,
+  browseProducts,
+  checkout,
+  scanProduct,
+  voidSale,
+} from '../../services/pos.service.js';
 import { getOpenShift } from '../../services/shifts.service.js';
 
 /**
@@ -184,4 +192,44 @@ posRouter.post('/pos/checkout', ...guard, async (req, res) => {
   );
 
   res.status(201).json({ data: result });
+});
+
+const voidSchema = z.object({
+  /** Proof a manager approved (O9 Tier 3) — required when the caller is a
+   *  cashier, ignored otherwise. Same mechanism as the discount and returns
+   *  overrides: verified against the signature, never a bare claim. */
+  overrideToken: z.string().trim().min(1).optional(),
+});
+
+/**
+ * POST /api/v1/pos/orders/:orderId/void
+ *
+ * Distinct from a return: same sale, undone at the same register, moments
+ * later — see `voidSale`'s own doc comment. Reversing a completed sale is
+ * exactly the kind of thing a cashier should not do unsupervised, the same
+ * reasoning O9.7 already applied to approving a return.
+ */
+posRouter.post('/pos/orders/:orderId/void', ...guard, async (req, res) => {
+  const parsed = voidSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    throw AppError.badRequest('Invalid request', parsed.error.flatten());
+  }
+
+  const user = requireUser(req);
+  const orderId = String(req.params.orderId);
+
+  if (effectiveRole(req) === StaffRole.CASHIER) {
+    if (!parsed.data.overrideToken) {
+      throw AppError.forbidden('A manager needs to approve this in place');
+    }
+
+    if (!verifyOverrideToken(parsed.data.overrideToken)) {
+      throw AppError.forbidden('The manager approval could not be verified');
+    }
+  }
+
+  const result = await voidSale(orderId, user.id, req);
+
+  res.json({ data: result });
 });

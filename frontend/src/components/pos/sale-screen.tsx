@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/select';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
-import { checkout, scanProduct } from '@/lib/pos-api';
+import { checkout, scanProduct, voidSale } from '@/lib/pos-api';
 import { ThermalReceipt, type ReceiptData } from '@/components/pos/thermal-receipt';
 import { ProductGrid } from '@/components/pos/product-grid';
 import { ManagerOverrideDialog } from '@/components/pos/manager-override-dialog';
@@ -119,6 +119,12 @@ export function SaleScreen() {
    *  — a receipt left on screen while a new sale is rung up is one somebody
    *  eventually prints for the wrong customer. */
   const [lastSale, setLastSale] = useState<ReceiptData | null>(null);
+  /** Kept alongside `lastSale` (not folded into `ReceiptData`, which is a
+   *  pure printing shape) so the void button below knows which order to
+   *  void — the receipt itself has no reason to carry an id. */
+  const [lastSaleOrderId, setLastSaleOrderId] = useState<string | null>(null);
+  const [isVoiding, setIsVoiding] = useState(false);
+  const [voidOverrideOpen, setVoidOverrideOpen] = useState(false);
 
   const scanField = useRef<HTMLInputElement>(null);
 
@@ -159,8 +165,12 @@ export function SaleScreen() {
    * around that rule.
    */
   function addToCart(product: CartProduct) {
-    // A new item starts a new sale; the previous receipt goes away.
+    // A new item starts a new sale; the previous receipt — and the ability
+    // to void it from here — goes away with it. The order still exists and
+    // can be voided from its own detail page if truly needed; this screen
+    // only offers the fast path for "moments ago, same register".
     setLastSale(null);
+    setLastSaleOrderId(null);
 
     setLines((current) => {
       const existing = current.find((line) => line.product.id === product.id);
@@ -278,6 +288,7 @@ export function SaleScreen() {
         tendered: method === 'cash' && tendered.trim() !== '' ? tendered.trim() : null,
         change: result.change,
       });
+      setLastSaleOrderId(result.orderId);
       toast.success(t('sold', { total: result.total }));
 
       setLines([]);
@@ -304,6 +315,38 @@ export function SaleScreen() {
     } finally {
       setIsSelling(false);
       refocus();
+    }
+  }
+
+  /**
+   * Void the sale just rung up (O9 Tier 3) — same register, moments later,
+   * distinct from a return (which needs an actual customer bringing
+   * something back, and its own Sheet — `till-return-sheet.tsx`).
+   */
+  async function voidLastSale(overrideToken?: string) {
+    if (!lastSaleOrderId || isVoiding) return;
+
+    setIsVoiding(true);
+    setError(null);
+
+    try {
+      await voidSale(lastSaleOrderId, overrideToken);
+      toast.success(t('voided'));
+      setLastSale(null);
+      setLastSaleOrderId(null);
+      setGridRefreshKey((n) => n + 1);
+    } catch (caught) {
+      // Same recognition the till return sheet uses: a 403 here means a
+      // cashier hit the manager-required path, not a genuine failure — the
+      // fix is the override dialog, not a raw error message.
+      if (caught instanceof ApiError && caught.status === 403) {
+        setVoidOverrideOpen(true);
+        return;
+      }
+
+      setError(translateError(caught));
+    } finally {
+      setIsVoiding(false);
     }
   }
 
@@ -614,8 +657,27 @@ export function SaleScreen() {
               <Printer className="size-4" aria-hidden />
               {t('printReceipt')}
             </Button>
+            {/* Same-register, moments-later undo — distinct from a return,
+                which needs an actual customer and lives in its own Sheet. */}
+            <Button
+              variant="ghost"
+              className="text-destructive hover:text-destructive w-full"
+              onClick={() => void voidLastSale()}
+              disabled={isVoiding}
+            >
+              {isVoiding ? t('voiding') : t('voidSale')}
+            </Button>
           </div>
         ) : null}
+
+        <ManagerOverrideDialog
+          open={voidOverrideOpen}
+          onOpenChange={setVoidOverrideOpen}
+          reason={t('managerOverride.voidReason')}
+          onApproved={(result: ManagerOverrideResult) => {
+            void voidLastSale(result.overrideToken);
+          }}
+        />
       </aside>
 
       {/* Rendered off-screen and revealed only by the print stylesheet, so the

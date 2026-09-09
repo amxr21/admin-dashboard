@@ -565,3 +565,121 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
     change: created.payment.change?.toFixed(2) ?? null,
   };
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+ * VOID (O9 Tier 3)
+ *
+ * Distinct from a return, on purpose: a return is a customer bringing
+ * something back days later, needs a manager (O9.7), and lives in
+ * `Return`/`returns.service.ts`. A void is the SAME sale, undone at the same
+ * register, moments later, correcting a mistake — nobody ever actually had
+ * the goods in the customer's understanding. So it never touches `Return` at
+ * all; it reverses the three things checkout itself wrote: the order status,
+ * the stock, and the payment.
+ * ───────────────────────────────────────────────────────────────────── */
+
+export async function voidSale(orderId: string, actorId: string, req: Request) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      branchId: true,
+      items: { select: { productId: true, quantity: true } },
+      payments: { select: { id: true, amount: true } },
+    },
+  });
+
+  if (!order) throw AppError.notFound('Order not found');
+
+  // Only CONFIRMED — the status a POS sale is created at and never moves
+  // from unless something ELSE already happened to it. Once shipped,
+  // delivered, cancelled or returned, undoing it is one of those other
+  // flows' job, not a void's: a delivered order has physically left the
+  // branch, and reversing stock for it would put units back on a shelf that
+  // does not have them.
+  if (order.status !== OrderStatus.CONFIRMED) {
+    throw AppError.badRequest(
+      `Only a CONFIRMED sale can be voided (this one is ${order.status})`,
+      { field: 'status' },
+    );
+  }
+
+  if (!order.branchId) {
+    // A sale with no recorded branch cannot have its stock reversed
+    // anywhere in particular — see `defaultBranchId()`'s own reasoning for
+    // why guessing one is worse than refusing.
+    throw AppError.badRequest('This order has no branch recorded and cannot be voided');
+  }
+
+  const branchId = order.branchId;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.order.update({ where: { id: orderId }, data: { status: OrderStatus.CANCELED } });
+
+    await tx.orderStatusHistory.create({
+      data: {
+        orderId,
+        fromStatus: order.status,
+        toStatus: OrderStatus.CANCELED,
+        note: 'Voided at the till',
+        changedById: actorId,
+      },
+    });
+
+    // Stock back, one movement per line, same discipline as a return's own
+    // restock — CORRECTION rather than RETURNED: nothing came back from a
+    // customer, the sale itself was undone.
+    for (const item of order.items) {
+      if (!item.productId) continue;
+
+      await tx.stockMovement.create({
+        data: {
+          productId: item.productId,
+          branchId,
+          delta: item.quantity,
+          reason: StockMovementReason.CORRECTION,
+          note: `Voided sale ${order.orderNumber}`,
+          actorId,
+        },
+      });
+
+      await tx.product.update({
+        where: { id: item.productId },
+        data: { stock: { increment: item.quantity } },
+      });
+
+      await tx.branchStock.upsert({
+        where: { productId_branchId: { productId: item.productId, branchId } },
+        create: { productId: item.productId, branchId, quantity: item.quantity },
+        update: { quantity: { increment: item.quantity } },
+      });
+    }
+
+    // Every payment reversed with its own NEGATIVE row — `Payment.amount` is
+    // signed exactly for this, the same reasoning a refund uses. Never edit
+    // or delete the original: the till was counted against it once already,
+    // and erasing it would make that count impossible to reconstruct.
+    for (const payment of order.payments) {
+      await tx.payment.create({
+        data: {
+          orderId,
+          amount: payment.amount.negated(),
+          method: 'void',
+          actorId,
+          note: `Reversal of payment ${payment.id}`,
+        },
+      });
+    }
+  });
+
+  audit(req, {
+    action: 'order.voided',
+    entity: 'orders',
+    entityId: orderId,
+    changes: { status: { from: order.status, to: OrderStatus.CANCELED } },
+  });
+
+  return { orderId, orderNumber: order.orderNumber };
+}
