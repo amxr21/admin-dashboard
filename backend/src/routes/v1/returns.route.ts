@@ -1,11 +1,12 @@
-import { ReturnCategory, ReturnResolution, ReturnStatus } from '@prisma/client';
+import { ReturnCategory, ReturnResolution, ReturnStatus, StaffRole } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
-import { withBranchContext } from '../../middleware/branch-context.js';
+import { effectiveRole, withBranchContext } from '../../middleware/branch-context.js';
+import { verifyOverrideToken } from '../../services/auth.service.js';
 import {
   approveReturn,
   createReturn,
@@ -60,6 +61,9 @@ const rejectBody = z
       .trim()
       .min(1, 'Explain why this return is being rejected')
       .max(500),
+    // Same reasoning as approve's own field — deciding the OUTCOME, accept
+    // or reject, is what needs a manager, not specifically the accept path.
+    overrideToken: z.string().trim().min(1).optional(),
   })
   .strict();
 
@@ -93,6 +97,14 @@ const approveBody = z
         }),
       )
       .optional(),
+    /**
+     * Proof a manager approved (O9.7, O9 Tier 4) — required when the CALLER
+     * is a cashier; ignored (a manager approving from their own login needs
+     * no second manager to approve THEM). Verified against the signature,
+     * never trusted as a bare claim — same reasoning as the till's own
+     * discount override.
+     */
+    overrideToken: z.string().trim().min(1).optional(),
   })
   .strict();
 
@@ -133,6 +145,34 @@ returnsRouter.post('/returns/:id/approve', ...guard, async (req, res) => {
   const user = requireUser(req);
   const id = String(req.params.id);
 
+  /**
+   * O9.7 — deciding whether a return is accepted is a manager's call, not a
+   * cashier's, even though CASHIER holds the same `returns` AREA as
+   * requesting one does (a cashier genuinely needs `returns` to create a
+   * request; approving is the part that needs more).
+   *
+   * Checked against `effectiveRole`, not the global role — a per-branch
+   * demotion to CASHIER (F8.4) must not leave someone approving with their
+   * global MANAGER rank instead. Someone ALREADY manager-or-above here
+   * needs no second manager to approve themselves; the override exists for
+   * the cashier who is not one.
+   */
+  let approverId: string | null = null;
+
+  if (effectiveRole(req) === StaffRole.CASHIER) {
+    if (!parsed.data.overrideToken) {
+      throw AppError.forbidden('A manager needs to approve this in place');
+    }
+
+    const verified = verifyOverrideToken(parsed.data.overrideToken);
+
+    if (!verified) {
+      throw AppError.forbidden('The manager approval could not be verified');
+    }
+
+    approverId = verified;
+  }
+
   const result = await approveReturn(
     id,
     // The branch the goods come back to, from the switcher (F8.2).
@@ -140,7 +180,12 @@ returnsRouter.post('/returns/:id/approve', ...guard, async (req, res) => {
     req,
   );
 
-  req.log.warn({ event: 'return.approved', returnId: id, userId: user.id });
+  req.log.warn({
+    event: 'return.approved',
+    returnId: id,
+    userId: user.id,
+    ...(approverId ? { approvedByOverride: approverId } : {}),
+  });
 
   res.json({ data: { return: result } });
 });
@@ -151,6 +196,18 @@ returnsRouter.post('/returns/:id/reject', ...guard, async (req, res) => {
 
   const user = requireUser(req);
   const id = String(req.params.id);
+
+  // O9.7 — same reasoning as approve: deciding the outcome is a manager's
+  // call, whichever way it goes.
+  if (effectiveRole(req) === StaffRole.CASHIER) {
+    if (!parsed.data.overrideToken) {
+      throw AppError.forbidden('A manager needs to approve this in place');
+    }
+
+    if (!verifyOverrideToken(parsed.data.overrideToken)) {
+      throw AppError.forbidden('The manager approval could not be verified');
+    }
+  }
 
   const result = await rejectReturn(id, parsed.data.rejectionReason, req);
 

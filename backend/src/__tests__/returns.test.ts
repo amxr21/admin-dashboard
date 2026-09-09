@@ -5,7 +5,7 @@ import { OrderStatus, Prisma, StaffRole } from '@prisma/client';
 
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
-import { signToken } from '../services/auth.service.js';
+import { signToken, verifyManagerOverride } from '../services/auth.service.js';
 import { waitFor } from './helpers/wait-for.js';
 
 /**
@@ -66,7 +66,7 @@ async function makeUser(role: StaffRole, tag = role.toLowerCase()) {
     },
   });
   userIds.push(user.id);
-  return { token: signToken(user), id: user.id };
+  return { token: signToken(user), id: user.id, email: user.email };
 }
 
 async function makeProduct(stock = 10) {
@@ -883,5 +883,118 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
     expect(savedA?.acceptedQuantity).toBe(1);
     expect(savedB?.status).toBe('REJECTED');
     expect(savedB?.rejectionReason).toBe('Opened');
+  });
+});
+
+describe('a cashier cannot approve or reject alone (O9.7)', () => {
+  it('refuses a cashier approving with no manager override', async () => {
+    const cashier = await makeUser(StaffRole.CASHIER, 'return-cashier-1');
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(cashier.token))
+      .send({ orderId, reason: 'damaged', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(cashier.token))
+      .send({ resolution: 'REFUND', refundAmount: '25.00', restock: false });
+
+    expect(res.status).toBe(403);
+
+    // Refused before anything moved.
+    const row = await prisma.return.findUnique({ where: { id } });
+    expect(row?.status).toBe('REQUESTED');
+  });
+
+  it('refuses a cashier rejecting with no manager override', async () => {
+    const cashier = await makeUser(StaffRole.CASHIER, 'return-cashier-2');
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(cashier.token))
+      .send({ orderId, reason: 'damaged', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/reject`)
+      .set(auth(cashier.token))
+      .send({ rejectionReason: 'Used' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('approves once a real manager override token verifies', async () => {
+    const cashier = await makeUser(StaffRole.CASHIER, 'return-cashier-3');
+    const manager = await makeUser(StaffRole.MANAGER, 'return-manager-1');
+    const approval = await verifyManagerOverride(
+      manager.email,
+      'correct-horse-battery-staple',
+    );
+
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(cashier.token))
+      .send({ orderId, reason: 'damaged', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(cashier.token))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '25.00',
+        restock: false,
+        overrideToken: approval.overrideToken,
+      });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects a forged override token', async () => {
+    const cashier = await makeUser(StaffRole.CASHIER, 'return-cashier-4');
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(cashier.token))
+      .send({ orderId, reason: 'damaged', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(cashier.token))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '25.00',
+        restock: false,
+        overrideToken: 'not-a-real-token',
+      });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('lets a MANAGER approve directly, with no override token at all', async () => {
+    // Already manager-or-above needs no second manager to approve THEM.
+    const manager = await makeUser(StaffRole.MANAGER, 'return-manager-2');
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(manager.token))
+      .send({ orderId, reason: 'damaged', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(manager.token))
+      .send({ resolution: 'REFUND', refundAmount: '25.00', restock: false });
+
+    expect(res.status).toBe(200);
   });
 });
