@@ -18,6 +18,7 @@ import {
   listOrders,
   listOrdersForExport,
   previewBulkStatusChange,
+  refundOrder,
 } from '../../services/orders.service.js';
 
 /**
@@ -264,3 +265,39 @@ ordersRouter.post('/orders/:id/notes', ...guard, async (req, res) => {
 
   res.json({ data: { order } });
 });
+
+const refundBody = z
+  .object({
+    amount: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Enter an amount like 25.00'),
+    reason: z.string().trim().min(1, 'Enter a reason for this refund').max(500),
+  })
+  .strict();
+
+/**
+ * POST /orders/:id/refund — a goodwill refund (B4.10), no return behind it.
+ *
+ * Behind `returns`, not `orders` — the owner's own call: the same people who
+ * can already approve a return's refund (which moves money with no
+ * independent check beyond staff judgment) can issue one with no return at
+ * all. `refundOrder` caps it against what remains paid on the order, so the
+ * same money cannot be refunded twice across separate goodwill refunds or
+ * returns.
+ */
+ordersRouter.post(
+  '/orders/:id/refund',
+  authenticate,
+  withBranchContext,
+  requireArea('returns'),
+  async (req, res) => {
+    const parsed = refundBody.safeParse(req.body);
+
+    if (!parsed.success) {
+      throw AppError.badRequest('Invalid request', parsed.error.flatten());
+    }
+
+    const user = requireUser(req);
+    const order = await refundOrder(String(req.params.id), parsed.data, user.id, req);
+
+    res.json({ data: { order } });
+  },
+);

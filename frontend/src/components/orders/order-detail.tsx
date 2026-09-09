@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { ChevronLeft, ChevronRight, Printer, RotateCcw, Store } from 'lucide-react';
+import { ChevronLeft, ChevronRight, HandCoins, Printer, RotateCcw, Store } from 'lucide-react';
 
 import { AssignCourierControl } from '@/components/orders/assign-courier-control';
 import { Breadcrumb } from '@/components/shell/breadcrumb';
@@ -14,6 +14,7 @@ import { LastUpdatedNote } from '@/components/last-updated-note';
 import { OrderNotesSection } from '@/components/orders/order-notes-section';
 import { OrderStatusControl } from '@/components/orders/order-status-control';
 import { OrderStatusTimeline } from '@/components/orders/order-status-timeline';
+import { RefundOrderDialog } from '@/components/orders/refund-order-dialog';
 import { RequestReturnSheet } from '@/components/orders/request-return-sheet';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { canAccessArea, type StaffRole } from '@/config/areas';
+import { useAuth } from '@/hooks/useAuth';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { ApiError } from '@/lib/api';
@@ -89,6 +92,10 @@ export function OrderDetail({ id }: { id: string }) {
   const searchParams = useSearchParams();
   const { navLabels } = useAppSettings();
   const ordersLabel = navLabels.orders ?? tNav('orders');
+  const { user } = useAuth();
+  // A courtesy only — the server enforces the real `returns` gate on the
+  // refund route regardless of what this hides.
+  const canRefund = canAccessArea((user?.role ?? 'DEMO') as StaffRole, 'returns');
 
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -96,6 +103,7 @@ export function OrderDetail({ id }: { id: string }) {
   const [notFound, setNotFound] = useState(false);
   const [returnSheetOpen, setReturnSheetOpen] = useState(false);
   const [returnMessage, setReturnMessage] = useState<string | null>(null);
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [neighbors, setNeighbors] = useState<OrderNeighbors | null>(null);
   const [latestAuditEntry, setLatestAuditEntry] = useState<{
     createdAt: string;
@@ -299,6 +307,17 @@ export function OrderDetail({ id }: { id: string }) {
             </Button>
           ) : null}
 
+          {/* Deliberately NOT gated by nextStatuses (B4.10) — a goodwill
+              refund is not the return transition, and tying it to that
+              would refuse it for exactly the orders (already delivered,
+              already closed) where it's most likely to be the right call. */}
+          {canRefund ? (
+            <Button variant="outline" onClick={() => setRefundDialogOpen(true)}>
+              <HandCoins aria-hidden />
+              {t('refund.action')}
+            </Button>
+          ) : null}
+
           <OrderStatusControl
             orderId={order.id}
             status={order.status}
@@ -471,6 +490,13 @@ export function OrderDetail({ id }: { id: string }) {
           setReturnMessage(message);
           setReturnSheetOpen(false);
         }}
+      />
+
+      <RefundOrderDialog
+        order={order}
+        open={refundDialogOpen}
+        onOpenChange={setRefundDialogOpen}
+        onRefunded={setOrder}
       />
     </div>
   );

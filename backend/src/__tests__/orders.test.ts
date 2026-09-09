@@ -1254,3 +1254,100 @@ describe('failure shapes', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('a goodwill refund, no return behind it (B4.10)', () => {
+  async function makePayment(orderId: string, amount: string) {
+    await prisma.payment.create({
+      data: {
+        orderId,
+        amount: new Prisma.Decimal(amount),
+        method: 'cash',
+        actorId: ownerId,
+      },
+    });
+  }
+
+  it('writes a negative Payment row with the reason as its note', async () => {
+    const id = await makeOrder();
+    await makePayment(id, '59.98');
+
+    const res = await request(app)
+      .post(`/api/v1/orders/${id}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '20.00', reason: 'Goodwill — arrived late' });
+
+    expect(res.status).toBe(200);
+
+    const payment = await prisma.payment.findFirst({
+      where: { orderId: id, method: 'goodwill-refund' },
+    });
+    expect(payment).not.toBeNull();
+    expect(payment?.amount.toFixed(2)).toBe('-20.00');
+    expect(payment?.note).toBe('Goodwill — arrived late');
+  });
+
+  it('caps at what remains paid, not the raw order total', async () => {
+    const id = await makeOrder();
+    await makePayment(id, '59.98');
+
+    // First refund: 40 of 59.98 remains paid → 19.98 left.
+    const first = await request(app)
+      .post(`/api/v1/orders/${id}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '40.00', reason: 'Partial goodwill' });
+    expect(first.status).toBe(200);
+
+    // A second refund for MORE than what remains (19.98) must be refused —
+    // capping against the raw 59.98 total again would let the same money
+    // be refunded twice.
+    const overCap = await request(app)
+      .post(`/api/v1/orders/${id}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '25.00', reason: 'Second goodwill' });
+
+    expect(overCap.status).toBe(400);
+    expect((overCap.body as { error: { details?: { max?: string } } }).error.details?.max).toBe(
+      '19.98',
+    );
+  });
+
+  it('refuses a reason left blank', async () => {
+    const id = await makeOrder();
+    await makePayment(id, '59.98');
+
+    const res = await request(app)
+      .post(`/api/v1/orders/${id}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '10.00', reason: '   ' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a zero or negative amount', async () => {
+    const id = await makeOrder();
+    await makePayment(id, '59.98');
+
+    const zero = await request(app)
+      .post(`/api/v1/orders/${id}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '0.00', reason: 'x' });
+    expect(zero.status).toBe(400);
+  });
+
+  it('writes an audit entry', async () => {
+    const id = await makeOrder();
+    await makePayment(id, '59.98');
+
+    await request(app)
+      .post(`/api/v1/orders/${id}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '10.00', reason: 'Goodwill' });
+
+    const entry = await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { entity: 'orders', entityId: id, action: 'order.goodwill_refund' },
+      }),
+    );
+    expect(entry).not.toBeNull();
+  });
+});

@@ -305,3 +305,21 @@ export async function addOrderNote(id: string, body: string): Promise<OrderDetai
   });
   return result.order;
 }
+
+/**
+ * A goodwill refund (B4.10) — money handed back with no return behind it. A
+ * negative Payment row, same mechanism a void's reversal uses; capped
+ * server-side against what remains paid on the order, not the raw total, so
+ * the same money cannot be refunded twice across separate goodwill refunds
+ * or returns.
+ */
+export async function refundOrder(
+  id: string,
+  input: { amount: string; reason: string },
+): Promise<OrderDetail> {
+  const result = await apiFetch<{ order: OrderDetail }>(`/orders/${id}/refund`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return result.order;
+}

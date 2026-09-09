@@ -710,6 +710,18 @@
     "empty": "No orders yet.",
     "guest": "Guest",
     "requestReturn": "Request return",
+    "refund": {
+      "action": "Refund",
+      "title": "Refund this order",
+      "body": "Money handed back with no return — nothing needs to come back for this. Capped at what remains paid on this order.",
+      "amountLabel": "Amount",
+      "reasonLabel": "Reason",
+      "reasonPlaceholder": "e.g. arrived late, price-matched a competitor",
+      "cancel": "Cancel",
+      "confirm": "Refund",
+      "saving": "Refunding…",
+      "done": "Refunded {amount}"
+    },
     "placedOn": "Placed on {date}",
     "total": "{count, plural, one {# order} other {# orders}}",
     "exportCsv": "Export CSV",
