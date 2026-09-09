@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Clock, Loader2, LogIn, LogOut, Printer } from 'lucide-react';
+import { Loader2, LogIn, LogOut, Printer } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +21,7 @@ import {
 import { elapsedLabel, useShiftClock } from '@/hooks/useShiftClock';
 import { TillEventControls } from '@/components/pos/till-event-controls';
 import { TillReportView } from '@/components/pos/till-report-view';
+import { ShiftClockDial } from '@/components/pos/shift-clock-dial';
 import { fetchTillReport, type TillReport } from '@/lib/shifts-api';
 
 /**
@@ -28,7 +29,10 @@ import { fetchTillReport, type TillReport } from '@/lib/shifts-api';
  *
  * Reuses `useShiftClock` — the topbar indicator (`shift-control.tsx`) and
  * the till's own onboarding gate (`sale-screen.tsx`) share the exact same
- * logic, so a fix here cannot drift from either.
+ * logic, so a fix here cannot drift from either. The circular dial
+ * (`ShiftClockDial`) is a pure display of the same `startedAt`/elapsed facts
+ * this screen already had — see that component's own doc comment for why it
+ * doesn't let you drag a time, unlike the Sleep-app dial that inspired it.
  */
 export function ShiftClockScreen() {
   const t = useTranslations('shifts');
@@ -151,7 +155,7 @@ export function ShiftClockScreen() {
         ) : null}
 
         <div className="space-y-1">
-          <Clock className="text-muted-foreground mx-auto size-10" aria-hidden />
+          <ShiftClockDial startedAt={null} />
           <p className="text-lg font-medium">{t('notOnShift')}</p>
         </div>
 
@@ -191,10 +195,13 @@ export function ShiftClockScreen() {
   return (
     <div className="mx-auto max-w-md space-y-6 rounded-lg border p-8 text-center">
       <div className="space-y-1">
-        <p className="text-muted-foreground text-sm">{shift.branch.name}</p>
-        <p className="text-6xl font-semibold tabular-nums" aria-live="polite">
-          {elapsedLabel(shift.startedAt)}
-        </p>
+        <div aria-live="polite">
+          <ShiftClockDial
+            startedAt={shift.startedAt}
+            durationLabel={elapsedLabel(shift.startedAt)}
+            caption={shift.branch.name}
+          />
+        </div>
         <p className="text-muted-foreground text-xs">{t('elapsedHint')}</p>
       </div>
 
