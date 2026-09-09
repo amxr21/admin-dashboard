@@ -12,7 +12,7 @@ reasoning behind decisions already made, not for what is open.
 
 # 📊 STATUS AT A GLANCE — 2026-09-08
 
-**20 open · 95 done.** Started this session at 87 open, closed 11, then the
+**19 open · 96 done.** Started this session at 87 open, closed 11, then the
 owner used the merged build and opened **O9** (16 items) — see below.
 
 | | Track | State |
@@ -30,7 +30,7 @@ owner used the merged build and opened **O9** (16 items) — see below.
 | ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
 | ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
 | 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
-| 🔨 | **O9** the till: a counter, not an endpoint list | 12 done, 5 left |
+| 🔨 | **O9** the till: a counter, not an endpoint list | 13 done, 4 left |
 | 📋 | 16 items | see PENDING below |
 
 **Verification at this point:** backend 1001/1001 (47 files) · frontend
@@ -936,9 +936,28 @@ systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6)
       follow-up if the owner asks for it specifically.
 - [ ] **O9.12b — Park / hold a sale.** Customer forgot their wallet. Without
       it the cashier's only option is to delete the cart and re-scan.
-- [ ] **O9.9 — Void a line and void a sale.** Distinct from a refund: a void
-      is before the money moves, a refund after. The commonest need after a
-      mis-scan.
+- [x] **O9.9 — DONE 2026-09-09.** Void a sale. **Void a LINE pre-payment
+      already existed** (the trash icon on an unpaid cart line) — this
+      closes the other half, voiding a just-completed sale. Distinct from a
+      RETURN on purpose: a return is a customer bringing something back days
+      later (O9.7, needs a manager, lives in `Return`); a void is the SAME
+      sale undone at the SAME register moments later — nobody ever had the
+      goods in the customer's understanding. Reverses the three things
+      checkout wrote: order → CANCELED (only from CONFIRMED — a delivered
+      order has physically left the branch), stock back via a `CORRECTION`
+      movement (not `RETURNED` — nothing came back from a customer), and a
+      NEW negative `Payment` row (never editing/deleting the original — the
+      till was already counted against it once).
+      Same manager-override gate as discounts and returns — a cashier needs
+      a verified `overrideToken`, manager-or-above needs none.
+      **Two real gaps found and fixed along the way, unrelated to void
+      itself**: `pos-api.ts`'s `CheckoutLine`/`checkout()` client types never
+      actually declared `discountPercent`/`overrideToken` at all — the
+      discount feature (O9.11b) sent both via an inferred array literal
+      TypeScript never checked against the interface, so the client type was
+      silently out of sync with what it sent from the moment it shipped.
+      Verification: backend 1043/1043, frontend 1086/1086 +1 skipped,
+      tsc/eslint clean both sides, en/ar parity 1815/1815. Commit `4fbe414`.
 - [ ] **O9.14 — Cashier notes on a sale.** The owner's "what if he wants to
       note smth??". Free text on the order, visible on the order detail.
 - [ ] **O9.12 — Split payment.** `Payment` is already a TABLE rather than
