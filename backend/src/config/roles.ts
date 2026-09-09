@@ -25,6 +25,12 @@ export const AREAS = [
   'reports',
   'settings',
   'staff',
+  /** Approving/rejecting a shift (O9.19) — deliberately separate from
+   *  `staff`. Confirming a shift is legitimate is day-to-day supervision, the
+   *  same trust level as approving a return or a discount; it is not a
+   *  hiring/access-control act, so it is not folded into `staff`, which
+   *  MANAGER does not hold. */
+  'shifts',
 ] as const;
 
 export type Area = (typeof AREAS)[number];
@@ -61,6 +67,7 @@ export const ROLE_AREAS: Record<StaffRole, readonly Grant[]> = {
     'returns',
     'reports',
     'settings',
+    'shifts',
   ],
   [StaffRole.FULFILLMENT]: ['orders', 'delivery', 'inventory', 'products', 'returns'],
   /**

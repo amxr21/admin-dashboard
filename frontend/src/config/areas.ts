@@ -26,6 +26,9 @@ export const AREAS = [
   'reports',
   'settings',
   'staff',
+  /** Approving/rejecting a shift (O9.19) — deliberately separate from
+   *  `staff`, which MANAGER does not hold. See roles.ts on the API side. */
+  'shifts',
 ] as const;
 
 export type Area = (typeof AREAS)[number];
@@ -56,6 +59,7 @@ const ROLE_AREAS: Record<StaffRole, readonly (typeof ALL | Area)[]> = {
     'returns',
     'reports',
     'settings',
+    'shifts',
   ],
   FULFILLMENT: ['orders', 'delivery', 'inventory', 'products', 'returns'],
   /**

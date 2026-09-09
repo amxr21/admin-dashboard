@@ -37,6 +37,10 @@ interface ShiftBody {
       originalEndedAt: string | null;
       wasEdited: boolean;
       editReason: string | null;
+      approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
+      approvedAt: string | null;
+      approvalNote: string | null;
+      approvedBy: { id: string } | null;
       user: { id: string };
       branch: { id: string };
       openedBy: { id: string };
@@ -829,5 +833,117 @@ describe('the till (O5.2 / O5.3)', () => {
 
       expect(res.status).toBe(403);
     });
+  });
+});
+
+describe('shift approval (O9.19)', () => {
+  it('starts a new shift PENDING, not a gate on working', async () => {
+    const worker = await makeUser(StaffRole.SUPPORT, 'approval-fresh');
+
+    const res = await request(app)
+      .post('/api/v1/shifts')
+      .set(auth(signToken(worker)))
+      .set('X-Branch-Id', branchId)
+      .send({});
+
+    expect(res.status).toBe(201);
+    const body = res.body as ShiftBody;
+    expect(body.data.shift.approvalStatus).toBe('PENDING');
+    // No gate: the shift is already open and reports back as such — nothing
+    // here blocks the till from working while approval is pending.
+    expect(body.data.shift.endedAt).toBeNull();
+  });
+
+  it('lets a manager approve a shift', async () => {
+    const worker = await makeUser(StaffRole.SUPPORT, 'approval-approve');
+    const shift = await seedShift(worker.id, new Date('2026-09-08T08:00:00Z'), new Date('2026-09-08T16:00:00Z'));
+
+    const res = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/approve`)
+      .set(auth(managerToken))
+      .send({});
+
+    expect(res.status).toBe(200);
+    const body = res.body as ShiftBody;
+    expect(body.data.shift.approvalStatus).toBe('APPROVED');
+    expect(body.data.shift.approvedAt).not.toBeNull();
+    expect(body.data.shift.approvedBy?.id).toBeTruthy();
+  });
+
+  it('lets a manager reject a shift with a required reason', async () => {
+    const worker = await makeUser(StaffRole.SUPPORT, 'approval-reject');
+    const shift = await seedShift(worker.id, new Date('2026-09-08T08:00:00Z'), new Date('2026-09-08T16:00:00Z'));
+
+    const missingReason = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/reject`)
+      .set(auth(managerToken))
+      .send({});
+    expect(missingReason.status).toBe(400);
+
+    const res = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/reject`)
+      .set(auth(managerToken))
+      .send({ note: 'Times do not match the door log' });
+
+    expect(res.status).toBe(200);
+    const body = res.body as ShiftBody;
+    expect(body.data.shift.approvalStatus).toBe('REJECTED');
+    expect(body.data.shift.approvalNote).toBe('Times do not match the door log');
+  });
+
+  it('refuses approving your own shift, even as OWNER', async () => {
+    const shift = await seedShift(ownerId, new Date('2026-09-08T08:00:00Z'), new Date('2026-09-08T16:00:00Z'));
+
+    const res = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/approve`)
+      .set(auth(ownerToken))
+      .send({});
+
+    expect(res.status).toBe(403);
+  });
+
+  it('refuses approving someone who outranks you', async () => {
+    const shift = await seedShift(ownerId, new Date('2026-09-08T08:00:00Z'), new Date('2026-09-08T16:00:00Z'));
+
+    const res = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/approve`)
+      .set(auth(managerToken))
+      .send({});
+
+    expect(res.status).toBe(403);
+  });
+
+  it('refuses approving a shift that was already decided', async () => {
+    const worker = await makeUser(StaffRole.SUPPORT, 'approval-twice');
+    const shift = await seedShift(worker.id, new Date('2026-09-08T08:00:00Z'), new Date('2026-09-08T16:00:00Z'));
+
+    const first = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/approve`)
+      .set(auth(managerToken))
+      .send({});
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/approve`)
+      .set(auth(managerToken))
+      .send({});
+
+    expect(second.status).toBe(400);
+  });
+
+  it('filters the shift list by approvalStatus for a manager\'s queue', async () => {
+    const worker = await makeUser(StaffRole.SUPPORT, 'approval-queue');
+    await seedShift(worker.id, new Date('2026-09-08T08:00:00Z'), new Date('2026-09-08T16:00:00Z'));
+
+    const res = await request(app)
+      .get('/api/v1/shifts')
+      .query({ approvalStatus: 'PENDING', userId: worker.id })
+      .set(auth(managerToken))
+      .set('X-Branch-Id', branchId);
+
+    expect(res.status).toBe(200);
+    const body = res.body as { data: { shifts: { approvalStatus: string }[] } };
+    expect(body.data.shifts.length).toBeGreaterThan(0);
+    expect(body.data.shifts.every((row) => row.approvalStatus === 'PENDING')).toBe(true);
   });
 });

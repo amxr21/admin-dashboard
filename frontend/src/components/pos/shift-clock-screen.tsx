@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Clock, LogIn, LogOut, Printer } from 'lucide-react';
+import { Clock, Loader2, LogIn, LogOut, Printer } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,10 +54,20 @@ export function ShiftClockScreen() {
    *  before that happens or there is nothing left to ask the report for. */
   const [report, setReport] = useState<TillReport | null>(null);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
+  /** Distinct from `isBusy` (start/finish) — this is purely the drawer-hint
+   *  fetch inside the confirm dialog, so a slow one shows its OWN feedback
+   *  rather than looking identical to the button doing nothing (the
+   *  confusion that prompted this). */
+  const [isLoadingExpectedCash, setIsLoadingExpectedCash] = useState(false);
 
   async function openEndDialog() {
     setConfirmEnd(true);
-    setExpectedCash(await fetchExpectedCash());
+    setIsLoadingExpectedCash(true);
+    try {
+      setExpectedCash(await fetchExpectedCash());
+    } finally {
+      setIsLoadingExpectedCash(false);
+    }
   }
 
   async function handleFinish() {
@@ -167,8 +177,12 @@ export function ShiftClockScreen() {
           onClick={() => void start(openingFloat).then(() => setOpeningFloat(''))}
           disabled={isBusy}
         >
-          <LogIn className="size-4" aria-hidden />
-          {t('start')}
+          {isBusy ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+          ) : (
+            <LogIn className="size-4" aria-hidden />
+          )}
+          {isBusy ? t('starting') : t('start')}
         </Button>
       </div>
     );
@@ -254,7 +268,12 @@ export function ShiftClockScreen() {
               {/* Stated AFTER the field, and only as context — leading with
                   the expected figure invites the count to be typed to match
                   it, which is the one thing a variance exists to detect. */}
-              {expectedCash !== null ? (
+              {isLoadingExpectedCash ? (
+                <p className="text-muted-foreground flex items-center gap-1 text-xs">
+                  <Loader2 className="size-3 animate-spin" aria-hidden />
+                  {t('loadingExpected')}
+                </p>
+              ) : expectedCash !== null ? (
                 <p className="text-muted-foreground text-xs">
                   {t('expectedHint', { float: shift.openingFloat, cash: expectedCash })}
                 </p>
@@ -265,8 +284,12 @@ export function ShiftClockScreen() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isBusy}>{t('cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={() => void handleFinish()} disabled={isBusy}>
-              <LogOut className="size-4" aria-hidden />
-              {t('end')}
+              {isBusy ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <LogOut className="size-4" aria-hidden />
+              )}
+              {isBusy ? t('ending') : t('end')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

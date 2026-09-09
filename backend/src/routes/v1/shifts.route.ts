@@ -7,8 +7,9 @@ import { requireArea } from '../../middleware/authorize.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
 import { audit } from '../../services/audit.service.js';
 import { prisma } from '../../db/prisma.js';
-import { TillEventType } from '@prisma/client';
+import { ShiftApprovalStatus, TillEventType } from '@prisma/client';
 import {
+  approveShift,
   closeTill,
   editShift,
   endShift,
@@ -19,6 +20,7 @@ import {
   listShifts,
   listTillEvents,
   recordTillEvent,
+  rejectShift,
   startShift,
 } from '../../services/shifts.service.js';
 import { canAccessAreaResolved } from '../../services/role-permissions.service.js';
@@ -167,22 +169,84 @@ shiftsRouter.patch('/shifts/:id', authenticate, requireArea('staff'), async (req
 });
 
 /**
+ * POST /api/v1/shifts/:id/approve — confirm a shift is legitimate (O9.19).
+ *
+ * Behind `staff`, same reasoning as editing. A RECORD, not a gate: the shift
+ * already started and the till already worked — see `approveShift`'s own
+ * doc comment for why this is deliberately not a block.
+ */
+shiftsRouter.post('/shifts/:id/approve', authenticate, requireArea('shifts'), async (req, res) => {
+  const user = requireUser(req);
+  const shift = await approveShift({ id: user.id, role: user.role }, String(req.params.id));
+
+  audit(req, {
+    action: 'shift.approved',
+    entity: 'shifts',
+    entityId: shift.id,
+    changes: {
+      approvalStatus: { from: 'PENDING', to: shift.approvalStatus },
+    },
+  });
+
+  res.status(200).json({ data: { shift } });
+});
+
+const rejectSchema = z.object({
+  // Required, same discipline as Return.rejectionReason.
+  note: z.string().trim().min(1).max(255),
+});
+
+/** POST /api/v1/shifts/:id/reject — same shape as approve, opposite outcome. */
+shiftsRouter.post('/shifts/:id/reject', authenticate, requireArea('shifts'), async (req, res) => {
+  const parsed = rejectSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    throw AppError.badRequest('Invalid request', parsed.error.flatten());
+  }
+
+  const user = requireUser(req);
+  const shift = await rejectShift(
+    { id: user.id, role: user.role },
+    String(req.params.id),
+    parsed.data.note,
+  );
+
+  audit(req, {
+    action: 'shift.rejected',
+    entity: 'shifts',
+    entityId: shift.id,
+    changes: {
+      approvalStatus: { from: 'PENDING', to: shift.approvalStatus },
+      approvalNote: { from: null, to: shift.approvalNote },
+    },
+  });
+
+  res.status(200).json({ data: { shift } });
+});
+
+/**
  * GET /api/v1/shifts — who worked when.
  *
- * Behind `staff`, like the audit trail and login history: it names who was
- * present and for how long, which is personnel data rather than a business
- * metric.
+ * Behind `shifts` (O9.19), not `staff` — a manager needs this list to find
+ * what is waiting on them (`?approvalStatus=PENDING`), and gating the read
+ * behind the SAME area as hiring/access control would mean the person
+ * expected to review shifts day to day cannot see the queue at all. Editing
+ * hours (the PATCH route below) stays behind `staff`: correcting a
+ * timesheet is closer to the HR act `staff` exists for than confirming one
+ * looks right.
  */
 const listQuery = z.object({
   page: z.coerce.number().int().positive().optional(),
   pageSize: z.coerce.number().int().positive().optional(),
   userId: z.string().trim().min(1).optional(),
   open: z.enum(['true', 'false']).optional(),
+  /** A manager's pending-approval queue (O9.19). */
+  approvalStatus: z.nativeEnum(ShiftApprovalStatus).optional(),
   from: z.string().trim().min(1).optional(),
   to: z.string().trim().min(1).optional(),
 });
 
-shiftsRouter.get('/shifts', authenticate, withBranchContext, requireArea('staff'), async (req, res) => {
+shiftsRouter.get('/shifts', authenticate, withBranchContext, requireArea('shifts'), async (req, res) => {
   // Parsed rather than cast: an Express query value can arrive as an array or
   // a nested object (`?userId[x]=1`), and `String()` on one of those yields
   // "[object Object]" — a filter that silently matches nothing.

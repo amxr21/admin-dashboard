@@ -73,7 +73,7 @@ describe('role → area map', () => {
     expect(canAccessArea(StaffRole.FULFILLMENT, 'staff')).toBe(false);
   });
 
-  it('lets DEMO see every area EXCEPT staff', () => {
+  it('lets DEMO see every area EXCEPT staff and shifts', () => {
     /**
      * This used to assert total visibility, on the reasoning that the demo
      * account is a realistic tour and writes are blocked separately.
@@ -84,9 +84,15 @@ describe('role → area map', () => {
      * PROSPECTIVE CLIENTS. Nothing was writable, so no authorisation check
      * ever failed. It was a privacy leak, not an authorisation bug, which is
      * why a write-focused rule never caught it.
+     *
+     * `shifts` (O9.19) joined the exclusion for the same reason: approving or
+     * rejecting a shift names real staff and exposes who approved whom,
+     * personnel data exactly like `staff` — a prospective client touring the
+     * demo has no business seeing it either.
      */
+    const personnelAreas = new Set(['staff', 'shifts']);
     for (const area of AREAS) {
-      expect(canAccessArea(StaffRole.DEMO, area)).toBe(area !== 'staff');
+      expect(canAccessArea(StaffRole.DEMO, area)).toBe(!personnelAreas.has(area));
     }
   });
 
@@ -94,6 +100,7 @@ describe('role → area map', () => {
     // Listed rather than a wildcard minus one: a future area holding personal
     // data has to be added deliberately instead of arriving granted.
     expect(canAccessArea(StaffRole.DEMO, 'staff')).toBe(false);
+    expect(canAccessArea(StaffRole.DEMO, 'shifts')).toBe(false);
   });
 
   it('marks only DEMO as read-only', () => {

@@ -13,6 +13,8 @@ export interface ShiftPerson {
   email: string;
 }
 
+export type ShiftApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export interface Shift {
   id: string;
   startedAt: string;
@@ -31,6 +33,17 @@ export interface Shift {
   /** Whether the recorded times were corrected. The UI says so rather than
    *  presenting edited hours as though they were clocked. */
   wasEdited: boolean;
+
+  /**
+   * A RECORD, not a gate (O9.19) — a shift starts and the till works
+   * immediately regardless of this value. A manager confirms afterward (or
+   * while it's still running) that it's legitimate.
+   */
+  approvalStatus: ShiftApprovalStatus;
+  approvedAt: string | null;
+  approvedBy: ShiftPerson | null;
+  /** Required on REJECTED, same discipline as a return's rejection reason. */
+  approvalNote: string | null;
 
   /**
    * The till (O5.3), as 2dp strings. NULL means this shift had NO drawer —
@@ -76,18 +89,44 @@ export interface ShiftListResult {
 }
 
 export async function fetchShifts(
-  params: { page?: number; pageSize?: number; userId?: string; open?: boolean; from?: string; to?: string } = {},
+  params: {
+    page?: number;
+    pageSize?: number;
+    userId?: string;
+    open?: boolean;
+    /** A manager's pending-approval queue (O9.19) when set to PENDING. */
+    approvalStatus?: ShiftApprovalStatus;
+    from?: string;
+    to?: string;
+  } = {},
 ): Promise<ShiftListResult> {
   const query = new URLSearchParams();
   if (params.page) query.set('page', String(params.page));
   if (params.pageSize) query.set('pageSize', String(params.pageSize));
   if (params.userId) query.set('userId', params.userId);
   if (params.open) query.set('open', 'true');
+  if (params.approvalStatus) query.set('approvalStatus', params.approvalStatus);
   if (params.from) query.set('from', params.from);
   if (params.to) query.set('to', params.to);
 
   const suffix = query.toString();
   return apiFetch<ShiftListResult>(`/shifts${suffix ? `?${suffix}` : ''}`);
+}
+
+/** Confirm a shift is legitimate (O9.19). See `Shift.approvalStatus`'s own
+ *  note — not a gate, a follow-up record. */
+export async function approveShift(id: string): Promise<Shift> {
+  const result = await apiFetch<{ shift: Shift }>(`/shifts/${id}/approve`, { method: 'POST' });
+  return result.shift;
+}
+
+/** Same shape as approving, opposite outcome. A reason is required. */
+export async function rejectShift(id: string, note: string): Promise<Shift> {
+  const result = await apiFetch<{ shift: Shift }>(`/shifts/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ note }),
+  });
+  return result.shift;
 }
 
 /** Correct the recorded times. A reason is required — an edited timesheet

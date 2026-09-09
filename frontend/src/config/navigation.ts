@@ -5,6 +5,7 @@ import {
   Building2,
   ChartColumn,
   Clock,
+  ClipboardCheck,
   Database,
   FolderTree,
   History,
@@ -103,6 +104,10 @@ export const NAVIGATION: readonly NavGroup[] = [
     items: [
       { href: '/admin/reports', labelKey: 'reports', icon: ChartColumn, area: 'reports' },
       { href: '/admin/staff', labelKey: 'staff', icon: UsersRound, area: 'staff' },
+      // A manager's queue for shift approval (O9.19) — separate from `staff`
+      // on purpose, since MANAGER does not hold that area and confirming a
+      // shift looks legitimate is day-to-day supervision, not an HR act.
+      { href: '/admin/shifts', labelKey: 'shifts', icon: ClipboardCheck, area: 'shifts' },
       // Reading the org chart needs `settings`, like the page it sits beside;
       // CHANGING it is OWNER/DEVELOPER-only and enforced on the server, not
       // by hiding the link. A MANAGER who opens this sees the shops and no

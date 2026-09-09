@@ -1,4 +1,4 @@
-import { Prisma, StaffRole, TillEventType } from '@prisma/client';
+import { Prisma, ShiftApprovalStatus, StaffRole, TillEventType } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
@@ -41,10 +41,14 @@ const SHIFT_SELECT = {
   openingFloat: true,
   closingCount: true,
   variance: true,
+  approvalStatus: true,
+  approvedAt: true,
+  approvalNote: true,
   user: { select: { id: true, name: true, email: true } },
   branch: { select: { id: true, name: true } },
   openedBy: { select: { id: true, name: true, email: true } },
   editedBy: { select: { id: true, name: true, email: true } },
+  approvedBy: { select: { id: true, name: true, email: true } },
 } as const;
 
 type ShiftRow = Prisma.ShiftGetPayload<{ select: typeof SHIFT_SELECT }>;
@@ -57,6 +61,7 @@ function serialise(shift: ShiftRow) {
     originalStartedAt: shift.originalStartedAt?.toISOString() ?? null,
     originalEndedAt: shift.originalEndedAt?.toISOString() ?? null,
     editedAt: shift.editedAt?.toISOString() ?? null,
+    approvedAt: shift.approvedAt?.toISOString() ?? null,
     // Money as 2dp strings, never numbers — the same rule as every other
     // amount that crosses this boundary. Null stays null: "no till" is a
     // different fact from "a float of zero".
@@ -272,6 +277,109 @@ export async function editShift(
   return serialise(updated);
 }
 
+/**
+ * Approve a shift (O9.19).
+ *
+ * ─── A RECORD, NOT A GATE ─────────────────────────────────────────────
+ * The owner's own call: a shift starts and the till works immediately —
+ * `startShift`'s note stands unchanged, clocking on is not a privileged act.
+ * This is a manager confirming afterward (or while it's still running) that
+ * the shift is legitimate, the same "warn/record, don't block" shape the
+ * till already uses for over-stock and discount-cap nudges. A manager being
+ * slow or offline never stops someone from selling.
+ *
+ * Only a PENDING shift can be approved — approving an already-APPROVED one
+ * is a no-op that would silently overwrite who approved it and when, and
+ * approving a REJECTED one would erase the rejection without a trace.
+ * Re-deciding needs a deliberate `reset` first (not built — no request for
+ * it yet), not a second approve/reject call landing on top of the first.
+ */
+export async function approveShift(actor: ShiftActor, shiftId: string) {
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: { id: true, userId: true, approvalStatus: true, user: { select: { role: true } } },
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+
+  // Same two rules as editing: the person who benefits must not be the
+  // person who approves, and rank is never crossed upward.
+  if (shift.userId === actor.id) {
+    throw AppError.forbidden('You cannot approve your own shift');
+  }
+
+  if (outranks(shift.user.role, actor.role)) {
+    throw AppError.forbidden('You cannot approve someone with more access than you');
+  }
+
+  if (shift.approvalStatus !== ShiftApprovalStatus.PENDING) {
+    throw AppError.badRequest(
+      `This shift is already ${shift.approvalStatus.toLowerCase()}`,
+      { field: 'approvalStatus' },
+    );
+  }
+
+  const updated = await prisma.shift.update({
+    where: { id: shiftId },
+    data: {
+      approvalStatus: ShiftApprovalStatus.APPROVED,
+      approvedById: actor.id,
+      approvedAt: new Date(),
+      approvalNote: null,
+    },
+    select: SHIFT_SELECT,
+  });
+
+  return serialise(updated);
+}
+
+/**
+ * Reject a shift (O9.19) — same shape as approving, opposite outcome. A
+ * reason is required, the same discipline `Return.rejectionReason` uses: a
+ * rejected shift with no stated reason is the complaint that follows.
+ *
+ * Deliberately does NOT touch `endedAt`/stock/payments — rejecting is a
+ * statement about the RECORD, not an undo of a sale that already happened
+ * during it. A rejected shift's sales are unaffected; if one needs undoing,
+ * that is `voidSale`'s job, done separately per order.
+ */
+export async function rejectShift(actor: ShiftActor, shiftId: string, note: string) {
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: { id: true, userId: true, approvalStatus: true, user: { select: { role: true } } },
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+
+  if (shift.userId === actor.id) {
+    throw AppError.forbidden('You cannot reject your own shift');
+  }
+
+  if (outranks(shift.user.role, actor.role)) {
+    throw AppError.forbidden('You cannot reject someone with more access than you');
+  }
+
+  if (shift.approvalStatus !== ShiftApprovalStatus.PENDING) {
+    throw AppError.badRequest(
+      `This shift is already ${shift.approvalStatus.toLowerCase()}`,
+      { field: 'approvalStatus' },
+    );
+  }
+
+  const updated = await prisma.shift.update({
+    where: { id: shiftId },
+    data: {
+      approvalStatus: ShiftApprovalStatus.REJECTED,
+      approvedById: actor.id,
+      approvedAt: new Date(),
+      approvalNote: note,
+    },
+    select: SHIFT_SELECT,
+  });
+
+  return serialise(updated);
+}
+
 export interface ShiftListParams {
   page?: number;
   pageSize?: number;
@@ -279,6 +387,8 @@ export interface ShiftListParams {
   branchId?: string;
   /** Only shifts that are still open — "who is on right now". */
   openOnly?: boolean;
+  /** A manager's pending-approval queue (O9.19) when set to PENDING. */
+  approvalStatus?: ShiftApprovalStatus;
   from?: string;
   to?: string;
 }
@@ -293,6 +403,7 @@ export async function listShifts(params: ShiftListParams) {
     ...(params.userId ? { userId: params.userId } : {}),
     ...(params.branchId ? { branchId: params.branchId } : {}),
     ...(params.openOnly ? OPEN : {}),
+    ...(params.approvalStatus ? { approvalStatus: params.approvalStatus } : {}),
     ...(params.from || params.to
       ? {
           startedAt: {

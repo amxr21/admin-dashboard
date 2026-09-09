@@ -362,11 +362,13 @@ model User {
   twoFactorBackupCodes TwoFactorBackupCode[]
   apiKeys              ApiKey[]
   branchRoles          UserBranch[]
-  /// Periods of work (F6.1). Three relations because a shift names up to
-  /// three different people: whose it is, who opened it, who corrected it.
+  /// Periods of work (F6.1). Four relations because a shift names up to four
+  /// different people: whose it is, who opened it, who corrected it, who
+  /// approved it (O9.19).
   shifts               Shift[]               @relation("ShiftWorker")
   shiftsOpened         Shift[]               @relation("ShiftOpener")
   shiftsEdited         Shift[]               @relation("ShiftEditor")
+  shiftsApproved       Shift[]               @relation("ShiftApprover")
   parkedSales          ParkedSale[]
 
   @@index([role])
@@ -1757,6 +1759,12 @@ model ScheduledReport {
 /// Deliberately NOT payroll (F6.6). No rates, no overtime rules, no
 /// jurisdiction-specific rounding. Those carry real legal obligations and are
 /// their own project.
+enum ShiftApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model Shift {
   id String @id @default(cuid())
 
@@ -1798,6 +1806,28 @@ model Shift {
   /// The worker's own note — "covered for Sara", "closed early, power cut".
   note String? @db.VarChar(255)
 
+  /// ─── MANAGER APPROVAL (O9.19) ──────────────────────────────────────
+  /// Clocking on is still not a privileged act — `startShift`'s own note
+  /// above stands: a shift starts and the till works immediately, the same
+  /// as before this existed. Approval is a FOLLOW-UP record a manager makes
+  /// afterward (or while it's still running), not a gate the cashier waits
+  /// behind — the owner's explicit call, so a manager being slow or offline
+  /// never stops someone from selling.
+  ///
+  /// Defaults PENDING so every existing shift keeps its plain meaning on
+  /// upgrade — nothing here retroactively marks past shifts as approved OR
+  /// flags them all for review; a migration backfills every pre-existing row
+  /// to APPROVED instead (see that migration's own note).
+  approvalStatus ShiftApprovalStatus @default(PENDING) @map("approval_status")
+  /// Who approved or rejected it, and when. Both null while PENDING.
+  approvedById   String?             @map("approved_by_id")
+  approvedBy     User?               @relation("ShiftApprover", fields: [approvedById], references: [id])
+  approvedAt     DateTime?           @map("approved_at")
+  /// Required on REJECTED, same discipline as `Return.rejectionReason` — a
+  /// rejected shift with no stated reason is the complaint that follows.
+  /// Null on PENDING/APPROVED.
+  approvalNote   String?             @map("approval_note") @db.VarChar(255)
+
   /// ─── TILL SESSION (O5.3) ──────────────────────────────────────────
   /// A shift and a till session are the SAME object — the owner's answer,
   /// 2026-09-08 — so the money fields live here rather than in a parallel
@@ -1832,6 +1862,8 @@ model Shift {
   @@index([userId, startedAt])
   @@index([branchId, startedAt])
   @@index([endedAt])
+  /// "What's waiting on me" — a manager's pending-approval queue (O9.19).
+  @@index([approvalStatus, startedAt])
   @@map("shifts")
 }
 
