@@ -12,7 +12,7 @@ reasoning behind decisions already made, not for what is open.
 
 # 📊 STATUS AT A GLANCE — 2026-09-08
 
-**21 open · 94 done.** Started this session at 87 open, closed 11, then the
+**20 open · 95 done.** Started this session at 87 open, closed 11, then the
 owner used the merged build and opened **O9** (16 items) — see below.
 
 | | Track | State |
@@ -30,7 +30,7 @@ owner used the merged build and opened **O9** (16 items) — see below.
 | ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
 | ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
 | 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
-| 🔨 | **O9** the till: a counter, not an endpoint list | 11 done, 6 left |
+| 🔨 | **O9** the till: a counter, not an endpoint list | 12 done, 5 left |
 | 📋 | 16 items | see PENDING below |
 
 **Verification at this point:** backend 1001/1001 (47 files) · frontend
@@ -967,18 +967,23 @@ systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6)
       it. Radix's confirm action closes on click by default; prevented so a
       refused approval keeps the dialog open with the reason visible.
       **O9.7 now depends on this** — see below. Commit `7ebc5ff`.
-- [ ] **O9.7 — Return at the register, cashier starts / manager approves.**
-      MOVED from Tier 1 2026-09-09 after the owner clarified the cashier's job
-      is scanning and counting only — deciding whether a return is accepted
-      is a manager's call, not the cashier's. **New shape, decided with the
-      owner**: the cashier scans the receipt and marks which lines are coming
-      back; nothing moves until a manager approves via O9.13's override.
-      **Reuse `returns.service.ts`; do not write a second refund path.** The
-      money math, the restock and the per-line decisions all exist, and
-      receipt lookup by order number already works — this is a till-shaped UI
-      over two things that both exist, plus the new "pending approval" state.
-      **Depends on O9.13 existing first** — "waiting on manager" needs a real
-      approval action, not just a UI label.
+- [x] **O9.7 — DONE 2026-09-09.** Return at the register. A Sheet, not a
+      page (drawer-vs-page convention) — cashier looks up the order by
+      number (search already existed), marks lines coming back, picks a
+      resolution, taps Process.
+      **A real gap found and fixed FIRST, before the UI**: a CASHIER could
+      already approve/reject a return themselves — same `returns` area as
+      requesting one, contradicting the agreed design entirely. Fixed at the
+      route (`effectiveRole(req) === CASHIER` requires a verified
+      `overrideToken`; already-manager-or-above needs none) — commit
+      `6409d6f`.
+      **Reused `returns.service.ts` completely; no second refund path.** The
+      Sheet calls `createReturn` then `approveReturn` back to back, reading
+      as one action from the cashier's side. A 403 on approve (no override
+      yet) opens the reusable `ManagerOverrideDialog`; on retry the SAME
+      return id is reused, not a second request.
+      Verification: backend 1038/1038, frontend 1083/1083 +1 skipped,
+      tsc/eslint clean both sides, en/ar parity 1811/1811. Commit `7dd0224`.
 - [ ] **O9.15 — No-sale drawer open, cash drop, payout.** Opening the drawer
       without a sale is recorded and countable — every system surveyed logs
       these, because an unrecorded drawer open is the classic shrinkage path.
