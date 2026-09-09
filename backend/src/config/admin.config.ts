@@ -224,6 +224,16 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
       { name: 'name', label: 'Name', type: 'text', required: true, searchable: true, sortable: true },
       { name: 'slug', label: 'Slug', type: 'text', required: true, searchable: true },
+      // Depth cap and circular-parent prevention are enforced server-side
+      // (resource-hooks.ts's beforeWrite, S7.6) — a resource with no field
+      // rule for "cannot select an id below a certain depth" leans on that,
+      // not on this config.
+      {
+        name: 'parentId',
+        label: 'Parent category',
+        type: 'relation',
+        relation: { resource: 'categories', labelField: 'name' },
+      },
       { name: 'isActive', label: 'Active', type: 'boolean', sortable: true },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],

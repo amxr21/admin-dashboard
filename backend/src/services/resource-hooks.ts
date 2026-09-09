@@ -2,8 +2,16 @@ import type { Request } from 'express';
 import { ProductStatus } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
+import { AppError } from '../errors/AppError.js';
 import { logger } from '../logger.js';
 import { defaultBranchId } from './inventory.service.js';
+
+/// The category tree's own cap (S7.6) — decided rather than left unbounded:
+/// a shop's catalogue nav is Category → Subcategory → Sub-subcategory in
+/// practice, a deeper tree serves no real storefront and would need the
+/// tree-picker UI and any rollup report to handle arbitrary depth from day
+/// one for no stated need.
+const MAX_CATEGORY_DEPTH = 3;
 
 /**
  * Resource-specific BEHAVIOUR.
@@ -31,6 +39,17 @@ export interface DeleteOutcome {
 
 export interface ResourceHooks {
   /**
+   * Runs BEFORE a generic create or update reaches Prisma, given the WRITE
+   * DATA (already validated against the config's field shapes) and — for an
+   * update — the row's own id, so a hook can tell "moving myself under my
+   * own descendant" apart from "setting my parent for the first time".
+   * Throwing here refuses the write outright — this is the only hook that
+   * CAN, since `afterCreate`/`afterUpdate` run once the row already exists
+   * and rolling that back is not what those hooks are for. A resource with
+   * no hook gets no extra validation beyond the config's own field rules.
+   */
+  beforeWrite?: (data: Record<string, unknown>, id: string | null) => Promise<void>;
+  /**
    * Runs AFTER a successful generic create, given the row as written.
    * Side-effect only, and awaited rather than fire-and-forget where the
    * side effect is part of what the row MEANS — see the products hook.
@@ -56,6 +75,87 @@ export interface ResourceHooks {
 }
 
 export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>> = {
+  categories: {
+    /**
+     * The category tree (S7.6): depth cap and circular-parent prevention.
+     *
+     * ─── WHY THIS RUNS BEFORE THE WRITE, NOT AFTER ────────────────────
+     * A depth violation or a cycle has to REFUSE the write outright, and
+     * `afterCreate`/`afterUpdate` only ever run once the row already exists
+     * — by then the bad parent is already committed. This is the one hook
+     * that can throw and have it mean "the write never happened".
+     *
+     * ─── DEPTH: WALK UP FROM THE PROPOSED PARENT ──────────────────────
+     * A new/moved category's own depth is "however deep its parent already
+     * sits, plus one". Walking up (parent, parent's parent, …) rather than
+     * down avoids ever touching the whole tree — this resource is small,
+     * but the cost should still be proportional to depth, not row count.
+     *
+     * ─── CYCLES: THE SAME WALK CATCHES THEM ───────────────────────────
+     * If the walk ever reaches the category being written, the proposed
+     * parent is a descendant of itself — moving a category under its own
+     * subcategory. The depth walk and the cycle check are the same
+     * traversal, so this fires ONE query per ancestor, not two passes.
+     */
+    beforeWrite: async (data: Record<string, unknown>, id: string | null): Promise<void> => {
+      const parentId = data.parentId;
+      if (typeof parentId !== 'string') return; // Unset or explicitly null — no parent, no walk.
+
+      if (parentId === id) {
+        throw AppError.badRequest('A category cannot be its own parent', { field: 'parentId' });
+      }
+
+      let depth = 1; // The proposed parent's own depth, counted as we walk up.
+      let cursor: string | null = parentId;
+
+      while (cursor) {
+        if (cursor === id) {
+          throw AppError.badRequest(
+            'That would move this category under one of its own subcategories',
+            { field: 'parentId' },
+          );
+        }
+
+        const ancestor: { parentId: string | null } | null = await prisma.category.findUnique({
+          where: { id: cursor },
+          select: { parentId: true },
+        });
+
+        if (!ancestor) break; // A dangling id fails the FK constraint moments later anyway.
+
+        if (ancestor.parentId) depth += 1;
+        cursor = ancestor.parentId;
+      }
+
+      if (depth >= MAX_CATEGORY_DEPTH) {
+        throw AppError.badRequest(
+          `Categories can only nest ${String(MAX_CATEGORY_DEPTH)} levels deep`,
+          { field: 'parentId', max: MAX_CATEGORY_DEPTH },
+        );
+      }
+    },
+
+    /**
+     * Block deleting a category that still has children (S7.6) — the
+     * owner's own call, over silently reparenting them. A delete that also
+     * restructures the rest of the tree is a bigger, less obvious action
+     * than "remove this one category", the same reasoning the last-branch
+     * and last-owner guards elsewhere in this app already follow: never
+     * silently lose structure.
+     */
+    beforeDelete: async (id: string): Promise<DeleteOutcome> => {
+      const childCount = await prisma.category.count({ where: { parentId: id } });
+
+      if (childCount > 0) {
+        throw AppError.badRequest(
+          'This category has subcategories — move or delete them first',
+          { field: 'parentId', childCount },
+        );
+      }
+
+      return { handled: false };
+    },
+  },
   products: {
     /**
      * Give the opening stock a BRANCH (O9.1).

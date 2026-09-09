@@ -684,6 +684,10 @@ export async function createResourceRow(
 
   const data = await buildWriteData(config, body, { partial: false });
 
+  // Refuses the write outright when it fails — the only hook that can, since
+  // the row does not exist yet for anything else to roll back.
+  await hooksFor(config.resource)?.beforeWrite?.(data, null);
+
   try {
     const row = await delegateFor(config).create({ data, select: selectFor(config) });
     const serialized = serializeRow(row, config);
@@ -720,6 +724,8 @@ export async function updateResourceRow(
   const before = await getResourceRow(config, id);
 
   const data = await buildWriteData(config, body, { partial: true });
+
+  await hooksFor(config.resource)?.beforeWrite?.(data, id);
 
   try {
     const row = await delegateFor(config).update({

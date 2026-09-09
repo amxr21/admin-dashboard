@@ -604,11 +604,24 @@ model Notification {
 // CATALOGUE
 // ═══════════════════════════════════════════════════════════════════
 
+/// The category tree (S7.6). `slug` stays globally unique, not per-parent —
+/// the storefront resolves a category by slug alone (`/category/:slug`),
+/// which needs one flat namespace regardless of nesting; two categories
+/// sharing a slug under different parents would make that route ambiguous.
 model Category {
   id       String  @id @default(cuid())
   name     String  @db.VarChar(160)
   slug     String  @unique @db.VarChar(160)
   isActive Boolean @default(true) @map("is_active")
+
+  /// NULL means a top-level category — every existing row on migration,
+  /// needing no backfill. Depth is capped at 3 and cycles are refused by
+  /// `resource-hooks.ts`'s `beforeWrite`, not by the database: MySQL has no
+  /// portable recursive CHECK constraint, so the app is the one place both
+  /// rules can actually be enforced before a bad write commits.
+  parentId String?    @map("parent_id")
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children Category[] @relation("CategoryTree")
 
   products  Product[]
   discounts Discount[]
@@ -616,6 +629,7 @@ model Category {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([parentId])
   @@map("categories")
 }
 
