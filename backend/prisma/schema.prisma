@@ -892,7 +892,10 @@ model Order {
   notes         OrderNote[]
   statusHistory OrderStatusHistory[]
   assignment    DeliveryAssignment?
-  returns       Return[]
+  returns       Return[] @relation("ReturnedOrder")
+  /// Set on the return this order exists to replace (O9.8) — a plain sale
+  /// never has one. See `Return.exchangeOrderId`'s own comment.
+  exchangeFor   Return?  @relation("ExchangeReplacement")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1082,12 +1085,26 @@ model Return {
   rejectionReason String?          @map("rejection_reason") @db.VarChar(500)
 
   orderId String @map("order_id")
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   Order  @relation("ReturnedOrder", fields: [orderId], references: [id], onDelete: Cascade)
 
   customerId String?   @map("customer_id")
   /// SetNull, same reasoning as Order.customer — a deleted customer must not
   /// take their return history with them.
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  /// An exchange (O9.8) — TWO LINKED RECORDS, not one combined transaction
+  /// (the owner's own call): this return is processed exactly like any other
+  /// (refund/restock as normal, resolution = REPLACEMENT), and the till rings
+  /// up the new item as an ordinary sale afterward. This column is the only
+  /// thing connecting the two; nothing about checkout itself changes for an
+  /// exchange versus a plain sale. Set once, when the replacement sale
+  /// completes — NULL for the entire time between "customer approved a
+  /// replacement" and "they picked the new item and paid", which is a real
+  /// state (an exchange started but not yet finished), not a gap to hide.
+  /// SetNull rather than cascade: deleting the replacement sale should not
+  /// take the return's own history with it.
+  exchangeOrderId String? @unique @map("exchange_order_id")
+  exchangeOrder   Order?  @relation("ExchangeReplacement", fields: [exchangeOrderId], references: [id], onDelete: SetNull)
 
   items ReturnItem[]
 

@@ -34,6 +34,10 @@ const {
   listParkedSales,
   resumeParkedSale,
   discardParkedSale,
+  fetchOrders,
+  fetchOrder,
+  createReturn,
+  approveReturn,
 } = vi.hoisted(() => ({
   scanProduct: vi.fn(),
   checkout: vi.fn(),
@@ -46,6 +50,10 @@ const {
   listParkedSales: vi.fn(),
   resumeParkedSale: vi.fn(),
   discardParkedSale: vi.fn(),
+  fetchOrders: vi.fn(),
+  fetchOrder: vi.fn(),
+  createReturn: vi.fn(),
+  approveReturn: vi.fn(),
 }));
 
 vi.mock('@/lib/pos-api', async (importOriginal) => ({
@@ -69,6 +77,14 @@ vi.mock('@/lib/auth-api', async (importOriginal) => ({
 vi.mock('@/lib/orders-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/orders-api')>()),
   addOrderNote,
+  fetchOrders,
+  fetchOrder,
+}));
+
+vi.mock('@/lib/returns-api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/returns-api')>()),
+  createReturn,
+  approveReturn,
 }));
 
 function makeProduct(overrides: Partial<ScannedProduct> = {}): ScannedProduct {
@@ -719,5 +735,97 @@ describe('park / resume a sale (O9.12b)', () => {
       expect(discardParkedSale).toHaveBeenCalledWith('park-1');
     });
     expect(screen.queryByText('Sara')).not.toBeInTheDocument();
+  });
+});
+
+describe('exchange (O9.8)', () => {
+  it('links the replacement sale to the return once one is processed as REPLACEMENT', async () => {
+    fetchOrders.mockResolvedValue({
+      orders: [
+        {
+          id: 'o1',
+          orderNumber: 'POS-1',
+          status: 'DELIVERED',
+          total: '25.00',
+          placedAt: new Date().toISOString(),
+          paymentMethod: 'cash',
+          customer: null,
+          branch: null,
+          itemCount: 1,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 5,
+      totalPages: 1,
+    });
+    fetchOrder.mockResolvedValue({
+      id: 'o1',
+      orderNumber: 'POS-1',
+      status: 'DELIVERED',
+      branch: null,
+      total: '25.00',
+      subtotal: '25.00',
+      taxAmount: '0.00',
+      paymentMethod: 'cash',
+      placedAt: new Date().toISOString(),
+      notes: [],
+      customer: null,
+      items: [
+        {
+          id: 'oi1',
+          quantity: 1,
+          price: '25.00',
+          lineTotal: '25.00',
+          productId: 'other-product',
+          product: { id: 'other-product', name: 'Wrong size shirt', sku: 'WS-1', imageUrl: null },
+        },
+      ],
+      statusHistory: [],
+      assignment: null,
+    });
+    createReturn.mockResolvedValue({ id: 'r1' });
+    approveReturn.mockResolvedValue({ id: 'r1' });
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({
+      orderId: 'new-order',
+      orderNumber: 'POS-2',
+      subtotal: '4.50',
+      taxAmount: '0.00',
+      total: '4.50',
+      change: null,
+    });
+
+    render(<SaleScreen />);
+
+    await userEvent.click(screen.getByRole('button', { name: /process a return/i }));
+    await userEvent.type(screen.getByLabelText(/order number/i), 'POS-1');
+    await userEvent.click(screen.getByRole('button', { name: /look up/i }));
+    await screen.findByText(/order pos-1/i);
+    await userEvent.click(screen.getByRole('checkbox'));
+    await userEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    await screen.findByLabelText(/reason/i);
+    await userEvent.click(screen.getByRole('combobox', { name: /resolution/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /replacement/i }));
+    await userEvent.click(screen.getByRole('button', { name: /process return/i }));
+
+    // The exchange banner shows once the return is done — the cashier still
+    // has to ring up the replacement item.
+    expect(await screen.findByText(/exchange in progress/i)).toBeInTheDocument();
+
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+    await takePaymentThroughConfirm();
+
+    await waitFor(() => {
+      expect(checkout).toHaveBeenCalledWith(
+        expect.objectContaining({ exchangeReturnId: 'r1' }),
+      );
+    });
+
+    // The completed exchange is over — the banner is gone for the next,
+    // ordinary customer.
+    expect(screen.queryByText(/exchange in progress/i)).not.toBeInTheDocument();
   });
 });

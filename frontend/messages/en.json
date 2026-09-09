@@ -2506,6 +2506,9 @@
     "parkedItemCount": "{count, plural, one {# item} other {# items}}",
     "resume": "Resume",
     "discardParked": "Discard {label}",
-    "parkedItemsUnavailable": "{count, plural, one {# item is} other {# items are}} no longer available and were left out"
+    "parkedItemsUnavailable": "{count, plural, one {# item is} other {# items are}} no longer available and were left out",
+    "exchangeStarted": "Return processed — ring up the replacement item now",
+    "exchangeInProgress": "Exchange in progress — this sale will link to the return",
+    "cancelExchange": "Cancel exchange"
   }
 }

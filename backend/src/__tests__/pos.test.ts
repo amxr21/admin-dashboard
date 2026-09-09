@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
-import { Prisma, ProductStatus, StaffRole } from '@prisma/client';
+import { Prisma, ProductStatus, ReturnResolution, StaffRole } from '@prisma/client';
 
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
@@ -132,6 +132,13 @@ afterAll(async () => {
   const soldOrderIds = [...new Set([...orderIds, ...sold.map((item) => item.orderId)])];
 
   await prisma.payment.deleteMany({ where: { orderId: { in: soldOrderIds } } });
+  // Returns seeded against these orders (O9.8's exchange tests) — deleted
+  // BEFORE the order itself. `ReturnItem.orderItem` is Restrict, not
+  // cascade, so an order whose items a still-live return references cannot
+  // be deleted first.
+  await prisma.return.deleteMany({
+    where: { OR: [{ orderId: { in: soldOrderIds } }, { exchangeOrderId: { in: soldOrderIds } }] },
+  });
   await prisma.order.deleteMany({ where: { id: { in: soldOrderIds } } });
   await prisma.parkedSale.deleteMany({ where: { cashierId: { in: userIds } } });
   await prisma.shift.deleteMany({ where: { id: { in: shiftIds } } });
@@ -1338,5 +1345,172 @@ describe('park / resume a sale (O9.12b)', () => {
 
     const res = await discard(id, signToken(other));
     expect(res.status).toBe(403);
+  });
+});
+
+describe('exchange (O9.8)', () => {
+  function sell(body: Record<string, unknown>, token = ownerToken) {
+    return request(app)
+      .post('/api/v1/pos/checkout')
+      .set(auth(token))
+      .set('X-Branch-Id', branchId)
+      .send(body);
+  }
+
+  async function stockAt(productId: string, quantity: number) {
+    await prisma.branchStock.upsert({
+      where: { productId_branchId: { productId, branchId } },
+      create: { productId, branchId, quantity },
+      update: { quantity },
+    });
+    await prisma.product.update({ where: { id: productId }, data: { stock: quantity } });
+  }
+
+  /** Seeds a return in the state an exchange links against — REPLACEMENT
+   *  resolution, not yet linked to a sale. Created directly via Prisma
+   *  rather than the full request/approve HTTP flow, which is already
+   *  covered by `returns.test.ts`; this only needs a return in the right
+   *  shape, not to re-prove approval works. */
+  let rmaCounter = 0;
+
+  async function seedReplacementReturn(orderId: string, orderItemId: string) {
+    rmaCounter += 1;
+    return prisma.return.create({
+      data: {
+        rmaNumber: `RMA-${RUN.slice(-6).toUpperCase()}${String(rmaCounter).padStart(2, '0')}`,
+        reason: 'Wrong size',
+        status: 'APPROVED',
+        resolution: ReturnResolution.REPLACEMENT,
+        orderId,
+        items: { create: [{ orderItemId, quantity: 1 }] },
+      },
+    });
+  }
+
+  it('links the return to the replacement sale', async () => {
+    const original = await makeProduct({ sku: `${RUN}-EXCH-1`, price: '10.00', stock: 5 });
+    await stockAt(original.id, 5);
+
+    const originalSale = await sell({
+      lines: [{ productId: original.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '10.00',
+    });
+    const orderId = (originalSale.body as { data: { orderId: string } }).data.orderId;
+    const orderItem = await prisma.orderItem.findFirstOrThrow({ where: { orderId } });
+
+    const ret = await seedReplacementReturn(orderId, orderItem.id);
+
+    const replacement = await makeProduct({ sku: `${RUN}-EXCH-2`, price: '12.00', stock: 5 });
+    await stockAt(replacement.id, 5);
+
+    const res = await sell({
+      lines: [{ productId: replacement.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '12.00',
+      exchangeReturnId: ret.id,
+    });
+
+    expect(res.status).toBe(201);
+
+    const linked = await prisma.return.findUnique({ where: { id: ret.id } });
+    expect(linked?.exchangeOrderId).toBe(
+      (res.body as { data: { orderId: string } }).data.orderId,
+    );
+  });
+
+  it('refuses linking a return that was not resolved as a replacement', async () => {
+    const original = await makeProduct({ sku: `${RUN}-EXCH-3`, price: '10.00', stock: 5 });
+    await stockAt(original.id, 5);
+
+    const originalSale = await sell({
+      lines: [{ productId: original.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '10.00',
+    });
+    const orderId = (originalSale.body as { data: { orderId: string } }).data.orderId;
+    const orderItem = await prisma.orderItem.findFirstOrThrow({ where: { orderId } });
+
+    const ret = await prisma.return.create({
+      data: {
+        rmaNumber: `RMA-${RUN.slice(-7).toUpperCase()}A`,
+        reason: 'Changed mind',
+        status: 'APPROVED',
+        resolution: ReturnResolution.REFUND,
+        orderId,
+        items: { create: [{ orderItemId: orderItem.id, quantity: 1 }] },
+      },
+    });
+
+    const replacement = await makeProduct({ sku: `${RUN}-EXCH-4`, price: '12.00', stock: 5 });
+    await stockAt(replacement.id, 5);
+
+    const res = await sell({
+      lines: [{ productId: replacement.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '12.00',
+      exchangeReturnId: ret.id,
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses linking a return that already has a replacement sale', async () => {
+    const original = await makeProduct({ sku: `${RUN}-EXCH-5`, price: '10.00', stock: 5 });
+    await stockAt(original.id, 5);
+
+    const originalSale = await sell({
+      lines: [{ productId: original.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '10.00',
+    });
+    const orderId = (originalSale.body as { data: { orderId: string } }).data.orderId;
+    const orderItem = await prisma.orderItem.findFirstOrThrow({ where: { orderId } });
+
+    const ret = await seedReplacementReturn(orderId, orderItem.id);
+
+    const firstReplacement = await makeProduct({ sku: `${RUN}-EXCH-6`, price: '12.00', stock: 5 });
+    await stockAt(firstReplacement.id, 5);
+
+    const first = await sell({
+      lines: [{ productId: firstReplacement.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '12.00',
+      exchangeReturnId: ret.id,
+    });
+    expect(first.status).toBe(201);
+
+    const secondReplacement = await makeProduct({ sku: `${RUN}-EXCH-7`, price: '9.00', stock: 5 });
+    await stockAt(secondReplacement.id, 5);
+
+    const second = await sell({
+      lines: [{ productId: secondReplacement.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '9.00',
+      exchangeReturnId: ret.id,
+    });
+
+    expect(second.status).toBe(400);
+
+    // The FIRST sale's link survived — a refused second attempt must not
+    // steal or clear it.
+    const linked = await prisma.return.findUnique({ where: { id: ret.id } });
+    expect(linked?.exchangeOrderId).toBe(
+      (first.body as { data: { orderId: string } }).data.orderId,
+    );
+  });
+
+  it('refuses linking a return that does not exist', async () => {
+    const replacement = await makeProduct({ sku: `${RUN}-EXCH-8`, price: '12.00', stock: 5 });
+    await stockAt(replacement.id, 5);
+
+    const res = await sell({
+      lines: [{ productId: replacement.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '12.00',
+      exchangeReturnId: 'not-a-real-return-id',
+    });
+
+    expect(res.status).toBe(404);
   });
 });

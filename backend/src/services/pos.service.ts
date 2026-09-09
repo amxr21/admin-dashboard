@@ -1,6 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import type { Request } from 'express';
-import { OrderStatus, Prisma, StockMovementReason, type ProductStatus } from '@prisma/client';
+import {
+  OrderStatus,
+  Prisma,
+  ReturnResolution,
+  StockMovementReason,
+  type ProductStatus,
+} from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
@@ -291,6 +297,17 @@ export interface CheckoutInput {
    * silently rounded.
    */
   splitPayments?: SplitPaymentInput[] | undefined;
+  /**
+   * Exchange (O9.8) — two linked records, not one combined transaction (the
+   * owner's own call). The return itself already happened, processed like
+   * any other (refund/restock, resolution REPLACEMENT); this is an
+   * otherwise-ORDINARY sale that also links back to it, so the return's
+   * history shows what it was traded for. Validated: the return must exist,
+   * carry `resolution: REPLACEMENT`, and not already be linked to a
+   * different sale — a second checkout naming the same return would silently
+   * steal the link from the first.
+   */
+  exchangeReturnId?: string | undefined;
 }
 
 export interface SplitPaymentInput {
@@ -436,6 +453,36 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
     }
   }
 
+  // Exchange (O9.8) — validated before the transaction, same reasoning as
+  // discounts above: a bad return id must never get as far as touching
+  // stock.
+  if (input.exchangeReturnId) {
+    const linkedReturn = await prisma.return.findUnique({
+      where: { id: input.exchangeReturnId },
+      select: { id: true, resolution: true, exchangeOrderId: true },
+    });
+
+    if (!linkedReturn) {
+      throw AppError.notFound('The return this sale is meant to replace was not found');
+    }
+
+    if (linkedReturn.resolution !== ReturnResolution.REPLACEMENT) {
+      throw AppError.badRequest(
+        'That return was not resolved as a replacement, so it cannot be linked to a sale',
+        { field: 'exchangeReturnId' },
+      );
+    }
+
+    if (linkedReturn.exchangeOrderId) {
+      // Second checkout naming the same return — refused rather than
+      // silently re-pointing the link, which would make the FIRST sale
+      // look like it was never actually the replacement.
+      throw AppError.badRequest('That return is already linked to a sale', {
+        field: 'exchangeReturnId',
+      });
+    }
+  }
+
   const created = await prisma.$transaction(async (tx) => {
     // Read INSIDE the transaction: the price that goes on the receipt must be
     // the price at the moment of sale, not one fetched before the customer
@@ -545,6 +592,17 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
       },
       select: { id: true, orderNumber: true },
     });
+
+    // Exchange (O9.8) — link the return to THIS sale now that it exists.
+    // `@unique` on `exchangeOrderId` means a second attempt to link the same
+    // order to a different return would fail here rather than silently
+    // pointing two returns at one sale.
+    if (input.exchangeReturnId) {
+      await tx.return.update({
+        where: { id: input.exchangeReturnId },
+        data: { exchangeOrderId: order.id },
+      });
+    }
 
     // Stock down, one SOLD movement per line, inside the same transaction.
     // Written directly rather than through `adjustStock` because that helper

@@ -186,6 +186,10 @@ const checkoutSchema = z.object({
   /** Proof a manager approved a discount above the cap (O9.13) — verified
    *  server-side against the signature, never trusted as a bare claim. */
   overrideToken: z.string().trim().min(1).optional(),
+  /** Exchange (O9.8) — the return this sale is the replacement for. Ordinary
+   *  sale otherwise; the service validates the return exists, is resolved as
+   *  REPLACEMENT, and is not already linked before writing the connection. */
+  exchangeReturnId: z.string().trim().min(1).optional(),
 });
 
 /**

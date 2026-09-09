@@ -164,4 +164,43 @@ describe('the till return sheet', () => {
       );
     });
   });
+
+  it('calls onProcessed with the return id when resolved as REPLACEMENT (O9.8)', async () => {
+    createReturn.mockResolvedValue({ id: 'r1' });
+    approveReturn.mockResolvedValue({ id: 'r1' });
+    const onProcessed = vi.fn();
+
+    render(<TillReturnSheet open onOpenChange={() => undefined} onProcessed={onProcessed} />);
+
+    await userEvent.type(screen.getByLabelText(/order number/i), 'POS-1');
+    await userEvent.click(screen.getByRole('button', { name: /look up/i }));
+    await screen.findByText(/order pos-1/i);
+    await userEvent.click(screen.getByRole('checkbox'));
+    await userEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    await screen.findByLabelText(/reason/i);
+    await userEvent.click(screen.getByRole('combobox', { name: /resolution/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /replacement/i }));
+
+    await userEvent.click(screen.getByRole('button', { name: /process return/i }));
+
+    await waitFor(() => {
+      expect(onProcessed).toHaveBeenCalledWith({ returnId: 'r1', resolution: 'REPLACEMENT' });
+    });
+  });
+
+  it('calls onProcessed for a REFUND too — the component reports every resolution', async () => {
+    createReturn.mockResolvedValue({ id: 'r1' });
+    approveReturn.mockResolvedValue({ id: 'r1' });
+    const onProcessed = vi.fn();
+
+    render(<TillReturnSheet open onOpenChange={() => undefined} onProcessed={onProcessed} />);
+    await lookUpAndSelectLine();
+
+    await userEvent.click(screen.getByRole('button', { name: /process return/i }));
+
+    await waitFor(() => {
+      expect(onProcessed).toHaveBeenCalledWith({ returnId: 'r1', resolution: 'REFUND' });
+    });
+  });
 });

@@ -131,6 +131,11 @@ export async function checkout(input: {
    *  entries, summing to the sale total EXACTLY — the server re-verifies
    *  this against its own computed total, never trusting the client's math. */
   splitPayments?: SplitPayment[];
+  /** Exchange (O9.8) — the return this sale is the replacement for. An
+   *  otherwise-ordinary sale that also links back to it; the server
+   *  validates the return exists, is resolved as REPLACEMENT, and is not
+   *  already linked. */
+  exchangeReturnId?: string;
 }): Promise<CheckoutResult> {
   return apiFetch<CheckoutResult>('/pos/checkout', {
     method: 'POST',

@@ -56,6 +56,7 @@ import { ManagerOverrideDialog } from '@/components/pos/manager-override-dialog'
 import { TillReturnSheet } from '@/components/pos/till-return-sheet';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import type { ManagerOverrideResult } from '@/lib/auth-api';
+import type { ReturnResolution } from '@/lib/returns-api';
 
 /**
  * The till (O5.5).
@@ -121,6 +122,12 @@ export function SaleScreen() {
   const [overrideToken, setOverrideToken] = useState<string | null>(null);
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
   const [returnSheetOpen, setReturnSheetOpen] = useState(false);
+  /** Exchange (O9.8) — set when a return just processed as REPLACEMENT, so
+   *  the NEXT sale rung up links back to it. Two linked records, not one
+   *  combined transaction: this is otherwise an ordinary sale, the return
+   *  already happened on its own. Cleared once that sale completes, or if
+   *  the cashier cancels out by clearing the cart before ringing it up. */
+  const [pendingExchangeReturnId, setPendingExchangeReturnId] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [method, setMethod] = useState('cash');
   const [tendered, setTendered] = useState('');
@@ -455,6 +462,7 @@ export function SaleScreen() {
                 : {}),
             }),
         ...(overrideToken ? { overrideToken } : {}),
+        ...(pendingExchangeReturnId ? { exchangeReturnId: pendingExchangeReturnId } : {}),
       });
 
       // Kept on screen rather than toasted away: the change to hand back is
@@ -493,6 +501,9 @@ export function SaleScreen() {
       // The approval is for THIS sale only — the next customer's discount
       // (if any) needs its own manager, never inherited from the last one.
       setOverrideToken(null);
+      // The exchange it was linked to is done — the next sale is ordinary
+      // again, not another leg of the same exchange.
+      setPendingExchangeReturnId(null);
       // The sale just decremented branch stock — the grid must reflect that
       // for the NEXT customer, or a just-sold-out item still shows as
       // available. Found by walking through an actual sale end to end, not
@@ -617,7 +628,19 @@ export function SaleScreen() {
           ) : null}
         </div>
 
-        <TillReturnSheet open={returnSheetOpen} onOpenChange={setReturnSheetOpen} />
+        <TillReturnSheet
+          open={returnSheetOpen}
+          onOpenChange={setReturnSheetOpen}
+          onProcessed={({ returnId, resolution }: {
+            returnId: string;
+            resolution: ReturnResolution;
+          }) => {
+            if (resolution === 'REPLACEMENT') {
+              setPendingExchangeReturnId(returnId);
+              toast.info(t('exchangeStarted'));
+            }
+          }}
+        />
 
         <AlertDialog open={parkDialogOpen} onOpenChange={setParkDialogOpen}>
           <AlertDialogContent>
@@ -699,6 +722,23 @@ export function SaleScreen() {
           >
             {error}
           </p>
+        ) : null}
+
+        {/* Exchange in progress (O9.8) — the return already happened;
+            whatever gets rung up next links back to it. Visible so the
+            cashier does not lose track of WHY a plain-looking sale needs to
+            complete before moving on to a regular customer. */}
+        {pendingExchangeReturnId ? (
+          <div className="bg-primary/10 flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm">
+            <span>{t('exchangeInProgress')}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPendingExchangeReturnId(null)}
+            >
+              {t('cancelExchange')}
+            </Button>
+          </div>
         ) : null}
 
         {/* The running cart, moved ABOVE the grid (the owner's own screenshot

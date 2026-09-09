@@ -150,6 +150,9 @@ async function serialiseReturn(id: string) {
       rejectionReason: true,
       createdAt: true,
       order: { select: { id: true, orderNumber: true, status: true } },
+      // Exchange (O9.8) — null until the replacement sale completes, a real
+      // "started but not finished" state, not a gap to hide.
+      exchangeOrder: { select: { id: true, orderNumber: true } },
       customer: { select: { id: true, name: true, email: true } },
       items: {
         select: {
@@ -182,6 +185,7 @@ async function serialiseReturn(id: string) {
     rejectionReason: row.rejectionReason,
     createdAt: row.createdAt.toISOString(),
     order: row.order,
+    exchangeOrder: row.exchangeOrder,
     customer: row.customer,
     items: row.items.map((item) => ({
       id: item.id,

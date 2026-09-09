@@ -48,6 +48,14 @@ import type { ManagerOverrideResult } from '@/lib/auth-api';
 interface TillReturnSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Fired once a return finishes processing, for EVERY resolution (O9.8) —
+   * this component's job ends at the return itself; it reports what
+   * happened and leaves deciding what matters to the caller. `SaleScreen`
+   * only acts on REPLACEMENT, carrying the return id into the replacement
+   * sale's checkout, and ignores the others.
+   */
+  onProcessed?: (result: { returnId: string; resolution: ReturnResolution }) => void;
 }
 
 type Step = 'lookup' | 'pick-lines' | 'resolve';
@@ -59,7 +67,7 @@ interface LineSelection {
   maxQuantity: number;
 }
 
-export function TillReturnSheet({ open, onOpenChange }: TillReturnSheetProps) {
+export function TillReturnSheet({ open, onOpenChange, onProcessed }: TillReturnSheetProps) {
   const t = useTranslations('pos.tillReturn');
   const translateError = useTranslatedApiError();
 
@@ -177,6 +185,7 @@ export function TillReturnSheet({ open, onOpenChange }: TillReturnSheetProps) {
       });
 
       toast.success(t('done'));
+      onProcessed?.({ returnId, resolution });
       reset();
       onOpenChange(false);
     } catch (caught) {
