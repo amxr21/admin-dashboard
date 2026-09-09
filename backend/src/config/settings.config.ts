@@ -313,6 +313,25 @@ export const SETTINGS = {
       'Let the till complete a sale even when the branch shows none in stock. Off by default: a sale that takes stock negative is a discrepancy somebody has to explain afterwards.',
   },
 
+  // ─── Till (O9 Tier 3) ───────────────────────────────────────────────
+  'pos.maxCashierDiscountPercent': {
+    type: 'number',
+    default: 20,
+    area: 'settings',
+    min: 0,
+    max: 100,
+    label: 'Max cashier discount (%)',
+    // 0 is a real, valid choice ("cashiers may never discount without a
+    // manager") — never treated as "unset", same reasoning `store.taxRate`
+    // already documents for its own 0. A cashier requesting ABOVE this
+    // figure is refused server-side unless a manager override (O9.13)
+    // approved it first — this setting is the line that decision is drawn
+    // against, so lowering it takes effect on the very next sale, not the
+    // next process restart.
+    description:
+      'A cashier may discount a line up to this percentage without help. Above it, a manager has to approve in place. Set to 0 to require approval for any discount at all.',
+  },
+
   'notifications.returnRequestAlerts': {
     type: 'boolean',
     default: true,

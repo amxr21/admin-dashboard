@@ -5,6 +5,7 @@ import { OrderStatus, Prisma, StockMovementReason, type ProductStatus } from '@p
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { audit } from './audit.service.js';
+import { verifyOverrideToken } from './auth.service.js';
 import { defaultBranchId } from './inventory.service.js';
 import { computeOrderTotals, getTaxRate } from './order-math.service.js';
 import { getSettingValue } from './settings.service.js';
@@ -233,6 +234,10 @@ export async function browseCategories(): Promise<{ id: string; name: string }[]
 export interface CheckoutLine {
   productId: string;
   quantity: number;
+  /** A cashier's ad-hoc discount on THIS line (O9 Tier 3), 0-100. Above
+   *  `pos.maxCashierDiscountPercent`, `overrideToken` on the whole checkout
+   *  must verify to a manager or the sale is refused. */
+  discountPercent?: number | undefined;
 }
 
 export interface CheckoutInput {
@@ -256,6 +261,14 @@ export interface CheckoutInput {
   /** The card terminal's own reference — see the schema comment on
    *  `Payment.reference`. Optional; cash never has one. */
   reference?: string | undefined;
+  /**
+   * Proof a manager approved a discount above the cap (O9.13, O9 Tier 3) —
+   * a SIGNED token from `POST /auth/manager-override`, verified here with
+   * `verifyOverrideToken`, never a client-supplied approver id taken on
+   * faith. Absent when every line's discount is within the cap; required
+   * (and re-verified server-side) otherwise.
+   */
+  overrideToken?: string | undefined;
 }
 
 /**
@@ -312,6 +325,59 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
   const taxRate = await getTaxRate();
   const allowNegative = Boolean(await getSettingValue('inventory.allowNegativeStock'));
 
+  /**
+   * Discounts (O9 Tier 3).
+   *
+   * Validated and the cap resolved BEFORE the transaction — neither needs a
+   * lock, and refusing early means a bad discount never gets as far as
+   * touching stock.
+   */
+  const maxCashierDiscountPercent = Number(
+    await getSettingValue('pos.maxCashierDiscountPercent'),
+  );
+
+  let approverId: string | null = null;
+
+  for (const line of input.lines) {
+    const percent = line.discountPercent;
+    if (percent === undefined) continue;
+
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+      throw AppError.badRequest('Discount must be between 0 and 100', {
+        field: 'discountPercent',
+        productId: line.productId,
+      });
+    }
+
+    if (percent > maxCashierDiscountPercent) {
+      // Resolved ONCE, lazily, the first time a line actually needs it —
+      // most sales carry no discount at all, and most that do stay under
+      // the cap. Verifying a token that was never sent would be verifying
+      // `undefined`, which `verifyOverrideToken` would correctly reject
+      // anyway, but resolving it lazily keeps the common path free of a
+      // JWT verify it does not need.
+      if (approverId === null) {
+        if (!input.overrideToken) {
+          throw AppError.forbidden(
+            `A discount above ${String(maxCashierDiscountPercent)}% needs a manager's approval`,
+            { field: 'discountPercent', productId: line.productId },
+          );
+        }
+
+        const verified = verifyOverrideToken(input.overrideToken);
+
+        if (!verified) {
+          // Same generic shape as every other "your proof did not check
+          // out" refusal in this app — a stale or forged token gets the
+          // same answer as none at all, not a hint about which was wrong.
+          throw AppError.forbidden('The manager approval could not be verified');
+        }
+
+        approverId = verified;
+      }
+    }
+  }
+
   const created = await prisma.$transaction(async (tx) => {
     // Read INSIDE the transaction: the price that goes on the receipt must be
     // the price at the moment of sale, not one fetched before the customer
@@ -360,15 +426,38 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
         );
       }
 
+      // The TRUE unit price, always — this is the snapshot every other
+      // reader (margin reporting, the invoice, Reports/Dashboard revenue)
+      // reads as "what this line's unit actually costs". Writing a
+      // discounted figure in here would silently corrupt all of them; the
+      // discount is a SEPARATE column precisely so `price` never has to
+      // carry two meanings.
+      const price = product.price;
+      const discountPercent = line.discountPercent ?? null;
+
+      // What `computeOrderTotals` actually charges tax and totals against —
+      // a discount reduces what the customer owes, so it has to reach the
+      // arithmetic somewhere, and `price` itself is the one place it must
+      // NOT reach.
+      const chargedPrice =
+        discountPercent === null
+          ? price
+          : price.times(new Prisma.Decimal(100).minus(discountPercent)).dividedBy(100);
+
       return {
         productId: line.productId,
         quantity: line.quantity,
-        price: product.price,
+        price,
+        chargedPrice,
+        discountPercent,
         cost: product.cost,
       };
     });
 
-    const totals = computeOrderTotals(priced, taxRate);
+    const totals = computeOrderTotals(
+      priced.map((line) => ({ price: line.chargedPrice, quantity: line.quantity })),
+      taxRate,
+    );
 
     const order = await tx.order.create({
       data: {
@@ -388,6 +477,7 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
             quantity: line.quantity,
             price: line.price,
             cost: line.cost,
+            discountPercent: line.discountPercent,
           })),
         },
       },
@@ -458,6 +548,11 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
       total: { from: null, to: created.totals.total.toFixed(2) },
       method: { from: null, to: input.method },
       lines: { from: null, to: created.lineCount },
+      // Present only when a discount actually needed a manager — "who
+      // approved this" is the whole question a reviewer asks of an
+      // above-cap discount, the same reasoning the override endpoint's own
+      // audit entry already follows.
+      ...(approverId ? { discountApprovedBy: { from: null, to: approverId } } : {}),
     },
   });
 

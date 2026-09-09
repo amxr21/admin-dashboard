@@ -40,6 +40,10 @@ export async function redeemPasswordReset(
 export interface ManagerOverrideResult {
   approverId: string;
   approverName: string | null;
+  /** Proof of THIS approval — the endpoint that consumes an override
+   *  requires this, not `approverId` alone (see the backend's own doc
+   *  comment on why `approverId` is not trustworthy by itself). */
+  overrideToken: string;
 }
 
 export async function requestManagerOverride(

@@ -5,7 +5,7 @@ import { Prisma, ProductStatus, StaffRole } from '@prisma/client';
 
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
-import { signToken } from '../services/auth.service.js';
+import { signToken, verifyManagerOverride } from '../services/auth.service.js';
 
 /**
  * The till's scan (O5.6).
@@ -767,5 +767,168 @@ describe('browsing the grid (O9.10)', () => {
     expect(res.status).toBe(200);
     const body = res.body as { data: { products: { id: string }[] } };
     expect(body.data.products.some((p) => p.id === product.id)).toBe(true);
+  });
+});
+
+describe('discounts at the till (O9 Tier 3)', () => {
+  // `branchId` (not a local copy) — a `describe` body runs synchronously at
+  // collection time, before `beforeAll` has set the real value, so a copy
+  // taken here would freeze the empty string it started as.
+  function sellWithDiscount(body: Record<string, unknown>, token = ownerToken) {
+    return request(app)
+      .post('/api/v1/pos/checkout')
+      .set(auth(token))
+      .set('X-Branch-Id', branchId)
+      .send(body);
+  }
+
+  async function stockAt(productId: string, quantity: number) {
+    await prisma.branchStock.upsert({
+      where: { productId_branchId: { productId, branchId } },
+      create: { productId, branchId, quantity },
+      update: { quantity },
+    });
+    await prisma.product.update({ where: { id: productId }, data: { stock: quantity } });
+  }
+
+  async function withCap(percent: number, run: () => Promise<void>) {
+    await prisma.setting.upsert({
+      where: { key: 'pos.maxCashierDiscountPercent' },
+      create: { key: 'pos.maxCashierDiscountPercent', value: percent },
+      update: { value: percent },
+    });
+
+    try {
+      await run();
+    } finally {
+      await prisma.setting.deleteMany({ where: { key: 'pos.maxCashierDiscountPercent' } });
+    }
+  }
+
+  it('reduces the charged total but keeps the recorded price the true one', async () => {
+    await withCap(50, async () => {
+      const product = await makeProduct({ sku: `${RUN}-DISC-1`, price: '10.00', stock: 5 });
+      await stockAt(product.id, 5);
+
+      const res = await sellWithDiscount({
+        lines: [{ productId: product.id, quantity: 2, discountPercent: 10 }],
+        method: 'cash',
+        tendered: '18.00',
+      });
+
+      expect(res.status).toBe(201);
+      const body = res.body as { data: { orderId: string; subtotal: string; total: string } };
+      // 2 x 10.00 at 10% off = 18.00, not 20.00.
+      expect(body.data.subtotal).toBe('18.00');
+
+      const item = await prisma.orderItem.findFirst({
+        where: { orderId: body.data.orderId },
+      });
+      // The SNAPSHOT stays the real product price — never the discounted
+      // figure. Reading it as anything else would silently rewrite margin
+      // and revenue reporting.
+      expect(item?.price.toFixed(2)).toBe('10.00');
+      expect(item?.discountPercent?.toFixed(2)).toBe('10.00');
+    });
+  });
+
+  it('records no discount on a line that asked for none', async () => {
+    const product = await makeProduct({ sku: `${RUN}-DISC-2`, price: '5.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sellWithDiscount({
+      lines: [{ productId: product.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '5.00',
+    });
+
+    const body = res.body as { data: { orderId: string } };
+    const item = await prisma.orderItem.findFirst({ where: { orderId: body.data.orderId } });
+
+    // NULL, never 0 — "no discount control ever touched this line" is a
+    // different fact from "a discount of exactly zero was applied".
+    expect(item?.discountPercent).toBeNull();
+  });
+
+  it('refuses a discount above the cap with no override token', async () => {
+    await withCap(10, async () => {
+      const product = await makeProduct({ sku: `${RUN}-DISC-3`, price: '10.00', stock: 5 });
+      await stockAt(product.id, 5);
+
+      const res = await sellWithDiscount({
+        lines: [{ productId: product.id, quantity: 1, discountPercent: 30 }],
+        method: 'cash',
+      });
+
+      expect(res.status).toBe(403);
+
+      // Refused before anything moved.
+      const movements = await prisma.stockMovement.count({ where: { productId: product.id } });
+      expect(movements).toBe(0);
+    });
+  });
+
+  it('refuses a discount above the cap with a garbage override token', async () => {
+    await withCap(10, async () => {
+      const product = await makeProduct({ sku: `${RUN}-DISC-4`, price: '10.00', stock: 5 });
+      await stockAt(product.id, 5);
+
+      const res = await sellWithDiscount({
+        lines: [{ productId: product.id, quantity: 1, discountPercent: 30 }],
+        method: 'cash',
+        overrideToken: 'not-a-real-token',
+      });
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  it('approves a discount above the cap with a real manager override token', async () => {
+    await withCap(10, async () => {
+      const manager = await makeUser(StaffRole.MANAGER, 'discount-manager');
+      const approval = await verifyManagerOverride(
+        manager.email,
+        'correct-horse-battery-staple',
+      );
+
+      const product = await makeProduct({ sku: `${RUN}-DISC-5`, price: '10.00', stock: 5 });
+      await stockAt(product.id, 5);
+
+      const res = await sellWithDiscount({
+        lines: [{ productId: product.id, quantity: 1, discountPercent: 30 }],
+        method: 'cash',
+        overrideToken: approval.overrideToken,
+      });
+
+      expect(res.status).toBe(201);
+      const body = res.body as { data: { subtotal: string } };
+      expect(body.data.subtotal).toBe('7.00');
+    });
+  });
+
+  it('does not need an override for a discount at or below the cap', async () => {
+    await withCap(20, async () => {
+      const product = await makeProduct({ sku: `${RUN}-DISC-6`, price: '10.00', stock: 5 });
+      await stockAt(product.id, 5);
+
+      const res = await sellWithDiscount({
+        lines: [{ productId: product.id, quantity: 1, discountPercent: 20 }],
+        method: 'cash',
+      });
+
+      expect(res.status).toBe(201);
+    });
+  });
+
+  it('refuses a discount outside 0-100 before touching the database', async () => {
+    const product = await makeProduct({ sku: `${RUN}-DISC-7`, price: '10.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sellWithDiscount({
+      lines: [{ productId: product.id, quantity: 1, discountPercent: 150 }],
+      method: 'cash',
+    });
+
+    expect(res.status).toBe(400);
   });
 });

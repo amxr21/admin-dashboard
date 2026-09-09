@@ -30,6 +30,9 @@ import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { checkout, scanProduct } from '@/lib/pos-api';
 import { ThermalReceipt, type ReceiptData } from '@/components/pos/thermal-receipt';
 import { ProductGrid } from '@/components/pos/product-grid';
+import { ManagerOverrideDialog } from '@/components/pos/manager-override-dialog';
+import { useAppSettings } from '@/components/providers/settings-provider';
+import type { ManagerOverrideResult } from '@/lib/auth-api';
 
 /**
  * The till (O5.5).
@@ -77,13 +80,23 @@ interface CartProduct {
 interface CartLine {
   product: CartProduct;
   quantity: number;
+  /** A cashier's ad-hoc discount on THIS line (O9 Tier 3), 0-100. `null`
+   *  (not 0) means no discount control has touched this line — sent to the
+   *  server as absent, never as a discount of zero. */
+  discountPercent: number | null;
 }
 
 export function SaleScreen() {
   const t = useTranslations('pos');
   const translateError = useTranslatedApiError();
+  const { maxCashierDiscountPercent } = useAppSettings();
 
   const [lines, setLines] = useState<CartLine[]>([]);
+  /** Set once a manager approves a discount above the cap, for the CURRENT
+   *  sale only — cleared whenever the cart empties, so the next customer's
+   *  sale needs its own approval rather than inheriting the last one's. */
+  const [overrideToken, setOverrideToken] = useState<string | null>(null);
+  const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
   const [code, setCode] = useState('');
   const [method, setMethod] = useState('cash');
   const [tendered, setTendered] = useState('');
@@ -111,9 +124,24 @@ export function SaleScreen() {
   const estimate = useMemo(
     () =>
       lines
-        .reduce((sum, line) => sum + Number(line.product.price) * line.quantity, 0)
+        .reduce((sum, line) => {
+          const unit =
+            line.discountPercent === null
+              ? Number(line.product.price)
+              : (Number(line.product.price) * (100 - line.discountPercent)) / 100;
+          return sum + unit * line.quantity;
+        }, 0)
         .toFixed(2),
     [lines],
+  );
+
+  /** A NUDGE, not the real check — the server re-verifies every line against
+   *  the live cap regardless (`pos.service.ts`), so this only decides
+   *  whether to show the override dialog before even trying, rather than
+   *  letting the cashier fill in the confirm dialog and hit a refusal. */
+  const needsOverride = useMemo(
+    () => lines.some((line) => (line.discountPercent ?? 0) > maxCashierDiscountPercent),
+    [lines, maxCashierDiscountPercent],
   );
 
   function refocus() {
@@ -141,8 +169,29 @@ export function SaleScreen() {
         );
       }
 
-      return [...current, { product, quantity: 1 }];
+      return [...current, { product, quantity: 1, discountPercent: null }];
     });
+  }
+
+  /** A cashier types a discount on one line (O9 Tier 3). Clamped, never
+   *  refused client-side — the SERVER is the one that actually decides
+   *  whether it needs a manager, the same "warn, don't block" split the
+   *  over-stock warning already uses. */
+  function setLineDiscount(productId: string, rawPercent: string) {
+    const trimmed = rawPercent.trim();
+
+    setLines((current) =>
+      current.map((line) => {
+        if (line.product.id !== productId) return line;
+
+        if (trimmed === '') return { ...line, discountPercent: null };
+
+        const parsed = Number(trimmed);
+        if (!Number.isFinite(parsed)) return line;
+
+        return { ...line, discountPercent: Math.min(100, Math.max(0, parsed)) };
+      }),
+    );
   }
 
   async function submitScan(event: React.FormEvent) {
@@ -195,10 +244,15 @@ export function SaleScreen() {
 
     try {
       const result = await checkout({
-        lines: lines.map((line) => ({ productId: line.product.id, quantity: line.quantity })),
+        lines: lines.map((line) => ({
+          productId: line.product.id,
+          quantity: line.quantity,
+          ...(line.discountPercent !== null ? { discountPercent: line.discountPercent } : {}),
+        })),
         method,
         ...(method === 'cash' && tendered.trim() !== '' ? { tendered: tendered.trim() } : {}),
         ...(method === 'card' && reference.trim() !== '' ? { reference: reference.trim() } : {}),
+        ...(overrideToken ? { overrideToken } : {}),
       });
 
       // Kept on screen rather than toasted away: the change to hand back is
@@ -228,6 +282,9 @@ export function SaleScreen() {
       setTendered('');
       setReference('');
       setConfirmOpen(false);
+      // The approval is for THIS sale only — the next customer's discount
+      // (if any) needs its own manager, never inherited from the last one.
+      setOverrideToken(null);
       // The sale just decremented branch stock — the grid must reflect that
       // for the NEXT customer, or a just-sold-out item still shows as
       // available. Found by walking through an actual sale end to end, not
@@ -307,6 +364,31 @@ export function SaleScreen() {
                   {line.product.status === 'ARCHIVED' ? (
                     <p className="text-muted-foreground text-xs">{t('archived')}</p>
                   ) : null}
+                  {/* Above the cap is shown, never hidden or refused HERE —
+                      the server decides for real when the sale is taken, the
+                      same "warn, don't block" split the over-stock notice
+                      above already uses. */}
+                  {line.discountPercent !== null &&
+                  line.discountPercent > maxCashierDiscountPercent ? (
+                    <p className="text-warning flex items-center gap-1 text-xs">
+                      <AlertTriangle className="size-3 shrink-0" aria-hidden />
+                      {t('discountNeedsApproval', { max: maxCashierDiscountPercent })}
+                    </p>
+                  ) : null}
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <Label htmlFor={`discount-${line.product.id}`} className="sr-only">
+                      {t('discountLabel', { name: line.product.name })}
+                    </Label>
+                    <Input
+                      id={`discount-${line.product.id}`}
+                      value={line.discountPercent === null ? '' : String(line.discountPercent)}
+                      onChange={(event) => setLineDiscount(line.product.id, event.target.value)}
+                      placeholder={t('discountPlaceholder')}
+                      inputMode="decimal"
+                      className="force-ltr h-7 w-20 text-xs"
+                    />
+                    <span className="text-muted-foreground text-xs">%</span>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-1">
@@ -389,12 +471,30 @@ export function SaleScreen() {
           className="w-full"
           onClick={() => {
             setError(null);
+            // A discount above the cap gets its own dialog FIRST — the
+            // confirm dialog is where money actually moves, and a cashier
+            // who cannot get that far without a manager should not fill in
+            // tendered/reference only to be refused at the last step.
+            if (needsOverride && overrideToken === null) {
+              setOverrideDialogOpen(true);
+              return;
+            }
             setConfirmOpen(true);
           }}
           disabled={lines.length === 0 || isSelling}
         >
           {t('takePayment')}
         </Button>
+
+        <ManagerOverrideDialog
+          open={overrideDialogOpen}
+          onOpenChange={setOverrideDialogOpen}
+          reason={t('managerOverride.discountReason', { max: maxCashierDiscountPercent })}
+          onApproved={(result: ManagerOverrideResult) => {
+            setOverrideToken(result.overrideToken);
+            setConfirmOpen(true);
+          }}
+        />
 
         {/*
          * The confirm step between "Take Payment" and the charge actually

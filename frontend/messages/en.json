@@ -2402,7 +2402,11 @@
       "passwordLabel": "Manager password",
       "cancel": "Cancel",
       "approve": "Approve",
-      "approving": "Checking..."
-    }
+      "approving": "Checking...",
+      "discountReason": "A discount above {max}% is being applied to this sale."
+    },
+    "discountLabel": "Discount on {name}",
+    "discountPlaceholder": "0",
+    "discountNeedsApproval": "Above {max}% needs manager approval"
   }
 }

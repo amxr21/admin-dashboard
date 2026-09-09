@@ -75,6 +75,8 @@ describe('Arabic is actually translated', () => {
       'imageUpload.urlPlaceholder',
       // Same reasoning — "0.00" is a numeric format example, not prose.
       'pos.gate.floatPlaceholder',
+      // "0" — a numeric format example, not prose, same reasoning again.
+      'pos.discountPlaceholder',
       // A timezone abbreviation, not prose — used as-is in Arabic technical
       // UI, same reasoning as "iPhone"/"WhatsApp"/"Excel" above.
       'table.utc',

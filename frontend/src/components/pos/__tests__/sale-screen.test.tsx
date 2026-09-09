@@ -22,12 +22,14 @@ import type { ScannedProduct } from '@/lib/pos-api';
  *    flattened "something went wrong" leaves them stuck at the counter.
  */
 
-const { scanProduct, checkout, browseProducts, browseCategories } = vi.hoisted(() => ({
-  scanProduct: vi.fn(),
-  checkout: vi.fn(),
-  browseProducts: vi.fn(),
-  browseCategories: vi.fn(),
-}));
+const { scanProduct, checkout, browseProducts, browseCategories, requestManagerOverride } =
+  vi.hoisted(() => ({
+    scanProduct: vi.fn(),
+    checkout: vi.fn(),
+    browseProducts: vi.fn(),
+    browseCategories: vi.fn(),
+    requestManagerOverride: vi.fn(),
+  }));
 
 vi.mock('@/lib/pos-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/pos-api')>()),
@@ -35,6 +37,11 @@ vi.mock('@/lib/pos-api', async (importOriginal) => ({
   checkout,
   browseProducts,
   browseCategories,
+}));
+
+vi.mock('@/lib/auth-api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth-api')>()),
+  requestManagerOverride,
 }));
 
 function makeProduct(overrides: Partial<ScannedProduct> = {}): ScannedProduct {
@@ -305,5 +312,104 @@ describe('taking payment', () => {
     render(<SaleScreen />);
 
     expect(await screen.findByRole('button', { name: /take payment/i })).toBeDisabled();
+  });
+});
+
+describe('discounts (O9 Tier 3)', () => {
+  it('sends discountPercent only when a line has one set', async () => {
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({
+      orderId: 'o1',
+      orderNumber: 'POS-1',
+      subtotal: '4.05',
+      taxAmount: '0.00',
+      total: '4.05',
+      change: null,
+    });
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+
+    await userEvent.type(screen.getByLabelText(/discount on flat white/i), '10');
+    await takePaymentThroughConfirm();
+
+    await waitFor(() => {
+      expect(checkout).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lines: [{ productId: 'p1', quantity: 1, discountPercent: 10 }],
+        }),
+      );
+    });
+  });
+
+  it('opens the manager override dialog for a discount above the cap, not the confirm dialog', async () => {
+    // The test double's default cap is 20% (settings-provider.tsx's
+    // DEFAULT_VALUE, used whenever no SettingsProvider wraps the tree).
+    scanProduct.mockResolvedValue(makeProduct());
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+
+    await userEvent.type(screen.getByLabelText(/discount on flat white/i), '50');
+    await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
+
+    expect(await screen.findByText(/manager approval needed/i)).toBeInTheDocument();
+    // NOT the confirm-and-charge dialog — money must not start moving before
+    // the override is granted.
+    expect(screen.queryByText(/confirm sale/i)).not.toBeInTheDocument();
+  });
+
+  it('proceeds to the confirm dialog and includes the override token once approved', async () => {
+    scanProduct.mockResolvedValue(makeProduct());
+    requestManagerOverride.mockResolvedValue({
+      approverId: 'm1',
+      approverName: 'Sara',
+      overrideToken: 'signed-token',
+    });
+    checkout.mockResolvedValue({
+      orderId: 'o1',
+      orderNumber: 'POS-1',
+      subtotal: '2.25',
+      taxAmount: '0.00',
+      total: '2.25',
+      change: null,
+    });
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+
+    await userEvent.type(screen.getByLabelText(/discount on flat white/i), '50');
+    await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
+
+    await userEvent.type(await screen.findByLabelText(/manager email/i), 'sara@example.test');
+    await userEvent.type(screen.getByLabelText(/manager password/i), 'correct-password');
+    await userEvent.click(screen.getByRole('button', { name: /^approve$/i }));
+
+    // Approval closes ITS dialog and opens the confirm dialog.
+    await screen.findByText(/confirm sale/i);
+    await userEvent.click(screen.getByRole('button', { name: /confirm & charge/i }));
+
+    await waitFor(() => {
+      expect(checkout).toHaveBeenCalledWith(
+        expect.objectContaining({ overrideToken: 'signed-token' }),
+      );
+    });
+  });
+
+  it('does not open the override dialog for a discount at or below the cap', async () => {
+    scanProduct.mockResolvedValue(makeProduct());
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+
+    await userEvent.type(screen.getByLabelText(/discount on flat white/i), '20');
+    await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
+
+    expect(await screen.findByText(/confirm sale/i)).toBeInTheDocument();
+    expect(screen.queryByText(/manager approval needed/i)).not.toBeInTheDocument();
   });
 });

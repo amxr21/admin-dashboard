@@ -103,6 +103,10 @@ const checkoutSchema = z.object({
       z.object({
         productId: z.string().trim().min(1),
         quantity: z.number().int().positive(),
+        // Range checked again in the service (0-100) — Zod only proves it
+        // is A number here; the service is where the cap comparison and
+        // the manager-approval requirement actually live.
+        discountPercent: z.number().min(0).max(100).optional(),
       }),
     )
     .min(1)
@@ -138,6 +142,9 @@ const checkoutSchema = z.object({
    *  optional, since not every terminal prints one and cash never has one.
    *  Stored so a disputed charge can be matched back to this sale later. */
   reference: z.string().trim().max(120).optional(),
+  /** Proof a manager approved a discount above the cap (O9.13) — verified
+   *  server-side against the signature, never trusted as a bare claim. */
+  overrideToken: z.string().trim().min(1).optional(),
 });
 
 /**

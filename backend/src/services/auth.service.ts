@@ -320,6 +320,60 @@ export async function login(
 export interface ManagerOverrideResult {
   approverId: string;
   approverName: string | null;
+  /**
+   * Proof of THIS approval, for the endpoint that actually does the
+   * overridden action to verify — see `verifyOverrideToken` below.
+   *
+   * `approverId` alone must never be trusted by a caller: a client that can
+   * send an arbitrary `approverId` in a request body could claim any
+   * manager approved anything, without ever having typed that manager's
+   * password. Exactly the shape of bug O9.17 fixed for `shiftId` — a value
+   * the client can set is a value the client can lie about. This token is
+   * SIGNED by the server and short-lived, so an endpoint consuming it is
+   * verifying "the server itself issued this a moment ago", not trusting
+   * whatever the request claims.
+   */
+  overrideToken: string;
+}
+
+const OVERRIDE_TOKEN_TYPE = 'manager-override';
+// Long enough that typing a discount into the till after the dialog closes
+// does not race the token's own expiry; short enough that a token is
+// useless if it somehow leaked. The same order of magnitude as the
+// pending-2FA token above, for the same "prove a check just happened,
+// nothing more" reasoning.
+const OVERRIDE_TOKEN_TTL = '2m';
+
+interface OverrideTokenPayload {
+  sub: string;
+  type: typeof OVERRIDE_TOKEN_TYPE;
+}
+
+function signOverrideToken(approverId: string): string {
+  return jwt.sign(
+    { sub: approverId, type: OVERRIDE_TOKEN_TYPE } satisfies OverrideTokenPayload,
+    env.JWT_SECRET,
+    { expiresIn: OVERRIDE_TOKEN_TTL } as jwt.SignOptions,
+  );
+}
+
+/**
+ * Verify a token from `verifyManagerOverride`, returning the approver's id
+ * if — and only if — the server itself signed it moments ago. Returns null
+ * rather than throwing on anything wrong with the token (missing, expired,
+ * wrong type, forged signature) — the caller decides what a missing
+ * approval means for ITS action (usually: refuse), and every one of those
+ * failure shapes collapses to the same "not approved" answer here so a
+ * caller cannot accidentally branch on which kind of forgery was attempted.
+ */
+export function verifyOverrideToken(token: string): string | null {
+  try {
+    const payload = jwt.verify(token, env.JWT_SECRET) as OverrideTokenPayload;
+    if (payload.type !== OVERRIDE_TOKEN_TYPE) return null;
+    return payload.sub;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -414,7 +468,11 @@ export async function verifyManagerOverride(
     data: { failedLoginAttempts: 0, lockedUntil: null },
   });
 
-  return { approverId: user.id, approverName: user.name };
+  return {
+    approverId: user.id,
+    approverName: user.name,
+    overrideToken: signOverrideToken(user.id),
+  };
 }
 
 /**

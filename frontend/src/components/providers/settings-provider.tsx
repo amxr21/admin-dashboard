@@ -63,6 +63,12 @@ interface SettingsContextValue {
    *  `assertPasswordMeetsPolicy` regardless, so a stale local copy only ever
    *  makes the UI wrong (enabling Save for a password the server rejects). */
   minPasswordLength: number;
+  /** The live `pos.maxCashierDiscountPercent` (O9 Tier 3) — the till reads
+   *  this to decide, BEFORE a sale, whether a discount needs a manager. The
+   *  server enforces the real cap regardless (`pos.service.ts`), so a stale
+   *  local copy only ever makes the till's own nudge wrong, never a way
+   *  around the check. */
+  maxCashierDiscountPercent: number;
   /** The live `staff.defaultInviteRole` — pre-selects the invite form's role
    *  picker. A courtesy default only; `canAssignRole` is still enforced
    *  server-side regardless of what this is set to. */
@@ -118,6 +124,9 @@ const DEFAULT_VALUE: SettingsContextValue = {
   // Mirrors `settings.config.ts`'s declared default, used only until the real
   // registry loads.
   minPasswordLength: 12,
+  // Mirrors `settings.config.ts`'s declared default, used only until the
+  // real registry loads.
+  maxCashierDiscountPercent: 20,
   defaultInviteRole: 'SUPPORT',
   editPanelMode: 'drawer',
   sidebarMode: 'sticky',
@@ -225,6 +234,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const pageSize = Number(effective['dashboard.tablePageSize'] ?? 20);
   const minPassword = Number(effective['security.minPasswordLength'] ?? 12);
+  const maxCashierDiscount = Number(effective['pos.maxCashierDiscountPercent'] ?? 20);
 
   // A THREE-letter check, not a hardcoded AED/SAR/USD/EUR/GBP allowlist — the
   // server (`settings.config.ts`) is the one place that enum is declared;
@@ -258,6 +268,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     tablePageSize: Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20,
     minPasswordLength:
       Number.isFinite(minPassword) && minPassword > 0 ? minPassword : 12,
+    // 0 is a legitimate value here (an owner requiring approval for ANY
+    // discount) — the guard below only replaces a genuinely malformed
+    // reading, so it must not treat 0 as one.
+    maxCashierDiscountPercent:
+      Number.isFinite(maxCashierDiscount) && maxCashierDiscount >= 0
+        ? maxCashierDiscount
+        : 20,
     defaultInviteRole: String(effective['staff.defaultInviteRole'] ?? 'SUPPORT'),
     editPanelMode: effective['ui.editPanelMode'] === 'modal' ? 'modal' : 'drawer',
     sidebarMode: effective['ui.sidebarMode'] === 'floating' ? 'floating' : 'sticky',

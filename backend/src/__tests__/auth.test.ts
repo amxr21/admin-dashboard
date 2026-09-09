@@ -11,6 +11,7 @@ import {
   signToken,
   toSafeUser,
   verifyManagerOverride,
+  verifyOverrideToken,
   verifyToken,
 } from '../services/auth.service.js';
 import { createSession } from '../services/session.service.js';
@@ -801,5 +802,36 @@ describe('POST /api/v1/auth/manager-override', () => {
 
     const after = await prisma.session.count({ where: { userId: manager.id } });
     expect(after).toBe(before);
+  });
+
+  describe('the override token', () => {
+    // This is the actual security mechanism, not `approverId` — a caller
+    // consuming an override must verify THIS, never trust a bare id sent in
+    // a request body (see the doc comment on `ManagerOverrideResult`, the
+    // same reasoning O9.17 fixed for a client-supplied `shiftId`).
+    it('verifies to the approving manager, and no one else', async () => {
+      const manager = await makeUser('override-manager-token', { role: StaffRole.MANAGER });
+
+      const result = await verifyManagerOverride(manager.email, PASSWORD);
+
+      expect(verifyOverrideToken(result.overrideToken)).toBe(manager.id);
+    });
+
+    it('rejects a token for an unrelated purpose, even if validly signed', () => {
+      // A pending-2FA token is signed with the same secret but means
+      // something else entirely — the `type` claim is what stops one kind
+      // of token being replayed as proof of the other.
+      const unrelatedToken = signToken({
+        id: 'u1',
+        role: StaffRole.CASHIER,
+        tokenVersion: 0,
+      });
+
+      expect(verifyOverrideToken(unrelatedToken)).toBeNull();
+    });
+
+    it('rejects a forged token', () => {
+      expect(verifyOverrideToken('not.a.real.token')).toBeNull();
+    });
   });
 });

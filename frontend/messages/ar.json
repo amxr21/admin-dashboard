@@ -2402,7 +2402,11 @@
       "passwordLabel": "كلمة مرور المدير",
       "cancel": "إلغاء",
       "approve": "موافقة",
-      "approving": "جارٍ التحقق..."
-    }
+      "approving": "جارٍ التحقق...",
+      "discountReason": "يتم تطبيق خصم يتجاوز {max}% على هذه العملية."
+    },
+    "discountLabel": "الخصم على {name}",
+    "discountPlaceholder": "0",
+    "discountNeedsApproval": "تجاوز {max}% يتطلب موافقة المدير"
   }
 }

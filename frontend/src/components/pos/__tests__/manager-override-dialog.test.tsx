@@ -40,7 +40,11 @@ async function fillAndSubmit(email: string, password: string) {
 
 describe('the manager override dialog', () => {
   it('calls onApproved with the result on success', async () => {
-    requestManagerOverride.mockResolvedValue({ approverId: 'm1', approverName: 'Sara' });
+    requestManagerOverride.mockResolvedValue({
+      approverId: 'm1',
+      approverName: 'Sara',
+      overrideToken: 'signed-token',
+    });
     const onApproved = vi.fn();
 
     render(
@@ -55,7 +59,11 @@ describe('the manager override dialog', () => {
     await fillAndSubmit('sara@example.test', 'correct-password');
 
     await waitFor(() => {
-      expect(onApproved).toHaveBeenCalledWith({ approverId: 'm1', approverName: 'Sara' });
+      expect(onApproved).toHaveBeenCalledWith({
+        approverId: 'm1',
+        approverName: 'Sara',
+        overrideToken: 'signed-token',
+      });
     });
   });
 
