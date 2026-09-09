@@ -1,8 +1,18 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { AlertTriangle, Minus, Plus, Printer, RotateCcw, ScanLine, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArchiveRestore,
+  Minus,
+  Plus,
+  Printer,
+  RotateCcw,
+  ScanLine,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -28,7 +38,17 @@ import {
 } from '@/components/ui/select';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
-import { checkout, scanProduct, voidSale } from '@/lib/pos-api';
+import {
+  browseProducts,
+  checkout,
+  discardParkedSale,
+  listParkedSales,
+  parkSale,
+  resumeParkedSale,
+  scanProduct,
+  voidSale,
+  type ParkedSale,
+} from '@/lib/pos-api';
 import { addOrderNote } from '@/lib/orders-api';
 import { ThermalReceipt, type ReceiptData } from '@/components/pos/thermal-receipt';
 import { ProductGrid } from '@/components/pos/product-grid';
@@ -144,8 +164,28 @@ export function SaleScreen() {
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
   const [voidOverrideOpen, setVoidOverrideOpen] = useState(false);
+  /** Carts set aside mid-sale (O9.12b) — the customer forgot their wallet,
+   *  and without this the cashier's only option is to delete the cart and
+   *  re-scan. Loaded once on mount, same as the grid's own category list;
+   *  refetched after every park/resume/discard rather than patched locally,
+   *  since the list is small and a round trip keeps it trivially correct. */
+  const [parkedSales, setParkedSales] = useState<ParkedSale[]>([]);
+  const [isParking, setIsParking] = useState(false);
+  const [resumingId, setResumingId] = useState<string | null>(null);
+  const [parkLabel, setParkLabel] = useState('');
+  const [parkDialogOpen, setParkDialogOpen] = useState(false);
 
   const scanField = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    listParkedSales()
+      .then(setParkedSales)
+      .catch(() => {
+        // A failed load just means the panel starts empty — parking still
+        // works for the rest of the shift, and the next successful list
+        // refresh (after the next park) corrects it.
+      });
+  }, []);
 
   /** Display only — see the note at the top of this file. */
   const estimate = useMemo(
@@ -225,6 +265,95 @@ export function SaleScreen() {
         return { ...line, discountPercent: Math.min(100, Math.max(0, parsed)) };
       }),
     );
+  }
+
+  /** Set the current cart aside. Clears the cart the same way a completed
+   *  sale does — parking one and starting a fresh cart are the same "this
+   *  cart is no longer what's in front of me" transition. */
+  async function submitPark() {
+    if (lines.length === 0 || isParking) return;
+
+    setIsParking(true);
+    setError(null);
+
+    try {
+      await parkSale(
+        lines.map((line) => ({
+          productId: line.product.id,
+          quantity: line.quantity,
+          ...(line.discountPercent !== null ? { discountPercent: line.discountPercent } : {}),
+        })),
+        parkLabel.trim() || undefined,
+      );
+
+      setParkedSales(await listParkedSales());
+      setLines([]);
+      setParkLabel('');
+      setParkDialogOpen(false);
+      toast.success(t('parked'));
+    } catch (caught) {
+      setError(translateError(caught));
+    } finally {
+      setIsParking(false);
+      refocus();
+    }
+  }
+
+  /** Bring a parked cart back to the register. Re-fetches CURRENT price and
+   *  stock for every line through the ordinary browse path rather than
+   *  trusting what was parked — see the note on `ParkedSaleLine` in
+   *  `pos-api.ts`. A line whose product was archived since it was parked is
+   *  silently dropped, the same as it would be from an ordinary browse. */
+  async function resumeCart(parked: ParkedSale) {
+    if (resumingId) return;
+
+    setResumingId(parked.id);
+    setError(null);
+
+    try {
+      const resumed = await resumeParkedSale(parked.id);
+      const products = await browseProducts({ ids: resumed.lines.map((line) => line.productId) });
+      const byId = new Map(products.map((product) => [product.id, product]));
+
+      const restored: CartLine[] = resumed.lines
+        .map((line): CartLine | null => {
+          const product = byId.get(line.productId);
+          if (!product) return null;
+          return {
+            product,
+            quantity: line.quantity,
+            discountPercent: line.discountPercent ?? null,
+          };
+        })
+        .filter((line): line is CartLine => line !== null);
+
+      const droppedCount = resumed.lines.length - restored.length;
+
+      setLastSale(null);
+      setLastSaleOrderId(null);
+      setSaleNote('');
+      setNoteSaved(false);
+      setLines(restored);
+      setParkedSales(await listParkedSales());
+
+      if (droppedCount > 0) {
+        toast.warning(t('parkedItemsUnavailable', { count: droppedCount }));
+      }
+    } catch (caught) {
+      setError(translateError(caught));
+    } finally {
+      setResumingId(null);
+      refocus();
+    }
+  }
+
+  async function discardCart(id: string) {
+    try {
+      await discardParkedSale(id);
+      setParkedSales((current) => current.filter((row) => row.id !== id));
+    } catch (caught) {
+      setError(translateError(caught));
+    }
   }
 
   async function submitScan(event: React.FormEvent) {
@@ -464,15 +593,104 @@ export function SaleScreen() {
           </div>
         </form>
 
-        {/* Independent of any sale in progress — a customer bringing
-            something back is not part of building the CURRENT cart, so this
-            stays reachable regardless of what is in it (O9.7). */}
-        <Button variant="outline" size="sm" onClick={() => setReturnSheetOpen(true)}>
-          <RotateCcw className="size-4" aria-hidden />
-          {t('processReturn')}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {/* Independent of any sale in progress — a customer bringing
+              something back is not part of building the CURRENT cart, so
+              this stays reachable regardless of what is in it (O9.7). */}
+          <Button variant="outline" size="sm" onClick={() => setReturnSheetOpen(true)}>
+            <RotateCcw className="size-4" aria-hidden />
+            {t('processReturn')}
+          </Button>
+
+          {/* The customer forgot their wallet (O9.12b) — set the cart aside
+              rather than deleting it and re-scanning everything later. */}
+          {lines.length > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setParkDialogOpen(true)}
+              disabled={isSelling}
+            >
+              <ArchiveRestore className="size-4" aria-hidden />
+              {t('park')}
+            </Button>
+          ) : null}
+        </div>
 
         <TillReturnSheet open={returnSheetOpen} onOpenChange={setReturnSheetOpen} />
+
+        <AlertDialog open={parkDialogOpen} onOpenChange={setParkDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('parkTitle')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('parkBody')}</AlertDialogDescription>
+            </AlertDialogHeader>
+
+            <div className="space-y-2 text-start">
+              <Label htmlFor="park-label">{t('parkLabel')}</Label>
+              <Input
+                id="park-label"
+                value={parkLabel}
+                onChange={(event) => setParkLabel(event.target.value)}
+                placeholder={t('parkLabelPlaceholder')}
+                autoFocus
+                disabled={isParking}
+              />
+            </div>
+
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isParking}>{t('cancel')}</AlertDialogCancel>
+              <AlertDialogAction onClick={() => void submitPark()} disabled={isParking}>
+                <ArchiveRestore className="size-4" aria-hidden />
+                {t('park')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {parkedSales.length > 0 ? (
+          <div className="space-y-2 rounded-lg border p-3">
+            <p className="text-muted-foreground text-sm font-medium">
+              {t('parkedCarts', { count: parkedSales.length })}
+            </p>
+            <ul className="space-y-1.5">
+              {parkedSales.map((parked) => (
+                <li
+                  key={parked.id}
+                  className="bg-muted/40 flex items-center justify-between gap-2 rounded-md px-3 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">
+                      {parked.label || t('parkedUntitled')}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      {t('parkedItemCount', { count: parked.lines.length })}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void resumeCart(parked)}
+                      disabled={resumingId !== null}
+                    >
+                      {t('resume')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => void discardCart(parked.id)}
+                      disabled={resumingId !== null}
+                      aria-label={t('discardParked', { label: parked.label || t('parkedUntitled') })}
+                    >
+                      <X className="size-4" aria-hidden />
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         {error ? (
           <p

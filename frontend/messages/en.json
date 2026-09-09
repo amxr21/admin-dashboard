@@ -2493,6 +2493,19 @@
     "splitAmountLabel": "Payment {index} amount",
     "removeSplitLine": "Remove payment {index}",
     "addSplitLine": "Add another payment",
-    "splitTotal": "Entered: {total} of {estimate}"
+    "splitTotal": "Entered: {total} of {estimate}",
+    "cancel": "Cancel",
+    "park": "Park",
+    "parked": "Cart parked",
+    "parkTitle": "Park this cart?",
+    "parkBody": "It stays here until you resume or discard it — nothing is charged or reserved.",
+    "parkLabel": "Label (optional)",
+    "parkLabelPlaceholder": "e.g. Sara — red jacket",
+    "parkedCarts": "{count, plural, one {# parked cart} other {# parked carts}}",
+    "parkedUntitled": "Parked cart",
+    "parkedItemCount": "{count, plural, one {# item} other {# items}}",
+    "resume": "Resume",
+    "discardParked": "Discard {label}",
+    "parkedItemsUnavailable": "{count, plural, one {# item is} other {# items are}} no longer available and were left out"
   }
 }

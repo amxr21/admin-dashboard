@@ -133,6 +133,7 @@ afterAll(async () => {
 
   await prisma.payment.deleteMany({ where: { orderId: { in: soldOrderIds } } });
   await prisma.order.deleteMany({ where: { id: { in: soldOrderIds } } });
+  await prisma.parkedSale.deleteMany({ where: { cashierId: { in: userIds } } });
   await prisma.shift.deleteMany({ where: { id: { in: shiftIds } } });
   await prisma.stockMovement.deleteMany({ where: { productId: { in: productIds } } });
   await prisma.branchStock.deleteMany({ where: { productId: { in: productIds } } });
@@ -702,6 +703,18 @@ describe('browsing the grid (O9.10)', () => {
     expect(ids).not.toContain(outsideCategory.id);
   });
 
+  it('filters by an explicit id list, for resuming a parked cart (O9.12b)', async () => {
+    const wanted = await makeProduct({ name: `${RUN} Parked Resume Grid A` });
+    const other = await makeProduct({ name: `${RUN} Parked Resume Grid B` });
+
+    const res = await browse({ ids: wanted.id });
+
+    const body = res.body as { data: { products: { id: string }[] } };
+    const ids = body.data.products.map((p) => p.id);
+    expect(ids).toContain(wanted.id);
+    expect(ids).not.toContain(other.id);
+  });
+
   it('reports branch stock the same way a scan does', async () => {
     const product = await makeProduct({ name: `${RUN} Stocked Grid Item`, stock: 10 });
     await prisma.branchStock.upsert({
@@ -1218,5 +1231,112 @@ describe('split payment (O9 Tier 3)', () => {
     });
 
     expect(res.status).toBe(400);
+  });
+});
+
+describe('park / resume a sale (O9.12b)', () => {
+  function park(body: Record<string, unknown>, token = ownerToken) {
+    return request(app)
+      .post('/api/v1/pos/parked')
+      .set(auth(token))
+      .set('X-Branch-Id', branchId)
+      .send(body);
+  }
+
+  function listParked(token = ownerToken) {
+    return request(app).get('/api/v1/pos/parked').set(auth(token)).set('X-Branch-Id', branchId);
+  }
+
+  function resume(id: string, token = ownerToken) {
+    return request(app)
+      .post(`/api/v1/pos/parked/${id}/resume`)
+      .set(auth(token))
+      .set('X-Branch-Id', branchId);
+  }
+
+  function discard(id: string, token = ownerToken) {
+    return request(app)
+      .delete(`/api/v1/pos/parked/${id}`)
+      .set(auth(token))
+      .set('X-Branch-Id', branchId);
+  }
+
+  it('parks a cart and lists it back', async () => {
+    const product = await makeProduct({ sku: `${RUN}-PARK-1`, price: '9.00' });
+
+    const res = await park({
+      lines: [{ productId: product.id, quantity: 2 }],
+      label: 'Sara — red jacket',
+    });
+
+    expect(res.status).toBe(201);
+    const body = res.body as { data: { id: string; label: string | null } };
+    expect(body.data.label).toBe('Sara — red jacket');
+
+    const list = await listParked();
+    const ids = (list.body as { data: { id: string }[] }).data.map((row) => row.id);
+    expect(ids).toContain(body.data.id);
+  });
+
+  it('refuses parking an empty cart', async () => {
+    const res = await park({ lines: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('resuming returns the cart and removes it from the list', async () => {
+    const product = await makeProduct({ sku: `${RUN}-PARK-2`, price: '9.00' });
+
+    const parked = await park({ lines: [{ productId: product.id, quantity: 1 }] });
+    const id = (parked.body as { data: { id: string } }).data.id;
+
+    const res = await resume(id);
+
+    expect(res.status).toBe(200);
+    const body = res.body as { data: { lines: { productId: string; quantity: number }[] } };
+    expect(body.data.lines).toEqual([{ productId: product.id, quantity: 1 }]);
+
+    const list = await listParked();
+    const ids = (list.body as { data: { id: string }[] }).data.map((row) => row.id);
+    expect(ids).not.toContain(id);
+  });
+
+  it('discarding removes it without returning it to the register', async () => {
+    const product = await makeProduct({ sku: `${RUN}-PARK-3`, price: '9.00' });
+
+    const parked = await park({ lines: [{ productId: product.id, quantity: 1 }] });
+    const id = (parked.body as { data: { id: string } }).data.id;
+
+    const res = await discard(id);
+    expect(res.status).toBe(204);
+
+    const list = await listParked();
+    const ids = (list.body as { data: { id: string }[] }).data.map((row) => row.id);
+    expect(ids).not.toContain(id);
+  });
+
+  it('refuses resuming a cart parked by somebody else', async () => {
+    const other = await makeUser(StaffRole.SUPPORT, 'park-other-1');
+    const product = await makeProduct({ sku: `${RUN}-PARK-4`, price: '9.00' });
+
+    const parked = await park({ lines: [{ productId: product.id, quantity: 1 }] }, ownerToken);
+    const id = (parked.body as { data: { id: string } }).data.id;
+
+    const res = await resume(id, signToken(other));
+    expect(res.status).toBe(403);
+
+    // Still there — the refused attempt did not remove it.
+    const stillParked = await prisma.parkedSale.findUnique({ where: { id } });
+    expect(stillParked).not.toBeNull();
+  });
+
+  it('refuses discarding a cart parked by somebody else', async () => {
+    const other = await makeUser(StaffRole.SUPPORT, 'park-other-2');
+    const product = await makeProduct({ sku: `${RUN}-PARK-5`, price: '9.00' });
+
+    const parked = await park({ lines: [{ productId: product.id, quantity: 1 }] }, ownerToken);
+    const id = (parked.body as { data: { id: string } }).data.id;
+
+    const res = await discard(id, signToken(other));
+    expect(res.status).toBe(403);
   });
 });

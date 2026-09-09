@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 
-import { render, screen, waitFor } from '@/test/render';
+import { render, screen, waitFor, within } from '@/test/render';
 import { Toaster } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
 import { SaleScreen } from '../sale-screen';
@@ -30,6 +30,10 @@ const {
   requestManagerOverride,
   voidSale,
   addOrderNote,
+  parkSale,
+  listParkedSales,
+  resumeParkedSale,
+  discardParkedSale,
 } = vi.hoisted(() => ({
   scanProduct: vi.fn(),
   checkout: vi.fn(),
@@ -38,6 +42,10 @@ const {
   requestManagerOverride: vi.fn(),
   voidSale: vi.fn(),
   addOrderNote: vi.fn(),
+  parkSale: vi.fn(),
+  listParkedSales: vi.fn(),
+  resumeParkedSale: vi.fn(),
+  discardParkedSale: vi.fn(),
 }));
 
 vi.mock('@/lib/pos-api', async (importOriginal) => ({
@@ -47,6 +55,10 @@ vi.mock('@/lib/pos-api', async (importOriginal) => ({
   browseProducts,
   browseCategories,
   voidSale,
+  parkSale,
+  listParkedSales,
+  resumeParkedSale,
+  discardParkedSale,
 }));
 
 vi.mock('@/lib/auth-api', async (importOriginal) => ({
@@ -79,6 +91,9 @@ beforeEach(() => {
   // product-grid.test.tsx for that). Resolving empty keeps it quiet.
   browseProducts.mockResolvedValue([]);
   browseCategories.mockResolvedValue([]);
+  // Fetched once on mount for the parked-carts panel — empty keeps it quiet
+  // for tests that aren't about parking (see the dedicated describe below).
+  listParkedSales.mockResolvedValue([]);
 });
 
 async function scan(code: string) {
@@ -618,5 +633,91 @@ describe('split payment (O9 Tier 3)', () => {
 
     await userEvent.click(screen.getAllByRole('button', { name: /remove payment/i })[0]!);
     expect(screen.getAllByLabelText(/payment \d amount/i)).toHaveLength(2);
+  });
+});
+
+describe('park / resume a sale (O9.12b)', () => {
+  it('parks the cart and clears it', async () => {
+    scanProduct.mockResolvedValue(makeProduct());
+    parkSale.mockResolvedValue({ id: 'park-1', label: null, lines: [], createdAt: '' });
+    listParkedSales.mockResolvedValue([]);
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+
+    await userEvent.click(screen.getByRole('button', { name: /^park$/i }));
+    const dialog = await screen.findByRole('alertdialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: /^park$/i }));
+
+    await waitFor(() => {
+      expect(parkSale).toHaveBeenCalledWith(
+        [{ productId: 'p1', quantity: 1 }],
+        undefined,
+      );
+    });
+
+    // Cart cleared — the scanned item is no longer listed.
+    expect(screen.queryByText('Flat white')).not.toBeInTheDocument();
+  });
+
+  it('lists a parked cart and resumes it, re-fetching current price/stock', async () => {
+    listParkedSales.mockResolvedValueOnce([
+      { id: 'park-1', label: 'Sara', lines: [{ productId: 'p1', quantity: 2 }], createdAt: '' },
+    ]);
+    resumeParkedSale.mockResolvedValue({
+      id: 'park-1',
+      label: 'Sara',
+      lines: [{ productId: 'p1', quantity: 2 }],
+      createdAt: '',
+    });
+    browseProducts.mockImplementation((params: { ids?: string[] }) =>
+      params.ids
+        ? Promise.resolve([
+            {
+              id: 'p1',
+              name: 'Flat white',
+              price: '5.00', // current price, deliberately different from any parked figure
+              imageUrl: null,
+              categoryId: null,
+              branchStock: 8,
+              status: 'ACTIVE' as const,
+            },
+          ])
+        : Promise.resolve([]),
+    );
+
+    render(<SaleScreen />);
+    await screen.findByText('Sara');
+
+    await userEvent.click(screen.getByRole('button', { name: /resume/i }));
+
+    await waitFor(() => {
+      expect(resumeParkedSale).toHaveBeenCalledWith('park-1');
+    });
+    expect(browseProducts).toHaveBeenCalledWith({ ids: ['p1'] });
+
+    // Restored with the FRESHLY fetched price, not a stale parked one.
+    expect(await screen.findByText('Flat white')).toBeInTheDocument();
+    expect(screen.getByText('5.00')).toBeInTheDocument();
+  });
+
+  it('discarding removes it from the list without touching the cart', async () => {
+    listParkedSales
+      .mockResolvedValueOnce([
+        { id: 'park-1', label: 'Sara', lines: [{ productId: 'p1', quantity: 1 }], createdAt: '' },
+      ])
+      .mockResolvedValue([]);
+    discardParkedSale.mockResolvedValue(undefined);
+
+    render(<SaleScreen />);
+    await screen.findByText('Sara');
+
+    await userEvent.click(screen.getByLabelText(/discard sara/i));
+
+    await waitFor(() => {
+      expect(discardParkedSale).toHaveBeenCalledWith('park-1');
+    });
+    expect(screen.queryByText('Sara')).not.toBeInTheDocument();
   });
 });

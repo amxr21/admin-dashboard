@@ -53,10 +53,14 @@ export interface BrowsedProduct {
 export async function browseProducts(params: {
   q?: string;
   categoryId?: string;
+  /** Resuming a parked cart (O9.12b) — fetch these ids' CURRENT price and
+   *  stock rather than what was parked. */
+  ids?: string[];
 }): Promise<BrowsedProduct[]> {
   const search = new URLSearchParams();
   if (params.q?.trim()) search.set('q', params.q.trim());
   if (params.categoryId) search.set('categoryId', params.categoryId);
+  if (params.ids && params.ids.length > 0) search.set('ids', params.ids.join(','));
 
   const qs = search.toString();
   const result = await apiFetch<{ products: BrowsedProduct[] }>(
@@ -153,4 +157,47 @@ export async function voidSale(
     method: 'POST',
     body: JSON.stringify(overrideToken ? { overrideToken } : {}),
   });
+}
+
+/**
+ * Park / resume a sale (O9.12b) — the customer forgot their wallet, and
+ * without this the cashier's only option is to delete the cart and re-scan.
+ *
+ * `ParkedSaleLine` stores CART SHAPE only, never price — resuming re-fetches
+ * both through the ordinary browse/scan path, since a park is meant to last
+ * minutes, not lock in a figure a manager would have to explain later.
+ */
+export interface ParkedSaleLine {
+  productId: string;
+  quantity: number;
+  discountPercent?: number;
+}
+
+export interface ParkedSale {
+  id: string;
+  label: string | null;
+  lines: ParkedSaleLine[];
+  createdAt: string;
+}
+
+export async function parkSale(
+  lines: ParkedSaleLine[],
+  label?: string,
+): Promise<ParkedSale> {
+  return apiFetch<ParkedSale>('/pos/parked', {
+    method: 'POST',
+    body: JSON.stringify(label ? { lines, label } : { lines }),
+  });
+}
+
+export async function listParkedSales(): Promise<ParkedSale[]> {
+  return apiFetch<ParkedSale[]>('/pos/parked');
+}
+
+export async function resumeParkedSale(id: string): Promise<ParkedSale> {
+  return apiFetch<ParkedSale>(`/pos/parked/${id}/resume`, { method: 'POST' });
+}
+
+export async function discardParkedSale(id: string): Promise<void> {
+  await apiFetch<void>(`/pos/parked/${id}`, { method: 'DELETE' });
 }

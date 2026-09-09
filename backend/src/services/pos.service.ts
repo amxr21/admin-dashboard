@@ -145,6 +145,12 @@ export interface BrowseProductsParams {
   q?: string | undefined;
   categoryId?: string | undefined;
   branchId: string | null;
+  /** Resuming a parked cart (O9.12b) — fetch exactly these ids' CURRENT price
+   *  and stock rather than what was parked. A product archived since it was
+   *  set aside is silently absent from the result, the same as it would be
+   *  from an ordinary browse — nothing here re-sells something no longer
+   *  sellable. */
+  ids?: string[] | undefined;
 }
 
 /**
@@ -171,9 +177,13 @@ export async function browseProducts(
       status: 'ACTIVE',
       ...(q ? { name: { contains: q } } : {}),
       ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+      ...(params.ids && params.ids.length > 0 ? { id: { in: params.ids } } : {}),
     },
     orderBy: { name: 'asc' },
-    take: BROWSE_LIMIT,
+    // A resume asks for a specific id list, which may legitimately exceed the
+    // grid's own cap — capping it there would silently drop lines from a
+    // cart that had more than BROWSE_LIMIT distinct products in it.
+    take: params.ids && params.ids.length > 0 ? undefined : BROWSE_LIMIT,
     select: {
       id: true,
       name: true,
@@ -787,4 +797,132 @@ export async function voidSale(orderId: string, actorId: string, req: Request) {
   });
 
   return { orderId, orderNumber: order.orderNumber };
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * PARK / RESUME A SALE (O9.12b)
+ * ───────────────────────────────────────────────────────────────────── */
+
+export interface ParkedSaleLine {
+  productId: string;
+  quantity: number;
+  discountPercent?: number | undefined;
+}
+
+/** What a parked-cart row looks like on the wire — `lines` cast out of the
+ *  DB's opaque `Json` column into the shape this module writes it as. */
+export interface ParkedSaleSummary {
+  id: string;
+  label: string | null;
+  lines: ParkedSaleLine[];
+  createdAt: Date;
+}
+
+function toParkedSaleSummary(row: {
+  id: string;
+  label: string | null;
+  lines: Prisma.JsonValue;
+  createdAt: Date;
+}): ParkedSaleSummary {
+  return {
+    id: row.id,
+    label: row.label,
+    lines: row.lines as unknown as ParkedSaleLine[],
+    createdAt: row.createdAt,
+  };
+}
+
+/**
+ * Set a cart aside mid-sale.
+ *
+ * Stores CART SHAPE only — product id, quantity, the cashier's own line
+ * discount — never a price or stock snapshot. A park is meant to last
+ * minutes, not lock in a figure; resuming re-fetches both through the
+ * ordinary browse path, the same as if the cashier had just built the cart
+ * fresh. No stock is reserved: the shelf does not know a cart exists.
+ */
+export async function parkSale(
+  cashierId: string,
+  branchId: string,
+  lines: ParkedSaleLine[],
+  label: string | undefined,
+): Promise<ParkedSaleSummary> {
+  if (lines.length === 0) {
+    throw AppError.badRequest('Cannot park an empty cart', { field: 'lines' });
+  }
+
+  const row = await prisma.parkedSale.create({
+    data: {
+      cashierId,
+      branchId,
+      lines: lines as unknown as Prisma.InputJsonValue,
+      label: label ?? null,
+    },
+    select: { id: true, label: true, lines: true, createdAt: true },
+  });
+
+  return toParkedSaleSummary(row);
+}
+
+/** Every cart this cashier has parked at this branch, oldest first — the
+ *  counter fills up through a shift, and the first one set aside is usually
+ *  the first one somebody comes back for. */
+export async function listParkedSales(
+  cashierId: string,
+  branchId: string,
+): Promise<ParkedSaleSummary[]> {
+  const rows = await prisma.parkedSale.findMany({
+    where: { cashierId, branchId },
+    select: { id: true, label: true, lines: true, createdAt: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  return rows.map(toParkedSaleSummary);
+}
+
+/**
+ * Bring a parked cart back to the register and forget it was ever parked.
+ *
+ * Deleted rather than left behind on resume: a parked row's only job is to
+ * survive the gap between setting a cart down and picking it back up, and a
+ * resumed one sitting in the list would look like a second, stale copy of
+ * the same customer's order.
+ */
+export async function resumeParkedSale(
+  id: string,
+  cashierId: string,
+): Promise<ParkedSaleSummary> {
+  const row = await prisma.parkedSale.findUnique({
+    where: { id },
+    select: { id: true, cashierId: true, label: true, lines: true, createdAt: true },
+  });
+
+  if (!row) throw AppError.notFound('Parked sale not found');
+
+  // Only the cashier who set it down — nobody else's till should be able to
+  // pull somebody else's cart onto their own screen.
+  if (row.cashierId !== cashierId) {
+    throw AppError.forbidden('You can only resume a cart you parked yourself');
+  }
+
+  await prisma.parkedSale.delete({ where: { id } });
+
+  return toParkedSaleSummary(row);
+}
+
+/** Give up on a parked cart without resuming it — the customer never came
+ *  back. Same ownership rule as resuming. */
+export async function discardParkedSale(id: string, cashierId: string): Promise<void> {
+  const row = await prisma.parkedSale.findUnique({
+    where: { id },
+    select: { cashierId: true },
+  });
+
+  if (!row) throw AppError.notFound('Parked sale not found');
+
+  if (row.cashierId !== cashierId) {
+    throw AppError.forbidden('You can only discard a cart you parked yourself');
+  }
+
+  await prisma.parkedSale.delete({ where: { id } });
 }

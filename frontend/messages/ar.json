@@ -2493,6 +2493,19 @@
     "splitAmountLabel": "مبلغ الدفعة {index}",
     "removeSplitLine": "إزالة الدفعة {index}",
     "addSplitLine": "إضافة دفعة أخرى",
-    "splitTotal": "المُدخل: {total} من {estimate}"
+    "splitTotal": "المُدخل: {total} من {estimate}",
+    "cancel": "إلغاء",
+    "park": "تنحية",
+    "parked": "تم تنحية السلة",
+    "parkTitle": "تنحية هذه السلة؟",
+    "parkBody": "ستبقى هنا حتى تستأنفها أو تتجاهلها — لا يُخصم أو يُحجز شيء.",
+    "parkLabel": "تسمية (اختياري)",
+    "parkLabelPlaceholder": "مثال: سارة — سترة حمراء",
+    "parkedCarts": "{count, plural, one {سلة واحدة منحّاة} two {سلتان منحّاتان} few {# سلال منحّاة} many {# سلة منحّاة} other {# سلة منحّاة}}",
+    "parkedUntitled": "سلة منحّاة",
+    "parkedItemCount": "{count, plural, one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}}",
+    "resume": "استئناف",
+    "discardParked": "تجاهل {label}",
+    "parkedItemsUnavailable": "{count, plural, one {عنصر واحد لم يعد متاحًا واستُبعد} two {عنصران لم يعودا متاحين واستُبعدا} few {# عناصر لم تعد متاحة واستُبعدت} many {# عنصرًا لم يعد متاحًا واستُبعد} other {# عنصر لم يعد متاحًا واستُبعد}}"
   }
 }

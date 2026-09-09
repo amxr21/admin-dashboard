@@ -290,6 +290,8 @@ model Branch {
   couriers DeliveryStaffBranch[]
   /// Work periods recorded here (F6.1).
   shifts   Shift[]
+  /// Carts parked at this branch's till (O9.12b).
+  parkedSales ParkedSale[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -365,6 +367,7 @@ model User {
   shifts               Shift[]               @relation("ShiftWorker")
   shiftsOpened         Shift[]               @relation("ShiftOpener")
   shiftsEdited         Shift[]               @relation("ShiftEditor")
+  parkedSales          ParkedSale[]
 
   @@index([role])
   @@index([createdAt])
@@ -1982,6 +1985,44 @@ model TillEvent {
 
   @@index([shiftId, createdAt])
   @@map("till_events")
+}
+
+/// A cart set aside mid-sale (O9.12b) — the customer forgot their wallet, a
+/// walk-in needs help finding a size, and so on. Deliberately NOT an `Order`:
+/// nothing has been paid or moved off the shelf, so it carries none of
+/// `Order`'s sale-shaped fields (no payment, no stock movement, no status
+/// history). Resuming re-fetches CURRENT price and stock for every line
+/// through the ordinary browse/checkout path — a park is meant to last
+/// minutes, not lock in a price, and storing one here would risk a stale
+/// figure the same way a live cost lookup once did (see `OrderItem.cost`).
+model ParkedSale {
+  id String @id @default(cuid())
+
+  /// Who parked it — only this person (or a manager, same rule as void/
+  /// override elsewhere in the till) may resume or discard it. Cascade: a
+  /// parked cart has no meaning once the account that held it is gone.
+  cashierId String @map("cashier_id")
+  cashier   User   @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  /// `{ productId, quantity, discountPercent? }[]` — a snapshot of CART
+  /// SHAPE only, never price. Plain `Json` rather than a line-item table:
+  /// there is no reporting need for a parked line the way there is for a
+  /// sold one, and the whole row is deleted the moment it resumes or is
+  /// discarded.
+  lines Json
+
+  /// A short label so a busy counter can tell two parked carts apart
+  /// ("Sara — red jacket") without opening each one.
+  label String? @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([cashierId])
+  @@index([branchId])
+  @@map("parked_sales")
 }
 
 /// An owner's override of what one role may reach (O8).

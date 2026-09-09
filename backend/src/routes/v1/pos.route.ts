@@ -11,6 +11,10 @@ import {
   browseCategories,
   browseProducts,
   checkout,
+  discardParkedSale,
+  listParkedSales,
+  parkSale,
+  resumeParkedSale,
   scanProduct,
   voidSale,
 } from '../../services/pos.service.js';
@@ -64,6 +68,9 @@ posRouter.get('/pos/scan', ...guard, async (req, res) => {
 const browseQuery = z.object({
   q: z.string().trim().max(200).optional(),
   categoryId: z.string().trim().min(1).optional(),
+  /** Resuming a parked cart (O9.12b) — comma-separated product ids to fetch
+   *  by identity rather than by search. */
+  ids: z.string().trim().min(1).optional(),
 });
 
 /**
@@ -86,6 +93,9 @@ posRouter.get('/pos/browse', ...guard, async (req, res) => {
     q: parsed.data.q,
     categoryId: parsed.data.categoryId,
     branchId: req.branchId ?? null,
+    ids: parsed.data.ids
+      ? parsed.data.ids.split(',').map((id) => id.trim()).filter(Boolean)
+      : undefined,
   });
 
   res.status(200).json({ data: { products } });
@@ -255,4 +265,68 @@ posRouter.post('/pos/orders/:orderId/void', ...guard, async (req, res) => {
   const result = await voidSale(orderId, user.id, req);
 
   res.json({ data: result });
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+ * PARK / RESUME A SALE (O9.12b)
+ * ───────────────────────────────────────────────────────────────────── */
+
+const parkLineSchema = z.object({
+  productId: z.string().trim().min(1),
+  quantity: z.number().int().positive(),
+  discountPercent: z.number().min(0).max(100).optional(),
+});
+
+const parkSchema = z.object({
+  lines: z.array(parkLineSchema).min(1),
+  label: z.string().trim().max(100).optional(),
+});
+
+/** POST /api/v1/pos/parked — set the current cart aside. */
+posRouter.post('/pos/parked', ...guard, async (req, res) => {
+  const parsed = parkSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    throw AppError.badRequest('Invalid request', parsed.error.flatten());
+  }
+
+  const user = requireUser(req);
+
+  if (!req.branchId) {
+    throw AppError.badRequest('No branch is in context — choose one before parking a cart');
+  }
+
+  const result = await parkSale(user.id, req.branchId, parsed.data.lines, parsed.data.label);
+
+  res.status(201).json({ data: result });
+});
+
+/** GET /api/v1/pos/parked — this cashier's own parked carts at this branch. */
+posRouter.get('/pos/parked', ...guard, async (req, res) => {
+  const user = requireUser(req);
+
+  if (!req.branchId) {
+    res.json({ data: [] });
+    return;
+  }
+
+  const result = await listParkedSales(user.id, req.branchId);
+
+  res.json({ data: result });
+});
+
+/** POST /api/v1/pos/parked/:id/resume — bring it back and forget it was parked. */
+posRouter.post('/pos/parked/:id/resume', ...guard, async (req, res) => {
+  const user = requireUser(req);
+  const result = await resumeParkedSale(String(req.params.id), user.id);
+
+  res.json({ data: result });
+});
+
+/** DELETE /api/v1/pos/parked/:id — give up on it, the customer never came back. */
+posRouter.delete('/pos/parked/:id', ...guard, async (req, res) => {
+  const user = requireUser(req);
+  await discardParkedSale(String(req.params.id), user.id);
+
+  res.status(204).send();
 });
