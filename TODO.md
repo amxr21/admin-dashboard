@@ -12,7 +12,7 @@ reasoning behind decisions already made, not for what is open.
 
 # 📊 STATUS AT A GLANCE — 2026-09-08
 
-**19 open · 96 done.** Started this session at 87 open, closed 11, then the
+**18 open · 97 done.** Started this session at 87 open, closed 11, then the
 owner used the merged build and opened **O9** (16 items) — see below.
 
 | | Track | State |
@@ -30,7 +30,7 @@ owner used the merged build and opened **O9** (16 items) — see below.
 | ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
 | ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
 | 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
-| 🔨 | **O9** the till: a counter, not an endpoint list | 13 done, 4 left |
+| 🔨 | **O9** the till: a counter, not an endpoint list | 14 done, 3 left |
 | 📋 | 16 items | see PENDING below |
 
 **Verification at this point:** backend 1001/1001 (47 files) · frontend
@@ -958,8 +958,12 @@ systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6)
       silently out of sync with what it sent from the moment it shipped.
       Verification: backend 1043/1043, frontend 1086/1086 +1 skipped,
       tsc/eslint clean both sides, en/ar parity 1815/1815. Commit `4fbe414`.
-- [ ] **O9.14 — Cashier notes on a sale.** The owner's "what if he wants to
-      note smth??". Free text on the order, visible on the order detail.
+- [x] **O9.14 — DONE 2026-09-09.** Cashier notes on a sale. No new backend
+      at all — reuses `OrderNote`/`addOrderNote` (the existing order-detail
+      thread, C5.7) wholesale. The till is a new entry point into it, not a
+      second thread. Cleared alongside the receipt on a new sale or a void.
+      Verification: frontend 1088/1088 +1 skipped, tsc/eslint clean, en/ar
+      parity 1820/1820. Commit `c044b28`.
 - [ ] **O9.12 — Split payment.** `Payment` is already a TABLE rather than
       columns on `Order`, chosen in O5.2 precisely so a split (30 cash, rest
       on card) is expressible. Schema is ready; nothing surfaces it.
