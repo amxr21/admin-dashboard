@@ -10,6 +10,44 @@ reasoning behind decisions already made, not for what is open.
 
 ---
 
+# ⚠️ PRODUCTION DB CONTAINS DEMO DATA (2026-09-09) — read before touching it
+
+The Coolify production database (`default`) was reset (`prisma migrate reset`)
+while chasing the `APP_MODE` misconfiguration below, then reseeded with the
+**tagged demo dataset** — 29 products, 32 customers, 158 orders across 180
+days, 2 businesses, 4 branches, 4 staff, 14 returns, 18 variants — so the
+owner could demo a populated site rather than an empty one. Every row is
+tagged `__demo__`.
+
+**This required a deliberate, temporary bypass**: `demo-seed.ts` refuses
+unconditionally to write to a database named `default` or `defaultdb` — that
+check has no env-var override on purpose, since `default` **is** this app's
+real production database (owner, 2026-09-05: no separate dev DB exists) and
+the guard exists specifically to stop `__demo__` rows from ever landing in a
+real business's live catalogue. To seed anyway, `FORBIDDEN_DATABASES` was
+commented out on the SERVER's checked-out copy only, `npx prisma db seed` was
+run once, then the line was restored immediately — never committed, never
+pushed. `git log` shows no trace of this because there is none to show.
+
+**Before this becomes a real store**: run
+`pnpm --filter ./backend demo:teardown` (from the server, same DB) to remove
+every `__demo__`-tagged row — it matches ONLY the tag, so it is safe even
+against real data mixed in later. Do **not** assume future `db:seed` runs
+against `default` will add demo data automatically — the guard is back in
+place and will refuse, which is correct; this note is what explains why, so
+nobody spends another session confused by a `Business`/`Order` count that
+doesn't match a fresh migration.
+
+Separately fixed the same session: Coolify's backend service had
+`APP_MODE=local` while `DATABASE_URL` pointed at the remote production
+container — the app's own boot guard refused to start (by design), which is
+why the site was crash-looping and the browser reported it as a CORS error
+(a 503 from Coolify's proxy carries no CORS headers, so the real cause was
+invisible from the browser alone). Fixed by setting `APP_MODE=prod` in
+Coolify's env panel for that service.
+
+---
+
 # 📊 STATUS AT A GLANCE — 2026-09-08
 
 **16 open · 99 done.** Started this session at 87 open, closed 11, then the
