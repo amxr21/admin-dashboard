@@ -60,12 +60,12 @@ to know whether the work actually reached `dev` is to look for the files.
 
 ---
 
-# 📋 PENDING — the 23 that are left
+# 📋 PENDING — the 22 that are left
 
 Full detail for each is further down under its own track heading; this is the
 index.
 
-## 🆕 O9 — the till (2 left)
+## 🆕 O9 — the till (1 left)
 
 Opened 2026-09-08 from six notes the owner raised after using the merged O5
 build; **re-prioritised 2026-09-09 at his request — experience, then bugs,
@@ -934,8 +934,18 @@ systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6)
       separately** — the per-line control already covers it by setting the
       same value on every line; a dedicated "whole cart" button is a small
       follow-up if the owner asks for it specifically.
-- [ ] **O9.12b — Park / hold a sale.** Customer forgot their wallet. Without
-      it the cashier's only option is to delete the cart and re-scan.
+- [x] **O9.12b — DONE 2026-09-09.** Park / hold a sale. New `ParkedSale`
+      model, deliberately NOT an `Order` — nothing is paid or moved off the
+      shelf, so it carries none of `Order`'s sale-shaped fields (no payment,
+      no stock movement, no status history). Stores CART SHAPE only —
+      product id, quantity, line discount — never a price or stock snapshot;
+      resuming re-fetches both current values through the ordinary browse
+      path (a new `ids` filter on `browseProducts`), since a park is meant
+      to last minutes, not lock in a figure a manager would have to explain
+      later. Only the cashier who parked a cart may resume or discard it.
+      Verification: backend 1069/1069 (47 files), frontend 1099/1099 +1
+      skipped (124 files), tsc/eslint clean both sides, en/ar parity
+      1873/1873. Commit `d2bf5e8`.
 - [x] **O9.9 — DONE 2026-09-09.** Void a sale. **Void a LINE pre-payment
       already existed** (the trash icon on an unpaid cart line) — this
       closes the other half, voiding a just-completed sale. Distinct from a
