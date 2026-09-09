@@ -1,67 +1,139 @@
 # TODO — the one list
 
-Updated 2026-09-07. **This is the only task list.** `MASTER_TODO.md`,
+Updated **2026-09-08**. **This is the only task list.** `MASTER_TODO.md`,
 `O7-PLAN.md` and the old `TODO.md` were merged into this file; `SETUP_TODO.md`
 stays separate on purpose (it is the OWNER's config/secrets checklist, not code
 work).
-
-**`SETUP_TODO.md` stays separate and is still live** — 13 open items there.
-It is config, secrets and hosting decisions only the owner can make; this file
-is code work. Merging them would bury "generate fresh secrets" among eighty
-engineering tasks. Two items appear in both by design, because each side owns
-half: the **Arabic review** (the native-speaker pass is the owner's; the wiring
-is done) and **E2E** (rewriting the workflow is code; providing a database is
-the owner's).
-
-Its highest-priority item: **`prod` has no database of its own** — `_PROD` and
-`_LOCAL` are not yet fully separated. Also two real gaps it tracks that are
-still true: `frontend/public/` **does not exist at all** (so every deployment
-serves a default favicon) and the browser tab title is still the literal
-placeholder `'admin-dashboard'`.
 
 `.claude-workbook/ROADMAP.md` remains the historical archive — read it for the
 reasoning behind decisions already made, not for what is open.
 
 ---
 
-## 📬 Open PRs — the 2026-09-08 stack
+# 📊 STATUS AT A GLANCE — 2026-09-08
 
-**8 merged, 6 open.** Merge bottom-up; each shows only its own diff.
+**16 open · 99 done.** Started this session at 87 open, closed 11, then the
+owner used the merged build and opened **O9** (16 items) — see below.
 
-| PR | Branch | Base | What |
-|---|---|---|---|
-| #165 | `stack/09-two-factor-login` | **`dev`** | O3b — 2FA login + settings panels |
-| #171 | `stack/10b-shifts-backend` | #165 | F6.1 — shift model + API |
-| #167 | `stack/11-shifts-ui` | #171 | F6.3/6.5 — shift UI + staff activity |
-| #168 | `stack/12-shift-summary` | #167 | F6.4 — shift summary |
-| #169 | `stack/13-low-stock-alert-test` | #168 | F7.5 — low-stock email test |
-| #170 | `stack/14-bulk-progress` | #169 | §U — bulk-delete progress |
+| | Track | State |
+|---|---|---|
+| ✅ | **O1** branch named on lists | merged |
+| ✅ | **O2** couriers serve branches | merged |
+| ✅ | **O3** per-role landing pages | merged |
+| ✅ | **O3b** 2FA login + settings panels | merged |
+| ✅ | **O6** courier card-blanking bug | merged |
+| ✅ | **O7** businesses/branches/roster (4 stages) | merged |
+| ✅ | **F6** shifts (5 items) | merged |
+| ✅ | **F7.5** low-stock email (verified, not rebuilt) | merged |
+| ✅ | **F7.8 / F7.9** batch detail + `Supplier` | merged |
+| ✅ | **F3.5** bulk receive | merged (#174) |
+| ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
+| ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
+| 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
+| 🔨 | **O9** the till: a counter, not an endpoint list | 16 done, 1 left |
+| 📋 | 16 items | see PENDING below |
 
-Merged: #156-#163 (O6, O7 §1-3, docs, O1, O2, O3).
+**Verification at this point:** backend 1001/1001 (47 files) · frontend
+1077/1077 (119 files) · tsc, eslint and `check:merge` clean both sides ·
+en/ar parity 1727/1727 · 6 additive migrations applied locally.
 
-### ⚠️ What went wrong on 2026-09-07, and how it was fixed
+---
 
-**#166 was merged into `stack/09-two-factor-login` instead of `dev`.** GitHub
-marked it MERGED and closed it, but the F6.1 shift work never reached `dev` —
-`backend/src/services/shifts.service.ts` was simply absent from it, with no
-open PR left to bring it in. Nothing was lost, but nothing would have shipped
-either, and the closed PR made it look done.
+# ✅ THE 2026-09-08 STACK IS MERGED
 
-Reopened as **#171** on `stack/10b-shifts-backend` (a new branch name: the old
-one is bound to the closed PR).
+**All 11 PRs (#174–#184) are in `dev`**, merged by the owner 2026-09-08.
+Verified file-by-file rather than trusting the PR states: `pos.service.ts`,
+`order-math.service.ts`, `role-permissions.service.ts`,
+`bulk-receive.service.ts`, `sale-screen.tsx`, `thermal-receipt.tsx`,
+`pos-api.ts` and the `CASHIER` enum value are all present on `origin/dev`.
 
-**The lesson for a stack: merge each PR into `dev`, not into its base branch.**
-GitHub retargets the next PR to `dev` automatically as each one lands — that
-retarget is the mechanism, and merging into the base short-circuits it.
+That check was worth doing. Most of the stack merged into its BASE branch
+rather than into `dev` — the same pattern that orphaned #166 on 2026-09-07 —
+but the chain carried everything through this time, so nothing was lost.
 
-**#165's "conflict" was fake, as this file's own rule predicts.** `merge-tree`
-returned a clean tree; `git rebase origin/dev` skipped 8 already-applied
-commits and produced zero conflicts. #167/#168 had a REAL conflict of the same
-family — each branch carried its own copy of a parent's commit under a
-different SHA — fixed by rebasing each onto its actual base, not by hand.
+**The rule still stands for the next stack: merge each PR into `dev`.** When a
+PR merges into its base instead, GitHub still marks it MERGED, and the only way
+to know whether the work actually reached `dev` is to look for the files.
 
-All six verified after the rebase: backend 922/922, frontend 1050/1050, tsc,
-eslint and `check:merge` clean on the stack tip.
+**Not yet pushed:** B4.7/B4.8 (per-line and partial returns) is committed on
+`work/pos-and-roles`, rebased onto the merged `dev`, and needs its own PR.
+
+---
+
+# 📋 PENDING — the 21 that are left
+
+Full detail for each is further down under its own track heading; this is the
+index.
+
+## 🆕 O9 — the till (0 left — DONE 2026-09-09)
+
+Opened 2026-09-08 from six notes the owner raised after using the merged O5
+build; **re-prioritised 2026-09-09 at his request — experience, then bugs,
+then minor issues.** O9.1–O9.3 shipped (commit `9e703c6`).
+
+The first ordering was written from the code's point of view and was wrong:
+the two most important items were not on it at all. Now:
+
+- **Tier 1 — the counter is unusable without these.** **O9.10**: the till can
+  only sell 1 of the shop's 30 products (scan is exact-match only; 29 have no
+  barcode). **O9.11**: every sale is anonymous. **O9.7**: returns are
+  admin-only while the customer stands at the counter
+- **Tier 2 — two bugs found by reading, not reported.** ✅ **O9.17** (a sale
+  credited to the wrong drawer) fixed 2026-09-09. **O9.18**:
+  `defaultBranchId()` is order-dependent on a multi-business install
+- **Tier 3–4 — counter friction, then control/close.** Discounts, park, void,
+  notes, split payment; then manager override, cash drop, X/Z, exchange
+- **Tier 5 — minor.** The shift dialog and hiding the clock from the owner
+- **⏳ Three questions block Tier 1** — barcodes or not, shop type, and O9.4
+
+## Needs nothing from the owner (10)
+
+**Returns lifecycle (3)**
+- **S7.8** `ReturnStatus` 3 → ~8 values (label sent → in transit → received →
+  inspected → resolved). More useful now that B4.7 gives per-line outcomes
+- **B4.10** Refund without a return — a standalone model, independent of RMA
+- **B4.11** Policy window, restocking fees, exchange linkage — biggest of the
+  three
+
+**Catalogue (4)**
+- **A5.8** Per-locale product content (EN/AR) + completeness indicator
+- **A5.9** Version history with restore; bulk import; vendor/collections
+- **S7.6** `Category.parentId` → the category tree
+- **S7.9** Tags — no model or field exists yet
+
+**Schema + UI (3)**
+- **S7.1** `Address` model → shipping/billing, customer addresses, tax by region
+- **Optimistic row updates with rollback** — a real refactor of every table's
+  write path
+- **Loading-overlay blur / nav-transition smoothness**
+
+## Scoped, ready to build (1)
+
+- **F7.6** Supplier reorder email — **the SMALL approach**, per the owner
+  2026-09-08: a "email this supplier about low stock" action sending a
+  pre-filled message via the existing `sendAlertEmail`. NOT purchase orders
+  with a request→approve→send workflow; that is procurement and its own track
+
+## Waiting on the owner (4)
+
+- **Design Fix Checklist Phases 6–7** — the text was never transcribed into
+  this repo. **Needs re-pasting**; do not reconstruct from memory. (Asked
+  2026-09-08; the answer described O8, which is a different and now-shipped
+  thing)
+- **Arabic review** — parity holds at 1727/1727, but every string is
+  machine/self-translated MSA. Blocks a client demo. NOT self-certifiable
+- **E2E** — `.github/workflows/e2e.yml` still written around Vercel preview
+  URLs + `RENDER_DEV_BACKEND_URL`. Disabled, so it breaks nothing, but needs
+  rewriting for Coolify
+- **Sentry prod DSN** — on hold, the trial ended
+
+*The owner said 2026-09-08 to leave the last two alone for now.*
+
+## Explicitly parked, not forgotten (2)
+
+- **S7.5** ~~`Location` model~~ — **superseded by F8's `Branch`.** Listed only
+  so nobody re-adds it
+- **F7.10** re-seed the demo data — postponed by the owner 2026-09-08
 
 ---
 
@@ -727,6 +799,411 @@ till its branch for free.
 without `Payment` → sales nobody can reconcile.
 **Size: its own track, comparable to all of F8.** Start at O5.1.
 
+---
+
+### ⭐ O9 — THE TILL: A COUNTER, NOT AN ENDPOINT LIST
+
+**Raised by the owner 2026-09-08** (six notes after using the merged O5
+build), **re-prioritised 2026-09-09** at his request: experience first, then
+bugs, then minor issues.
+
+**The first version of this track was ordered wrong** and it is worth saying
+why. It was written from the code's point of view — sixteen endpoints
+`pos.route.ts` does not have. Re-read as *"what happens when a person is
+standing at the counter"*, the two most important items were not on the list
+at all: the cashier cannot FIND most products, and the customer is invisible.
+Everything below is ordered by what a real transaction hits first.
+
+**Already built — do not rebuild.** Receipt printing (`thermal-receipt.tsx`,
+print stylesheet, `window.print()`). Watching cashier hours
+(`staff-activity-view.tsx`, "on now" / "shifts" tabs). Order lookup by
+receipt number (`orders.service.ts:82`, `search.service.ts:66`) — the
+foundation O9.7 needs already works.
+
+---
+
+## 🥇 TIER 1 — THE COUNTER IS UNUSABLE WITHOUT THESE — ✅ COMPLETE
+
+- [x] **O9.10 — DONE 2026-09-09.** The till could only sell 1 of the shop's
+      30 products. The owner confirmed the shop will NOT be barcoding stock
+      and that the cashier's job is scanning and counting, nothing else —
+      which made this the top item, not a fallback feature.
+      Built `browseProducts`/`browseCategories` (`GET /pos/browse`,
+      `GET /pos/browse/categories`), gated the same as scan
+      (`requireArea('orders')`). Deliberately a SEPARATE function from
+      `scanProduct`, not the same one with a fuzzy flag — the scan's
+      exactness is a correctness property and must not grow an escape hatch.
+      Frontend: a tappable grid with search + category tabs next to the scan
+      field; tapping calls the same `addToCart()` a scan uses, so the de-dupe
+      rule (same item twice = quantity, never a second line) cannot differ
+      between the two paths.
+      **O9.11 (attach a customer) was DROPPED, not built** — see below.
+      Commit `8af285e`.
+
+- [x] **O9.11 — DROPPED 2026-09-09, not built.** Attaching a customer to a
+      sale would need the CASHIER to look one up, but the owner clarified the
+      cashier's job is "just scanning things and counting them in, nothing
+      else" — there is no one at the till who would know or ask who the
+      customer is. Building a picker would be a control for a job that is not
+      the cashier's. No code written; nothing to revert.
+
+## 🐛 TIER 2 — BUGS (found by reading, not reported) — ✅ COMPLETE
+
+- [x] **O9.17 — DONE 2026-09-09.** A sale could be attributed to the wrong
+      drawer. P2, found by reading the checkout path, not reported.
+      `shiftId` was accepted from the request body and written onto the
+      `Payment` row unverified — nothing checked it existed, was still open,
+      or belonged to the caller. The drawer reconciles by summing payments
+      carrying a shift id, so a wrong value silently moved cash into someone
+      else's count and `closeTill` computed a variance against a figure that
+      was never that cashier's.
+      **The realistic path was not an attack:** `sale-screen.tsx` read the
+      shift once on mount and held it for the life of the page, so a cashier
+      who clocked out and handed the terminal over without a reload kept
+      posting the PREVIOUS person's id.
+      Fixed by resolving the shift SERVER-side from the authenticated user.
+      `shiftId` is gone from the request schema entirely — the client has no
+      id left to get wrong. The service still takes the field, now as a
+      trusted server-resolved value, documented where it is declared.
+      `actorId` in the same `create` call was already derived from the token;
+      the inconsistency next to it is what made this easy to miss.
+      The client-held shift state was REMOVED rather than left dead — a
+      mechanism that still looks wired up is how this gets reintroduced.
+      **The previous test asserted the bug**: it opened a shift for a CASHIER,
+      sold as the OWNER passing the cashier's id, and expected it to stick.
+      Replaced with three tests (own shift attaches, a body-supplied id is
+      ignored, no-shift sale still works), watched failing with the
+      vulnerability restored. Commit `bc99be9`.
+
+- [x] **O9.18 — DONE 2026-09-09.** `defaultBranchId()` had an order-dependent
+      answer once more than one business existed. `isDefault` is unique PER
+      BUSINESS, not globally, so a multi-business install has several
+      flagged branches and `findFirst` returned whichever it reached first.
+      **Same SHAPE as the bug F8.2 removed** — that one replaced "oldest
+      branch" precisely because the answer must not depend on row order.
+      **Owner decided: refuse with a clear error rather than guess**, once
+      more than one business exists. A single-business install is unaffected
+      — the ambiguity does not exist there.
+      **Two pre-existing gaps found and fixed while applying it, both from
+      the same missing piece**: `POST /inventory/:productId/movements` never
+      read the branch switcher's header at all (unlike `/receive` beside
+      it), and `POST /r/:resource` never ran `withBranchContext` (unlike
+      every other verb on that router) — which meant `guardArea`'s
+      `effectiveRole()` silently fell back to the caller's GLOBAL role on
+      every generic-resource create, so **a per-branch role downgrade was
+      never enforced on create, only on read/update/delete.**
+      `branch-roles.test.ts` still passes clean, so existing coverage never
+      caught it.
+      24 backend tests broke on first applying the refusal — all of them
+      leaning on the old silent fallback against a database that has
+      genuinely carried multiple businesses since the demo seed. Fixed at
+      the source (each test now names its branch explicitly, the way the
+      real till does via the switcher), not worked around. One leftover test
+      business (debris from a crashed `branch-writes.test.ts` run) found and
+      deleted along the way — confirmed via its name and zero branches
+      before removing it.
+      Verification: backend 1016/1016, tsc/eslint clean. Commit `23c2a14`.
+
+## 🛒 TIER 3 — REAL-COUNTER FRICTION — ✅ COMPLETE
+
+Nothing here is missing machinery; each is small. Together they are the
+difference between a demo and a till. Sourced from what standard retail POS
+systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6).
+
+- [x] **O9.11b — DONE 2026-09-09.** Discounts. Percent per line (owner's
+      answer), NOT a coupon code — the existing `Discount` model is a
+      different, later feature. `OrderItem.discountPercent` is a SEPARATE
+      column from `price`: writing the discounted figure into `price` would
+      corrupt margin/revenue/invoice readers that all read it as the true
+      unit price. NULL, never 0, same discipline as `OrderItem.cost`.
+      New `pos.maxCashierDiscountPercent` setting (default 20, owner
+      configurable). Above it, checkout requires `overrideToken` from
+      O9.13's manager-override endpoint, verified server-side against the
+      signature — never a client-supplied approver id taken on faith (same
+      class of bug O9.17 fixed for `shiftId`). Frontend cap-check is a NUDGE
+      only; the server re-verifies every line regardless.
+      **A real closure-timing bug caught while writing this feature's own
+      tests**: a `const branchId2 = branchId` taken at `describe()`-body
+      scope froze the empty string held before `beforeAll` ran (a
+      `describe` body runs at collection time, before any hook) — every
+      request using it then hit O9.18's genuine multi-business refusal,
+      which read at first like a bug in the discount logic itself.
+      Verification: backend 1033/1033, frontend 1080/1080 +1 skipped,
+      tsc/eslint clean both sides, en/ar parity 1786/1786. Commit `9913f18`.
+      **Per-cart discount (apply one percent to every line) was not built
+      separately** — the per-line control already covers it by setting the
+      same value on every line; a dedicated "whole cart" button is a small
+      follow-up if the owner asks for it specifically.
+- [x] **O9.12b — DONE 2026-09-09.** Park / hold a sale. New `ParkedSale`
+      model, deliberately NOT an `Order` — nothing is paid or moved off the
+      shelf, so it carries none of `Order`'s sale-shaped fields (no payment,
+      no stock movement, no status history). Stores CART SHAPE only —
+      product id, quantity, line discount — never a price or stock snapshot;
+      resuming re-fetches both current values through the ordinary browse
+      path (a new `ids` filter on `browseProducts`), since a park is meant
+      to last minutes, not lock in a figure a manager would have to explain
+      later. Only the cashier who parked a cart may resume or discard it.
+      Verification: backend 1069/1069 (47 files), frontend 1099/1099 +1
+      skipped (124 files), tsc/eslint clean both sides, en/ar parity
+      1873/1873. Commit `d2bf5e8`.
+- [x] **O9.9 — DONE 2026-09-09.** Void a sale. **Void a LINE pre-payment
+      already existed** (the trash icon on an unpaid cart line) — this
+      closes the other half, voiding a just-completed sale. Distinct from a
+      RETURN on purpose: a return is a customer bringing something back days
+      later (O9.7, needs a manager, lives in `Return`); a void is the SAME
+      sale undone at the SAME register moments later — nobody ever had the
+      goods in the customer's understanding. Reverses the three things
+      checkout wrote: order → CANCELED (only from CONFIRMED — a delivered
+      order has physically left the branch), stock back via a `CORRECTION`
+      movement (not `RETURNED` — nothing came back from a customer), and a
+      NEW negative `Payment` row (never editing/deleting the original — the
+      till was already counted against it once).
+      Same manager-override gate as discounts and returns — a cashier needs
+      a verified `overrideToken`, manager-or-above needs none.
+      **Two real gaps found and fixed along the way, unrelated to void
+      itself**: `pos-api.ts`'s `CheckoutLine`/`checkout()` client types never
+      actually declared `discountPercent`/`overrideToken` at all — the
+      discount feature (O9.11b) sent both via an inferred array literal
+      TypeScript never checked against the interface, so the client type was
+      silently out of sync with what it sent from the moment it shipped.
+      Verification: backend 1043/1043, frontend 1086/1086 +1 skipped,
+      tsc/eslint clean both sides, en/ar parity 1815/1815. Commit `4fbe414`.
+- [x] **O9.14 — DONE 2026-09-09.** Cashier notes on a sale. No new backend
+      at all — reuses `OrderNote`/`addOrderNote` (the existing order-detail
+      thread, C5.7) wholesale. The till is a new entry point into it, not a
+      second thread. Cleared alongside the receipt on a new sale or a void.
+      Verification: frontend 1088/1088 +1 skipped, tsc/eslint clean, en/ar
+      parity 1820/1820. Commit `c044b28`.
+- [x] **O9.12 — DONE 2026-09-09.** Split payment. Surfaced the existing
+      `Payment` table — chosen in O5.2 precisely for this. Sends either
+      `method` or `splitPayments`, never both; the server refuses both
+      together. Amounts must sum to the SERVER-computed total exactly,
+      checked once known inside the transaction. `Order.paymentMethod`
+      records a real `'split'` value rather than an arbitrary first method.
+      A single-entry split is refused — it is the single-payment path
+      wearing the split shape, and would skip that path's own
+      tendered-vs-total check.
+      Verification: backend 1050/1050, frontend 1090/1090 +1 skipped,
+      tsc/eslint clean both sides, en/ar parity 1826/1826. Commit `f456528`.
+      **This closes Tier 3 entirely — every counter-friction item is done.**
+
+## 🔐 TIER 4 — CONTROL AND CLOSE
+
+- [x] **O9.13 — DONE 2026-09-09.** Manager override. The answer to note 5's
+      "the admin should be able to cash ppl but its mainly cashiers staff".
+      Confirmed with the owner: a manager types their OWN credentials in
+      place, never signing into the terminal.
+      Backend `verifyManagerOverride()` — deliberately NOT `login()` with a
+      different return shape: no session created, `lastLoginAt` untouched.
+      Gated on the `settings` AREA rather than a hardcoded role list —
+      FULFILLMENT/SUPPORT both outrank CASHIER on the rank table without
+      being "a manager" in any sense this means, and area-gating means an
+      owner's O8 edit to who holds `settings` is respected automatically. A
+      manager with 2FA enabled is refused outright and told to sign in
+      normally — never silently downgraded to a weaker check. Same
+      brute-force protection as login, locking the MANAGER's account.
+      Frontend `ManagerOverrideDialog` built GENERIC, not wired into
+      discounts directly — the owner's own note named a second future use
+      (voids), and a dialog built one level down inside one feature is
+      exactly how the next caller ends up copy-pasting it instead of reusing
+      it. Radix's confirm action closes on click by default; prevented so a
+      refused approval keeps the dialog open with the reason visible.
+      **O9.7 now depends on this** — see below. Commit `7ebc5ff`.
+- [x] **O9.7 — DONE 2026-09-09.** Return at the register. A Sheet, not a
+      page (drawer-vs-page convention) — cashier looks up the order by
+      number (search already existed), marks lines coming back, picks a
+      resolution, taps Process.
+      **A real gap found and fixed FIRST, before the UI**: a CASHIER could
+      already approve/reject a return themselves — same `returns` area as
+      requesting one, contradicting the agreed design entirely. Fixed at the
+      route (`effectiveRole(req) === CASHIER` requires a verified
+      `overrideToken`; already-manager-or-above needs none) — commit
+      `6409d6f`.
+      **Reused `returns.service.ts` completely; no second refund path.** The
+      Sheet calls `createReturn` then `approveReturn` back to back, reading
+      as one action from the cashier's side. A 403 on approve (no override
+      yet) opens the reusable `ManagerOverrideDialog`; on retry the SAME
+      return id is reused, not a second request.
+      Verification: backend 1038/1038, frontend 1083/1083 +1 skipped,
+      tsc/eslint clean both sides, en/ar parity 1811/1811. Commit `7dd0224`.
+- [x] **O9.15 — DONE 2026-09-09.** No-sale drawer open, cash drop, payout.
+      New `TillEvent` model — deliberately NOT a `Payment` with an invented
+      method, which would blur what `Payment` (always settles an `Order`)
+      means. Lives on the SHIFT, not the till — the shift already IS the
+      till session (O5.1). Only the person whose shift it is may log one,
+      only against an open shift.
+      **A real bug found and fixed while building this, not caused by it**:
+      the shift-close "expected cash" hint read raw cash SALES directly as
+      "what's in the drawer" — correct only because nothing could remove
+      cash outside a sale before now. Fixed with a distinct `expectedCash`
+      field (sales minus drops/payouts) that both the variance math and the
+      frontend hint now read; `cash` itself unchanged for its own legitimate
+      mid-shift use. Logged in the (private) error log.
+      Verification: backend 1058/1058, frontend 1094/1094 +1 skipped,
+      tsc/eslint clean both sides, en/ar parity 1841/1841. Commit `2f933b9`.
+- [x] **O9.16 — DONE 2026-09-09.** X / Z report. One `getTillReport()` serves
+      both shapes — mid-shift (X, non-destructive, printable any number of
+      times) and final (Z, after close) — combining the shift, `getShiftTakings()`,
+      and O9.15's till events into one report; `isFinal` reads `shift.endedAt`
+      server-side, never guessed client-side. New `GET /shifts/:id/report`
+      (owner of the shift, or `staff` area). `TillReportView` reuses
+      `thermal-receipt.tsx`'s print-scoping technique (styling scoped to
+      `#till-report`, not `globals.css`). The Z report's shift id is captured
+      BEFORE `finish()` runs, since `useShiftClock` clears `shift` to `null`
+      the instant it succeeds — there would be nothing left to fetch a report
+      for otherwise; a regression test covers the fetch happening with the
+      right id.
+      Verification: backend 1062/1062 (47 files), frontend 1096/1096 +1
+      skipped (124 files), tsc/eslint clean both sides, en/ar parity
+      1860/1860. Commit `34557ec`.
+- [x] **O9.8 — DONE 2026-09-09.** Exchange. Owner's decision: **two linked
+      records, not one combined transaction**. The return processes exactly
+      like any other (refund/restock as normal, resolution REPLACEMENT), and
+      the till rings up the new item as an ordinary sale afterward. New
+      `Return.exchangeOrderId` (nullable, unique) is the only thing
+      connecting the two, set once the replacement sale completes — NULL for
+      the entire time between "return approved as a replacement" and
+      "customer picked the new item and paid", a real state, not a gap.
+      `checkout()` accepts an optional `exchangeReturnId`, validated BEFORE
+      the transaction touches stock (return must exist, be resolved as
+      REPLACEMENT, not already linked). `TillReturnSheet` reports every
+      resolution via `onProcessed`; `SaleScreen` only acts on REPLACEMENT,
+      carrying the return id into the next sale and showing a banner so the
+      cashier does not lose track of an exchange in progress.
+      Verification: backend 1073/1073 (47 files), frontend 1102/1102 +1
+      skipped (124 files), tsc/eslint clean both sides, en/ar parity
+      1876/1876. Commit `7f3de00`.
+      **This closes the O9 track — 0 left.**
+
+## 🆕 O9.19 — shift approval (DONE 2026-09-09, owner-requested mid-session)
+
+Raised directly by the owner after O9 closed: "for the shifts period, i
+askedf for an interactive clock where the cashier set his shift and approved
+by the admin/manager". Not part of O9's original scope — a new item, closed
+the same day it was opened.
+
+Two decisions taken via question, not guessed: (1) a shift starts and the
+till works IMMEDIATELY — approval is a follow-up record, not a gate the
+cashier waits behind; (2) a manager approves REMOTELY from their own
+account/list, not in person at the till (unlike the discount/void/return
+override pattern elsewhere in the till, which needs the manager physically
+present).
+
+- [x] **DONE.** New `Shift.approvalStatus` (PENDING/APPROVED/REJECTED,
+      default PENDING) + `approvedById`/`approvedAt`/`approvalNote`.
+      Existing shifts backfilled to APPROVED in the same migration — they
+      predate approval tracking and were never "awaiting review"; leaving
+      the column default would have wrongly flagged months of history for
+      review. `POST /shifts/:id/approve` and `/reject` reuse `editShift`'s
+      rank/self-approval rules (refuses your own shift, refuses someone who
+      outranks you); reject requires a reason, same discipline as a return's
+      rejection reason.
+      **A real gate-vs-area conflict found while building this**: approval
+      was first wired behind `staff`, matching `editShift` — but `staff` is
+      OWNER/DEVELOPER only by default ("hiring and access control stay with
+      the owner"), so a MANAGER could never approve a shift, contradicting
+      what was asked. Asked, then fixed: new `shifts` permission area,
+      granted to MANAGER by default, separate from `staff` — confirming a
+      shift looks legitimate is day-to-day supervision, not an HR act.
+      `GET /shifts` moved to `shifts` too (a manager needs the list to find
+      the queue); `PATCH /shifts/:id` (editing hours) stays behind `staff`.
+      New `/admin/shifts` page — a manager's PENDING queue, deliberately
+      separate from the full shift history on `/admin/login-history` (which
+      stays `staff`-gated, since that page shows every role's hours
+      forever, a bigger personnel-data surface than a pending queue).
+      **Also fixed, found live**: the shift clock's End/Start buttons gave
+      no feedback while a request was in flight (the dev server had grown
+      slow after a long session of migrations/test runs), so a slow
+      response looked identical to a broken button. Both now show a
+      spinner + label swap ("Ending...", "Starting...") during the request.
+      Verification: backend 1080/1080 (47 files) — including a stale RBAC
+      test caught and fixed (DEMO's "every area except staff" assertion
+      needed `shifts` added to the exclusion, since DEMO must not see
+      personnel data any more from the new area than the old one) — frontend
+      full suite green, tsc/eslint clean both sides, en/ar parity
+      1900/1900. Commit `da8184d`.
+
+## 🔧 TIER 5 — MINOR — ✅ COMPLETE (superseded, not built as originally scoped)
+
+- [x] **O9.5 — SUPERSEDED 2026-09-09, done bigger than scoped.** The owner
+      asked mid-session for the shift clock to move to its own tab entirely
+      ("smth like an interactive clock"), which subsumes the original "start
+      should open a dialog too" ask — starting now opens a whole page
+      (`/admin/pos/shift`), not a bigger dialog. Both existing decisions
+      carried over: the float stays optional, and expected cash stays AFTER
+      the count field. New `useShiftClock` hook shared by the page, the
+      till's onboarding gate, and the topbar indicator. Commit `406f9fb`.
+- [x] **O9.6 — DONE 2026-09-09, also bigger than scoped.** The owner asked
+      for the shift controls off the topbar entirely, not just gated by
+      role. `ShiftControl` is now a small READ-ONLY indicator (elapsed time
+      or "Off shift") linking to the shift page — no start/end controls left
+      in the topbar for anyone to misuse. The watching half
+      (`staff-activity-view.tsx`) was already there and untouched. Commit
+      `406f9fb`.
+
+**Also shipped this session, not originally in O9 at all**: the till itself
+gained an onboarding gate (`TillGate`) — opening it with no open shift now
+asks "Start your shift?" before the sale screen renders, rather than
+rendering instantly. Skippable — an owner selling with no shift open still
+works, unchanged server-side.
+
+## ⏳ WAITING ON THE OWNER
+
+- **The barcode question — blocks O9.10, the top item.** Will he print and
+  stick barcodes on stock, or not? Scanner-first vs. grid-first is a different
+  build, and 1-of-30 suggests grid-first. Not guessable.
+- **Shop type — shapes all of Tier 1.** A cafe wants modifiers ("no sugar"),
+  clothing wants size/colour variants, hardware wants weight and quantity.
+  `variants.test.ts` exists in the backend, so some of this may already be
+  built; better to know what he actually runs than to build the generic middle.
+- **O9.4 — schedule or actual worked time? No longer blocking anything.**
+  O9.5 shipped 2026-09-09 as "actual worked time only" (unchanged from
+  O5.1's original decision) — the shift page and gate both work today. If
+  the owner still wants a planned-range field, it is a genuinely separate
+  addition on top of what exists, not a blocker to it. Ask only if he raises
+  it again.
+
+---
+
+## ✅ DONE
+
+- [x] **O9.1 — DONE 2026-09-09.** Every product added through the UI read as 0
+      stock at the till. P1. Two numbers describe stock — `Product.stock` and
+      `BranchStock.quantity` (what the till reads) — and `branchStock.upsert`
+      ran in exactly three places, all MOVEMENTS. Nothing ran on the way in,
+      so a product created with 40 had no branch row and `scanProduct`'s
+      `?? 0` reported it empty. **The read was never wrong; the entry path
+      was** — the `?? 0` is correct and was left alone.
+      Fixed with a new `afterCreate` resource hook. **Awaited**, unlike
+      `afterUpdate`'s fire-and-forget redirect, because the branch row is part
+      of what the created row MEANS. Writes `BranchStock` **directly** rather
+      than calling `adjustStock()`, which moves both totals and would leave
+      the product claiming double. Writes **no `StockMovement`** — nothing
+      moved, and an invented RECEIVED row would make the first real delivery
+      look like a duplicate. A zero-stock product gets no row: a stored 0 is
+      indistinguishable from a branch that counted and found none.
+      **Why nothing caught it:** every other test and `demo-seed.ts` create
+      products with `prisma.product.create` and write the branch row BY HAND,
+      skipping the engine. The regression test goes through
+      `POST /r/products`, the path an owner actually uses.
+- [x] **O9.2 — DONE 2026-09-09.** `logoUrl` was a paste-a-URL text box while
+      `ImageUploadField` — a real Cloudinary uploader over
+      `POST /upload/image`, already wired into `settings-form.tsx` and
+      `resource-form.tsx` — sat unused. The form never opted in; the backend
+      was complete the whole time. Same `logo` folder as the store-wide logo:
+      two folders for one concept makes the media library harder to read.
+- [x] **O9.3 — DONE 2026-09-09.** The business form was twelve identical
+      inputs inside `max-w-2xl`, hugging the start edge. Grouped into five
+      sections by the question each field answers (identity / contact /
+      address / money and time / brand) and widened to `4xl` — widening alone
+      would only spread twelve undifferentiated inputs across more of the page.
+
+**All three were watched failing before the code went in.** Verification:
+backend 1005/1005 (47 files), frontend 1081/1081 + 1 skipped (120 files), tsc
+and eslint clean both sides, en/ar parity 1745/1745. Commit `9e703c6`.
+
+---
+
 ## 📦 Carried over from `MASTER_TODO.md`
 
 Everything below was open there and is still genuinely open. **Six items it
@@ -734,10 +1211,31 @@ listed as open had in fact shipped** (F1.3, F4.4, F4.5, F7.4, F8.4, F8.5) —
 that staleness is why these are consolidated here.
 
 ### Returns — the fuller lifecycle
-- [ ] **B4.7** Per-line approve/reject on returns — needs `ReturnItem.status`.
-      Batch with B4.8
-- [ ] **B4.8** Partial returns — per-item quantity is already accepted on
-      REQUEST; approval is what ignores it
+- [x] **B4.7 — DONE 2026-09-08** (batched with B4.8, as the item suggested).
+      `ReturnItemStatus` (PENDING/ACCEPTED/REJECTED) + `rejectionReason` per
+      line. Omitting `items` accepts everything in full — what approving has
+      always meant — so no existing caller changes and no past return is
+      reinterpreted. A refused line REQUIRES a reason; "some of your return
+      was refused" with no explanation is the complaint that follows. An
+      approval where nothing is accepted is refused outright: that is a
+      rejection, and it must not move the order to RETURNED as though goods
+      came back
+- [x] **B4.8 — DONE 2026-09-08.** `acceptedQuantity` per line, so three came
+      back and one was sellable is expressible. **The refund is capped to what
+      was ACCEPTED, not what was asked** — refunding the full request after
+      refusing a line pays for goods the shop never took back (watched
+      failing). Accepting MORE than was returned is refused.
+      **Corrected the item's own premise**: approval did NOT ignore quantity
+      — it used `item.quantity` for both the refund cap and the restock. What
+      was missing was a per-line DECISION, which is B4.7.
+      **Found and fixed a real bug while here**: restock wrote a
+      `StockMovement` with NO `branchId` and updated `Product.stock` without
+      `BranchStock`, breaking the three-numbers-agree invariant F8.2 exists
+      to keep. Returns now restock to the order's branch.
+      **A second weak test of my own, caught**: "does not restock a refused
+      line" passed with the skip removed, because a rejected line carries
+      quantity 0 and restocking it adds zero. Now asserts NO movement row
+      exists, then watched failing. 9 tests
 - [ ] **B4.10** Refund without a return — needs a standalone model,
       independent of the RMA flow
 - [ ] **B4.11** Policy window check, restocking fees, exchange linkage — the

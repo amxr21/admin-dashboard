@@ -1,4 +1,4 @@
-import { Prisma, StaffRole } from '@prisma/client';
+import { Prisma, ShiftApprovalStatus, StaffRole, TillEventType } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
@@ -41,10 +41,14 @@ const SHIFT_SELECT = {
   openingFloat: true,
   closingCount: true,
   variance: true,
+  approvalStatus: true,
+  approvedAt: true,
+  approvalNote: true,
   user: { select: { id: true, name: true, email: true } },
   branch: { select: { id: true, name: true } },
   openedBy: { select: { id: true, name: true, email: true } },
   editedBy: { select: { id: true, name: true, email: true } },
+  approvedBy: { select: { id: true, name: true, email: true } },
 } as const;
 
 type ShiftRow = Prisma.ShiftGetPayload<{ select: typeof SHIFT_SELECT }>;
@@ -57,6 +61,7 @@ function serialise(shift: ShiftRow) {
     originalStartedAt: shift.originalStartedAt?.toISOString() ?? null,
     originalEndedAt: shift.originalEndedAt?.toISOString() ?? null,
     editedAt: shift.editedAt?.toISOString() ?? null,
+    approvedAt: shift.approvedAt?.toISOString() ?? null,
     // Money as 2dp strings, never numbers — the same rule as every other
     // amount that crosses this boundary. Null stays null: "no till" is a
     // different fact from "a float of zero".
@@ -272,6 +277,109 @@ export async function editShift(
   return serialise(updated);
 }
 
+/**
+ * Approve a shift (O9.19).
+ *
+ * ─── A RECORD, NOT A GATE ─────────────────────────────────────────────
+ * The owner's own call: a shift starts and the till works immediately —
+ * `startShift`'s note stands unchanged, clocking on is not a privileged act.
+ * This is a manager confirming afterward (or while it's still running) that
+ * the shift is legitimate, the same "warn/record, don't block" shape the
+ * till already uses for over-stock and discount-cap nudges. A manager being
+ * slow or offline never stops someone from selling.
+ *
+ * Only a PENDING shift can be approved — approving an already-APPROVED one
+ * is a no-op that would silently overwrite who approved it and when, and
+ * approving a REJECTED one would erase the rejection without a trace.
+ * Re-deciding needs a deliberate `reset` first (not built — no request for
+ * it yet), not a second approve/reject call landing on top of the first.
+ */
+export async function approveShift(actor: ShiftActor, shiftId: string) {
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: { id: true, userId: true, approvalStatus: true, user: { select: { role: true } } },
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+
+  // Same two rules as editing: the person who benefits must not be the
+  // person who approves, and rank is never crossed upward.
+  if (shift.userId === actor.id) {
+    throw AppError.forbidden('You cannot approve your own shift');
+  }
+
+  if (outranks(shift.user.role, actor.role)) {
+    throw AppError.forbidden('You cannot approve someone with more access than you');
+  }
+
+  if (shift.approvalStatus !== ShiftApprovalStatus.PENDING) {
+    throw AppError.badRequest(
+      `This shift is already ${shift.approvalStatus.toLowerCase()}`,
+      { field: 'approvalStatus' },
+    );
+  }
+
+  const updated = await prisma.shift.update({
+    where: { id: shiftId },
+    data: {
+      approvalStatus: ShiftApprovalStatus.APPROVED,
+      approvedById: actor.id,
+      approvedAt: new Date(),
+      approvalNote: null,
+    },
+    select: SHIFT_SELECT,
+  });
+
+  return serialise(updated);
+}
+
+/**
+ * Reject a shift (O9.19) — same shape as approving, opposite outcome. A
+ * reason is required, the same discipline `Return.rejectionReason` uses: a
+ * rejected shift with no stated reason is the complaint that follows.
+ *
+ * Deliberately does NOT touch `endedAt`/stock/payments — rejecting is a
+ * statement about the RECORD, not an undo of a sale that already happened
+ * during it. A rejected shift's sales are unaffected; if one needs undoing,
+ * that is `voidSale`'s job, done separately per order.
+ */
+export async function rejectShift(actor: ShiftActor, shiftId: string, note: string) {
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: { id: true, userId: true, approvalStatus: true, user: { select: { role: true } } },
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+
+  if (shift.userId === actor.id) {
+    throw AppError.forbidden('You cannot reject your own shift');
+  }
+
+  if (outranks(shift.user.role, actor.role)) {
+    throw AppError.forbidden('You cannot reject someone with more access than you');
+  }
+
+  if (shift.approvalStatus !== ShiftApprovalStatus.PENDING) {
+    throw AppError.badRequest(
+      `This shift is already ${shift.approvalStatus.toLowerCase()}`,
+      { field: 'approvalStatus' },
+    );
+  }
+
+  const updated = await prisma.shift.update({
+    where: { id: shiftId },
+    data: {
+      approvalStatus: ShiftApprovalStatus.REJECTED,
+      approvedById: actor.id,
+      approvedAt: new Date(),
+      approvalNote: note,
+    },
+    select: SHIFT_SELECT,
+  });
+
+  return serialise(updated);
+}
+
 export interface ShiftListParams {
   page?: number;
   pageSize?: number;
@@ -279,6 +387,8 @@ export interface ShiftListParams {
   branchId?: string;
   /** Only shifts that are still open — "who is on right now". */
   openOnly?: boolean;
+  /** A manager's pending-approval queue (O9.19) when set to PENDING. */
+  approvalStatus?: ShiftApprovalStatus;
   from?: string;
   to?: string;
 }
@@ -293,6 +403,7 @@ export async function listShifts(params: ShiftListParams) {
     ...(params.userId ? { userId: params.userId } : {}),
     ...(params.branchId ? { branchId: params.branchId } : {}),
     ...(params.openOnly ? OPEN : {}),
+    ...(params.approvalStatus ? { approvalStatus: params.approvalStatus } : {}),
     ...(params.from || params.to
       ? {
           startedAt: {
@@ -416,11 +527,36 @@ export async function getShiftTakings(shiftId: string) {
     total: (row._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
   }));
 
+  // Raw cash SALES — unchanged meaning, still what the mid-shift "what have
+  // we taken" read shows.
   const cash = rows
     .filter((row) => row.method.toLowerCase() === 'cash')
     .reduce((sum, row) => sum.add(row._sum.amount ?? 0), new Prisma.Decimal(0));
 
-  return { byMethod, cash };
+  // Cash drops and payouts (O9 Tier 4) both remove money FROM the physical
+  // drawer, so both reduce what should still be sitting in it at close —
+  // same direction, summed together rather than tracked separately, since
+  // the variance formula only cares "how much left the drawer outside a
+  // sale", not which of the two reasons it left for.
+  const removed = await prisma.tillEvent.aggregate({
+    where: { shiftId, type: { in: [TillEventType.CASH_DROP, TillEventType.PAYOUT] } },
+    _sum: { amount: true },
+  });
+
+  const removedTotal = removed._sum.amount ?? new Prisma.Decimal(0);
+
+  return {
+    byMethod,
+    cash,
+    // What should physically be in the drawer, given sales and what has
+    // left it since — the figure `closeTill` actually reconciles against.
+    // Distinct from `cash` on purpose: `cash` alone would make the shown
+    // "expected" figure invite the count to be typed to match SALES rather
+    // than the true expected drawer content, exactly the outcome the
+    // shift-close dialog's own ordering (expected shown AFTER the count)
+    // already exists to avoid.
+    expectedCash: cash.sub(removedTotal),
+  };
 }
 
 /**
@@ -464,8 +600,11 @@ export async function closeTill(
   }
 
   const counted = new Prisma.Decimal(closingCount);
-  const { cash } = await getShiftTakings(shiftId);
-  const expected = (shift.openingFloat ?? new Prisma.Decimal(0)).add(cash);
+  // `expectedCash`, not `cash` — sales alone would ignore every drop and
+  // payout since the shift opened (O9 Tier 4), reporting a false shortage
+  // for cash that was deliberately, correctly removed from the drawer.
+  const { expectedCash } = await getShiftTakings(shiftId);
+  const expected = (shift.openingFloat ?? new Prisma.Decimal(0)).add(expectedCash);
 
   const updated = await prisma.shift.update({
     where: { id: shiftId },
@@ -483,5 +622,136 @@ export async function closeTill(
     expected: expected.toFixed(2),
     counted: counted.toFixed(2),
     variance: counted.sub(expected).toFixed(2),
+  };
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * TILL EVENTS — no-sale, cash drop, payout (O9 Tier 4)
+ * ───────────────────────────────────────────────────────────────────── */
+
+export interface RecordTillEventInput {
+  type: TillEventType;
+  /** Required for CASH_DROP/PAYOUT, refused for NO_SALE — see `recordTillEvent`. */
+  amount?: string | undefined;
+  note?: string | undefined;
+}
+
+/**
+ * Log a drawer event with no sale behind it. Must belong to an OPEN shift —
+ * an event on a closed one has no drawer left to adjust, and `closeTill`'s
+ * variance math for that shift was already computed and stored.
+ */
+export async function recordTillEvent(
+  shiftId: string,
+  input: RecordTillEventInput,
+  actorId: string,
+) {
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: { id: true, endedAt: true },
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+  if (shift.endedAt !== null) {
+    throw AppError.badRequest('This shift has already ended');
+  }
+
+  if (input.type === TillEventType.NO_SALE) {
+    if (input.amount !== undefined) {
+      throw AppError.badRequest('A no-sale open does not take an amount', { field: 'amount' });
+    }
+  } else if (input.amount === undefined) {
+    // CASH_DROP / PAYOUT
+    throw AppError.badRequest('An amount is required', { field: 'amount' });
+  } else if (new Prisma.Decimal(input.amount).lessThanOrEqualTo(0)) {
+    throw AppError.badRequest('Enter an amount above zero', { field: 'amount' });
+  }
+
+  const event = await prisma.tillEvent.create({
+    data: {
+      shiftId,
+      type: input.type,
+      amount: input.amount === undefined ? null : new Prisma.Decimal(input.amount),
+      note: input.note ?? null,
+      actorId,
+    },
+    select: { id: true, type: true, amount: true, note: true, createdAt: true },
+  });
+
+  return {
+    id: event.id,
+    type: event.type,
+    amount: event.amount?.toFixed(2) ?? null,
+    note: event.note,
+    createdAt: event.createdAt.toISOString(),
+  };
+}
+
+/** The events logged this shift, newest first — the X/Z report's own read
+ *  of the same table `getShiftTakings` aggregates. */
+export async function listTillEvents(shiftId: string) {
+  const events = await prisma.tillEvent.findMany({
+    where: { shiftId },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, type: true, amount: true, note: true, createdAt: true, actorId: true },
+  });
+
+  return events.map((event) => ({
+    id: event.id,
+    type: event.type,
+    amount: event.amount?.toFixed(2) ?? null,
+    note: event.note,
+    createdAt: event.createdAt.toISOString(),
+    actorId: event.actorId,
+  }));
+}
+
+/**
+ * The X/Z report (O9 Tier 4) — the printable end-of-day summary. "X" and
+ * "Z" in standard POS terms are the same shape at different moments: an X
+ * report is this, run mid-shift, non-destructive; a Z report is this, run
+ * after `closeTill` has already finalised the shift. Nothing here decides
+ * which is which — the CALLER does, by asking before or after close — so
+ * there is one function, not two.
+ */
+export async function getTillReport(shiftId: string) {
+  const shift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: SHIFT_SELECT,
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+
+  const [takings, events] = await Promise.all([
+    getShiftTakings(shiftId),
+    listTillEvents(shiftId),
+  ]);
+
+  const noSaleCount = events.filter((event) => event.type === TillEventType.NO_SALE).length;
+  const cashDrops = events.filter((event) => event.type === TillEventType.CASH_DROP);
+  const payouts = events.filter((event) => event.type === TillEventType.PAYOUT);
+
+  const sumAmounts = (rows: typeof events) =>
+    rows
+      .reduce((sum, row) => sum.add(row.amount ?? '0'), new Prisma.Decimal(0))
+      .toFixed(2);
+
+  return {
+    shift: serialise(shift),
+    byMethod: takings.byMethod,
+    // `getShiftTakings` returns these as `Prisma.Decimal` — fine when a
+    // ROUTE hands them straight to `res.json()` (Decimal serialises to a
+    // string via its own `toJSON`), but this function is called BY a
+    // service, not a route, so the conversion has to happen explicitly here
+    // rather than relying on a JSON boundary that may not exist.
+    cash: takings.cash.toFixed(2),
+    expectedCash: takings.expectedCash.toFixed(2),
+    noSaleCount,
+    cashDropTotal: sumAmounts(cashDrops),
+    payoutTotal: sumAmounts(payouts),
+    events,
+    /** Only meaningful once the shift is actually closed — null on an X
+     *  report taken mid-shift, since `closeTill` has not run yet. */
+    isFinal: shift.endedAt !== null,
   };
 }

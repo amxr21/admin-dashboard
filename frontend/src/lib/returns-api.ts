@@ -114,6 +114,10 @@ export interface ApproveReturnInput {
   resolution: Exclude<ReturnResolution, 'NONE'>;
   refundAmount?: string;
   restock: boolean;
+  /** Proof a manager approved in place (O9.7) — required when the caller is
+   *  a cashier, ignored otherwise. Verified server-side against the
+   *  signature, never trusted as a bare claim. */
+  overrideToken?: string;
 }
 
 export async function approveReturn(
@@ -127,10 +131,14 @@ export async function approveReturn(
   return body.return;
 }
 
-export async function rejectReturn(id: string, rejectionReason: string): Promise<ReturnDetail> {
+export async function rejectReturn(
+  id: string,
+  rejectionReason: string,
+  overrideToken?: string,
+): Promise<ReturnDetail> {
   const body = await apiFetch<{ return: ReturnDetail }>(`/returns/${id}/reject`, {
     method: 'POST',
-    body: JSON.stringify({ rejectionReason }),
+    body: JSON.stringify({ rejectionReason, ...(overrideToken ? { overrideToken } : {}) }),
   });
   return body.return;
 }

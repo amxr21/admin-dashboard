@@ -3,6 +3,7 @@ import { ProductStatus } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { logger } from '../logger.js';
+import { defaultBranchId } from './inventory.service.js';
 
 /**
  * Resource-specific BEHAVIOUR.
@@ -30,6 +31,12 @@ export interface DeleteOutcome {
 
 export interface ResourceHooks {
   /**
+   * Runs AFTER a successful generic create, given the row as written.
+   * Side-effect only, and awaited rather than fire-and-forget where the
+   * side effect is part of what the row MEANS — see the products hook.
+   */
+  afterCreate?: (row: Record<string, unknown>, req: Request) => Promise<void>;
+  /**
    * Runs INSTEAD of the generic delete when it returns `handled: true`.
    * Returning `handled: false` falls through to the normal delete.
    */
@@ -50,6 +57,69 @@ export interface ResourceHooks {
 
 export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>> = {
   products: {
+    /**
+     * Give the opening stock a BRANCH (O9.1).
+     *
+     * ─── THE BUG THIS FIXES ──────────────────────────────────────────
+     * Two numbers describe stock: `Product.stock` (the all-branches total,
+     * what the product list shows) and `BranchStock.quantity` (what one
+     * branch holds, what the TILL reads). Creating a product wrote only the
+     * first. `branchStock.upsert` was called in exactly three places —
+     * adjustStock, a POS sale, a return restock — and all three are
+     * MOVEMENTS. Nothing ran on the way in.
+     *
+     * So a product created with 40 in stock had `Product.stock = 40` and no
+     * BranchStock row at all, and `scanProduct` reads a missing row as 0
+     * (correctly — see the comment in inventory.service.ts: no row genuinely
+     * means this branch holds none of it). Every product added through the
+     * UI therefore scanned as out of stock and fired the over-stock warning
+     * on the first unit. The read was never wrong; the entry path was.
+     *
+     * ─── WHY NOT adjustStock() ───────────────────────────────────────
+     * Because the create already wrote `Product.stock`. adjustStock moves
+     * BOTH totals, so calling it here would leave the product claiming twice
+     * the stock that was entered. This writes the branch row ONLY, to the
+     * figure the product was created with — it is not a movement, it is the
+     * same fact recorded at the grain the till reads.
+     *
+     * No StockMovement row either, for the same reason: nothing moved. The
+     * opening figure is the product's starting state, and inventing a
+     * RECEIVED movement would put stock in the ledger that no one received.
+     *
+     * ─── WHY THIS ONE IS AWAITED ─────────────────────────────────────
+     * Unlike afterUpdate's redirect (history — nice to have), this is part of
+     * what the created row MEANS. A product whose stock is invisible at the
+     * till is broken, so a failure here must surface rather than be logged
+     * and swallowed.
+     */
+    afterCreate: async (row: Record<string, unknown>, req: Request): Promise<void> => {
+      const quantity = typeof row.stock === 'number' ? row.stock : 0;
+
+      // Nothing to place. A zero-stock product is the normal case for a
+      // catalogue entry added before its first delivery, and writing a
+      // 0 row would be indistinguishable from one that was counted.
+      if (quantity <= 0) return;
+
+      // The switcher's own branch FIRST (O9.18) — an owner creating a
+      // product while scoped to "Marina" must have the opening stock land
+      // at Marina, not at whatever `defaultBranchId()` happens to resolve
+      // to. Only falls through to the shared default when the request
+      // genuinely named no branch, same as every other write in this file.
+      // Shares defaultBranchId() rather than picking a fallback branch here
+      // — a second copy of "which branch when none is named" is free to
+      // drift from the flagged-default rule F8.2 established.
+      const branchId = req.branchId ?? (await defaultBranchId());
+
+      await prisma.branchStock.upsert({
+        where: { productId_branchId: { productId: String(row.id), branchId } },
+        create: { productId: String(row.id), branchId, quantity },
+        // A row already existing here is not expected on a create, but an
+        // upsert costs nothing and a crash would be a worse answer than
+        // recording the figure that was just entered.
+        update: { quantity },
+      });
+    },
+
     /**
      * Archive rather than delete when the product appears in any order.
      *

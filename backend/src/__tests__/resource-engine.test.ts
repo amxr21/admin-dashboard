@@ -842,3 +842,136 @@ describe('duplicate values', () => {
     await prisma.discount.delete({ where: { id: createdId } });
   });
 });
+
+/**
+ * O9.1 — a product's opening stock has to reach the branch.
+ *
+ * ─── WHY THIS TEST IS SHAPED THIS WAY ────────────────────────────────
+ * The bug was invisible for as long as it existed because every other test
+ * and the demo seeder create products with `prisma.product.create` and then
+ * write the `BranchStock` row BY HAND. That skips the engine entirely, so it
+ * would pass whether or not the fix exists.
+ *
+ * So this goes through `POST /r/products` — the path an owner actually uses —
+ * and then reads `BranchStock` back. If the hook is removed, the row is
+ * absent and the till reads the product as zero, which is the live bug.
+ */
+describe('a created product is visible at the till (O9.1)', () => {
+  const productIds: string[] = [];
+  const businessIds: string[] = [];
+  let defaultBranch = '';
+
+  /**
+   * An EXPLICIT branch header on every create, rather than manipulating the
+   * `isDefault` flag and leaning on `defaultBranchId()`'s fallback.
+   *
+   * The first two versions of this test did the latter, and each broke
+   * against real data in a different way: the first against multiple
+   * businesses each carrying their own flagged default (`isDefault` is
+   * unique PER BUSINESS, so `findFirst` returned whichever the engine
+   * reached first); the second because O9.18 made `defaultBranchId()`
+   * REFUSE outright once more than one business exists, which this suite's
+   * seeded demo data always does. Passing the branch this test cares about
+   * directly is what the real till already does via the switcher's header
+   * (`resource.route.ts`'s create route gained `withBranchContext` for
+   * exactly this, also part of O9.18), and it means this test asserts the
+   * hook's behaviour without depending on how many OTHER businesses happen
+   * to exist in a shared database.
+   */
+  beforeAll(async () => {
+    const business = await prisma.business.create({ data: { name: `${RUN} stock business` } });
+    businessIds.push(business.id);
+
+    const branch = await prisma.branch.create({
+      data: { businessId: business.id, name: `${RUN} Default Branch`, isActive: true },
+    });
+    defaultBranch = branch.id;
+  });
+
+  afterAll(async () => {
+    await prisma.branchStock.deleteMany({ where: { productId: { in: productIds } } });
+    await prisma.product.deleteMany({ where: { id: { in: productIds } } });
+    await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
+    await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
+  });
+
+  function createProduct(body: Record<string, unknown>) {
+    return request(app)
+      .post('/api/v1/r/products')
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', defaultBranch)
+      .send(body);
+  }
+
+  it('writes the opening stock to the branch named by the switcher', async () => {
+    const res = await createProduct({ name: `${RUN} opening stock`, price: '9.99', stock: 40 });
+
+    expect(res.status).toBe(201);
+
+    const productId = (res.body as RowBody).data.row.id as string;
+    productIds.push(productId);
+
+    const branchStock = await prisma.branchStock.findUnique({
+      where: { productId_branchId: { productId, branchId: defaultBranch } },
+      select: { quantity: true },
+    });
+
+    // Without the afterCreate hook this row is null, and the till's
+    // `?? 0` then reports the product as out of stock on its first scan.
+    expect(branchStock).not.toBeNull();
+    expect(branchStock?.quantity).toBe(40);
+  });
+
+  it('does not double the total it was created with', async () => {
+    // The create already wrote `Product.stock`. Routing this through
+    // `adjustStock()` would move BOTH totals and leave the product claiming
+    // 80 — the reason the hook writes the branch row directly.
+    const res = await createProduct({ name: `${RUN} no double count`, price: '4.00', stock: 25 });
+
+    const productId = (res.body as RowBody).data.row.id as string;
+    productIds.push(productId);
+
+    const [product, branchStock] = await Promise.all([
+      prisma.product.findUnique({ where: { id: productId }, select: { stock: true } }),
+      prisma.branchStock.findUnique({
+        where: { productId_branchId: { productId, branchId: defaultBranch } },
+        select: { quantity: true },
+      }),
+    ]);
+
+    expect(product?.stock).toBe(25);
+    expect(branchStock?.quantity).toBe(25);
+  });
+
+  it('records no stock movement — nothing moved', async () => {
+    // The opening figure is the product's starting state, not a receipt of
+    // goods. Inventing a RECEIVED movement would put stock in the ledger
+    // that nobody received and make the first real delivery look like a
+    // duplicate.
+    const res = await createProduct({ name: `${RUN} no movement`, price: '2.50', stock: 10 });
+
+    const productId = (res.body as RowBody).data.row.id as string;
+    productIds.push(productId);
+
+    const movements = await prisma.stockMovement.count({ where: { productId } });
+
+    expect(movements).toBe(0);
+  });
+
+  it('writes no branch row for a product created with no stock', async () => {
+    // A catalogue entry added before its first delivery is the normal case.
+    // A stored 0 would be indistinguishable from a branch that counted and
+    // found none.
+    const res = await createProduct({ name: `${RUN} zero stock`, price: '1.00', stock: 0 });
+
+    const productId = (res.body as RowBody).data.row.id as string;
+    productIds.push(productId);
+
+    const branchStock = await prisma.branchStock.findUnique({
+      where: { productId_branchId: { productId, branchId: defaultBranch } },
+      select: { quantity: true },
+    });
+
+    expect(branchStock).toBeNull();
+  });
+});

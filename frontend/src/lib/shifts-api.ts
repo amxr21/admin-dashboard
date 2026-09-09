@@ -13,6 +13,8 @@ export interface ShiftPerson {
   email: string;
 }
 
+export type ShiftApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export interface Shift {
   id: string;
   startedAt: string;
@@ -31,6 +33,17 @@ export interface Shift {
   /** Whether the recorded times were corrected. The UI says so rather than
    *  presenting edited hours as though they were clocked. */
   wasEdited: boolean;
+
+  /**
+   * A RECORD, not a gate (O9.19) — a shift starts and the till works
+   * immediately regardless of this value. A manager confirms afterward (or
+   * while it's still running) that it's legitimate.
+   */
+  approvalStatus: ShiftApprovalStatus;
+  approvedAt: string | null;
+  approvedBy: ShiftPerson | null;
+  /** Required on REJECTED, same discipline as a return's rejection reason. */
+  approvalNote: string | null;
 
   /**
    * The till (O5.3), as 2dp strings. NULL means this shift had NO drawer —
@@ -76,18 +89,44 @@ export interface ShiftListResult {
 }
 
 export async function fetchShifts(
-  params: { page?: number; pageSize?: number; userId?: string; open?: boolean; from?: string; to?: string } = {},
+  params: {
+    page?: number;
+    pageSize?: number;
+    userId?: string;
+    open?: boolean;
+    /** A manager's pending-approval queue (O9.19) when set to PENDING. */
+    approvalStatus?: ShiftApprovalStatus;
+    from?: string;
+    to?: string;
+  } = {},
 ): Promise<ShiftListResult> {
   const query = new URLSearchParams();
   if (params.page) query.set('page', String(params.page));
   if (params.pageSize) query.set('pageSize', String(params.pageSize));
   if (params.userId) query.set('userId', params.userId);
   if (params.open) query.set('open', 'true');
+  if (params.approvalStatus) query.set('approvalStatus', params.approvalStatus);
   if (params.from) query.set('from', params.from);
   if (params.to) query.set('to', params.to);
 
   const suffix = query.toString();
   return apiFetch<ShiftListResult>(`/shifts${suffix ? `?${suffix}` : ''}`);
+}
+
+/** Confirm a shift is legitimate (O9.19). See `Shift.approvalStatus`'s own
+ *  note — not a gate, a follow-up record. */
+export async function approveShift(id: string): Promise<Shift> {
+  const result = await apiFetch<{ shift: Shift }>(`/shifts/${id}/approve`, { method: 'POST' });
+  return result.shift;
+}
+
+/** Same shape as approving, opposite outcome. A reason is required. */
+export async function rejectShift(id: string, note: string): Promise<Shift> {
+  const result = await apiFetch<{ shift: Shift }>(`/shifts/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ note }),
+  });
+  return result.shift;
 }
 
 /** Correct the recorded times. A reason is required — an edited timesheet
@@ -127,8 +166,17 @@ export async function fetchShiftSummary(id: string): Promise<ShiftSummary> {
 
 export interface ShiftTakings {
   byMethod: { method: string; total: string }[];
-  /** What should be in the DRAWER — cash only. Card takings never were. */
+  /** Raw cash SALES only — card takings never were in the drawer, and this
+   *  does NOT account for a cash drop or payout since (O9 Tier 4). For
+   *  "what should physically be in the drawer right now", read
+   *  `expectedCash` instead. */
   cash: string;
+  /** What should physically be in the drawer, given cash sales minus any
+   *  cash drops/payouts logged this shift — the figure to compare a count
+   *  against. Was `cash` itself before O9 Tier 4 added drops/payouts; kept
+   *  as a separate field rather than changing what `cash` means, since a
+   *  caller wanting raw sales (not the drawer figure) still needs it. */
+  expectedCash: string;
 }
 
 export async function fetchShiftTakings(id: string): Promise<ShiftTakings> {
@@ -154,4 +202,58 @@ export async function closeTill(
     method: 'POST',
     body: JSON.stringify({ closingCount, ...(note ? { note } : {}) }),
   });
+}
+
+/**
+ * A drawer event with no sale behind it (O9 Tier 4) — a no-sale open, a cash
+ * drop, or a payout. Only the person whose shift it is may log one; only
+ * belongs to an OPEN shift.
+ */
+export type TillEventType = 'NO_SALE' | 'CASH_DROP' | 'PAYOUT';
+
+export interface TillEvent {
+  id: string;
+  type: TillEventType;
+  /** Null for NO_SALE, which moves nothing. */
+  amount: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export async function recordTillEvent(
+  shiftId: string,
+  input: { type: TillEventType; amount?: string; note?: string },
+): Promise<TillEvent> {
+  const result = await apiFetch<{ event: TillEvent }>(`/shifts/${shiftId}/events`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return result.event;
+}
+
+export async function fetchTillEvents(shiftId: string): Promise<TillEvent[]> {
+  const result = await apiFetch<{ events: TillEvent[] }>(`/shifts/${shiftId}/events`);
+  return result.events;
+}
+
+/**
+ * The X/Z report (O9 Tier 4) — the printable end-of-shift summary. Same
+ * shape whether the shift is still open (an X report, `isFinal: false`) or
+ * already closed (a Z report, `isFinal: true`); the caller decides which it
+ * is by asking before or after `closeTill`, not this type.
+ */
+export interface TillReport {
+  shift: Shift;
+  byMethod: { method: string; total: string }[];
+  cash: string;
+  expectedCash: string;
+  noSaleCount: number;
+  cashDropTotal: string;
+  payoutTotal: string;
+  events: TillEvent[];
+  isFinal: boolean;
+}
+
+export async function fetchTillReport(shiftId: string): Promise<TillReport> {
+  return apiFetch<TillReport>(`/shifts/${shiftId}/report`);
 }

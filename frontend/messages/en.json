@@ -146,6 +146,7 @@
     "reports": "Reports",
     "settings": "Settings",
     "staff": "Staff",
+    "shifts": "Shifts",
     "audit": "Audit log",
     "people": "Customers & couriers",
     "admin": "Administration",
@@ -183,7 +184,8 @@
     },
     "loginHistory": "Staff activity",
     "branches": "Branches",
-    "pos": "Till"
+    "pos": "Till",
+    "shift": "Shift"
   },
   "branches": {
     "switcherLabel": "Active branch",
@@ -265,6 +267,28 @@
         "country": "Two letters, like AE or GB.",
         "currency": "Three letters, like AED or USD. Left blank, your store-wide currency is used.",
         "isActive": "Closing a business hides its branches. Nothing is deleted."
+      },
+      "groups": {
+        "identity": {
+          "title": "Identity",
+          "hint": "What this business is called, and the legal details that appear on an invoice."
+        },
+        "contact": {
+          "title": "Contact",
+          "hint": "How customers and suppliers reach this business."
+        },
+        "address": {
+          "title": "Address",
+          "hint": "Where the business is registered. Branches have their own addresses."
+        },
+        "locale": {
+          "title": "Money and time",
+          "hint": "How this business counts money and which clock its reports use."
+        },
+        "brand": {
+          "title": "Brand",
+          "hint": "The logo shown on this business's invoices and letterhead."
+        }
       }
     },
     "roster": {
@@ -2250,12 +2274,15 @@
   },
   "shifts": {
     "start": "Start shift",
+    "starting": "Starting...",
     "started": "Shift started",
     "end": "End shift",
+    "ending": "Ending...",
     "ended": "Shift ended",
     "endTitle": "End your shift?",
     "endBody": "You have been on shift at {branch} for {elapsed}. This is what gets recorded.",
     "endWithElapsed": "End shift — on for {elapsed}",
+    "loadingExpected": "Working out what should be in the drawer...",
     "cancel": "Keep working",
     "table": {
       "person": "Person",
@@ -2283,13 +2310,86 @@
       "recent": "Most recent",
       "empty": "Nothing was changed during this shift."
     },
+    "approval": {
+      "title": "Shift approval",
+      "subtitle": "Confirm a shift is legitimate. Nobody waits on this — the till already works.",
+      "person": "Person",
+      "branch": "Branch",
+      "started": "Started",
+      "status": "Status",
+      "stillOnShift": "Still on shift",
+      "approve": "Approve",
+      "approved": "{name}'s shift approved",
+      "reject": "Reject",
+      "rejecting": "Rejecting...",
+      "rejected": "{name}'s shift rejected",
+      "rejectTitle": "Reject this shift?",
+      "rejectBody": "Tell {name} (and anyone reviewing this later) why.",
+      "rejectReasonLabel": "Reason",
+      "rejectReasonPlaceholder": "e.g. times do not match the door log",
+      "cancel": "Cancel",
+      "loadFailed": "Could not load the approval queue",
+      "emptyTitle": "Nothing waiting on you",
+      "emptyBody": "Every shift has been approved or rejected."
+    },
     "openingFloat": "Cash in the drawer at open",
     "floatPlaceholder": "Float",
     "countLabel": "Count the drawer",
     "expectedHint": "Opened with {float}, took {cash} in cash.",
     "tillClosed": "Till closed — variance {variance}",
     "varianceShort": "Variance {variance}",
-    "dismissVariance": "Dismiss the till variance"
+    "dismissVariance": "Dismiss the till variance",
+    "pageTitle": "Shift",
+    "pageSubtitle": "Clock on when you arrive, and off when you leave.",
+    "notOnShift": "You are not on shift",
+    "floatHint": "Leave blank if this shift has no cash drawer.",
+    "dismiss": "Dismiss",
+    "lastTillVariance": "Last till closed with a variance of",
+    "floatOnRecord": "Opened with a {float} float",
+    "elapsedHint": "Time on shift",
+    "notOnShiftShort": "Off shift",
+    "tillEvents": {
+      "noSale": "No sale",
+      "cashDrop": "Cash drop",
+      "payout": "Payout",
+      "titles": {
+        "NO_SALE": "Log a no-sale open",
+        "CASH_DROP": "Log a cash drop",
+        "PAYOUT": "Log a payout"
+      },
+      "amountLabel": "Amount",
+      "noteLabel": "Note (optional)",
+      "notePlaceholder": "e.g. deposit run, courier tip",
+      "cancel": "Cancel",
+      "confirm": "Log it",
+      "logging": "Logging...",
+      "logged": {
+        "NO_SALE": "No-sale open logged",
+        "CASH_DROP": "Cash drop logged",
+        "PAYOUT": "Payout logged"
+      }
+    },
+    "viewXReport": "View X report",
+    "loadingReport": "Loading...",
+    "printReport": "Print report",
+    "report": {
+      "xTitle": "X REPORT (mid-shift)",
+      "zTitle": "Z REPORT (final)",
+      "cashier": "Cashier",
+      "started": "Started",
+      "ended": "Ended",
+      "salesByMethod": "Sales by method",
+      "noSales": "No sales yet",
+      "openingFloat": "Opening float",
+      "cashSales": "Cash sales",
+      "cashDrops": "Cash drops",
+      "payouts": "Payouts",
+      "expectedInDrawer": "Expected in drawer",
+      "counted": "Counted",
+      "variance": "Variance",
+      "noSaleOpens": "No-sale opens",
+      "printedAt": "Printed {time}"
+    }
   },
   "staffActivity": {
     "title": "Staff activity",
@@ -2338,6 +2438,103 @@
       "change": "Change",
       "thanks": "Thank you"
     },
-    "printReceipt": "Print receipt"
+    "printReceipt": "Print receipt",
+    "grid": {
+      "searchLabel": "Search products",
+      "searchPlaceholder": "Search by name...",
+      "allCategories": "All",
+      "loadFailed": "Could not load products. Try again.",
+      "empty": "No products yet. Add one from Products.",
+      "noMatches": "No products match that search.",
+      "outOfStock": "Out of stock here"
+    },
+    "confirmTitle": "Confirm sale",
+    "confirmTotal": "Total",
+    "confirmMethod": "Paying by {method}",
+    "confirmBack": "Back",
+    "confirmCharge": "Confirm & charge",
+    "referenceLabel": "Terminal reference (optional)",
+    "referencePlaceholder": "e.g. from the card terminal receipt",
+    "referenceHint": "So a disputed charge can be matched back to this sale later.",
+    "gate": {
+      "title": "Start your shift?",
+      "subtitle": "Sales you ring up are attached to your open shift.",
+      "openingFloat": "Opening float (optional)",
+      "floatPlaceholder": "0.00",
+      "startAndOpen": "Start shift & open till",
+      "skip": "Not right now — just let me sell"
+    },
+    "managerOverride": {
+      "title": "Manager approval needed",
+      "emailLabel": "Manager email",
+      "passwordLabel": "Manager password",
+      "cancel": "Cancel",
+      "approve": "Approve",
+      "approving": "Checking...",
+      "discountReason": "A discount above {max}% is being applied to this sale.",
+      "voidReason": "Voiding a completed sale needs a manager's approval."
+    },
+    "discountLabel": "Discount on {name}",
+    "discountPlaceholder": "0",
+    "discountNeedsApproval": "Above {max}% needs manager approval",
+    "processReturn": "Process a return",
+    "tillReturn": {
+      "title": "Process a return",
+      "subtitle": "Look up the order, mark what's coming back.",
+      "orderNumberLabel": "Order number",
+      "orderNumberPlaceholder": "e.g. POS-20260909-AB12",
+      "lookUp": "Look up",
+      "notFound": "No order found matching \"{orderNumber}\".",
+      "orderFound": "Order {orderNumber}",
+      "unknownProduct": "Unknown product",
+      "orderedQuantity": "Ordered: {quantity}",
+      "returnQuantity": "Quantity of {name} to return",
+      "continue": "Continue",
+      "reasonLabel": "Reason (optional)",
+      "reasonPlaceholder": "e.g. damaged, wrong size",
+      "defaultReason": "Returned at the register",
+      "resolutionLabel": "Resolution",
+      "resolutions": {
+        "refund": "Refund",
+        "storeCredit": "Store credit",
+        "replacement": "Replacement"
+      },
+      "refundAmountLabel": "Refund amount",
+      "restockLabel": "Restock these items",
+      "process": "Process return",
+      "processing": "Processing...",
+      "done": "Return processed",
+      "managerOverrideReason": "A return needs a manager's approval."
+    },
+    "voided": "Sale voided",
+    "voiding": "Voiding...",
+    "voidSale": "Void this sale",
+    "noteLabel": "Note on this sale",
+    "notePlaceholder": "e.g. customer asked to hold at pickup",
+    "saveNote": "Save",
+    "savingNote": "Saving...",
+    "noteSaved": "Note saved",
+    "splitPayment": "Split payment",
+    "splitMethodLabel": "Payment {index} method",
+    "splitAmountLabel": "Payment {index} amount",
+    "removeSplitLine": "Remove payment {index}",
+    "addSplitLine": "Add another payment",
+    "splitTotal": "Entered: {total} of {estimate}",
+    "cancel": "Cancel",
+    "park": "Park",
+    "parked": "Cart parked",
+    "parkTitle": "Park this cart?",
+    "parkBody": "It stays here until you resume or discard it — nothing is charged or reserved.",
+    "parkLabel": "Label (optional)",
+    "parkLabelPlaceholder": "e.g. Sara — red jacket",
+    "parkedCarts": "{count, plural, one {# parked cart} other {# parked carts}}",
+    "parkedUntitled": "Parked cart",
+    "parkedItemCount": "{count, plural, one {# item} other {# items}}",
+    "resume": "Resume",
+    "discardParked": "Discard {label}",
+    "parkedItemsUnavailable": "{count, plural, one {# item is} other {# items are}} no longer available and were left out",
+    "exchangeStarted": "Return processed — ring up the replacement item now",
+    "exchangeInProgress": "Exchange in progress — this sale will link to the return",
+    "cancelExchange": "Cancel exchange"
   }
 }

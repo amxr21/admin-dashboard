@@ -292,9 +292,48 @@ export async function listMovements(
 /** Exported for F6.1 — a shift needs the same "which branch when none is
  *  named" answer a stock movement does, and a second copy would be free to
  *  reintroduce the timezone bug F8.2 fixed. */
+/**
+ * The last-resort answer to "which branch" when a request carries none —
+ * every caller uses it as `input.branchId ?? (await defaultBranchId())`, so
+ * this only fires when nothing upstream (the branch switcher's header,
+ * a return's own order, a bulk-receive batch) named one at all.
+ *
+ * ─── O9.18: WHY A SECOND BUSINESS MAKES THIS REFUSE, NOT GUESS ───────
+ * `isDefault` is unique PER BUSINESS (see `branches.service.ts`'s
+ * `clearOtherDefaults`), so a two-business install has TWO rows with
+ * `isDefault: true` — one per business — and there is no principled way to
+ * pick "the" default across companies from a request that named neither a
+ * branch nor a business. The original version of this function used
+ * `findFirst`, which returned whichever row the database handed back first:
+ * deterministic-looking in a single-business dev/demo install (there was
+ * only ever one row to find), but silently order-dependent the moment a
+ * second business existed — exactly the bug F8.2 fixed for TWO DEFAULTS
+ * WITHIN one business, now recurring one level up. Found live: this
+ * project's own database carries 3 businesses, so the bug was not
+ * hypothetical when it was found.
+ *
+ * The owner decided (2026-09-09): refuse with a clear error rather than
+ * guess. A branch-less write on a single-business install still resolves
+ * exactly as before — the ambiguity does not exist yet with one business,
+ * so nothing there should start refusing. The moment a second business is
+ * created, every branch-less request must become explicit about where it
+ * belongs, rather than ever risk attributing stock, a sale, or a shift to
+ * the wrong company.
+ */
 export async function defaultBranchId(): Promise<string> {
-  // The flagged branch first; any active branch only as a fallback for an
-  // install where the flag was never set.
+  const businessCount = await prisma.business.count();
+
+  if (businessCount > 1) {
+    throw AppError.badRequest(
+      'Select a branch — this install has more than one business, so there is no single default to fall back to.',
+    );
+  }
+
+  // Single business (or none yet, e.g. mid-setup): the flagged branch first,
+  // any active branch only as a fallback for an install where the flag was
+  // never set. Safe here specifically BECAUSE at most one business exists —
+  // `isDefault` can carry at most one true row, so `findFirst` cannot be
+  // order-dependent the way it was for 2+ businesses.
   const branch =
     (await prisma.branch.findFirst({
       where: { isActive: true, isDefault: true },

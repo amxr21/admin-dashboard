@@ -1,10 +1,17 @@
 import { randomBytes } from 'node:crypto';
 import type { Request } from 'express';
-import { OrderStatus, Prisma, StockMovementReason, type ProductStatus } from '@prisma/client';
+import {
+  OrderStatus,
+  Prisma,
+  ReturnResolution,
+  StockMovementReason,
+  type ProductStatus,
+} from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { audit } from './audit.service.js';
+import { verifyOverrideToken } from './auth.service.js';
 import { defaultBranchId } from './inventory.service.js';
 import { computeOrderTotals, getTaxRate } from './order-math.service.js';
 import { getSettingValue } from './settings.service.js';
@@ -107,6 +114,133 @@ export async function scanProduct(
 }
 
 /* ─────────────────────────────────────────────────────────────────────
+ * BROWSE (O9.10)
+ *
+ * The scan field answers "this exact code is in my hand". This answers a
+ * different question: "which product is this, on a shelf with no barcode?"
+ * Counted against the live catalogue when this was built: 30 products, 1
+ * barcode — for the other 29 a cashier had no way to sell them except typing
+ * an exact SKU from memory. The owner confirmed the shop will not be
+ * barcoding its stock, which makes this the PRIMARY way a cashier finds a
+ * product, and the scan field a secondary path for the items that do carry
+ * a code.
+ *
+ * Deliberately a SEPARATE function from scanProduct, not a shared one with a
+ * "fuzzy" flag — the scan's exactness is a correctness property (a mistyped
+ * digit must never silently resolve to a different product), and mixing it
+ * into the same code path as a browsable, paginated, search-matched list is
+ * how that property quietly grows an escape hatch.
+ * ───────────────────────────────────────────────────────────────────── */
+
+export interface BrowsedProduct {
+  id: string;
+  name: string;
+  price: string;
+  imageUrl: string | null;
+  categoryId: string | null;
+  /** Same meaning as `ScannedProduct.branchStock` — stock AT the till's
+   *  branch, null when no branch is in context. */
+  branchStock: number | null;
+  status: ProductStatus;
+}
+
+export interface BrowseProductsParams {
+  /** Free-text match on name — the till's own search, not `/search`'s
+   *  cross-entity one, which also returns orders and customers a cashier
+   *  building a cart has no use for. */
+  q?: string | undefined;
+  categoryId?: string | undefined;
+  branchId: string | null;
+  /** Resuming a parked cart (O9.12b) — fetch exactly these ids' CURRENT price
+   *  and stock rather than what was parked. A product archived since it was
+   *  set aside is silently absent from the result, the same as it would be
+   *  from an ordinary browse — nothing here re-sells something no longer
+   *  sellable. */
+  ids?: string[] | undefined;
+}
+
+/**
+ * The grid a cashier taps instead of scanning.
+ *
+ * ARCHIVED products are excluded — unlike a scan, which must still surface an
+ * archived product if it is physically scanned off a shelf (the cashier is
+ * holding the thing regardless of its catalogue state), a browse is choosing
+ * what to sell and an archived row has no business being offered.
+ *
+ * Capped rather than paginated: a till screen has room for a grid, not a
+ * pager, and a shop with more than this many active products needs the
+ * search box, not another page of tiles to scan by eye.
+ */
+const BROWSE_LIMIT = 60;
+
+export async function browseProducts(
+  params: BrowseProductsParams,
+): Promise<BrowsedProduct[]> {
+  const q = params.q?.trim();
+
+  const products = await prisma.product.findMany({
+    where: {
+      status: 'ACTIVE',
+      ...(q ? { name: { contains: q } } : {}),
+      ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+      ...(params.ids && params.ids.length > 0 ? { id: { in: params.ids } } : {}),
+    },
+    orderBy: { name: 'asc' },
+    // A resume asks for a specific id list, which may legitimately exceed the
+    // grid's own cap — capping it there would silently drop lines from a
+    // cart that had more than BROWSE_LIMIT distinct products in it.
+    take: params.ids && params.ids.length > 0 ? undefined : BROWSE_LIMIT,
+    select: {
+      id: true,
+      name: true,
+      price: true,
+      imageUrl: true,
+      categoryId: true,
+      stock: true,
+      status: true,
+    },
+  });
+
+  // One query for every branch row, not one per product — the grid can hold
+  // up to BROWSE_LIMIT tiles, and N+1 queries here would be the same mistake
+  // the scan path avoids by design.
+  const stockByProductId = new Map<string, number>();
+
+  if (params.branchId !== null && products.length > 0) {
+    const rows = await prisma.branchStock.findMany({
+      where: { branchId: params.branchId, productId: { in: products.map((p) => p.id) } },
+      select: { productId: true, quantity: true },
+    });
+
+    for (const row of rows) stockByProductId.set(row.productId, row.quantity);
+  }
+
+  return products.map((product) => ({
+    id: product.id,
+    name: product.name,
+    price: product.price.toFixed(2),
+    imageUrl: product.imageUrl,
+    categoryId: product.categoryId,
+    // Missing row means the branch holds none of it — same reasoning as the
+    // scan path's `?? 0` (see inventory.service.ts's comment on the same
+    // question). Only meaningful when a branch is in context at all.
+    branchStock: params.branchId === null ? null : (stockByProductId.get(product.id) ?? 0),
+    status: product.status,
+  }));
+}
+
+/** Active categories, for the grid's tabs. Excludes inactive ones the same
+ *  way browseProducts excludes archived products — a tab for a category
+ *  nobody may sell into is a dead end, not a filter. */
+export async function browseCategories(): Promise<{ id: string; name: string }[]> {
+  return prisma.category.findMany({
+    where: { isActive: true },
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true },
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────────
  * CHECKOUT (O5.7, O5.8)
  *
  * The first thing in this app that creates an `Order` — until now
@@ -116,19 +250,74 @@ export async function scanProduct(
 export interface CheckoutLine {
   productId: string;
   quantity: number;
+  /** A cashier's ad-hoc discount on THIS line (O9 Tier 3), 0-100. Above
+   *  `pos.maxCashierDiscountPercent`, `overrideToken` on the whole checkout
+   *  must verify to a manager or the sale is refused. */
+  discountPercent?: number | undefined;
 }
 
 export interface CheckoutInput {
   lines: CheckoutLine[];
-  /** 'cash' | 'card' | … — free text, mirroring `Order.paymentMethod`. */
-  method: string;
+  /** 'cash' | 'card' | … — free text, mirroring `Order.paymentMethod`.
+   *  Required UNLESS `splitPayments` is given instead — see its own note. */
+  method?: string | undefined;
   /** Cash handed over. Omitted for a card sale, where nothing is tendered. */
   tendered?: string | undefined;
   branchId?: string | undefined;
   /** The till session this belongs to, so the drawer can be reconciled. */
+  /**
+   * The till session this sale belongs to. **Resolved by the ROUTE from the
+   * authenticated user's own open shift, never accepted from the request
+   * body** (O9.17) — the drawer is reconciled by summing the payments that
+   * carry a shift id, so a client-supplied one silently moves cash into
+   * another cashier's count.
+   */
   shiftId?: string | undefined;
   customerId?: string | undefined;
   note?: string | undefined;
+  /** The card terminal's own reference — see the schema comment on
+   *  `Payment.reference`. Optional; cash never has one. */
+  reference?: string | undefined;
+  /**
+   * Proof a manager approved a discount above the cap (O9.13, O9 Tier 3) —
+   * a SIGNED token from `POST /auth/manager-override`, verified here with
+   * `verifyOverrideToken`, never a client-supplied approver id taken on
+   * faith. Absent when every line's discount is within the cap; required
+   * (and re-verified server-side) otherwise.
+   */
+  overrideToken?: string | undefined;
+  /**
+   * Split payment (O9 Tier 3) — 30 cash, rest on card, and so on. When
+   * present, this REPLACES `method`/`tendered` entirely rather than the two
+   * combining; a sale is either single-method or split, never a mix of
+   * both shapes read together. Each entry becomes its OWN `Payment` row —
+   * exactly why `Payment` was built as a table rather than columns on
+   * `Order` in the first place (O5.2). Amounts must sum to the total
+   * exactly; a split that leaves a gap or overshoots is refused, not
+   * silently rounded.
+   */
+  splitPayments?: SplitPaymentInput[] | undefined;
+  /**
+   * Exchange (O9.8) — two linked records, not one combined transaction (the
+   * owner's own call). The return itself already happened, processed like
+   * any other (refund/restock, resolution REPLACEMENT); this is an
+   * otherwise-ORDINARY sale that also links back to it, so the return's
+   * history shows what it was traded for. Validated: the return must exist,
+   * carry `resolution: REPLACEMENT`, and not already be linked to a
+   * different sale — a second checkout naming the same return would silently
+   * steal the link from the first.
+   */
+  exchangeReturnId?: string | undefined;
+}
+
+export interface SplitPaymentInput {
+  method: string;
+  /** What THIS payment covers — not the sale's total. */
+  amount: string;
+  /** Only meaningful when `method` is cash; change is computed per-entry,
+   *  same as the single-payment path. */
+  tendered?: string | undefined;
+  reference?: string | undefined;
 }
 
 /**
@@ -172,6 +361,32 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
     throw AppError.badRequest('Add something to the sale first');
   }
 
+  // Exactly one shape, never both read together — a `method` alongside
+  // `splitPayments` would leave "which one is the real payment" ambiguous,
+  // and silently preferring one would make the other look accepted when it
+  // was quietly ignored.
+  const isSplit = input.splitPayments !== undefined;
+
+  if (isSplit && input.method !== undefined) {
+    throw AppError.badRequest('Send either method or splitPayments, not both', {
+      field: 'method',
+    });
+  }
+
+  if (!isSplit && input.method === undefined) {
+    throw AppError.badRequest('A payment method is required', { field: 'method' });
+  }
+
+  if (isSplit && (input.splitPayments?.length ?? 0) < 2) {
+    // One entry is not a split — it is the single-payment path wearing the
+    // split shape for no reason, and it would skip the single-payment
+    // route's own validation (e.g. `tendered` less than the total) if let
+    // through as one payment of the whole amount.
+    throw AppError.badRequest('A split needs at least two payments', {
+      field: 'splitPayments',
+    });
+  }
+
   const productIds = [...new Set(input.lines.map((line) => line.productId))];
 
   if (productIds.length !== input.lines.length) {
@@ -184,6 +399,89 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
   const branchId = input.branchId ?? (await defaultBranchId());
   const taxRate = await getTaxRate();
   const allowNegative = Boolean(await getSettingValue('inventory.allowNegativeStock'));
+
+  /**
+   * Discounts (O9 Tier 3).
+   *
+   * Validated and the cap resolved BEFORE the transaction — neither needs a
+   * lock, and refusing early means a bad discount never gets as far as
+   * touching stock.
+   */
+  const maxCashierDiscountPercent = Number(
+    await getSettingValue('pos.maxCashierDiscountPercent'),
+  );
+
+  let approverId: string | null = null;
+
+  for (const line of input.lines) {
+    const percent = line.discountPercent;
+    if (percent === undefined) continue;
+
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+      throw AppError.badRequest('Discount must be between 0 and 100', {
+        field: 'discountPercent',
+        productId: line.productId,
+      });
+    }
+
+    if (percent > maxCashierDiscountPercent) {
+      // Resolved ONCE, lazily, the first time a line actually needs it —
+      // most sales carry no discount at all, and most that do stay under
+      // the cap. Verifying a token that was never sent would be verifying
+      // `undefined`, which `verifyOverrideToken` would correctly reject
+      // anyway, but resolving it lazily keeps the common path free of a
+      // JWT verify it does not need.
+      if (approverId === null) {
+        if (!input.overrideToken) {
+          throw AppError.forbidden(
+            `A discount above ${String(maxCashierDiscountPercent)}% needs a manager's approval`,
+            { field: 'discountPercent', productId: line.productId },
+          );
+        }
+
+        const verified = verifyOverrideToken(input.overrideToken);
+
+        if (!verified) {
+          // Same generic shape as every other "your proof did not check
+          // out" refusal in this app — a stale or forged token gets the
+          // same answer as none at all, not a hint about which was wrong.
+          throw AppError.forbidden('The manager approval could not be verified');
+        }
+
+        approverId = verified;
+      }
+    }
+  }
+
+  // Exchange (O9.8) — validated before the transaction, same reasoning as
+  // discounts above: a bad return id must never get as far as touching
+  // stock.
+  if (input.exchangeReturnId) {
+    const linkedReturn = await prisma.return.findUnique({
+      where: { id: input.exchangeReturnId },
+      select: { id: true, resolution: true, exchangeOrderId: true },
+    });
+
+    if (!linkedReturn) {
+      throw AppError.notFound('The return this sale is meant to replace was not found');
+    }
+
+    if (linkedReturn.resolution !== ReturnResolution.REPLACEMENT) {
+      throw AppError.badRequest(
+        'That return was not resolved as a replacement, so it cannot be linked to a sale',
+        { field: 'exchangeReturnId' },
+      );
+    }
+
+    if (linkedReturn.exchangeOrderId) {
+      // Second checkout naming the same return — refused rather than
+      // silently re-pointing the link, which would make the FIRST sale
+      // look like it was never actually the replacement.
+      throw AppError.badRequest('That return is already linked to a sale', {
+        field: 'exchangeReturnId',
+      });
+    }
+  }
 
   const created = await prisma.$transaction(async (tx) => {
     // Read INSIDE the transaction: the price that goes on the receipt must be
@@ -233,15 +531,38 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
         );
       }
 
+      // The TRUE unit price, always — this is the snapshot every other
+      // reader (margin reporting, the invoice, Reports/Dashboard revenue)
+      // reads as "what this line's unit actually costs". Writing a
+      // discounted figure in here would silently corrupt all of them; the
+      // discount is a SEPARATE column precisely so `price` never has to
+      // carry two meanings.
+      const price = product.price;
+      const discountPercent = line.discountPercent ?? null;
+
+      // What `computeOrderTotals` actually charges tax and totals against —
+      // a discount reduces what the customer owes, so it has to reach the
+      // arithmetic somewhere, and `price` itself is the one place it must
+      // NOT reach.
+      const chargedPrice =
+        discountPercent === null
+          ? price
+          : price.times(new Prisma.Decimal(100).minus(discountPercent)).dividedBy(100);
+
       return {
         productId: line.productId,
         quantity: line.quantity,
-        price: product.price,
+        price,
+        chargedPrice,
+        discountPercent,
         cost: product.cost,
       };
     });
 
-    const totals = computeOrderTotals(priced, taxRate);
+    const totals = computeOrderTotals(
+      priced.map((line) => ({ price: line.chargedPrice, quantity: line.quantity })),
+      taxRate,
+    );
 
     const order = await tx.order.create({
       data: {
@@ -252,7 +573,11 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
         // Denormalised on purpose — every Reports/Dashboard revenue figure
         // reads THIS, never a recomputation.
         total: totals.total,
-        paymentMethod: input.method,
+        // 'split' is a real, distinct value here, not a fallback — a report
+        // reading `paymentMethod` must be able to tell a split sale apart
+        // from a single cash/card one rather than seeing an arbitrary first
+        // method and assuming that is the whole story.
+        paymentMethod: isSplit ? 'split' : (input.method as string),
         branchId,
         ...(input.customerId ? { customerId: input.customerId } : {}),
         items: {
@@ -261,11 +586,23 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
             quantity: line.quantity,
             price: line.price,
             cost: line.cost,
+            discountPercent: line.discountPercent,
           })),
         },
       },
       select: { id: true, orderNumber: true },
     });
+
+    // Exchange (O9.8) — link the return to THIS sale now that it exists.
+    // `@unique` on `exchangeOrderId` means a second attempt to link the same
+    // order to a different return would fail here rather than silently
+    // pointing two returns at one sale.
+    if (input.exchangeReturnId) {
+      await tx.return.update({
+        where: { id: input.exchangeReturnId },
+        data: { exchangeOrderId: order.id },
+      });
+    }
 
     // Stock down, one SOLD movement per line, inside the same transaction.
     // Written directly rather than through `adjustStock` because that helper
@@ -296,29 +633,83 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
       });
     }
 
-    const tendered = input.tendered === undefined ? null : new Prisma.Decimal(input.tendered);
+    let totalChange: Prisma.Decimal | null = null;
 
-    if (tendered !== null && tendered.lessThan(totals.total)) {
-      throw AppError.badRequest('That is less than the total', { field: 'tendered' });
+    if (isSplit) {
+      const entries = input.splitPayments ?? [];
+      const amounts = entries.map((entry) => new Prisma.Decimal(entry.amount));
+      const sum = amounts.reduce((total, amount) => total.plus(amount), new Prisma.Decimal(0));
+
+      // Exact, not "close enough" — a split that leaves a gap is a sale
+      // nobody actually paid for in full, and one that overshoots is a
+      // refund nobody recorded as one. Both are wrong in ways the till must
+      // catch here, not leave for someone reconciling the drawer to find.
+      if (!sum.equals(totals.total)) {
+        throw AppError.badRequest(
+          `Split payments total ${sum.toFixed(2)}, which does not match the sale total ${totals.total.toFixed(2)}`,
+          { field: 'splitPayments' },
+        );
+      }
+
+      for (const entry of entries) {
+        const amount = new Prisma.Decimal(entry.amount);
+        const entryTendered =
+          entry.tendered === undefined ? null : new Prisma.Decimal(entry.tendered);
+
+        if (entryTendered !== null && entryTendered.lessThan(amount)) {
+          throw AppError.badRequest('That is less than this payment', {
+            field: 'splitPayments',
+          });
+        }
+
+        const change = entryTendered === null ? null : entryTendered.sub(amount);
+        // Only cash ever hands back change; summing null with a real
+        // Decimal would need its own case, and a split with no cash leg at
+        // all correctly reports no change to give.
+        if (change !== null) totalChange = (totalChange ?? new Prisma.Decimal(0)).plus(change);
+
+        await tx.payment.create({
+          data: {
+            orderId: order.id,
+            amount,
+            method: entry.method,
+            tendered: entryTendered,
+            change,
+            ...(input.shiftId ? { shiftId: input.shiftId } : {}),
+            actorId,
+            ...(input.note ? { note: input.note } : {}),
+            ...(entry.reference ? { reference: entry.reference } : {}),
+          },
+        });
+      }
+    } else {
+      const tendered = input.tendered === undefined ? null : new Prisma.Decimal(input.tendered);
+
+      if (tendered !== null && tendered.lessThan(totals.total)) {
+        throw AppError.badRequest('That is less than the total', { field: 'tendered' });
+      }
+
+      totalChange = tendered === null ? null : tendered.sub(totals.total);
+
+      await tx.payment.create({
+        data: {
+          orderId: order.id,
+          amount: totals.total,
+          method: input.method as string,
+          tendered,
+          // Stored, not derived at read time — the drawer is reconciled
+          // against what the cashier actually did (see `Payment`'s own
+          // note).
+          change: totalChange,
+          ...(input.shiftId ? { shiftId: input.shiftId } : {}),
+          actorId,
+          ...(input.note ? { note: input.note } : {}),
+          ...(input.reference ? { reference: input.reference } : {}),
+        },
+      });
     }
 
-    const payment = await tx.payment.create({
-      data: {
-        orderId: order.id,
-        amount: totals.total,
-        method: input.method,
-        tendered,
-        // Stored, not derived at read time — the drawer is reconciled against
-        // what the cashier actually did (see `Payment`'s own note).
-        change: tendered === null ? null : tendered.sub(totals.total),
-        ...(input.shiftId ? { shiftId: input.shiftId } : {}),
-        actorId,
-        ...(input.note ? { note: input.note } : {}),
-      },
-      select: { id: true, change: true },
-    });
-
-    return { order, totals, payment, lineCount: priced.length };
+    return { order, totals, change: totalChange, lineCount: priced.length };
   });
 
   audit(req, {
@@ -328,8 +719,13 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
     changes: {
       orderNumber: { from: null, to: created.order.orderNumber },
       total: { from: null, to: created.totals.total.toFixed(2) },
-      method: { from: null, to: input.method },
+      method: { from: null, to: isSplit ? 'split' : input.method },
       lines: { from: null, to: created.lineCount },
+      // Present only when a discount actually needed a manager — "who
+      // approved this" is the whole question a reviewer asks of an
+      // above-cap discount, the same reasoning the override endpoint's own
+      // audit entry already follows.
+      ...(approverId ? { discountApprovedBy: { from: null, to: approverId } } : {}),
     },
   });
 
@@ -339,6 +735,252 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
     subtotal: created.totals.subtotal.toFixed(2),
     taxAmount: created.totals.taxAmount.toFixed(2),
     total: created.totals.total.toFixed(2),
-    change: created.payment.change?.toFixed(2) ?? null,
+    change: created.change?.toFixed(2) ?? null,
   };
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * VOID (O9 Tier 3)
+ *
+ * Distinct from a return, on purpose: a return is a customer bringing
+ * something back days later, needs a manager (O9.7), and lives in
+ * `Return`/`returns.service.ts`. A void is the SAME sale, undone at the same
+ * register, moments later, correcting a mistake — nobody ever actually had
+ * the goods in the customer's understanding. So it never touches `Return` at
+ * all; it reverses the three things checkout itself wrote: the order status,
+ * the stock, and the payment.
+ * ───────────────────────────────────────────────────────────────────── */
+
+export async function voidSale(orderId: string, actorId: string, req: Request) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      branchId: true,
+      items: { select: { productId: true, quantity: true } },
+      payments: { select: { id: true, amount: true } },
+    },
+  });
+
+  if (!order) throw AppError.notFound('Order not found');
+
+  // Only CONFIRMED — the status a POS sale is created at and never moves
+  // from unless something ELSE already happened to it. Once shipped,
+  // delivered, cancelled or returned, undoing it is one of those other
+  // flows' job, not a void's: a delivered order has physically left the
+  // branch, and reversing stock for it would put units back on a shelf that
+  // does not have them.
+  if (order.status !== OrderStatus.CONFIRMED) {
+    throw AppError.badRequest(
+      `Only a CONFIRMED sale can be voided (this one is ${order.status})`,
+      { field: 'status' },
+    );
+  }
+
+  if (!order.branchId) {
+    // A sale with no recorded branch cannot have its stock reversed
+    // anywhere in particular — see `defaultBranchId()`'s own reasoning for
+    // why guessing one is worse than refusing.
+    throw AppError.badRequest('This order has no branch recorded and cannot be voided');
+  }
+
+  const branchId = order.branchId;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.order.update({ where: { id: orderId }, data: { status: OrderStatus.CANCELED } });
+
+    await tx.orderStatusHistory.create({
+      data: {
+        orderId,
+        fromStatus: order.status,
+        toStatus: OrderStatus.CANCELED,
+        note: 'Voided at the till',
+        changedById: actorId,
+      },
+    });
+
+    // Stock back, one movement per line, same discipline as a return's own
+    // restock — CORRECTION rather than RETURNED: nothing came back from a
+    // customer, the sale itself was undone.
+    for (const item of order.items) {
+      if (!item.productId) continue;
+
+      await tx.stockMovement.create({
+        data: {
+          productId: item.productId,
+          branchId,
+          delta: item.quantity,
+          reason: StockMovementReason.CORRECTION,
+          note: `Voided sale ${order.orderNumber}`,
+          actorId,
+        },
+      });
+
+      await tx.product.update({
+        where: { id: item.productId },
+        data: { stock: { increment: item.quantity } },
+      });
+
+      await tx.branchStock.upsert({
+        where: { productId_branchId: { productId: item.productId, branchId } },
+        create: { productId: item.productId, branchId, quantity: item.quantity },
+        update: { quantity: { increment: item.quantity } },
+      });
+    }
+
+    // Every payment reversed with its own NEGATIVE row — `Payment.amount` is
+    // signed exactly for this, the same reasoning a refund uses. Never edit
+    // or delete the original: the till was counted against it once already,
+    // and erasing it would make that count impossible to reconstruct.
+    for (const payment of order.payments) {
+      await tx.payment.create({
+        data: {
+          orderId,
+          amount: payment.amount.negated(),
+          method: 'void',
+          actorId,
+          note: `Reversal of payment ${payment.id}`,
+        },
+      });
+    }
+  });
+
+  audit(req, {
+    action: 'order.voided',
+    entity: 'orders',
+    entityId: orderId,
+    changes: { status: { from: order.status, to: OrderStatus.CANCELED } },
+  });
+
+  return { orderId, orderNumber: order.orderNumber };
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * PARK / RESUME A SALE (O9.12b)
+ * ───────────────────────────────────────────────────────────────────── */
+
+export interface ParkedSaleLine {
+  productId: string;
+  quantity: number;
+  discountPercent?: number | undefined;
+}
+
+/** What a parked-cart row looks like on the wire — `lines` cast out of the
+ *  DB's opaque `Json` column into the shape this module writes it as. */
+export interface ParkedSaleSummary {
+  id: string;
+  label: string | null;
+  lines: ParkedSaleLine[];
+  createdAt: Date;
+}
+
+function toParkedSaleSummary(row: {
+  id: string;
+  label: string | null;
+  lines: Prisma.JsonValue;
+  createdAt: Date;
+}): ParkedSaleSummary {
+  return {
+    id: row.id,
+    label: row.label,
+    lines: row.lines as unknown as ParkedSaleLine[],
+    createdAt: row.createdAt,
+  };
+}
+
+/**
+ * Set a cart aside mid-sale.
+ *
+ * Stores CART SHAPE only — product id, quantity, the cashier's own line
+ * discount — never a price or stock snapshot. A park is meant to last
+ * minutes, not lock in a figure; resuming re-fetches both through the
+ * ordinary browse path, the same as if the cashier had just built the cart
+ * fresh. No stock is reserved: the shelf does not know a cart exists.
+ */
+export async function parkSale(
+  cashierId: string,
+  branchId: string,
+  lines: ParkedSaleLine[],
+  label: string | undefined,
+): Promise<ParkedSaleSummary> {
+  if (lines.length === 0) {
+    throw AppError.badRequest('Cannot park an empty cart', { field: 'lines' });
+  }
+
+  const row = await prisma.parkedSale.create({
+    data: {
+      cashierId,
+      branchId,
+      lines: lines as unknown as Prisma.InputJsonValue,
+      label: label ?? null,
+    },
+    select: { id: true, label: true, lines: true, createdAt: true },
+  });
+
+  return toParkedSaleSummary(row);
+}
+
+/** Every cart this cashier has parked at this branch, oldest first — the
+ *  counter fills up through a shift, and the first one set aside is usually
+ *  the first one somebody comes back for. */
+export async function listParkedSales(
+  cashierId: string,
+  branchId: string,
+): Promise<ParkedSaleSummary[]> {
+  const rows = await prisma.parkedSale.findMany({
+    where: { cashierId, branchId },
+    select: { id: true, label: true, lines: true, createdAt: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  return rows.map(toParkedSaleSummary);
+}
+
+/**
+ * Bring a parked cart back to the register and forget it was ever parked.
+ *
+ * Deleted rather than left behind on resume: a parked row's only job is to
+ * survive the gap between setting a cart down and picking it back up, and a
+ * resumed one sitting in the list would look like a second, stale copy of
+ * the same customer's order.
+ */
+export async function resumeParkedSale(
+  id: string,
+  cashierId: string,
+): Promise<ParkedSaleSummary> {
+  const row = await prisma.parkedSale.findUnique({
+    where: { id },
+    select: { id: true, cashierId: true, label: true, lines: true, createdAt: true },
+  });
+
+  if (!row) throw AppError.notFound('Parked sale not found');
+
+  // Only the cashier who set it down — nobody else's till should be able to
+  // pull somebody else's cart onto their own screen.
+  if (row.cashierId !== cashierId) {
+    throw AppError.forbidden('You can only resume a cart you parked yourself');
+  }
+
+  await prisma.parkedSale.delete({ where: { id } });
+
+  return toParkedSaleSummary(row);
+}
+
+/** Give up on a parked cart without resuming it — the customer never came
+ *  back. Same ownership rule as resuming. */
+export async function discardParkedSale(id: string, cashierId: string): Promise<void> {
+  const row = await prisma.parkedSale.findUnique({
+    where: { id },
+    select: { cashierId: true },
+  });
+
+  if (!row) throw AppError.notFound('Parked sale not found');
+
+  if (row.cashierId !== cashierId) {
+    throw AppError.forbidden('You can only discard a cart you parked yourself');
+  }
+
+  await prisma.parkedSale.delete({ where: { id } });
 }

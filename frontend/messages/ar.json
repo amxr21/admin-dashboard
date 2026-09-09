@@ -146,6 +146,7 @@
     "reports": "التقارير",
     "settings": "الإعدادات",
     "staff": "الموظفون",
+    "shifts": "الورديات",
     "audit": "سجل التدقيق",
     "people": "العملاء والمندوبون",
     "admin": "الإدارة",
@@ -183,7 +184,8 @@
     },
     "loginHistory": "نشاط الموظفين",
     "branches": "الفروع",
-    "pos": "نقطة البيع"
+    "pos": "نقطة البيع",
+    "shift": "الوردية"
   },
   "branches": {
     "switcherLabel": "الفرع النشط",
@@ -265,6 +267,28 @@
         "country": "حرفان، مثل AE أو GB.",
         "currency": "ثلاثة أحرف، مثل AED أو USD. إذا تُرك فارغًا تُستخدم عملة المتجر.",
         "isActive": "إغلاق العمل يخفي فروعه. لا يُحذف شيء."
+      },
+      "groups": {
+        "identity": {
+          "title": "الهوية",
+          "hint": "اسم هذا النشاط والتفاصيل القانونية التي تظهر على الفاتورة."
+        },
+        "contact": {
+          "title": "الاتصال",
+          "hint": "كيف يصل العملاء والموردون إلى هذا النشاط."
+        },
+        "address": {
+          "title": "العنوان",
+          "hint": "مكان تسجيل النشاط. لكل فرع عنوانه الخاص."
+        },
+        "locale": {
+          "title": "المال والوقت",
+          "hint": "كيف يحسب هذا النشاط الأموال وأي توقيت تستخدمه تقاريره."
+        },
+        "brand": {
+          "title": "العلامة",
+          "hint": "الشعار الذي يظهر على فواتير هذا النشاط وترويسته."
+        }
       }
     },
     "roster": {
@@ -2250,12 +2274,15 @@
   },
   "shifts": {
     "start": "بدء الوردية",
+    "starting": "جارٍ البدء...",
     "started": "بدأت الوردية",
     "end": "إنهاء الوردية",
+    "ending": "جارٍ الإنهاء...",
     "ended": "انتهت الوردية",
     "endTitle": "إنهاء ورديتك؟",
     "endBody": "أنت في وردية في {branch} منذ {elapsed}. هذا ما سيُسجَّل.",
     "endWithElapsed": "إنهاء الوردية — مضى {elapsed}",
+    "loadingExpected": "جارٍ حساب ما يجب أن يكون في الدرج...",
     "cancel": "متابعة العمل",
     "table": {
       "person": "الشخص",
@@ -2283,13 +2310,86 @@
       "recent": "الأحدث",
       "empty": "لم يُغيَّر شيء خلال هذه الوردية."
     },
+    "approval": {
+      "title": "اعتماد الورديات",
+      "subtitle": "تأكيد أن الوردية سليمة. لا أحد ينتظر هذا — الصندوق يعمل بالفعل.",
+      "person": "الشخص",
+      "branch": "الفرع",
+      "started": "بدأت",
+      "status": "الحالة",
+      "stillOnShift": "ما زال في الوردية",
+      "approve": "اعتماد",
+      "approved": "تم اعتماد وردية {name}",
+      "reject": "رفض",
+      "rejecting": "جارٍ الرفض...",
+      "rejected": "تم رفض وردية {name}",
+      "rejectTitle": "رفض هذه الوردية؟",
+      "rejectBody": "أخبر {name} (وأي شخص يراجع هذا لاحقًا) بالسبب.",
+      "rejectReasonLabel": "السبب",
+      "rejectReasonPlaceholder": "مثال: الأوقات لا تطابق سجل الباب",
+      "cancel": "إلغاء",
+      "loadFailed": "تعذّر تحميل قائمة الاعتماد",
+      "emptyTitle": "لا شيء ينتظرك",
+      "emptyBody": "تم اعتماد أو رفض كل الورديات."
+    },
     "openingFloat": "النقد في الدرج عند الفتح",
     "floatPlaceholder": "الرصيد الافتتاحي",
     "countLabel": "احسب الدرج",
     "expectedHint": "فُتح بـ {float}، والمقبوض نقدًا {cash}.",
     "tillClosed": "أُغلق الصندوق — الفرق {variance}",
     "varianceShort": "الفرق {variance}",
-    "dismissVariance": "إخفاء فرق الصندوق"
+    "dismissVariance": "إخفاء فرق الصندوق",
+    "pageTitle": "الوردية",
+    "pageSubtitle": "سجّل حضورك عند الوصول، وانصرافك عند المغادرة.",
+    "notOnShift": "لست في وردية حاليًا",
+    "floatHint": "اتركه فارغًا إذا لم تكن هذه الوردية تحتوي على درج نقدي.",
+    "dismiss": "تجاهل",
+    "lastTillVariance": "أُغلق الدرج الأخير بفارق قدره",
+    "floatOnRecord": "بدأت بمبلغ افتتاحي قدره {float}",
+    "elapsedHint": "مدة الوردية",
+    "notOnShiftShort": "خارج الوردية",
+    "tillEvents": {
+      "noSale": "فتح بلا بيع",
+      "cashDrop": "سحب نقدي",
+      "payout": "دفعة نقدية",
+      "titles": {
+        "NO_SALE": "تسجيل فتح الدرج بلا بيع",
+        "CASH_DROP": "تسجيل سحب نقدي",
+        "PAYOUT": "تسجيل دفعة نقدية"
+      },
+      "amountLabel": "المبلغ",
+      "noteLabel": "ملاحظة (اختياري)",
+      "notePlaceholder": "مثال: إيداع، إكرامية للمندوب",
+      "cancel": "إلغاء",
+      "confirm": "تسجيل",
+      "logging": "جارٍ التسجيل...",
+      "logged": {
+        "NO_SALE": "تم تسجيل فتح الدرج بلا بيع",
+        "CASH_DROP": "تم تسجيل السحب النقدي",
+        "PAYOUT": "تم تسجيل الدفعة النقدية"
+      }
+    },
+    "viewXReport": "عرض تقرير X",
+    "loadingReport": "جارٍ التحميل...",
+    "printReport": "طباعة التقرير",
+    "report": {
+      "xTitle": "تقرير X (أثناء الوردية)",
+      "zTitle": "تقرير Z (نهائي)",
+      "cashier": "الكاشير",
+      "started": "بدأت",
+      "ended": "انتهت",
+      "salesByMethod": "المبيعات حسب طريقة الدفع",
+      "noSales": "لا مبيعات بعد",
+      "openingFloat": "المبلغ الافتتاحي",
+      "cashSales": "المبيعات النقدية",
+      "cashDrops": "السحوبات النقدية",
+      "payouts": "الدفعات النقدية",
+      "expectedInDrawer": "المتوقع في الدرج",
+      "counted": "المعدود",
+      "variance": "الفارق",
+      "noSaleOpens": "فتحات بلا بيع",
+      "printedAt": "طُبع في {time}"
+    }
   },
   "staffActivity": {
     "title": "نشاط الموظفين",
@@ -2338,6 +2438,103 @@
       "change": "الباقي",
       "thanks": "شكرًا لكم"
     },
-    "printReceipt": "طباعة الإيصال"
+    "printReceipt": "طباعة الإيصال",
+    "grid": {
+      "searchLabel": "بحث عن منتج",
+      "searchPlaceholder": "ابحث بالاسم...",
+      "allCategories": "الكل",
+      "loadFailed": "تعذّر تحميل المنتجات. حاول مرة أخرى.",
+      "empty": "لا توجد منتجات بعد. أضف منتجًا من صفحة المنتجات.",
+      "noMatches": "لا توجد منتجات مطابقة لهذا البحث.",
+      "outOfStock": "غير متوفر في هذا الفرع"
+    },
+    "confirmTitle": "تأكيد البيع",
+    "confirmTotal": "الإجمالي",
+    "confirmMethod": "الدفع عبر {method}",
+    "confirmBack": "رجوع",
+    "confirmCharge": "تأكيد وتحصيل الدفع",
+    "referenceLabel": "الرقم المرجعي لجهاز الدفع (اختياري)",
+    "referencePlaceholder": "مثال: من إيصال جهاز الدفع",
+    "referenceHint": "حتى يمكن مطابقة أي نزاع على الدفع بهذه العملية لاحقًا.",
+    "gate": {
+      "title": "هل تريد بدء ورديتك؟",
+      "subtitle": "المبيعات التي تسجّلها تُنسب إلى ورديتك المفتوحة.",
+      "openingFloat": "المبلغ الافتتاحي (اختياري)",
+      "floatPlaceholder": "0.00",
+      "startAndOpen": "ابدأ الوردية وافتح الصندوق",
+      "skip": "ليس الآن — اسمح لي بالبيع فقط"
+    },
+    "managerOverride": {
+      "title": "مطلوب موافقة المدير",
+      "emailLabel": "البريد الإلكتروني للمدير",
+      "passwordLabel": "كلمة مرور المدير",
+      "cancel": "إلغاء",
+      "approve": "موافقة",
+      "approving": "جارٍ التحقق...",
+      "discountReason": "يتم تطبيق خصم يتجاوز {max}% على هذه العملية.",
+      "voidReason": "يتطلب إلغاء عملية بيع مكتملة موافقة المدير."
+    },
+    "discountLabel": "الخصم على {name}",
+    "discountPlaceholder": "0",
+    "discountNeedsApproval": "تجاوز {max}% يتطلب موافقة المدير",
+    "processReturn": "معالجة إرجاع",
+    "tillReturn": {
+      "title": "معالجة إرجاع",
+      "subtitle": "ابحث عن الطلب، وحدّد ما سيُعاد.",
+      "orderNumberLabel": "رقم الطلب",
+      "orderNumberPlaceholder": "مثال: POS-20260909-AB12",
+      "lookUp": "بحث",
+      "notFound": "لم يُعثر على طلب مطابق لـ \"{orderNumber}\".",
+      "orderFound": "الطلب {orderNumber}",
+      "unknownProduct": "منتج غير معروف",
+      "orderedQuantity": "الكمية المطلوبة: {quantity}",
+      "returnQuantity": "كمية {name} المراد إرجاعها",
+      "continue": "متابعة",
+      "reasonLabel": "السبب (اختياري)",
+      "reasonPlaceholder": "مثال: تالف، مقاس خاطئ",
+      "defaultReason": "أُرجع عند الصندوق",
+      "resolutionLabel": "الحل",
+      "resolutions": {
+        "refund": "استرداد",
+        "storeCredit": "رصيد للمتجر",
+        "replacement": "استبدال"
+      },
+      "refundAmountLabel": "مبلغ الاسترداد",
+      "restockLabel": "إعادة هذه العناصر إلى المخزون",
+      "process": "معالجة الإرجاع",
+      "processing": "جارٍ المعالجة...",
+      "done": "تمت معالجة الإرجاع",
+      "managerOverrideReason": "يتطلب هذا الإرجاع موافقة المدير."
+    },
+    "voided": "أُلغيت العملية",
+    "voiding": "جارٍ الإلغاء...",
+    "voidSale": "إلغاء هذه العملية",
+    "noteLabel": "ملاحظة على هذا البيع",
+    "notePlaceholder": "مثال: طلب العميل الاحتفاظ به للاستلام",
+    "saveNote": "حفظ",
+    "savingNote": "جارٍ الحفظ...",
+    "noteSaved": "تم حفظ الملاحظة",
+    "splitPayment": "دفع مقسّم",
+    "splitMethodLabel": "طريقة الدفعة {index}",
+    "splitAmountLabel": "مبلغ الدفعة {index}",
+    "removeSplitLine": "إزالة الدفعة {index}",
+    "addSplitLine": "إضافة دفعة أخرى",
+    "splitTotal": "المُدخل: {total} من {estimate}",
+    "cancel": "إلغاء",
+    "park": "تنحية",
+    "parked": "تم تنحية السلة",
+    "parkTitle": "تنحية هذه السلة؟",
+    "parkBody": "ستبقى هنا حتى تستأنفها أو تتجاهلها — لا يُخصم أو يُحجز شيء.",
+    "parkLabel": "تسمية (اختياري)",
+    "parkLabelPlaceholder": "مثال: سارة — سترة حمراء",
+    "parkedCarts": "{count, plural, one {سلة واحدة منحّاة} two {سلتان منحّاتان} few {# سلال منحّاة} many {# سلة منحّاة} other {# سلة منحّاة}}",
+    "parkedUntitled": "سلة منحّاة",
+    "parkedItemCount": "{count, plural, one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}}",
+    "resume": "استئناف",
+    "discardParked": "تجاهل {label}",
+    "parkedItemsUnavailable": "{count, plural, one {عنصر واحد لم يعد متاحًا واستُبعد} two {عنصران لم يعودا متاحين واستُبعدا} few {# عناصر لم تعد متاحة واستُبعدت} many {# عنصرًا لم يعد متاحًا واستُبعد} other {# عنصر لم يعد متاحًا واستُبعد}}",
+    "exchangeStarted": "تمت معالجة الإرجاع — قم الآن ببيع القطعة البديلة",
+    "exchangeInProgress": "استبدال جارٍ — سيُربط هذا البيع بالإرجاع",
+    "cancelExchange": "إلغاء الاستبدال"
   }
 }

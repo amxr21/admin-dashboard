@@ -1,5 +1,11 @@
 import { randomInt } from 'node:crypto';
-import { Prisma, ReturnCategory, ReturnResolution, ReturnStatus } from '@prisma/client';
+import {
+  Prisma,
+  ReturnCategory,
+  ReturnItemStatus,
+  ReturnResolution,
+  ReturnStatus,
+} from '@prisma/client';
 import type { Request } from 'express';
 import { resolveBranchLabels } from './branches.service.js';
 
@@ -10,6 +16,7 @@ import { notify } from './notify.service.js';
 import { getSettingValue } from './settings.service.js';
 import { ASSIGNMENT_ON_ORDER_STATUS, canTransition } from '../config/orders.config.js';
 
+import { defaultBranchId } from './inventory.service.js';
 /**
  * Returns / RMA — the one thing the resource engine cannot express, for the
  * same reason orders is bespoke: approving a return is a PROCEDURE (validate
@@ -143,6 +150,9 @@ async function serialiseReturn(id: string) {
       rejectionReason: true,
       createdAt: true,
       order: { select: { id: true, orderNumber: true, status: true } },
+      // Exchange (O9.8) — null until the replacement sale completes, a real
+      // "started but not finished" state, not a gap to hide.
+      exchangeOrder: { select: { id: true, orderNumber: true } },
       customer: { select: { id: true, name: true, email: true } },
       items: {
         select: {
@@ -175,6 +185,7 @@ async function serialiseReturn(id: string) {
     rejectionReason: row.rejectionReason,
     createdAt: row.createdAt.toISOString(),
     order: row.order,
+    exchangeOrder: row.exchangeOrder,
     customer: row.customer,
     items: row.items.map((item) => ({
       id: item.id,
@@ -308,12 +319,41 @@ export async function createReturn(input: CreateReturnInput) {
   return created;
 }
 
+/**
+ * A decision on ONE line of a return (B4.7 / B4.8).
+ *
+ * Optional on the whole request: omitting `items` accepts every line in full,
+ * which is exactly what approving a return has always done. Existing callers
+ * therefore keep working unchanged, and nothing about past returns is
+ * reinterpreted.
+ */
+export interface ReturnItemDecision {
+  returnItemId: string;
+  accepted: boolean;
+  /**
+   * How many to accept (B4.8). Omitted means "all of what was asked".
+   *
+   * Fewer is a real case — two of three arrived sellable — and it drives BOTH
+   * the refund cap and the restock, so it cannot be a display-only note.
+   */
+  acceptedQuantity?: number | undefined;
+  /** Required when `accepted` is false: the customer is owed a reason. */
+  rejectionReason?: string | undefined;
+}
+
 export interface ApproveReturnInput {
   resolution: Exclude<ReturnResolution, 'NONE'>;
   /** Decimal string. Required when resolution is REFUND, ignored otherwise. */
   refundAmount?: string | undefined;
   restock: boolean;
+  /**
+   * Per-line decisions (B4.7). Omit to accept everything in full — the
+   * behaviour this endpoint has always had.
+   */
+  items?: ReturnItemDecision[] | undefined;
   actorId: string;
+  /** Which branch the stock comes back to (F8.2). */
+  branchId?: string | undefined;
 }
 
 export async function approveReturn(id: string, input: ApproveReturnInput, req: Request) {
@@ -330,6 +370,7 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
         orderId: true,
         items: {
           select: {
+            id: true,
             quantity: true,
             orderItem: { select: { productId: true, price: true } },
           },
@@ -348,7 +389,12 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
 
     const order = await tx.order.findUnique({
       where: { id: existing.orderId },
-      select: { id: true, status: true, assignment: { select: { id: true } } },
+      select: {
+        id: true,
+        status: true,
+        branchId: true,
+        assignment: { select: { id: true } },
+      },
     });
 
     if (!order) throw AppError.notFound('Order not found');
@@ -360,13 +406,93 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
       );
     }
 
+    /**
+     * Resolve every line to a decision (B4.7 / B4.8).
+     *
+     * With no `items` given, every line is accepted in full — what approving
+     * a return has always meant, so existing callers are unchanged.
+     */
+    const byId = new Map((input.items ?? []).map((entry) => [entry.returnItemId, entry]));
+
+    const unknown = [...byId.keys()].filter(
+      (returnItemId) => !existing.items.some((item) => item.id === returnItemId),
+    );
+
+    if (unknown.length > 0) {
+      // Refused rather than ignored: a decision aimed at the wrong line means
+      // the operator was looking at a different return, and silently dropping
+      // it would approve something they did not intend.
+      throw AppError.badRequest('A decision names a line that is not on this return', {
+        field: 'items',
+      });
+    }
+
+    const decisions = existing.items.map((item) => {
+      const decision = byId.get(item.id);
+
+      if (!decision) {
+        return { item, accepted: true, quantity: item.quantity, rejectionReason: null };
+      }
+
+      if (!decision.accepted) {
+        if (!decision.rejectionReason?.trim()) {
+          // The customer is owed a reason. "Some of your return was refused"
+          // with no explanation is the complaint that follows.
+          throw AppError.badRequest('Give a reason for each refused line', {
+            field: 'rejectionReason',
+          });
+        }
+
+        return {
+          item,
+          accepted: false,
+          quantity: 0,
+          rejectionReason: decision.rejectionReason.trim(),
+        };
+      }
+
+      const quantity = decision.acceptedQuantity ?? item.quantity;
+
+      if (!Number.isInteger(quantity) || quantity <= 0) {
+        // Accepting zero is a REJECTION, and must carry a reason like one —
+        // otherwise it is a rejection with no explanation wearing a different
+        // name.
+        throw AppError.badRequest('Accepted quantity must be a whole number above zero', {
+          field: 'acceptedQuantity',
+        });
+      }
+
+      if (quantity > item.quantity) {
+        // Accepting more than was asked for would refund and restock stock
+        // the customer never returned.
+        throw AppError.badRequest(
+          `Cannot accept ${String(quantity)} — only ${String(item.quantity)} were returned`,
+          { field: 'acceptedQuantity' },
+        );
+      }
+
+      return { item, accepted: true, quantity, rejectionReason: null };
+    });
+
+    if (decisions.every((decision) => !decision.accepted)) {
+      // Nothing accepted is a REJECTION of the whole return, not an approval
+      // of nothing — and it must not move the order to RETURNED.
+      throw AppError.badRequest(
+        'No lines were accepted — reject the return instead of approving it',
+        { field: 'items' },
+      );
+    }
+
     let refundAmount: Prisma.Decimal | null = null;
 
     if (input.resolution === ReturnResolution.REFUND) {
-      // Capped to what was actually purchased — the line-item price recorded
-      // AT THE TIME OF ORDER, never a live product price.
-      const maxRefund = existing.items.reduce(
-        (sum, item) => sum.add(item.orderItem.price.mul(item.quantity)),
+      // Capped to what was ACCEPTED, not what was asked (B4.8) — refunding
+      // the full request after refusing a line would pay for goods the shop
+      // never took back. Still the line-item price recorded AT THE TIME OF
+      // ORDER, never a live product price.
+      const maxRefund = decisions.reduce(
+        (sum, decision) =>
+          sum.add(decision.item.orderItem.price.mul(decision.quantity)),
         new Prisma.Decimal(0),
       );
       const requested = new Prisma.Decimal(input.refundAmount as string);
@@ -405,25 +531,59 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
     }
 
     if (input.restock) {
-      for (const item of existing.items) {
+      // Where the goods physically come back to. Falls back to the order's
+      // own branch, then the default — restocking somewhere arbitrary is how
+      // a branch ends up with stock it never received.
+      const restockBranchId = input.branchId ?? order.branchId ?? (await defaultBranchId());
+
+      for (const decision of decisions) {
+        // A refused line goes back to the customer, so nothing is restocked.
+        if (!decision.accepted) continue;
+
         // Hard-deleted product: nothing left to restock against.
-        if (!item.orderItem.productId) continue;
+        if (!decision.item.orderItem.productId) continue;
+
+        const productId = decision.item.orderItem.productId;
 
         await tx.stockMovement.create({
           data: {
-            productId: item.orderItem.productId,
-            delta: item.quantity,
+            productId,
+            // ACCEPTED quantity, not requested (B4.8).
+            delta: decision.quantity,
             reason: 'RETURNED',
+            // Recorded against a branch (F8.2). Without it the movement log
+            // and `BranchStock` stop agreeing with `Product.stock`, which is
+            // exactly the invariant branch scoping depends on.
+            branchId: restockBranchId,
             note: `Return ${id}`,
             actorId: input.actorId,
           },
         });
 
+        await tx.branchStock.upsert({
+          where: { productId_branchId: { productId, branchId: restockBranchId } },
+          create: { productId, branchId: restockBranchId, quantity: decision.quantity },
+          update: { quantity: { increment: decision.quantity } },
+        });
+
         await tx.product.update({
-          where: { id: item.orderItem.productId },
-          data: { stock: { increment: item.quantity } },
+          where: { id: productId },
+          data: { stock: { increment: decision.quantity } },
         });
       }
+    }
+
+    // Record what was decided per line, so a partial approval is legible
+    // afterwards rather than being inferable only from the refund total.
+    for (const decision of decisions) {
+      await tx.returnItem.update({
+        where: { id: decision.item.id },
+        data: {
+          status: decision.accepted ? ReturnItemStatus.ACCEPTED : ReturnItemStatus.REJECTED,
+          acceptedQuantity: decision.accepted ? decision.quantity : 0,
+          rejectionReason: decision.rejectionReason,
+        },
+      });
     }
 
     await tx.return.update({

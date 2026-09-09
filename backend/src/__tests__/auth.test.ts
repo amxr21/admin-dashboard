@@ -1,11 +1,19 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
+import { StaffRole } from '@prisma/client';
 
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
-import { login, signToken, toSafeUser, verifyToken } from '../services/auth.service.js';
+import {
+  login,
+  signToken,
+  toSafeUser,
+  verifyManagerOverride,
+  verifyOverrideToken,
+  verifyToken,
+} from '../services/auth.service.js';
 import { createSession } from '../services/session.service.js';
 import { waitFor } from './helpers/wait-for.js';
 
@@ -33,7 +41,12 @@ interface LoginBody {
 
 async function makeUser(
   label: string,
-  overrides: Partial<{ isActive: boolean; accessExpiresAt: Date | null }> = {},
+  overrides: Partial<{
+    isActive: boolean;
+    accessExpiresAt: Date | null;
+    role: StaffRole;
+    twoFactorEnabled: boolean;
+  }> = {},
 ) {
   const user = await prisma.user.create({
     data: {
@@ -695,5 +708,130 @@ describe('token handling', () => {
     expect(safe.failedLoginAttempts).toBeUndefined();
     expect(safe.lockedUntil).toBeUndefined();
     expect(safe.email).toBe(user.email);
+  });
+});
+
+/**
+ * Manager override at the till (O9 Tier 4).
+ *
+ * ─── THIS DRIVES verifyManagerOverride() DIRECTLY, NOT HTTP ───────────
+ * Same reasoning the 'brute-force protection' block above documents: every
+ * Supertest request in this file shares one IP, and an EARLIER test in this
+ * same file deliberately exhausts the shared login limiter
+ * (`loginRateLimit`, 10/15min — 'rate-limits repeated login attempts from
+ * one IP') to prove it works. That budget does not reset before this block
+ * runs, so a real HTTP round trip here would fail on the limiter, not on
+ * this feature's own logic. One HTTP test stays, specifically to prove the
+ * ROUTE requires authentication at all (the one thing calling the service
+ * directly cannot show); every other case is the service's own decision and
+ * is checked directly, the same split the login suite already uses.
+ */
+describe('POST /api/v1/auth/manager-override', () => {
+  it('requires the caller to be authenticated as SOMEBODY', async () => {
+    const manager = await makeUser('override-manager-3', { role: StaffRole.MANAGER });
+
+    const res = await request(app)
+      .post('/api/v1/auth/manager-override')
+      .send({ email: manager.email, password: PASSWORD });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('approves when a manager account has settings access', async () => {
+    const manager = await makeUser('override-manager', { role: StaffRole.MANAGER });
+
+    const result = await verifyManagerOverride(manager.email, PASSWORD);
+
+    expect(result.approverId).toBe(manager.id);
+  });
+
+  it('refuses an account without settings access, even with the right password', async () => {
+    // A FULFILLMENT account outranks CASHIER on the rank table but is not a
+    // manager in any sense this feature means — it must not authorise this.
+    const fulfillment = await makeUser('override-fulfillment', {
+      role: StaffRole.FULFILLMENT,
+    });
+
+    await expect(verifyManagerOverride(fulfillment.email, PASSWORD)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+  });
+
+  it('refuses the wrong password', async () => {
+    const manager = await makeUser('override-manager-2', { role: StaffRole.MANAGER });
+
+    await expect(
+      verifyManagerOverride(manager.email, 'definitely-wrong'),
+    ).rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  it('refuses a manager account with 2FA enabled, naming the real login instead', async () => {
+    const manager = await makeUser('override-manager-2fa', {
+      role: StaffRole.MANAGER,
+      twoFactorEnabled: true,
+    });
+
+    await expect(verifyManagerOverride(manager.email, PASSWORD)).rejects.toMatchObject({
+      statusCode: 400,
+      message: expect.stringMatching(/sign in normally/i) as unknown,
+    });
+  });
+
+  it('locks the MANAGER account after repeated failures, not any other account', async () => {
+    const bystander = await makeUser('override-bystander', { role: StaffRole.CASHIER });
+    const manager = await makeUser('override-manager-lockout', { role: StaffRole.MANAGER });
+
+    for (let attempt = 0; attempt < env.LOGIN_MAX_ATTEMPTS; attempt += 1) {
+      await expect(verifyManagerOverride(manager.email, 'wrong')).rejects.toThrow();
+    }
+
+    const lockedOut = await prisma.user.findUnique({ where: { id: manager.id } });
+    expect(lockedOut?.lockedUntil).not.toBeNull();
+
+    // Failures against the manager's account must not lock anyone else's.
+    const bystanderRow = await prisma.user.findUnique({ where: { id: bystander.id } });
+    expect(bystanderRow?.lockedUntil).toBeNull();
+  });
+
+  it('creates no session for the manager — this is not a sign-in', async () => {
+    const manager = await makeUser('override-manager-4', { role: StaffRole.MANAGER });
+
+    const before = await prisma.session.count({ where: { userId: manager.id } });
+
+    await verifyManagerOverride(manager.email, PASSWORD);
+
+    const after = await prisma.session.count({ where: { userId: manager.id } });
+    expect(after).toBe(before);
+  });
+
+  describe('the override token', () => {
+    // This is the actual security mechanism, not `approverId` — a caller
+    // consuming an override must verify THIS, never trust a bare id sent in
+    // a request body (see the doc comment on `ManagerOverrideResult`, the
+    // same reasoning O9.17 fixed for a client-supplied `shiftId`).
+    it('verifies to the approving manager, and no one else', async () => {
+      const manager = await makeUser('override-manager-token', { role: StaffRole.MANAGER });
+
+      const result = await verifyManagerOverride(manager.email, PASSWORD);
+
+      expect(verifyOverrideToken(result.overrideToken)).toBe(manager.id);
+    });
+
+    it('rejects a token for an unrelated purpose, even if validly signed', () => {
+      // A pending-2FA token is signed with the same secret but means
+      // something else entirely — the `type` claim is what stops one kind
+      // of token being replayed as proof of the other.
+      const unrelatedToken = signToken({
+        id: 'u1',
+        role: StaffRole.CASHIER,
+        tokenVersion: 0,
+      });
+
+      expect(verifyOverrideToken(unrelatedToken)).toBeNull();
+    });
+
+    it('rejects a forged token', () => {
+      expect(verifyOverrideToken('not.a.real.token')).toBeNull();
+    });
   });
 });

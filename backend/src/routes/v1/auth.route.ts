@@ -12,7 +12,12 @@ import {
   passwordResetRateLimit,
   selfPasswordChangeRateLimit,
 } from '../../middleware/rateLimit.js';
-import { login, signToken, verifyLoginCode } from '../../services/auth.service.js';
+import {
+  login,
+  signToken,
+  verifyLoginCode,
+  verifyManagerOverride,
+} from '../../services/auth.service.js';
 import { redeemResetToken } from '../../services/password-reset.service.js';
 import { createSession, listSessions, revokeSession } from '../../services/session.service.js';
 import { assertPasswordMeetsPolicy } from '../../services/settings.service.js';
@@ -182,6 +187,83 @@ authRouter.post('/auth/login/verify-2fa', loginRateLimit, async (req, res) => {
     throw err;
   }
 });
+
+const managerOverrideSchema = z
+  .object({
+    email: z.string().email('Enter a valid email address'),
+    password: z.string().min(1, 'Password is required'),
+  })
+  .strict();
+
+/**
+ * POST /api/v1/auth/manager-override — O9 Tier 4.
+ *
+ * A manager types their OWN credentials in place, on the cashier's screen,
+ * to authorise one action the cashier's role cannot do alone (today: a
+ * discount above the cap). AUTHENTICATED — unlike `/auth/login`, this is
+ * called BY an already-signed-in cashier and never creates a session of its
+ * own, so there must be a real session (the cashier's) making the call.
+ *
+ * Same rate-limit class as login: a shared till is exactly as much a
+ * password-guessing target as the login form, for a second account.
+ */
+authRouter.post(
+  '/auth/manager-override',
+  authenticate,
+  loginRateLimit,
+  async (req, res) => {
+    const parsed = managerOverrideSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      throw AppError.badRequest('Invalid credentials format', parsed.error.flatten());
+    }
+
+    const { email, password } = parsed.data;
+    const cashier = requireUser(req);
+
+    // NEVER log req.body — it holds the password.
+    req.log.info({ event: 'auth.managerOverride.started', email, cashierId: cashier.id });
+
+    try {
+      const result = await verifyManagerOverride(email, password);
+
+      req.log.info({
+        event: 'auth.managerOverride.succeeded',
+        approverId: result.approverId,
+        cashierId: cashier.id,
+      });
+
+      // The audit trail names BOTH people — the cashier who needed the
+      // override and the manager who granted it — since "who approved this"
+      // is the whole question a reviewer asks of an override, the same
+      // reasoning branch-roster writes already follow for a role change.
+      audit(req, {
+        action: 'auth.managerOverride.succeeded',
+        entity: 'auth',
+        entityId: result.approverId,
+        changes: { approverId: result.approverId, cashierId: cashier.id },
+      });
+
+      res.status(200).json({ data: result });
+    } catch (err) {
+      req.log.warn({
+        event: 'auth.managerOverride.failed',
+        email,
+        cashierId: cashier.id,
+        reason: err instanceof AppError ? err.code : 'UNKNOWN',
+      });
+
+      audit(req, {
+        action: 'auth.managerOverride.failed',
+        entity: 'auth',
+        outcome: AuditOutcome.DENIED,
+        changes: { email, cashierId: cashier.id, reason: err instanceof AppError ? err.code : 'UNKNOWN' },
+      });
+
+      throw err;
+    }
+  },
+);
 
 const resetPasswordSchema = z
   .object({

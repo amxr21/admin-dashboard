@@ -37,6 +37,10 @@ interface ShiftBody {
       originalEndedAt: string | null;
       wasEdited: boolean;
       editReason: string | null;
+      approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
+      approvedAt: string | null;
+      approvalNote: string | null;
+      approvedBy: { id: string } | null;
       user: { id: string };
       branch: { id: string };
       openedBy: { id: string };
@@ -617,5 +621,329 @@ describe('the till (O5.2 / O5.3)', () => {
       .set(auth(workerToken));
 
     expect(res.status).toBe(403);
+  });
+
+  describe('till events — no-sale, cash drop, payout (O9 Tier 4)', () => {
+    it('logs a no-sale open with no amount', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'event-no-sale');
+      const shift = await seedShift(cashier.id, new Date(), null);
+
+      const res = await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'NO_SALE' });
+
+      expect(res.status).toBe(201);
+      expect((res.body as { data: { event: { amount: string | null } } }).data.event.amount).toBeNull();
+    });
+
+    it('refuses a no-sale carrying an amount', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'event-no-sale-amt');
+      const shift = await seedShift(cashier.id, new Date(), null);
+
+      const res = await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'NO_SALE', amount: '5.00' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('refuses a cash drop with no amount', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'event-drop-no-amt');
+      const shift = await seedShift(cashier.id, new Date(), null);
+
+      const res = await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'CASH_DROP' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('refuses logging an event on someone else\'s shift', async () => {
+      const owner = await makeUser(StaffRole.SUPPORT, 'event-owner');
+      const other = await makeUser(StaffRole.SUPPORT, 'event-other');
+      const shift = await seedShift(owner.id, new Date(), null);
+
+      const res = await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(other)))
+        .send({ type: 'NO_SALE' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('refuses logging an event on an already-ended shift', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'event-ended');
+      const shift = await seedShift(cashier.id, new Date(), new Date());
+
+      const res = await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'NO_SALE' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('reduces expected drawer cash by drops and payouts at close', async () => {
+      // float 100 + cash sales 25 - drop 10 - payout 5 = 110 expected.
+      // Counted 110 → balanced, where reading raw cash sales alone (125)
+      // would have reported a false 15 shortage.
+      const cashier = await makeUser(StaffRole.SUPPORT, 'event-variance');
+      const order = await seedOrder('25.00');
+      const shift = await openTill(cashier.id, '100.00');
+
+      await pay(shift.id, order, '25.00', 'cash');
+
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'CASH_DROP', amount: '10.00' });
+
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'PAYOUT', amount: '5.00', note: 'courier tip' });
+
+      const res = await request(app)
+        .post(`/api/v1/shifts/${shift.id}/close-till`)
+        .set(auth(signToken(cashier)))
+        .send({ closingCount: '110.00' });
+
+      expect(res.status).toBe(200);
+      expect((res.body as { data: { variance: string } }).data.variance).toBe('0.00');
+    });
+
+    it('lists events for the shift, newest first', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'event-list');
+      const shift = await seedShift(cashier.id, new Date(), null);
+
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'NO_SALE' });
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'CASH_DROP', amount: '20.00' });
+
+      const res = await request(app)
+        .get(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)));
+
+      expect(res.status).toBe(200);
+      const events = (res.body as { data: { events: { type: string }[] } }).data.events;
+      expect(events).toHaveLength(2);
+      expect(events[0]?.type).toBe('CASH_DROP');
+    });
+
+    it('refuses reading another person\'s events without `staff`', async () => {
+      const other = await makeUser(StaffRole.SUPPORT, 'event-other-read');
+      const shift = await seedShift(other.id, new Date(), null);
+
+      const res = await request(app)
+        .get(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(workerToken));
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('the X/Z report (O9 Tier 4)', () => {
+    it('is NOT final while the shift is still open (an X report)', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'report-x');
+      const shift = await openTill(cashier.id, '100.00');
+
+      const res = await request(app)
+        .get(`/api/v1/shifts/${shift.id}/report`)
+        .set(auth(signToken(cashier)));
+
+      expect(res.status).toBe(200);
+      expect((res.body as { data: { isFinal: boolean } }).data.isFinal).toBe(false);
+    });
+
+    it('is final once the shift has closed (a Z report)', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'report-z');
+      const shift = await openTill(cashier.id, '100.00');
+
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/close-till`)
+        .set(auth(signToken(cashier)))
+        .send({ closingCount: '100.00' });
+
+      const res = await request(app)
+        .get(`/api/v1/shifts/${shift.id}/report`)
+        .set(auth(signToken(cashier)));
+
+      expect(res.status).toBe(200);
+      expect((res.body as { data: { isFinal: boolean } }).data.isFinal).toBe(true);
+    });
+
+    it('totals cash drops and payouts separately from sales', async () => {
+      const cashier = await makeUser(StaffRole.SUPPORT, 'report-totals');
+      const order = await seedOrder('25.00');
+      const shift = await openTill(cashier.id, '100.00');
+
+      await pay(shift.id, order, '25.00', 'cash');
+
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'CASH_DROP', amount: '10.00' });
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'PAYOUT', amount: '5.00' });
+      await request(app)
+        .post(`/api/v1/shifts/${shift.id}/events`)
+        .set(auth(signToken(cashier)))
+        .send({ type: 'NO_SALE' });
+
+      const res = await request(app)
+        .get(`/api/v1/shifts/${shift.id}/report`)
+        .set(auth(signToken(cashier)));
+
+      const body = res.body as {
+        data: {
+          cash: string;
+          expectedCash: string;
+          cashDropTotal: string;
+          payoutTotal: string;
+          noSaleCount: number;
+        };
+      };
+
+      // Raw sales, untouched by the drop/payout.
+      expect(body.data.cash).toBe('25.00');
+      // Drops and payouts subtracted.
+      expect(body.data.expectedCash).toBe('10.00');
+      expect(body.data.cashDropTotal).toBe('10.00');
+      expect(body.data.payoutTotal).toBe('5.00');
+      expect(body.data.noSaleCount).toBe(1);
+    });
+
+    it('refuses reading another person\'s report without `staff`', async () => {
+      const other = await makeUser(StaffRole.SUPPORT, 'report-other');
+      const shift = await seedShift(other.id, new Date(), null);
+
+      const res = await request(app)
+        .get(`/api/v1/shifts/${shift.id}/report`)
+        .set(auth(workerToken));
+
+      expect(res.status).toBe(403);
+    });
+  });
+});
+
+describe('shift approval (O9.19)', () => {
+  it('starts a new shift PENDING, not a gate on working', async () => {
+    const worker = await makeUser(StaffRole.SUPPORT, 'approval-fresh');
+
+    const res = await request(app)
+      .post('/api/v1/shifts')
+      .set(auth(signToken(worker)))
+      .set('X-Branch-Id', branchId)
+      .send({});
+
+    expect(res.status).toBe(201);
+    const body = res.body as ShiftBody;
+    expect(body.data.shift.approvalStatus).toBe('PENDING');
+    // No gate: the shift is already open and reports back as such — nothing
+    // here blocks the till from working while approval is pending.
+    expect(body.data.shift.endedAt).toBeNull();
+  });
+
+  it('lets a manager approve a shift', async () => {
+    const worker = await makeUser(StaffRole.SUPPORT, 'approval-approve');
+    const shift = await seedShift(worker.id, new Date('2026-09-08T08:00:00Z'), new Date('2026-09-08T16:00:00Z'));
+
+    const res = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/approve`)
+      .set(auth(managerToken))
+      .send({});
+
+    expect(res.status).toBe(200);
+    const body = res.body as ShiftBody;
+    expect(body.data.shift.approvalStatus).toBe('APPROVED');
+    expect(body.data.shift.approvedAt).not.toBeNull();
+    expect(body.data.shift.approvedBy?.id).toBeTruthy();
+  });
+
+  it('lets a manager reject a shift with a required reason', async () => {
+    const worker = await makeUser(StaffRole.SUPPORT, 'approval-reject');
+    const shift = await seedShift(worker.id, new Date('2026-09-08T08:00:00Z'), new Date('2026-09-08T16:00:00Z'));
+
+    const missingReason = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/reject`)
+      .set(auth(managerToken))
+      .send({});
+    expect(missingReason.status).toBe(400);
+
+    const res = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/reject`)
+      .set(auth(managerToken))
+      .send({ note: 'Times do not match the door log' });
+
+    expect(res.status).toBe(200);
+    const body = res.body as ShiftBody;
+    expect(body.data.shift.approvalStatus).toBe('REJECTED');
+    expect(body.data.shift.approvalNote).toBe('Times do not match the door log');
+  });
+
+  it('refuses approving your own shift, even as OWNER', async () => {
+    const shift = await seedShift(ownerId, new Date('2026-09-08T08:00:00Z'), new Date('2026-09-08T16:00:00Z'));
+
+    const res = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/approve`)
+      .set(auth(ownerToken))
+      .send({});
+
+    expect(res.status).toBe(403);
+  });
+
+  it('refuses approving someone who outranks you', async () => {
+    const shift = await seedShift(ownerId, new Date('2026-09-08T08:00:00Z'), new Date('2026-09-08T16:00:00Z'));
+
+    const res = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/approve`)
+      .set(auth(managerToken))
+      .send({});
+
+    expect(res.status).toBe(403);
+  });
+
+  it('refuses approving a shift that was already decided', async () => {
+    const worker = await makeUser(StaffRole.SUPPORT, 'approval-twice');
+    const shift = await seedShift(worker.id, new Date('2026-09-08T08:00:00Z'), new Date('2026-09-08T16:00:00Z'));
+
+    const first = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/approve`)
+      .set(auth(managerToken))
+      .send({});
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post(`/api/v1/shifts/${shift.id}/approve`)
+      .set(auth(managerToken))
+      .send({});
+
+    expect(second.status).toBe(400);
+  });
+
+  it('filters the shift list by approvalStatus for a manager\'s queue', async () => {
+    const worker = await makeUser(StaffRole.SUPPORT, 'approval-queue');
+    await seedShift(worker.id, new Date('2026-09-08T08:00:00Z'), new Date('2026-09-08T16:00:00Z'));
+
+    const res = await request(app)
+      .get('/api/v1/shifts')
+      .query({ approvalStatus: 'PENDING', userId: worker.id })
+      .set(auth(managerToken))
+      .set('X-Branch-Id', branchId);
+
+    expect(res.status).toBe(200);
+    const body = res.body as { data: { shifts: { approvalStatus: string }[] } };
+    expect(body.data.shifts.length).toBeGreaterThan(0);
+    expect(body.data.shifts.every((row) => row.approvalStatus === 'PENDING')).toBe(true);
   });
 });

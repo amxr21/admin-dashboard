@@ -7,6 +7,7 @@ import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { getSettingValue } from './settings.service.js';
 import { createSession, type SessionContext } from './session.service.js';
+import { canAccessAreaResolved } from './role-permissions.service.js';
 // Namespaced: this file's own `verifyLoginCode` (the login-flow step) and
 // two-factor.service.ts's `verifyLoginCode` (the raw code check) are
 // different levels of the same operation — importing named would shadow one.
@@ -313,6 +314,164 @@ export async function login(
   return {
     token: signToken(updated, `${String(sessionTimeoutMinutes)}m`, session.id),
     user: toSafeUser(updated),
+  };
+}
+
+export interface ManagerOverrideResult {
+  approverId: string;
+  approverName: string | null;
+  /**
+   * Proof of THIS approval, for the endpoint that actually does the
+   * overridden action to verify — see `verifyOverrideToken` below.
+   *
+   * `approverId` alone must never be trusted by a caller: a client that can
+   * send an arbitrary `approverId` in a request body could claim any
+   * manager approved anything, without ever having typed that manager's
+   * password. Exactly the shape of bug O9.17 fixed for `shiftId` — a value
+   * the client can set is a value the client can lie about. This token is
+   * SIGNED by the server and short-lived, so an endpoint consuming it is
+   * verifying "the server itself issued this a moment ago", not trusting
+   * whatever the request claims.
+   */
+  overrideToken: string;
+}
+
+const OVERRIDE_TOKEN_TYPE = 'manager-override';
+// Long enough that typing a discount into the till after the dialog closes
+// does not race the token's own expiry; short enough that a token is
+// useless if it somehow leaked. The same order of magnitude as the
+// pending-2FA token above, for the same "prove a check just happened,
+// nothing more" reasoning.
+const OVERRIDE_TOKEN_TTL = '2m';
+
+interface OverrideTokenPayload {
+  sub: string;
+  type: typeof OVERRIDE_TOKEN_TYPE;
+}
+
+function signOverrideToken(approverId: string): string {
+  return jwt.sign(
+    { sub: approverId, type: OVERRIDE_TOKEN_TYPE } satisfies OverrideTokenPayload,
+    env.JWT_SECRET,
+    { expiresIn: OVERRIDE_TOKEN_TTL } as jwt.SignOptions,
+  );
+}
+
+/**
+ * Verify a token from `verifyManagerOverride`, returning the approver's id
+ * if — and only if — the server itself signed it moments ago. Returns null
+ * rather than throwing on anything wrong with the token (missing, expired,
+ * wrong type, forged signature) — the caller decides what a missing
+ * approval means for ITS action (usually: refuse), and every one of those
+ * failure shapes collapses to the same "not approved" answer here so a
+ * caller cannot accidentally branch on which kind of forgery was attempted.
+ */
+export function verifyOverrideToken(token: string): string | null {
+  try {
+    const payload = jwt.verify(token, env.JWT_SECRET) as OverrideTokenPayload;
+    if (payload.type !== OVERRIDE_TOKEN_TYPE) return null;
+    return payload.sub;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Manager override at the till (O9 Tier 4) — a manager types their OWN
+ * email + password in place, on the cashier's screen, to authorise one
+ * specific action the cashier's role cannot do alone (today: a discount
+ * above the cashier's cap). Never signs the manager into the terminal and
+ * never touches the cashier's session — the cashier stays logged in
+ * throughout, and this returns only who approved it, for the audit trail.
+ *
+ * ─── WHY THIS IS NOT login() WITH A DIFFERENT RETURN TYPE ────────────
+ * `login()` creates a session, updates `lastLoginAt`, resolves 2FA. NONE of
+ * that may happen here: a session created for the manager would mean two
+ * people are now "signed in" on one terminal, and `lastLoginAt` changing
+ * would misrepresent an override as the manager's own visit to the app.
+ * This function checks a password and returns a yes/no plus who approved
+ * it — nothing else changes.
+ *
+ * ─── WHY `settings` IS THE GATE, NOT A HARDCODED ROLE LIST ───────────
+ * `settings` happens to be held by exactly MANAGER/OWNER/DEVELOPER today —
+ * not FULFILLMENT or SUPPORT, which outrank CASHIER on the rank table but
+ * are not managers in any sense this feature means. Gating on the AREA
+ * rather than naming those three roles directly means an owner's O8 edit to
+ * who holds `settings` is respected here automatically, the same as every
+ * other `settings`-gated action, rather than this becoming a second place
+ * that silently disagrees with the permissions matrix.
+ *
+ * ─── WHY 2FA REFUSES RATHER THAN SILENTLY SKIPPING THE CODE ──────────
+ * A manager who enabled 2FA opted into a STRONGER check than a password
+ * alone. Accepting just a password here would quietly hand that account a
+ * weaker second entrance, defeating the reason they turned it on. Refusing
+ * and naming the real login as the alternative is the honest answer, not a
+ * missing feature to fill in later.
+ *
+ * ─── LOCKOUT REUSES THE SAME COUNTER AS A REAL LOGIN ──────────────────
+ * This endpoint sits on a shared terminal and is exactly as much a
+ * password-guessing target as the login form — `registerFailedAttempt`
+ * locks the MANAGER's account (not the cashier's) the same way a failed
+ * sign-in would.
+ */
+export async function verifyManagerOverride(
+  email: string,
+  password: string,
+): Promise<ManagerOverrideResult> {
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  if (!user) {
+    // Same timing-oracle defence as login(): hash anyway so "no such
+    // manager" and "wrong password" take the same time to answer.
+    await bcrypt.compare(password, '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinv');
+    throw AppError.unauthorized('Invalid manager email or password');
+  }
+
+  if (isLocked(user)) {
+    throw new AppError(
+      423,
+      'ACCOUNT_LOCKED',
+      `Too many failed attempts. Try again in ${env.LOGIN_LOCKOUT_MINUTES} minutes.`,
+    );
+  }
+
+  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+
+  if (!passwordMatches) {
+    await registerFailedAttempt(user);
+    throw AppError.unauthorized('Invalid manager email or password');
+  }
+
+  if (!user.isActive) {
+    throw AppError.forbidden('This account has been deactivated');
+  }
+
+  if (user.twoFactorEnabled) {
+    throw AppError.badRequest(
+      'This account has 2FA enabled. Sign in normally to authorise this instead.',
+    );
+  }
+
+  if (!(await canAccessAreaResolved(user.role, 'settings'))) {
+    // The generic "not authorised" message, deliberately — naming which area
+    // was checked would teach a cashier fishing for an override exactly
+    // which accounts to try next.
+    throw AppError.forbidden('This account cannot authorise this action');
+  }
+
+  // A successful override still clears the lockout counter — the same
+  // "a correct password resets the count" rule login() applies, so a
+  // manager who mistyped it twice is not left one mistake from a lockout
+  // after getting it right.
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { failedLoginAttempts: 0, lockedUntil: null },
+  });
+
+  return {
+    approverId: user.id,
+    approverName: user.name,
+    overrideToken: signOverrideToken(user.id),
   };
 }
 

@@ -290,6 +290,8 @@ model Branch {
   couriers DeliveryStaffBranch[]
   /// Work periods recorded here (F6.1).
   shifts   Shift[]
+  /// Carts parked at this branch's till (O9.12b).
+  parkedSales ParkedSale[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -360,11 +362,14 @@ model User {
   twoFactorBackupCodes TwoFactorBackupCode[]
   apiKeys              ApiKey[]
   branchRoles          UserBranch[]
-  /// Periods of work (F6.1). Three relations because a shift names up to
-  /// three different people: whose it is, who opened it, who corrected it.
+  /// Periods of work (F6.1). Four relations because a shift names up to four
+  /// different people: whose it is, who opened it, who corrected it, who
+  /// approved it (O9.19).
   shifts               Shift[]               @relation("ShiftWorker")
   shiftsOpened         Shift[]               @relation("ShiftOpener")
   shiftsEdited         Shift[]               @relation("ShiftEditor")
+  shiftsApproved       Shift[]               @relation("ShiftApprover")
+  parkedSales          ParkedSale[]
 
   @@index([role])
   @@index([createdAt])
@@ -889,7 +894,10 @@ model Order {
   notes         OrderNote[]
   statusHistory OrderStatusHistory[]
   assignment    DeliveryAssignment?
-  returns       Return[]
+  returns       Return[] @relation("ReturnedOrder")
+  /// Set on the return this order exists to replace (O9.8) — a plain sale
+  /// never has one. See `Return.exchangeOrderId`'s own comment.
+  exchangeFor   Return?  @relation("ExchangeReplacement")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -918,6 +926,21 @@ model OrderItem {
   /// this column exists to preserve. Margin reporting EXCLUDES them and
   /// counts them, rather than quietly shrinking its own denominator.
   cost     Decimal? @db.Decimal(10, 2)
+
+  /// A cashier's ad-hoc discount on THIS line (O9 Tier 3), 0-100. A SEPARATE
+  /// column from `price` rather than writing the discounted figure into it —
+  /// `price` is read everywhere as "what this line's unit actually costs",
+  /// and margin/revenue reporting, the invoice and every other consumer would
+  /// silently start reading a discounted price as the real one. Percent
+  /// rather than a fixed amount: it scales with `price` and `quantity`
+  /// without a second unit to reconcile, and a single number is a single cap
+  /// to enforce (`pos.maxCashierDiscountPercent`).
+  ///
+  /// NULL means no discount was applied — not 0, so "the cashier considered
+  /// a discount and left it at zero" is never confused with "no discount
+  /// control ever touched this line", the same NULL-vs-zero discipline
+  /// `cost` above already uses.
+  discountPercent Decimal? @map("discount_percent") @db.Decimal(5, 2)
 
   orderId String @map("order_id")
   /// Cascade — an order's items have no meaning without the order.
@@ -1064,12 +1087,26 @@ model Return {
   rejectionReason String?          @map("rejection_reason") @db.VarChar(500)
 
   orderId String @map("order_id")
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   Order  @relation("ReturnedOrder", fields: [orderId], references: [id], onDelete: Cascade)
 
   customerId String?   @map("customer_id")
   /// SetNull, same reasoning as Order.customer — a deleted customer must not
   /// take their return history with them.
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  /// An exchange (O9.8) — TWO LINKED RECORDS, not one combined transaction
+  /// (the owner's own call): this return is processed exactly like any other
+  /// (refund/restock as normal, resolution = REPLACEMENT), and the till rings
+  /// up the new item as an ordinary sale afterward. This column is the only
+  /// thing connecting the two; nothing about checkout itself changes for an
+  /// exchange versus a plain sale. Set once, when the replacement sale
+  /// completes — NULL for the entire time between "customer approved a
+  /// replacement" and "they picked the new item and paid", which is a real
+  /// state (an exchange started but not yet finished), not a gap to hide.
+  /// SetNull rather than cascade: deleting the replacement sale should not
+  /// take the return's own history with it.
+  exchangeOrderId String? @unique @map("exchange_order_id")
+  exchangeOrder   Order?  @relation("ExchangeReplacement", fields: [exchangeOrderId], references: [id], onDelete: SetNull)
 
   items ReturnItem[]
 
@@ -1085,9 +1122,42 @@ model Return {
 /// A line item being returned — a QUANTITY against an existing OrderItem, not
 /// a copy of it. Price and product are read through the relation so a return
 /// can never disagree with what the order actually recorded.
+/// Whether ONE line of a return was accepted (B4.7).
+///
+/// Separate from `ReturnStatus`, which describes the whole request: a return
+/// of three items can legitimately accept two and refuse the third, and a
+/// single status cannot say that.
+enum ReturnItemStatus {
+  /// Not yet decided — the state every line starts in.
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
 model ReturnItem {
   id       String @id @default(cuid())
+  /// How many the customer ASKED to return.
   quantity Int
+
+  /// ─── PER-LINE DECISION (B4.7) ─────────────────────────────────────
+  /// Defaults to PENDING so every existing row keeps its meaning: approving
+  /// a return used to accept all of it, and `approveReturn` still does that
+  /// by marking each line ACCEPTED. Nothing is reinterpreted retroactively.
+  status ReturnItemStatus @default(PENDING)
+
+  /// How many were actually accepted (B4.8). NULL until decided; on an
+  /// ACCEPTED line it may be FEWER than `quantity` — two of three arrived in
+  /// sellable condition, say.
+  ///
+  /// Nullable rather than defaulting to `quantity`, because "not yet decided"
+  /// and "decided, and the answer happens to equal what was asked" are
+  /// different facts, and the refund and restock both read this one.
+  acceptedQuantity Int? @map("accepted_quantity")
+
+  /// Why a line was refused. Required by the service when REJECTED — the
+  /// customer is owed a reason, and "some of your return was refused" with
+  /// no explanation is the complaint that follows.
+  rejectionReason String? @map("rejection_reason") @db.VarChar(255)
 
   returnId String @map("return_id")
   /// Cascade — a return's items have no meaning without the return.
@@ -1689,6 +1759,12 @@ model ScheduledReport {
 /// Deliberately NOT payroll (F6.6). No rates, no overtime rules, no
 /// jurisdiction-specific rounding. Those carry real legal obligations and are
 /// their own project.
+enum ShiftApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model Shift {
   id String @id @default(cuid())
 
@@ -1730,6 +1806,28 @@ model Shift {
   /// The worker's own note — "covered for Sara", "closed early, power cut".
   note String? @db.VarChar(255)
 
+  /// ─── MANAGER APPROVAL (O9.19) ──────────────────────────────────────
+  /// Clocking on is still not a privileged act — `startShift`'s own note
+  /// above stands: a shift starts and the till works immediately, the same
+  /// as before this existed. Approval is a FOLLOW-UP record a manager makes
+  /// afterward (or while it's still running), not a gate the cashier waits
+  /// behind — the owner's explicit call, so a manager being slow or offline
+  /// never stops someone from selling.
+  ///
+  /// Defaults PENDING so every existing shift keeps its plain meaning on
+  /// upgrade — nothing here retroactively marks past shifts as approved OR
+  /// flags them all for review; a migration backfills every pre-existing row
+  /// to APPROVED instead (see that migration's own note).
+  approvalStatus ShiftApprovalStatus @default(PENDING) @map("approval_status")
+  /// Who approved or rejected it, and when. Both null while PENDING.
+  approvedById   String?             @map("approved_by_id")
+  approvedBy     User?               @relation("ShiftApprover", fields: [approvedById], references: [id])
+  approvedAt     DateTime?           @map("approved_at")
+  /// Required on REJECTED, same discipline as `Return.rejectionReason` — a
+  /// rejected shift with no stated reason is the complaint that follows.
+  /// Null on PENDING/APPROVED.
+  approvalNote   String?             @map("approval_note") @db.VarChar(255)
+
   /// ─── TILL SESSION (O5.3) ──────────────────────────────────────────
   /// A shift and a till session are the SAME object — the owner's answer,
   /// 2026-09-08 — so the money fields live here rather than in a parallel
@@ -1751,6 +1849,11 @@ model Shift {
   /// Money taken during this session.
   payments Payment[]
 
+  /// No-sale opens, cash drops, payouts — money events with no sale behind
+  /// them (O9 Tier 4), read by `closeTill`'s own variance math alongside
+  /// `payments` above.
+  tillEvents TillEvent[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1759,6 +1862,8 @@ model Shift {
   @@index([userId, startedAt])
   @@index([branchId, startedAt])
   @@index([endedAt])
+  /// "What's waiting on me" — a manager's pending-approval queue (O9.19).
+  @@index([approvalStatus, startedAt])
   @@map("shifts")
 }
 
@@ -1882,6 +1987,91 @@ model Payment {
   @@index([orderId])
   @@index([shiftId, paidAt])
   @@map("payments")
+}
+
+/// A drawer event with no SALE behind it (O9 Tier 4) — a no-sale open, a
+/// cash drop to the safe, a payout to a courier from the till. Deliberately
+/// NOT a `Payment` with an invented method: a `Payment` always settles an
+/// `Order`, and stretching it to cover money that never touched a sale would
+/// make `orderId` optional for the wrong reason and blur what the table
+/// means. This is a separate, smaller fact.
+enum TillEventType {
+  /// The drawer opened with no sale attached — recorded and countable so an
+  /// unexplained open is visible, the classic shrinkage path every real POS
+  /// system logs. No `amount`.
+  NO_SALE
+  /// Cash removed FROM the drawer TO somewhere else (the safe, typically).
+  /// Reduces what should still be in the drawer at close.
+  CASH_DROP
+  /// Cash paid out of the drawer for something outside a sale (a courier,
+  /// a supplier COD). Also reduces the drawer, same direction as a drop.
+  PAYOUT
+}
+
+model TillEvent {
+  id String @id @default(cuid())
+
+  type TillEventType
+
+  /// NULL only for NO_SALE, which moves nothing. CASH_DROP and PAYOUT
+  /// always carry one — a drop or payout with no amount is not a real event,
+  /// just a note that should have been a Shift note instead.
+  amount Decimal? @db.Decimal(10, 2)
+
+  note String? @db.VarChar(255)
+
+  /// Which shift this happened during — required. An event with no shift has
+  /// no drawer to adjust, and `closeTill`'s own variance math (which reads
+  /// these) has nothing to attribute it to.
+  shiftId String @map("shift_id")
+  shift   Shift  @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  /// Plain id, not a relation — same rule as `AuditLog.actorId`: the record
+  /// of who opened the drawer must outlive the staff account.
+  actorId String @map("actor_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([shiftId, createdAt])
+  @@map("till_events")
+}
+
+/// A cart set aside mid-sale (O9.12b) — the customer forgot their wallet, a
+/// walk-in needs help finding a size, and so on. Deliberately NOT an `Order`:
+/// nothing has been paid or moved off the shelf, so it carries none of
+/// `Order`'s sale-shaped fields (no payment, no stock movement, no status
+/// history). Resuming re-fetches CURRENT price and stock for every line
+/// through the ordinary browse/checkout path — a park is meant to last
+/// minutes, not lock in a price, and storing one here would risk a stale
+/// figure the same way a live cost lookup once did (see `OrderItem.cost`).
+model ParkedSale {
+  id String @id @default(cuid())
+
+  /// Who parked it — only this person (or a manager, same rule as void/
+  /// override elsewhere in the till) may resume or discard it. Cascade: a
+  /// parked cart has no meaning once the account that held it is gone.
+  cashierId String @map("cashier_id")
+  cashier   User   @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  /// `{ productId, quantity, discountPercent? }[]` — a snapshot of CART
+  /// SHAPE only, never price. Plain `Json` rather than a line-item table:
+  /// there is no reporting need for a parked line the way there is for a
+  /// sold one, and the whole row is deleted the moment it resumes or is
+  /// discarded.
+  lines Json
+
+  /// A short label so a busy counter can tell two parked carts apart
+  /// ("Sara — red jacket") without opening each one.
+  label String? @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([cashierId])
+  @@index([branchId])
+  @@map("parked_sales")
 }
 
 /// An owner's override of what one role may reach (O8).
