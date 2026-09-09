@@ -60,7 +60,7 @@ to know whether the work actually reached `dev` is to look for the files.
 
 ---
 
-# 📋 PENDING — the 20 that are left
+# 📋 PENDING — the 19 that are left
 
 Full detail for each is further down under its own track heading; this is the
 index.
@@ -86,12 +86,12 @@ the two most important items were not on it at all. Now:
 - **Tier 5 — minor.** The shift dialog and hiding the clock from the owner
 - **⏳ Three questions block Tier 1** — barcodes or not, shop type, and O9.4
 
-## Needs nothing from the owner (9)
+## Needs nothing from the owner (7)
 
-**Returns lifecycle (2)**
-- **S7.8** `ReturnStatus` 3 → ~8 values (label sent → in transit → received →
-  inspected → resolved). More useful now that B4.7 gives per-line outcomes
-- **B4.10** Refund without a return — a standalone model, independent of RMA
+Returns lifecycle is now empty: **B4.11** and **B4.10** both shipped
+2026-09-09; **S7.8** checked the same day and deliberately skipped (see its
+own entry below — it describes a mail-order shipping-label flow that
+doesn't fit a physical till).
 
 **Catalogue (4)**
 - **A5.8** Per-locale product content (EN/AR) + completeness indicator
@@ -1234,8 +1234,21 @@ that staleness is why these are consolidated here.
       line" passed with the skip removed, because a rejected line carries
       quantity 0 and restocking it adds zero. Now asserts NO movement row
       exists, then watched failing. 9 tests
-- [ ] **B4.10** Refund without a return — needs a standalone model,
-      independent of the RMA flow
+- [x] **B4.10 — DONE 2026-09-09.** Refund without a return. No standalone
+      model in the end — a negative `Payment` row, the same mechanism
+      `voidSale`'s own reversal already uses (`method: 'goodwill-refund'`
+      distinguishes it from an ordinary void). Owner's decisions: gated by
+      the same `returns` area as approving a return (not `orders`, not
+      manager-only), capped at the order's own total — specifically the
+      NET already paid (every payment row summed, refunds/voids already
+      negative), never the raw total, so the same money cannot be
+      refunded twice across separate goodwill refunds or returns.
+      Deliberately NOT tied to `nextStatuses`/RETURNED the way "Request a
+      return" is — a goodwill gesture applies regardless of order status.
+      New `RefundOrderDialog` on the order detail page.
+      Verification: backend 1091/1091 (47 files), frontend 1113/1113 +1
+      skipped (125 files), tsc/eslint clean both sides, en/ar parity
+      1915/1915. Commit `f21c4b3`.
 - [x] **B4.11 — DONE 2026-09-09.** Return window + restocking fee (exchange
       linkage was already covered by O9.8's `Return.exchangeOrderId`, built
       earlier this session — see O9.19's own entry). Both owner decisions:
