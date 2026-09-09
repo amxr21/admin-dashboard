@@ -60,7 +60,7 @@ to know whether the work actually reached `dev` is to look for the files.
 
 ---
 
-# 📋 PENDING — the 21 that are left
+# 📋 PENDING — the 20 that are left
 
 Full detail for each is further down under its own track heading; this is the
 index.
@@ -86,14 +86,12 @@ the two most important items were not on it at all. Now:
 - **Tier 5 — minor.** The shift dialog and hiding the clock from the owner
 - **⏳ Three questions block Tier 1** — barcodes or not, shop type, and O9.4
 
-## Needs nothing from the owner (10)
+## Needs nothing from the owner (9)
 
-**Returns lifecycle (3)**
+**Returns lifecycle (2)**
 - **S7.8** `ReturnStatus` 3 → ~8 values (label sent → in transit → received →
   inspected → resolved). More useful now that B4.7 gives per-line outcomes
 - **B4.10** Refund without a return — a standalone model, independent of RMA
-- **B4.11** Policy window, restocking fees, exchange linkage — biggest of the
-  three
 
 **Catalogue (4)**
 - **A5.8** Per-locale product content (EN/AR) + completeness indicator
@@ -1238,8 +1236,23 @@ that staleness is why these are consolidated here.
       exists, then watched failing. 9 tests
 - [ ] **B4.10** Refund without a return — needs a standalone model,
       independent of the RMA flow
-- [ ] **B4.11** Policy window check, restocking fees, exchange linkage — the
-      biggest of the five
+- [x] **B4.11 — DONE 2026-09-09.** Return window + restocking fee (exchange
+      linkage was already covered by O9.8's `Return.exchangeOrderId`, built
+      earlier this session — see O9.19's own entry). Both owner decisions:
+      the window is a WARNING, not a gate — a late return still processes,
+      staff just sees it flagged and decides with judgment, the same
+      "warn, don't block" shape the till already uses. The restocking fee is
+      a store-wide DEFAULT (`returns.restockingFeePercent`) the person
+      approving may raise or waive per return, not a fixed rule. New
+      `returns.windowDays` (default 30, 0 = no window) setting;
+      `createReturn`/`listReturns` surface `withinWindow`/
+      `daysSincePurchase` against the order's `placedAt`, never the return's
+      own requested date. The fee actually applied is snapshotted on
+      `Return.restockingFeePercent` — a later change to the store default
+      cannot rewrite what a past return charged.
+      Verification: backend 1086/1086 (47 files), frontend 1109/1109 +1
+      skipped (125 files), tsc/eslint clean both sides, en/ar parity
+      1905/1905. Commit `168c30d`.
 - [ ] **S7.8** `ReturnStatus` 3 → ~8 values (label sent → in transit →
       received → inspected → resolved)
 
