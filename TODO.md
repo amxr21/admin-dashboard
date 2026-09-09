@@ -12,7 +12,7 @@ reasoning behind decisions already made, not for what is open.
 
 # 📊 STATUS AT A GLANCE — 2026-09-08
 
-**17 open · 98 done.** Started this session at 87 open, closed 11, then the
+**16 open · 99 done.** Started this session at 87 open, closed 11, then the
 owner used the merged build and opened **O9** (16 items) — see below.
 
 | | Track | State |
@@ -30,7 +30,7 @@ owner used the merged build and opened **O9** (16 items) — see below.
 | ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
 | ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
 | 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
-| 🔨 | **O9** the till: a counter, not an endpoint list | 15 done, 2 left |
+| 🔨 | **O9** the till: a counter, not an endpoint list | 16 done, 1 left |
 | 📋 | 16 items | see PENDING below |
 
 **Verification at this point:** backend 1001/1001 (47 files) · frontend
@@ -1016,9 +1016,21 @@ systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6)
       return id is reused, not a second request.
       Verification: backend 1038/1038, frontend 1083/1083 +1 skipped,
       tsc/eslint clean both sides, en/ar parity 1811/1811. Commit `7dd0224`.
-- [ ] **O9.15 — No-sale drawer open, cash drop, payout.** Opening the drawer
-      without a sale is recorded and countable — every system surveyed logs
-      these, because an unrecorded drawer open is the classic shrinkage path.
+- [x] **O9.15 — DONE 2026-09-09.** No-sale drawer open, cash drop, payout.
+      New `TillEvent` model — deliberately NOT a `Payment` with an invented
+      method, which would blur what `Payment` (always settles an `Order`)
+      means. Lives on the SHIFT, not the till — the shift already IS the
+      till session (O5.1). Only the person whose shift it is may log one,
+      only against an open shift.
+      **A real bug found and fixed while building this, not caused by it**:
+      the shift-close "expected cash" hint read raw cash SALES directly as
+      "what's in the drawer" — correct only because nothing could remove
+      cash outside a sale before now. Fixed with a distinct `expectedCash`
+      field (sales minus drops/payouts) that both the variance math and the
+      frontend hint now read; `cash` itself unchanged for its own legitimate
+      mid-shift use. Logged in the (private) error log.
+      Verification: backend 1058/1058, frontend 1094/1094 +1 skipped,
+      tsc/eslint clean both sides, en/ar parity 1841/1841. Commit `2f933b9`.
 - [ ] **O9.16 — X / Z report at close.** `GET /shifts/:id/takings` already
       computes mid-shift takings and O5.3 already stores the variance. This is
       the printable end-of-day form of data that mostly exists.
