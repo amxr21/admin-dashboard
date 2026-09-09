@@ -1075,6 +1075,54 @@ systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6)
       1876/1876. Commit `7f3de00`.
       **This closes the O9 track — 0 left.**
 
+## 🆕 O9.19 — shift approval (DONE 2026-09-09, owner-requested mid-session)
+
+Raised directly by the owner after O9 closed: "for the shifts period, i
+askedf for an interactive clock where the cashier set his shift and approved
+by the admin/manager". Not part of O9's original scope — a new item, closed
+the same day it was opened.
+
+Two decisions taken via question, not guessed: (1) a shift starts and the
+till works IMMEDIATELY — approval is a follow-up record, not a gate the
+cashier waits behind; (2) a manager approves REMOTELY from their own
+account/list, not in person at the till (unlike the discount/void/return
+override pattern elsewhere in the till, which needs the manager physically
+present).
+
+- [x] **DONE.** New `Shift.approvalStatus` (PENDING/APPROVED/REJECTED,
+      default PENDING) + `approvedById`/`approvedAt`/`approvalNote`.
+      Existing shifts backfilled to APPROVED in the same migration — they
+      predate approval tracking and were never "awaiting review"; leaving
+      the column default would have wrongly flagged months of history for
+      review. `POST /shifts/:id/approve` and `/reject` reuse `editShift`'s
+      rank/self-approval rules (refuses your own shift, refuses someone who
+      outranks you); reject requires a reason, same discipline as a return's
+      rejection reason.
+      **A real gate-vs-area conflict found while building this**: approval
+      was first wired behind `staff`, matching `editShift` — but `staff` is
+      OWNER/DEVELOPER only by default ("hiring and access control stay with
+      the owner"), so a MANAGER could never approve a shift, contradicting
+      what was asked. Asked, then fixed: new `shifts` permission area,
+      granted to MANAGER by default, separate from `staff` — confirming a
+      shift looks legitimate is day-to-day supervision, not an HR act.
+      `GET /shifts` moved to `shifts` too (a manager needs the list to find
+      the queue); `PATCH /shifts/:id` (editing hours) stays behind `staff`.
+      New `/admin/shifts` page — a manager's PENDING queue, deliberately
+      separate from the full shift history on `/admin/login-history` (which
+      stays `staff`-gated, since that page shows every role's hours
+      forever, a bigger personnel-data surface than a pending queue).
+      **Also fixed, found live**: the shift clock's End/Start buttons gave
+      no feedback while a request was in flight (the dev server had grown
+      slow after a long session of migrations/test runs), so a slow
+      response looked identical to a broken button. Both now show a
+      spinner + label swap ("Ending...", "Starting...") during the request.
+      Verification: backend 1080/1080 (47 files) — including a stale RBAC
+      test caught and fixed (DEMO's "every area except staff" assertion
+      needed `shifts` added to the exclusion, since DEMO must not see
+      personnel data any more from the new area than the old one) — frontend
+      full suite green, tsc/eslint clean both sides, en/ar parity
+      1900/1900. Commit `da8184d`.
+
 ## 🔧 TIER 5 — MINOR — ✅ COMPLETE (superseded, not built as originally scoped)
 
 - [x] **O9.5 — SUPERSEDED 2026-09-09, done bigger than scoped.** The owner
