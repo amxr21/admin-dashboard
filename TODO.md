@@ -60,12 +60,12 @@ to know whether the work actually reached `dev` is to look for the files.
 
 ---
 
-# 📋 PENDING — the 22 that are left
+# 📋 PENDING — the 21 that are left
 
 Full detail for each is further down under its own track heading; this is the
 index.
 
-## 🆕 O9 — the till (1 left)
+## 🆕 O9 — the till (0 left — DONE 2026-09-09)
 
 Opened 2026-09-08 from six notes the owner raised after using the merged O5
 build; **re-prioritised 2026-09-09 at his request — experience, then bugs,
@@ -1056,10 +1056,24 @@ systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6)
       Verification: backend 1062/1062 (47 files), frontend 1096/1096 +1
       skipped (124 files), tsc/eslint clean both sides, en/ar parity
       1860/1860. Commit `34557ec`.
-- [ ] **O9.8 — Exchange.** Deliberately last of the customer-facing work: an
-      exchange is a refund and a sale in one act, so it is only coherent once
-      O9.7 exists. Needs a decision on whether the halves are one transaction
-      or two linked ones (B4.11 already parks "exchange linkage").
+- [x] **O9.8 — DONE 2026-09-09.** Exchange. Owner's decision: **two linked
+      records, not one combined transaction**. The return processes exactly
+      like any other (refund/restock as normal, resolution REPLACEMENT), and
+      the till rings up the new item as an ordinary sale afterward. New
+      `Return.exchangeOrderId` (nullable, unique) is the only thing
+      connecting the two, set once the replacement sale completes — NULL for
+      the entire time between "return approved as a replacement" and
+      "customer picked the new item and paid", a real state, not a gap.
+      `checkout()` accepts an optional `exchangeReturnId`, validated BEFORE
+      the transaction touches stock (return must exist, be resolved as
+      REPLACEMENT, not already linked). `TillReturnSheet` reports every
+      resolution via `onProcessed`; `SaleScreen` only acts on REPLACEMENT,
+      carrying the return id into the next sale and showing a banner so the
+      cashier does not lose track of an exchange in progress.
+      Verification: backend 1073/1073 (47 files), frontend 1102/1102 +1
+      skipped (124 files), tsc/eslint clean both sides, en/ar parity
+      1876/1876. Commit `7f3de00`.
+      **This closes the O9 track — 0 left.**
 
 ## 🔧 TIER 5 — MINOR — ✅ COMPLETE (superseded, not built as originally scoped)
 
