@@ -633,6 +633,33 @@ model Category {
   @@map("categories")
 }
 
+/// A product tag (S7.9) — free-text, reused by NAME (the owner's own call):
+/// any staff member types one while editing a product, and typing the same
+/// text again reuses the existing row rather than creating a near-duplicate.
+/// No management screen, no separate "who may create a tag" rule — the
+/// permission that already governs editing a product is the only one that
+/// applies. Products only for now, not customers/orders — a smaller,
+/// lower-risk scope than tagging every resource in one pass.
+model Tag {
+  id   String @id @default(cuid())
+  /// Unique so "reused by name" has something to match against — a create
+  /// that names an existing tag attaches the existing row, it never inserts
+  /// a second one differing only by case (name comparison and storage both
+  /// happen through `resource-hooks.ts`, not a DB-level case-insensitive
+  /// collation, which MySQL's default utf8mb4 collation already gives for
+  /// free but this app does not rely on implicitly).
+  name String @unique @db.VarChar(60)
+
+  /// Plain implicit many-to-many, same convention `Discount.products` above
+  /// already uses — no extra columns on the join, so Prisma manages the
+  /// table itself.
+  products Product[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("tags")
+}
+
 model Product {
   id          String        @id @default(cuid())
   name        String        @db.VarChar(200)
@@ -713,6 +740,7 @@ model Product {
   redirects     ProductRedirect[]
   cartItems     CartItem[]
   wishlistItems WishlistItem[]
+  tags          Tag[]
 
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")

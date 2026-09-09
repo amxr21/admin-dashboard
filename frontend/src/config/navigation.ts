@@ -174,7 +174,7 @@ export const RESOURCE_GROUP_ORDER = ['catalogue', 'people', 'system'] as const;
  * the full list is still a real resource page with search and paging; the top
  * bar links straight to it. Dropping the config entry would delete the page.
  */
-export const RESOURCES_OUTSIDE_SIDEBAR: readonly string[] = ['notifications'];
+export const RESOURCES_OUTSIDE_SIDEBAR: readonly string[] = ['notifications', 'tags'];
 
 /**
  * Which area, if any, governs the given path — for "view as" content gating.
