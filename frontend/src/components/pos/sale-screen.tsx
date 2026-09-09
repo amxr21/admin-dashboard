@@ -28,6 +28,7 @@ import {
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { checkout, scanProduct, voidSale } from '@/lib/pos-api';
+import { addOrderNote } from '@/lib/orders-api';
 import { ThermalReceipt, type ReceiptData } from '@/components/pos/thermal-receipt';
 import { ProductGrid } from '@/components/pos/product-grid';
 import { ManagerOverrideDialog } from '@/components/pos/manager-override-dialog';
@@ -124,6 +125,13 @@ export function SaleScreen() {
    *  void — the receipt itself has no reason to carry an id. */
   const [lastSaleOrderId, setLastSaleOrderId] = useState<string | null>(null);
   const [isVoiding, setIsVoiding] = useState(false);
+  /** A note on the just-completed sale (O9 Tier 3) — reuses the EXISTING
+   *  order-notes thread (`OrderNote`, C5.7) rather than inventing a second
+   *  one; the till is simply a new entry point into it, the same way it
+   *  reused `returns.service.ts` wholesale for O9.7. */
+  const [saleNote, setSaleNote] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
   const [voidOverrideOpen, setVoidOverrideOpen] = useState(false);
 
   const scanField = useRef<HTMLInputElement>(null);
@@ -171,6 +179,8 @@ export function SaleScreen() {
     // only offers the fast path for "moments ago, same register".
     setLastSale(null);
     setLastSaleOrderId(null);
+    setSaleNote('');
+    setNoteSaved(false);
 
     setLines((current) => {
       const existing = current.find((line) => line.product.id === product.id);
@@ -334,6 +344,8 @@ export function SaleScreen() {
       toast.success(t('voided'));
       setLastSale(null);
       setLastSaleOrderId(null);
+      setSaleNote('');
+      setNoteSaved(false);
       setGridRefreshKey((n) => n + 1);
     } catch (caught) {
       // Same recognition the till return sheet uses: a 403 here means a
@@ -347,6 +359,26 @@ export function SaleScreen() {
       setError(translateError(caught));
     } finally {
       setIsVoiding(false);
+    }
+  }
+
+  /** Adds to the SAME thread the order-detail page reads, via the existing
+   *  `addOrderNote` — no new model, no second thread to keep in sync. */
+  async function saveSaleNote() {
+    if (!lastSaleOrderId || saleNote.trim() === '' || isSavingNote) return;
+
+    setIsSavingNote(true);
+    setError(null);
+
+    try {
+      await addOrderNote(lastSaleOrderId, saleNote.trim());
+      setSaleNote('');
+      setNoteSaved(true);
+      toast.success(t('noteSaved'));
+    } catch (caught) {
+      setError(translateError(caught));
+    } finally {
+      setIsSavingNote(false);
     }
   }
 
@@ -657,6 +689,39 @@ export function SaleScreen() {
               <Printer className="size-4" aria-hidden />
               {t('printReceipt')}
             </Button>
+
+            {/* Same thread the order-detail page reads (OrderNote, C5.7) —
+                the till is a new entry point into it, not a second one. */}
+            <div className="space-y-1.5">
+              <Label htmlFor="pos-sale-note" className="text-xs">
+                {t('noteLabel')}
+              </Label>
+              <div className="flex gap-1.5">
+                <Input
+                  id="pos-sale-note"
+                  value={saleNote}
+                  onChange={(event) => {
+                    setSaleNote(event.target.value);
+                    setNoteSaved(false);
+                  }}
+                  placeholder={t('notePlaceholder')}
+                  className="h-8 text-sm"
+                  disabled={isSavingNote}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void saveSaleNote()}
+                  disabled={isSavingNote || saleNote.trim() === ''}
+                >
+                  {isSavingNote ? t('savingNote') : t('saveNote')}
+                </Button>
+              </div>
+              {noteSaved ? (
+                <p className="text-muted-foreground text-xs">{t('noteSaved')}</p>
+              ) : null}
+            </div>
+
             {/* Same-register, moments-later undo — distinct from a return,
                 which needs an actual customer and lives in its own Sheet. */}
             <Button

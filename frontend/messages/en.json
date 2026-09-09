@@ -2440,6 +2440,11 @@
     },
     "voided": "Sale voided",
     "voiding": "Voiding...",
-    "voidSale": "Void this sale"
+    "voidSale": "Void this sale",
+    "noteLabel": "Note on this sale",
+    "notePlaceholder": "e.g. customer asked to hold at pickup",
+    "saveNote": "Save",
+    "savingNote": "Saving...",
+    "noteSaved": "Note saved"
   }
 }

@@ -29,6 +29,7 @@ const {
   browseCategories,
   requestManagerOverride,
   voidSale,
+  addOrderNote,
 } = vi.hoisted(() => ({
   scanProduct: vi.fn(),
   checkout: vi.fn(),
@@ -36,6 +37,7 @@ const {
   browseCategories: vi.fn(),
   requestManagerOverride: vi.fn(),
   voidSale: vi.fn(),
+  addOrderNote: vi.fn(),
 }));
 
 vi.mock('@/lib/pos-api', async (importOriginal) => ({
@@ -50,6 +52,11 @@ vi.mock('@/lib/pos-api', async (importOriginal) => ({
 vi.mock('@/lib/auth-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/auth-api')>()),
   requestManagerOverride,
+}));
+
+vi.mock('@/lib/orders-api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/orders-api')>()),
+  addOrderNote,
 }));
 
 function makeProduct(overrides: Partial<ScannedProduct> = {}): ScannedProduct {
@@ -494,5 +501,63 @@ describe('voiding a sale (O9 Tier 3)', () => {
     await scan('5012345678900');
 
     expect(screen.queryByRole('button', { name: /void this sale/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('a note on the sale (O9 Tier 3)', () => {
+  it('saves a note against the completed order via the existing thread', async () => {
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({
+      orderId: 'o1',
+      orderNumber: 'POS-1',
+      subtotal: '4.50',
+      taxAmount: '0.00',
+      total: '4.50',
+      change: null,
+    });
+    addOrderNote.mockResolvedValue({});
+
+    render(
+      <>
+        <SaleScreen />
+        <Toaster />
+      </>,
+    );
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+    await takePaymentThroughConfirm();
+    await screen.findByText(/sale pos-1/i);
+
+    await userEvent.type(
+      screen.getByLabelText(/note on this sale/i),
+      'Customer asked to hold at pickup',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(addOrderNote).toHaveBeenCalledWith('o1', 'Customer asked to hold at pickup');
+    });
+    expect((await screen.findAllByText(/note saved/i)).length).toBeGreaterThan(0);
+  });
+
+  it('cannot save an empty note', async () => {
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({
+      orderId: 'o1',
+      orderNumber: 'POS-1',
+      subtotal: '4.50',
+      taxAmount: '0.00',
+      total: '4.50',
+      change: null,
+    });
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+    await takePaymentThroughConfirm();
+    await screen.findByText(/sale pos-1/i);
+
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+    expect(addOrderNote).not.toHaveBeenCalled();
   });
 });
