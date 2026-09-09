@@ -1291,8 +1291,22 @@ that staleness is why these are consolidated here.
       model or field exists yet
 
 ### Schema, still unstarted
-- [ ] **S7.1** `Address` model → order shipping/billing, customer addresses,
-      delivery zones, tax by region
+- [ ] **S7.1 — CHECKED 2026-09-09, deliberately skipped, not built.** `Address`
+      model → order shipping/billing, customer addresses, delivery zones,
+      tax by region. This item was ALREADY flagged in its own original
+      scoping note as "decide whether you need it" — no guess needed here,
+      the doc said so directly. Today delivery addresses are captured
+      ad-hoc by staff on `DeliveryAssignment` at the moment a courier is
+      assigned (free-text `address`/`city`/`country`), which already works
+      for a single-branch/regional delivery business with no stated need
+      for a saved customer address book or tax-by-region logic. The full
+      version is also explicitly tangled with S7.2-S7.4 (a much bigger
+      money-model rework the docs separately flag as "do not attempt as a
+      first session" — highest-risk item on the whole list). Building
+      speculative infrastructure for a need nobody has stated would be the
+      same mistake `ReturnStatus`'s 5→3 revert already documents. Worth
+      revisiting only if a real driving need shows up (repeat customers
+      wanting saved addresses, multi-region tax requirements).
 - [ ] **S7.5** ~~`Location` model~~ — **SUPERSEDED by F8's `Branch`.** One
       model, not two. Kept here only so nobody re-adds it
 - [x] **F7.9 — DONE 2026-09-08.** `Supplier` model (name required, contact
