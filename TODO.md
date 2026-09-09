@@ -12,7 +12,7 @@ reasoning behind decisions already made, not for what is open.
 
 # 📊 STATUS AT A GLANCE — 2026-09-08
 
-**18 open · 97 done.** Started this session at 87 open, closed 11, then the
+**17 open · 98 done.** Started this session at 87 open, closed 11, then the
 owner used the merged build and opened **O9** (16 items) — see below.
 
 | | Track | State |
@@ -30,7 +30,7 @@ owner used the merged build and opened **O9** (16 items) — see below.
 | ✅ | **O5** POS / till (11 items) | merged (#175–#182) |
 | ✅ | **O8** owner-editable permissions (6 items) | merged (#183–#184) |
 | 🔨 | **B4.7 / B4.8** per-line + partial returns | committed, needs a PR |
-| 🔨 | **O9** the till: a counter, not an endpoint list | 14 done, 3 left |
+| 🔨 | **O9** the till: a counter, not an endpoint list | 15 done, 2 left |
 | 📋 | 16 items | see PENDING below |
 
 **Verification at this point:** backend 1001/1001 (47 files) · frontend
@@ -904,7 +904,7 @@ foundation O9.7 needs already works.
       before removing it.
       Verification: backend 1016/1016, tsc/eslint clean. Commit `23c2a14`.
 
-## 🛒 TIER 3 — REAL-COUNTER FRICTION
+## 🛒 TIER 3 — REAL-COUNTER FRICTION — ✅ COMPLETE
 
 Nothing here is missing machinery; each is small. Together they are the
 difference between a demo and a till. Sourced from what standard retail POS
@@ -964,9 +964,18 @@ systems ship (KORONA, StoreHub, Lightspeed, Dynamics 365 — the owner's note 6)
       second thread. Cleared alongside the receipt on a new sale or a void.
       Verification: frontend 1088/1088 +1 skipped, tsc/eslint clean, en/ar
       parity 1820/1820. Commit `c044b28`.
-- [ ] **O9.12 — Split payment.** `Payment` is already a TABLE rather than
-      columns on `Order`, chosen in O5.2 precisely so a split (30 cash, rest
-      on card) is expressible. Schema is ready; nothing surfaces it.
+- [x] **O9.12 — DONE 2026-09-09.** Split payment. Surfaced the existing
+      `Payment` table — chosen in O5.2 precisely for this. Sends either
+      `method` or `splitPayments`, never both; the server refuses both
+      together. Amounts must sum to the SERVER-computed total exactly,
+      checked once known inside the transaction. `Order.paymentMethod`
+      records a real `'split'` value rather than an arbitrary first method.
+      A single-entry split is refused — it is the single-payment path
+      wearing the split shape, and would skip that path's own
+      tendered-vs-total check.
+      Verification: backend 1050/1050, frontend 1090/1090 +1 skipped,
+      tsc/eslint clean both sides, en/ar parity 1826/1826. Commit `f456528`.
+      **This closes Tier 3 entirely — every counter-friction item is done.**
 
 ## 🔐 TIER 4 — CONTROL AND CLOSE
 
