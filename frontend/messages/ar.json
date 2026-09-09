@@ -2407,6 +2407,35 @@
     },
     "discountLabel": "الخصم على {name}",
     "discountPlaceholder": "0",
-    "discountNeedsApproval": "تجاوز {max}% يتطلب موافقة المدير"
+    "discountNeedsApproval": "تجاوز {max}% يتطلب موافقة المدير",
+    "processReturn": "معالجة إرجاع",
+    "tillReturn": {
+      "title": "معالجة إرجاع",
+      "subtitle": "ابحث عن الطلب، وحدّد ما سيُعاد.",
+      "orderNumberLabel": "رقم الطلب",
+      "orderNumberPlaceholder": "مثال: POS-20260909-AB12",
+      "lookUp": "بحث",
+      "notFound": "لم يُعثر على طلب مطابق لـ \"{orderNumber}\".",
+      "orderFound": "الطلب {orderNumber}",
+      "unknownProduct": "منتج غير معروف",
+      "orderedQuantity": "الكمية المطلوبة: {quantity}",
+      "returnQuantity": "كمية {name} المراد إرجاعها",
+      "continue": "متابعة",
+      "reasonLabel": "السبب (اختياري)",
+      "reasonPlaceholder": "مثال: تالف، مقاس خاطئ",
+      "defaultReason": "أُرجع عند الصندوق",
+      "resolutionLabel": "الحل",
+      "resolutions": {
+        "refund": "استرداد",
+        "storeCredit": "رصيد للمتجر",
+        "replacement": "استبدال"
+      },
+      "refundAmountLabel": "مبلغ الاسترداد",
+      "restockLabel": "إعادة هذه العناصر إلى المخزون",
+      "process": "معالجة الإرجاع",
+      "processing": "جارٍ المعالجة...",
+      "done": "تمت معالجة الإرجاع",
+      "managerOverrideReason": "يتطلب هذا الإرجاع موافقة المدير."
+    }
   }
 }

@@ -2407,6 +2407,35 @@
     },
     "discountLabel": "Discount on {name}",
     "discountPlaceholder": "0",
-    "discountNeedsApproval": "Above {max}% needs manager approval"
+    "discountNeedsApproval": "Above {max}% needs manager approval",
+    "processReturn": "Process a return",
+    "tillReturn": {
+      "title": "Process a return",
+      "subtitle": "Look up the order, mark what's coming back.",
+      "orderNumberLabel": "Order number",
+      "orderNumberPlaceholder": "e.g. POS-20260909-AB12",
+      "lookUp": "Look up",
+      "notFound": "No order found matching \"{orderNumber}\".",
+      "orderFound": "Order {orderNumber}",
+      "unknownProduct": "Unknown product",
+      "orderedQuantity": "Ordered: {quantity}",
+      "returnQuantity": "Quantity of {name} to return",
+      "continue": "Continue",
+      "reasonLabel": "Reason (optional)",
+      "reasonPlaceholder": "e.g. damaged, wrong size",
+      "defaultReason": "Returned at the register",
+      "resolutionLabel": "Resolution",
+      "resolutions": {
+        "refund": "Refund",
+        "storeCredit": "Store credit",
+        "replacement": "Replacement"
+      },
+      "refundAmountLabel": "Refund amount",
+      "restockLabel": "Restock these items",
+      "process": "Process return",
+      "processing": "Processing...",
+      "done": "Return processed",
+      "managerOverrideReason": "A return needs a manager's approval."
+    }
   }
 }

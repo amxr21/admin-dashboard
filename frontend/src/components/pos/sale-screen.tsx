@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { AlertTriangle, Minus, Plus, Printer, ScanLine, Trash2 } from 'lucide-react';
+import { AlertTriangle, Minus, Plus, Printer, RotateCcw, ScanLine, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,7 @@ import { checkout, scanProduct } from '@/lib/pos-api';
 import { ThermalReceipt, type ReceiptData } from '@/components/pos/thermal-receipt';
 import { ProductGrid } from '@/components/pos/product-grid';
 import { ManagerOverrideDialog } from '@/components/pos/manager-override-dialog';
+import { TillReturnSheet } from '@/components/pos/till-return-sheet';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import type { ManagerOverrideResult } from '@/lib/auth-api';
 
@@ -97,6 +98,7 @@ export function SaleScreen() {
    *  sale needs its own approval rather than inheriting the last one's. */
   const [overrideToken, setOverrideToken] = useState<string | null>(null);
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
+  const [returnSheetOpen, setReturnSheetOpen] = useState(false);
   const [code, setCode] = useState('');
   const [method, setMethod] = useState('cash');
   const [tendered, setTendered] = useState('');
@@ -330,6 +332,16 @@ export function SaleScreen() {
             </Button>
           </div>
         </form>
+
+        {/* Independent of any sale in progress — a customer bringing
+            something back is not part of building the CURRENT cart, so this
+            stays reachable regardless of what is in it (O9.7). */}
+        <Button variant="outline" size="sm" onClick={() => setReturnSheetOpen(true)}>
+          <RotateCcw className="size-4" aria-hidden />
+          {t('processReturn')}
+        </Button>
+
+        <TillReturnSheet open={returnSheetOpen} onOpenChange={setReturnSheetOpen} />
 
         {error ? (
           <p
