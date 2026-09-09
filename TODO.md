@@ -1253,8 +1253,20 @@ that staleness is why these are consolidated here.
       Verification: backend 1086/1086 (47 files), frontend 1109/1109 +1
       skipped (125 files), tsc/eslint clean both sides, en/ar parity
       1905/1905. Commit `168c30d`.
-- [ ] **S7.8** `ReturnStatus` 3 → ~8 values (label sent → in transit →
-      received → inspected → resolved)
+- [ ] **S7.8 — CHECKED 2026-09-09, deliberately skipped, not built.** The
+      "label sent → in transit → received → inspected → resolved" states
+      describe a MAIL-ORDER return with shipping labels and carrier transit
+      tracking. This shop runs a physical till (O5/O9) — a customer hands
+      the item back in person at the counter, so there is no "in transit"
+      state for something someone is standing there holding. Worth
+      remembering: `ReturnStatus` was ALREADY a 5-value enum once
+      (RECEIVED, REFUNDED alongside today's three) and was deliberately
+      reverted to 3 — see the schema's own comment on `ReturnStatus` —
+      because those extra states were dead, never set or checked by any
+      route. Building this without a genuinely different physical/receiving
+      workflow behind it would very likely repeat that exact mistake. Only
+      worth revisiting if the business ever adds mail-in returns as a real,
+      separate flow from the till.
 
 ### Catalogue
 - [ ] **A5.8** Per-locale product content (EN/AR) + a completeness indicator
