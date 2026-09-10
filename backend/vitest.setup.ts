@@ -13,8 +13,15 @@
  */
 import { config } from 'dotenv';
 import { fileURLToPath } from 'node:url';
+import { resolveTestDatabaseUrl } from './src/config/test-database.js';
 
 config({ path: fileURLToPath(new URL('./.env', import.meta.url)) });
+
+// A local host alone is not isolation: the app may use that same database.
+// Validate before any application module or Prisma client can be imported.
+const testDatabaseUrl = resolveTestDatabaseUrl(process.env);
+process.env.DATABASE_URL_LOCAL = testDatabaseUrl;
+process.env.DATABASE_URL = testDatabaseUrl;
 
 process.env.NODE_ENV ??= 'test';
 process.env.LOG_LEVEL ??= 'error'; // keep test output readable
