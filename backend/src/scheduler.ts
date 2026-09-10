@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { ScheduleFrequency } from '@prisma/client';
 
 import { logger } from './logger.js';
+import { pruneExpiredIdempotencyRecords } from './services/idempotency.service.js';
 import { dueScheduledReports, runScheduledReport } from './services/scheduled-reports.service.js';
 
 /**
@@ -67,6 +68,18 @@ export function startScheduler(): void {
   // gate before asking the DB).
   cron.schedule('0 6 * * *', () => {
     void runDue(ScheduleFrequency.DAILY);
+    void pruneExpiredIdempotencyRecords()
+      .then((count) => {
+        if (count > 0) logger.info({ event: 'idempotency.pruned', count });
+      })
+      .catch((error: unknown) => {
+        // Maintenance must never stop the scheduler or the API. No request
+        // data is logged—only the operational failure message.
+        logger.error({
+          event: 'idempotency.prune.failed',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     // Monday.
     if (new Date().getUTCDay() === 1) void runDue(ScheduleFrequency.WEEKLY);
     // First of the month.

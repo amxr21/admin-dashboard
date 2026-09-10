@@ -13,6 +13,7 @@ import { AppError } from '../errors/AppError.js';
 import { audit } from './audit.service.js';
 import { verifyOverrideToken } from './auth.service.js';
 import { defaultBranchId } from './inventory.service.js';
+import { executeIdempotently } from './idempotency.service.js';
 import { computeOrderTotals, getTaxRate } from './order-math.service.js';
 import { getSettingValue } from './settings.service.js';
 
@@ -356,7 +357,11 @@ function generateOrderNumber(): string {
  * A product with no recorded cost stores NULL, never 0 — "not recorded" is a
  * real permanent state, and a fabricated zero reports the sale as pure profit.
  */
-export async function checkout(input: CheckoutInput, actorId: string, req: Request) {
+async function checkoutOnce(
+  input: CheckoutInput,
+  actorId: string,
+  tx: Prisma.TransactionClient,
+) {
   if (input.lines.length === 0) {
     throw AppError.badRequest('Add something to the sale first');
   }
@@ -457,7 +462,7 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
   // discounts above: a bad return id must never get as far as touching
   // stock.
   if (input.exchangeReturnId) {
-    const linkedReturn = await prisma.return.findUnique({
+    const linkedReturn = await tx.return.findUnique({
       where: { id: input.exchangeReturnId },
       select: { id: true, resolution: true, exchangeOrderId: true },
     });
@@ -483,7 +488,7 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
     }
   }
 
-  const created = await prisma.$transaction(async (tx) => {
+  const created = await (async () => {
     // Read INSIDE the transaction: the price that goes on the receipt must be
     // the price at the moment of sale, not one fetched before the customer
     // reached the counter.
@@ -710,13 +715,20 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
     }
 
     return { order, totals, change: totalChange, lineCount: priced.length };
-  });
+  })();
 
-  audit(req, {
-    action: 'order.sold',
-    entity: 'orders',
-    entityId: created.order.id,
-    changes: {
+  return {
+    result: {
+      orderId: created.order.id,
+      orderNumber: created.order.orderNumber,
+      subtotal: created.totals.subtotal.toFixed(2),
+      taxAmount: created.totals.taxAmount.toFixed(2),
+      total: created.totals.total.toFixed(2),
+      change: created.change?.toFixed(2) ?? null,
+    },
+    audit: {
+      entityId: created.order.id,
+      changes: {
       orderNumber: { from: null, to: created.order.orderNumber },
       total: { from: null, to: created.totals.total.toFixed(2) },
       method: { from: null, to: isSplit ? 'split' : input.method },
@@ -727,16 +739,50 @@ export async function checkout(input: CheckoutInput, actorId: string, req: Reque
       // audit entry already follows.
       ...(approverId ? { discountApprovedBy: { from: null, to: approverId } } : {}),
     },
+    },
+  };
+}
+
+/**
+ * Retry-safe checkout entry point.
+ *
+ * The idempotency claim and every checkout side effect share one database
+ * transaction. A lost 201 response can therefore be retried with the same key
+ * and returns the original receipt without moving money or stock twice.
+ */
+export async function checkout(
+  input: CheckoutInput,
+  actorId: string,
+  req: Request,
+  idempotencyKey: string,
+) {
+  // The shift is server state resolved from the signed-in actor on each HTTP
+  // request, not part of what the client intended to submit. Excluding it
+  // keeps an already-committed sale replayable if the cashier closes the shift
+  // before retrying a response that was lost in transit.
+  const { shiftId: _serverResolvedShiftId, ...requestIntent } = input;
+
+  const execution = await executeIdempotently({
+    scope: 'pos.checkout',
+    actorId,
+    key: idempotencyKey,
+    request: requestIntent,
+    execute: (tx) => checkoutOnce(input, actorId, tx),
   });
 
-  return {
-    orderId: created.order.id,
-    orderNumber: created.order.orderNumber,
-    subtotal: created.totals.subtotal.toFixed(2),
-    taxAmount: created.totals.taxAmount.toFixed(2),
-    total: created.totals.total.toFixed(2),
-    change: created.change?.toFixed(2) ?? null,
-  };
+  // Audit only the execution that actually created the sale, and only after
+  // the transaction committed. A replay is the same user action, not a second
+  // sale event, and a rolled-back transaction must never leave a success log.
+  if (!execution.replayed) {
+    audit(req, {
+      action: 'order.sold',
+      entity: 'orders',
+      entityId: execution.value.audit.entityId,
+      changes: execution.value.audit.changes,
+    });
+  }
+
+  return { value: execution.value.result, replayed: execution.replayed };
 }
 
 /* ─────────────────────────────────────────────────────────────────────

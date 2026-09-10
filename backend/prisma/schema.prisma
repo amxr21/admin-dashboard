@@ -981,6 +981,33 @@ model Order {
   @@map("orders")
 }
 
+/// Durable result of a mutation that a client may safely retry after losing
+/// the response. The claim and the protected write commit in one transaction,
+/// so a stored response can never describe work that later rolled back.
+///
+/// This is deliberately generic rather than POS-specific: any future money or
+/// inventory mutation can use the same scope + actor + key contract without
+/// adding another one-off replay table.
+model IdempotencyRecord {
+  id String @id @default(cuid())
+
+  scope       String @db.VarChar(64)
+  actorId     String @map("actor_id") @db.VarChar(64)
+  key         String @db.VarChar(64)
+  requestHash String @map("request_hash") @db.Char(64)
+  response    Json
+
+  createdAt DateTime @default(now()) @map("created_at")
+  /// Indexed cleanup boundary. A record remains authoritative until a future
+  /// retention job deletes it; merely passing this timestamp must never make
+  /// an already-committed mutation execute again.
+  expiresAt DateTime @map("expires_at")
+
+  @@unique([scope, actorId, key], map: "uq_idempotency_scope_actor_key")
+  @@index([expiresAt], map: "idx_idempotency_expires_at")
+  @@map("idempotency_records")
+}
+
 model OrderItem {
   id       String   @id @default(cuid())
   quantity Int      @default(1)

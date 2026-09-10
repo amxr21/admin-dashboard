@@ -192,6 +192,8 @@ const checkoutSchema = z.object({
   exchangeReturnId: z.string().trim().min(1).optional(),
 });
 
+const idempotencyKeySchema = z.string().uuid().max(64);
+
 /**
  * POST /api/v1/pos/checkout — take a sale.
  *
@@ -207,6 +209,16 @@ posRouter.post('/pos/checkout', ...guard, async (req, res) => {
     throw AppError.badRequest('Invalid sale', parsed.error.flatten());
   }
 
+  const parsedIdempotencyKey = idempotencyKeySchema.safeParse(
+    req.get('Idempotency-Key'),
+  );
+
+  if (!parsedIdempotencyKey.success) {
+    throw AppError.badRequest('A valid Idempotency-Key header is required', {
+      field: 'Idempotency-Key',
+    });
+  }
+
   const user = requireUser(req);
 
   // Whose drawer this sale belongs to is decided HERE, from the token —
@@ -218,7 +230,7 @@ posRouter.post('/pos/checkout', ...guard, async (req, res) => {
   // session is real, and that payment simply belongs to no drawer.
   const openShift = await getOpenShift(user.id);
 
-  const result = await checkout(
+  const execution = await checkout(
     {
       ...parsed.data,
       branchId: req.branchId ?? undefined,
@@ -226,9 +238,11 @@ posRouter.post('/pos/checkout', ...guard, async (req, res) => {
     },
     user.id,
     req,
+    parsedIdempotencyKey.data,
   );
 
-  res.status(201).json({ data: result });
+  res.set('Idempotency-Replayed', execution.replayed ? 'true' : 'false');
+  res.status(201).json({ data: execution.value });
 });
 
 const voidSchema = z.object({

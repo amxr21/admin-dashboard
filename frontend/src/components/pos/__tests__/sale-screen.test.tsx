@@ -249,6 +249,7 @@ describe('taking payment', () => {
           method: 'cash',
           tendered: '10.00',
         }),
+        expect.any(String),
       );
     });
 
@@ -299,6 +300,7 @@ describe('taking payment', () => {
     await waitFor(() => {
       expect(checkout).toHaveBeenCalledWith(
         expect.objectContaining({ method: 'card', reference: 'TX-9981' }),
+        expect.any(String),
       );
     });
   });
@@ -385,6 +387,7 @@ describe('discounts (O9 Tier 3)', () => {
         expect.objectContaining({
           lines: [{ productId: 'p1', quantity: 1, discountPercent: 10 }],
         }),
+        expect.any(String),
       );
     });
   });
@@ -441,6 +444,7 @@ describe('discounts (O9 Tier 3)', () => {
     await waitFor(() => {
       expect(checkout).toHaveBeenCalledWith(
         expect.objectContaining({ overrideToken: 'signed-token' }),
+        expect.any(String),
       );
     });
   });
@@ -625,6 +629,7 @@ describe('split payment (O9 Tier 3)', () => {
             { method: 'card', amount: '2.50' },
           ],
         }),
+        expect.any(String),
       );
       // Not present at all, not even as undefined-through — the server
       // refuses seeing both shapes together.
@@ -821,6 +826,7 @@ describe('exchange (O9.8)', () => {
     await waitFor(() => {
       expect(checkout).toHaveBeenCalledWith(
         expect.objectContaining({ exchangeReturnId: 'r1' }),
+        expect.any(String),
       );
     });
 

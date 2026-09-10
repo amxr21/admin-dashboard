@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { Prisma, ProductStatus, ReturnResolution, StaffRole } from '@prisma/client';
@@ -35,7 +36,10 @@ let ownerToken = '';
 let supportToken = '';
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return {
+    Authorization: `Bearer ${token}`,
+    'Idempotency-Key': randomUUID(),
+  } as const;
 }
 
 async function makeUser(role: StaffRole, label: string) {
@@ -148,6 +152,7 @@ afterAll(async () => {
   await prisma.category.deleteMany({ where: { id: { in: categoryIds } } });
   await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
   await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
+  await prisma.idempotencyRecord.deleteMany({ where: { actorId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.$disconnect();
 });
@@ -345,13 +350,31 @@ describe('taking a sale (O5.7, O5.8)', () => {
     await prisma.product.update({ where: { id: productId }, data: { stock: quantity } });
   }
 
-  function sell(body: Record<string, unknown>, token = ownerToken) {
+  function sell(
+    body: Record<string, unknown>,
+    token = ownerToken,
+    idempotencyKey = randomUUID(),
+  ) {
     return request(app)
       .post('/api/v1/pos/checkout')
       .set(auth(token))
+      .set('Idempotency-Key', idempotencyKey)
       .set('X-Branch-Id', branchId)
       .send(body);
   }
+
+  it('requires an idempotency key before starting a sale', async () => {
+    const res = await request(app)
+      .post('/api/v1/pos/checkout')
+      .set({ Authorization: `Bearer ${ownerToken}` })
+      .set('X-Branch-Id', branchId)
+      .send({ lines: [{ productId: 'not-reached', quantity: 1 }], method: 'cash' });
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error: { details: { field: string } } }).error.details.field).toBe(
+      'Idempotency-Key',
+    );
+  });
 
   it('creates the order, moves the stock and records the payment', async () => {
     const product = await makeProduct({ sku: `${RUN}-SELL-1`, price: '10.00', stock: 5 });
@@ -403,6 +426,103 @@ describe('taking a sale (O5.7, O5.8)', () => {
     });
     expect(movement?.delta).toBe(-2);
     expect(movement?.branchId).toBe(branchId);
+  });
+
+  it('replays the original receipt without moving money or stock twice', async () => {
+    const product = await makeProduct({ sku: `${RUN}-IDEM-1`, price: '10.00', stock: 5 });
+    await stockAt(product.id, 5);
+    const key = randomUUID();
+    const body = {
+      lines: [{ productId: product.id, quantity: 2 }],
+      method: 'cash',
+      tendered: '20.00',
+    };
+
+    const first = await sell(body, ownerToken, key);
+    const replay = await sell(body, ownerToken, key);
+
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(201);
+    expect(first.headers['idempotency-replayed']).toBe('false');
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+    expect(replay.body).toEqual(first.body);
+
+    const orderId = (first.body as { data: { orderId: string } }).data.orderId;
+    const [orders, payments, movements, stock] = await Promise.all([
+      prisma.order.count({ where: { id: orderId } }),
+      prisma.payment.count({ where: { orderId } }),
+      prisma.stockMovement.count({ where: { productId: product.id, reason: 'SOLD' } }),
+      prisma.branchStock.findUnique({
+        where: { productId_branchId: { productId: product.id, branchId } },
+      }),
+    ]);
+
+    expect(orders).toBe(1);
+    expect(payments).toBe(1);
+    expect(movements).toBe(1);
+    expect(stock?.quantity).toBe(3);
+  });
+
+  it('serializes simultaneous submissions carrying the same key', async () => {
+    const product = await makeProduct({ sku: `${RUN}-IDEM-RACE`, price: '7.00', stock: 5 });
+    await stockAt(product.id, 5);
+    const key = randomUUID();
+    const body = {
+      lines: [{ productId: product.id, quantity: 2 }],
+      method: 'card',
+      reference: `${RUN}-CARD-RACE`,
+    };
+
+    const [left, right] = await Promise.all([
+      sell(body, ownerToken, key),
+      sell(body, ownerToken, key),
+    ]);
+
+    expect(left.status).toBe(201);
+    expect(right.status).toBe(201);
+    expect(left.body).toEqual(right.body);
+    expect(
+      [left.headers['idempotency-replayed'], right.headers['idempotency-replayed']].sort(),
+    ).toEqual(['false', 'true']);
+
+    const orderId = (left.body as { data: { orderId: string } }).data.orderId;
+    const [payments, movements, stock] = await Promise.all([
+      prisma.payment.count({ where: { orderId } }),
+      prisma.stockMovement.count({ where: { productId: product.id, reason: 'SOLD' } }),
+      prisma.branchStock.findUnique({
+        where: { productId_branchId: { productId: product.id, branchId } },
+      }),
+    ]);
+
+    expect(payments).toBe(1);
+    expect(movements).toBe(1);
+    expect(stock?.quantity).toBe(3);
+  });
+
+  it('refuses reuse of a key for different sale details', async () => {
+    const product = await makeProduct({ sku: `${RUN}-IDEM-2`, price: '5.00', stock: 5 });
+    await stockAt(product.id, 5);
+    const key = randomUUID();
+
+    const first = await sell(
+      { lines: [{ productId: product.id, quantity: 1 }], method: 'cash' },
+      ownerToken,
+      key,
+    );
+    const mismatch = await sell(
+      { lines: [{ productId: product.id, quantity: 2 }], method: 'cash' },
+      ownerToken,
+      key,
+    );
+
+    expect(first.status).toBe(201);
+    expect(mismatch.status).toBe(409);
+    expect((mismatch.body as { error: { code: string } }).error.code).toBe('CONFLICT');
+
+    const stock = await prisma.branchStock.findUnique({
+      where: { productId_branchId: { productId: product.id, branchId } },
+    });
+    expect(stock?.quantity).toBe(4);
   });
 
   it('snapshots BOTH price and cost at sale time (F1.1)', async () => {

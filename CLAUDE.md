@@ -9,7 +9,8 @@
   MySQL via Prisma (Aiven) · pnpm workspace · Node 22.
 - **Status**: active development. The 2026-09-10 review added report reliability, consistent
   loading feedback, scroll containment, editable organization structure and missing Settings
-  destinations. The stacked changes are awaiting the final combined verification gate and PRs.
+  destinations. UX-009 now makes POS checkout retries safe. The changes are awaiting the final
+  combined verification gate and PRs.
 
 ## 2026-09-10 review stack
 
@@ -32,6 +33,9 @@ The owner-reported review work is split into ordered branches so each concern re
    hydration to CSS and GSAP motion, and smooths the global loading overlay using shared timings.
 8. `fix/shell-action-errors` — permission-gates the notification bell and translates stable shift
    branch-conflict reason codes into useful English/Arabic actions instead of a generic 400 error.
+9. `fix/ux-009-idempotent-checkout` — requires a UUID request key for POS checkout and atomically
+   stores the first committed response, so sequential or simultaneous retries cannot duplicate an
+   order, payment, stock movement or sale audit event.
 
 Focused verification is green: 27/27 regular report routes in the browser; 181 backend report and
 scheduled-report cases; 132 frontend report cases; 52 shift cases; organization integration,
@@ -67,9 +71,23 @@ the remaining local gates. No deployment has been performed.
   revenue calculation already reads `.total` as the full amount, and changing its meaning would
   have silently under-reported revenue everywhere without touching those files. The invoice
   renders Subtotal/Tax/Total only when recorded; a pre-migration order still shows the single
-  Total row it always did. No live checkout/order-creation flow exists yet (only
-  `prisma/demo-seed.ts` and tests create orders), so the calculation lives in the demo seeder for
-  now — a real checkout flow will need to call the same math when it's built.
+  Total row it always did. The live POS checkout now calls the same shared calculation and stores
+  its resulting subtotal/tax/total snapshots with the order.
+
+### POS checkout retry safety (UX-009)
+- **Status**: implemented; pending full branch gate and GitHub checks.
+- **Contract**: `POST /api/v1/pos/checkout` requires a UUID `Idempotency-Key` header. A retry by
+  the same authenticated actor with the same key and request returns the original `201` body and
+  sets `Idempotency-Replayed: true`; reusing the key for different details returns `409`.
+- **Atomicity**: the generic `IdempotencyRecord` claim, order, lines, payments and stock movements
+  commit in one Prisma transaction. Simultaneous duplicates serialize on the unique claim without
+  producing an operational error log. Only the request that creates the sale writes its audit
+  event.
+- **Retention**: records are retained for seven days and pruned by the existing daily scheduler.
+  The expiry index keeps cleanup bounded and lets future critical mutations reuse the same
+  service without adding feature-specific replay tables.
+- **Where**: `backend/src/services/idempotency.service.ts`, `backend/src/services/pos.service.ts`,
+  `backend/src/routes/v1/pos.route.ts`, and `frontend/src/lib/request-intent.ts`.
 
 ### Inventory
 - **Status**: shipped
@@ -601,6 +619,12 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-09-10 (UX-009)** — POS checkout is idempotent across lost responses and simultaneous
+  submissions. A generic actor-scoped record stores a canonical request hash and response in the
+  same transaction as order/payment/stock writes; mismatched reuse returns 409, successful replay
+  returns the original receipt, and the till retains its UUID until checkout details change.
+  Seven-day daily cleanup prevents unbounded growth. Focused backend concurrency coverage and the
+  full frontend test suite pass; remote GitHub verification remains before this batch is closed.
 - **2026-09-08 (O6 + O7)** — The controls F8 never shipped. F8 built the multi-shop ENGINE
   (businesses, branches, per-branch stock, query scoping, per-branch roles, a switcher) and left
   every row creatable only by a migration or the seeder: `UserBranch` was read-only, there was no

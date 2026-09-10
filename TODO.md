@@ -1,5 +1,29 @@
 # TODO — the one list
 
+## Technical UX delivery plan — owner direction, 2026-09-10
+
+### Product and architecture rules
+
+- Keep the active security-role model intentionally small: **Admin**, **Developer**, and **Cashier**.
+- Do not add business-specific prepared/template roles yet. Future role templates must be configurable data, not another growing set of hard-coded application roles.
+- Treat the legacy-role reduction as a deliberate migration: preserve existing access until the owner approves how current Owner, Manager, Fulfillment, Support, and Demo accounts map to the three retained roles.
+- Every batch must extend shared services/components and stable contracts where practical; avoid page-local duplication and one-off role checks so the result remains reusable, scalable, and clean.
+
+### Approved implementation order
+
+- [ ] **Batch 1 — UX-009: idempotent POS checkout.** Prevent retries after an uncertain response from creating duplicate orders, payments, or stock movements. Add a reusable backend idempotency primitive, client intent reuse, migration, and focused regression coverage.
+- [ ] **Batch 2 — delivery operations:** UX-010 delivery board, UX-011 assignment timeline, and UX-012 working-now coverage. Keep permissions compatible with the three-role model rather than introducing a Manager role.
+- [ ] **Batch 3 — purchasing and stock:** UX-013 supplier directory and UX-014 low-stock supplier outreach.
+- [ ] **Batch 4 — customer service:** UX-015 customer case workspace, UX-016 POS customer association, UX-017 payment/phone search, and UX-018 order-status notifications. Do not introduce a Support role.
+- [ ] **Batch 5 — workflow resilience:** UX-019 session-expiry recovery, UX-020 unsaved-change guards, UX-021 expanded global search, and UX-022 URL-backed inventory state.
+- [ ] **Batch 6 — notifications:** UX-023 unread-count correctness, UX-024 filters/action links, and UX-025 accessible row actions.
+- [ ] **Batch 7 — operational navigation:** UX-026 durable return-detail navigation, UX-027 URL-backed shift filters, UX-028 staff bulk lifecycle actions, and UX-029 related-record links.
+- [ ] **Batch 8 — catalogue governance:** UX-030 localized product content and UX-031 catalogue version history/restore.
+- [ ] **Batch 9 — remaining state and account workflows:** UX-032 URL-backed dashboard state, UX-033 normalized field validation, UX-034 staff detail workspace, and UX-035 forgotten-password initiation.
+- [ ] **Role simplification foundation:** replace the currently enabled role set with Admin, Developer, and Cashier after approving the production-safe legacy-role mapping and migration. Prepared role templates remain out of scope.
+
+For each batch: work on its own branch, run the relevant local gate, publish the remote branch, verify the GitHub checks, summarize the result, then begin the next batch.
+
 ## CRITICAL — owner-reported issues, 2026-09-10
 
 These are the six issues reported earlier and re-confirmed by the owner. They remain open until the stated checks are complete. Implementation alone is not a completed verification. Add further owner findings here as testing continues.
