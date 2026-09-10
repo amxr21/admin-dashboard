@@ -283,9 +283,10 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
               />
             ) : null}
 
-            {/* Notifications live HERE, not in the sidebar: the count changes
-                while you work and has to be visible from every page. */}
-            <NotificationsBell />
+            {/* The backing resource is guarded by the settings area. Match
+                that grant before mounting: a global bell must not emit a 403
+                on every page for cashiers/support/fulfillment users. */}
+            {canAccessArea(effectiveRole, 'settings') ? <NotificationsBell /> : null}
 
             {/* The language switcher used to sit here. It MOVED to Settings —
                 deliberately moved, not duplicated, so there is one place to

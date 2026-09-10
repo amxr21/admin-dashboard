@@ -238,6 +238,8 @@ describe('starting a shift with no branch header, in a multi-business install', 
 
     expect(res.status).toBe(400);
     expect((res.body as { error: { message: string } }).error.message).toMatch(/more than one business/);
+    expect((res.body as { error: { details: { reason: string } } }).error.details.reason)
+      .toBe('BRANCH_REQUIRED_MULTIPLE_BUSINESSES');
   });
 
   it('a branch-scoped role assigned to exactly one branch defaults to it, no header needed', async () => {
@@ -271,6 +273,8 @@ describe('starting a shift with no branch header, in a multi-business install', 
 
     expect(res.status).toBe(400);
     expect((res.body as { error: { message: string } }).error.message).toMatch(/more than one/);
+    expect((res.body as { error: { details: { reason: string } } }).error.details.reason)
+      .toBe('BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS');
   });
 
   it('a branch-scoped role with no roster row still gets the ambiguity error', async () => {

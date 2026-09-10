@@ -50,7 +50,13 @@
       "forbidden": "You don't have permission to do that.",
       "notFound": "We couldn't find what you were looking for.",
       "server": "The server had a problem. Try again in a moment.",
-      "tooLarge": "That file is too large."
+      "tooLarge": "That file is too large.",
+      "reasons": {
+        "BRANCH_REQUIRED_MULTIPLE_BUSINESSES": "Choose the branch where you are working, then start the shift again.",
+        "BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS": "Your account is assigned to more than one branch. Choose today's branch, or ask a manager which one to use.",
+        "NO_ACTIVE_BRANCH": "No active branch is available for this shift. Ask an owner to configure or assign one.",
+        "BRANCH_NOT_FOUND": "That branch is no longer available. Choose another branch and try again."
+      }
     },
     "readOnlyDemo": {
       "title": "Read-only demo",
@@ -546,9 +552,10 @@
       "description": "Your device looks offline, or the server is briefly unavailable. Check your connection and try again."
     },
     "forbidden": {
-      "title": "You don't have access to this",
-      "description": "Your account role doesn’t include this area. If you think it should, ask an owner to update your permissions."
-    }
+  "title": "You don't have access to this",
+  "description": "Your account role doesn’t include this area. If you think it should, ask an owner to update your permissions.",
+  "descriptionWithArea": "Your account role doesn’t include {area}. If you think it should, ask an owner to update your permissions."
+}
   },
   "resource": {
     "yes": "Yes",

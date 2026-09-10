@@ -18,6 +18,7 @@ These are the six issues reported earlier and re-confirmed by the owner. They re
 - [x] **Editable business/staff structure — BOTH scopes confirmed.** Existing business, branch, staff and assignment editors are linked from the owner-only Organization structure area. Configurable business/branch/staff fields, job titles, departments and cycle-safe reporting lines are implemented with an additive migration and role isolation. Backend integration, frontend editor, mobile, English and Arabic browser checks pass.
 - [x] **Bring Settings up to date with shipped features.** POS, returns and navigation-label settings now have explicit groups. Business/branch, organization, staff/access, role-permission and scheduled-report destinations are discoverable from Settings with permission-aware links. Focused tests and scheduled-report browser checks pass.
 - [ ] **Keep transitions and animation smooth across the project.** Audit page entry, pending navigation, theme/language changes, dialogs, drawers, popovers, loading feedback, tables and frequent controls against the shared motion tokens. Verify reduced-motion behavior, keyboard/focus continuity and performance at mobile, tablet and desktop sizes before closing the final gate.
+- [x] **Resolve the live local server/API failures reported 2026-09-10.** A runaway 9+ GB Next process and stale `.next` cache were replaced with a clean server. Invalid-login 401s already render the correct credentials message; notification reads are now permission-gated so branch roles do not emit shell-wide 403s; shift 400s carry stable reason codes and render actionable English/Arabic guidance. Backend/frontend focused tests, lint, typechecks and both affected browser flows pass.
 
 Owner will continue testing and reporting more findings. Do not silently close these based only on unit tests or fixture-backed browser checks.
 
@@ -49,6 +50,7 @@ This checklist tracks the current review and fixes. The existing backlog below r
 - [x] Investigate drawer and sidebar scrolling at desktop/mobile sizes; verify the shared fix and exact sidebar height.
 - [x] Complete focused TypeScript and lint checks; the final combined gate is tracked above.
 - [x] Create separate stacked branches for database isolation, report reliability, loading/scroll feedback, organization settings and shift branch resolution.
+- [ ] Make branch assignment discoverable from Staff as well as the branch roster; keep the implementation on its own stacked branch.
 - [ ] Run CI/CD and publish the stacked PRs only after the full local verification gate is clean.
 - [ ] Complete the final motion/UX and accessibility pass, including reduced-motion browser coverage.
 - [ ] Record remaining verified gaps and validation limits; update this checklist with final results.

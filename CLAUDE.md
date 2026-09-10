@@ -30,12 +30,15 @@ The owner-reported review work is split into ordered branches so each concern re
 6. `docs/review-verification` — final E2E coverage plus the synchronized TODO and project records.
 7. `feat/motion-ux-polish` — exposes the persistent animation preference, applies it before
    hydration to CSS and GSAP motion, and smooths the global loading overlay using shared timings.
+8. `fix/shell-action-errors` — permission-gates the notification bell and translates stable shift
+   branch-conflict reason codes into useful English/Arabic actions instead of a generic 400 error.
 
 Focused verification is green: 27/27 regular report routes in the browser; 181 backend report and
 scheduled-report cases; 132 frontend report cases; 52 shift cases; organization integration,
 English/Arabic mobile layout, scheduled-report validation, loading, branch switching and scroll
-checks. The full combined suite and production build are the remaining local gates. No deployment
-has been performed.
+checks. The reported notification and shift failures also pass focused unit, lint, type and live
+browser checks after a clean frontend restart. The full combined suite and production build are
+the remaining local gates. No deployment has been performed.
 
 ## Features
 

@@ -326,6 +326,7 @@ export async function defaultBranchId(): Promise<string> {
   if (businessCount > 1) {
     throw AppError.badRequest(
       'Select a branch — this install has more than one business, so there is no single default to fall back to.',
+      { field: 'branchId', reason: 'BRANCH_REQUIRED_MULTIPLE_BUSINESSES' },
     );
   }
 

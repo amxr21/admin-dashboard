@@ -5,6 +5,24 @@ import { useTranslations } from 'next-intl';
 
 import { ApiError } from '@/lib/api';
 
+const ACTIONABLE_REASON_VALUES = [
+  'BRANCH_REQUIRED_MULTIPLE_BUSINESSES',
+  'BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS',
+  'NO_ACTIVE_BRANCH',
+  'BRANCH_NOT_FOUND',
+] as const;
+
+type ActionableReason = (typeof ACTIONABLE_REASON_VALUES)[number];
+const ACTIONABLE_REASONS = new Set<ActionableReason>(ACTIONABLE_REASON_VALUES);
+
+function actionableReason(details: unknown): ActionableReason | null {
+  if (typeof details !== 'object' || details === null || !('reason' in details)) return null;
+  const reason = (details as { reason?: unknown }).reason;
+  return typeof reason === 'string' && ACTIONABLE_REASONS.has(reason as ActionableReason)
+    ? reason as ActionableReason
+    : null;
+}
+
 /**
  * Turns a caught error into a message that tells the user what to DO.
  *
@@ -25,6 +43,9 @@ export function useTranslatedApiError(): (error: unknown) => string {
       // fetch REJECTS on an unreachable network rather than resolving with a
       // status, so a non-ApiError here is almost always connectivity.
       if (!(error instanceof ApiError)) return t('network');
+
+      const reason = actionableReason(error.details);
+      if (reason) return t(`reasons.${reason}`);
 
       switch (error.status) {
         case 401:

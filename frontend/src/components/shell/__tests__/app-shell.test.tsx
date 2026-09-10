@@ -35,7 +35,7 @@ vi.mock('@/components/providers/schema-provider', () => ({
 // Irrelevant to what these tests check, and NotificationsBell fetches on
 // mount — stubbed so the test isn't racing an unmocked request.
 vi.mock('@/components/shell/notifications-bell', () => ({
-  NotificationsBell: () => null,
+  NotificationsBell: () => createElement('div', { 'data-testid': 'notifications-bell' }),
 }));
 
 vi.mock('@/components/shell/diagnostics-bar', () => ({
@@ -78,6 +78,26 @@ describe('who gets offered the switcher', () => {
     );
 
     expect(screen.queryByLabelText(/view as/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('permission-aware shell requests', () => {
+  it('mounts the notification bell only when the effective role can read notifications', () => {
+    pathname = '/admin';
+
+    const { rerender } = render(
+      <AppShell user={{ ...baseUser, role: 'OWNER' }}>
+        <p>page content</p>
+      </AppShell>,
+    );
+    expect(screen.getByTestId('notifications-bell')).toBeInTheDocument();
+
+    rerender(
+      <AppShell user={{ ...baseUser, role: 'CASHIER' }}>
+        <p>page content</p>
+      </AppShell>,
+    );
+    expect(screen.queryByTestId('notifications-bell')).not.toBeInTheDocument();
   });
 });
 

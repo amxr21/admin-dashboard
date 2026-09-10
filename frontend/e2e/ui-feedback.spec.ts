@@ -181,6 +181,57 @@ test('Settings exposes the persistent animation preference', async ({ page }) =>
   await expect(page.getByRole('button', { name: 'Enable animations' })).toBeVisible();
 });
 
+test('a cashier shell does not request the owner-only notifications resource', async ({ page }) => {
+  const cashier = { ...user, id: 'ui-cashier', name: 'Test cashier', role: 'CASHIER' };
+  await page.addInitScript((cashierUser) => {
+    localStorage.setItem('admin-dashboard:user', JSON.stringify(cashierUser));
+  }, cashier);
+  await page.route('**/api/v1/auth/me', route =>
+    route.fulfill({ json: { data: cashier } }),
+  );
+
+  const notificationRequests: string[] = [];
+  page.on('request', request => {
+    if (new URL(request.url()).pathname.endsWith('/r/notifications')) {
+      notificationRequests.push(request.url());
+    }
+  });
+
+  await openPage(page, '/en/admin');
+  await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(notificationRequests).toEqual([]);
+});
+
+test('a shift branch conflict explains the action instead of showing a server error', async ({ page }) => {
+  await page.route('**/api/v1/shifts/me', route =>
+    route.fulfill({ json: { data: { shift: null } } }),
+  );
+  await page.route('**/api/v1/shifts', async route => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 400,
+      json: {
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'Select a branch',
+          details: { field: 'branchId', reason: 'BRANCH_REQUIRED_MULTIPLE_BUSINESSES' },
+        },
+      },
+    });
+  });
+
+  await openPage(page, '/en/admin/pos');
+  await page.getByRole('button', { name: 'Start shift & open till' }).click();
+  await expect(
+    page.getByText('Choose the branch where you are working, then start the shift again.'),
+  ).toBeVisible();
+  await expect(page.getByText('The server had a problem. Try again in a moment.')).toHaveCount(0);
+});
+
 for (const locale of ['en', 'ar'] as const) {
   test(`organization settings is usable without overflow in ${locale}`, async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });

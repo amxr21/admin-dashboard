@@ -113,7 +113,7 @@ async function resolveShiftBranchId(userId: string, actorRole: StaffRole): Promi
   if (assignments.length > 1) {
     throw AppError.badRequest(
       'Select a branch — you work at more than one, so there is no single default to fall back to.',
-      { field: 'branchId' },
+      { field: 'branchId', reason: 'BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS' },
     );
   }
 
@@ -175,7 +175,10 @@ export async function startShift(
   const branchId = input.branchId ?? (await resolveShiftBranchId(userId, actor.role));
 
   if (!branchId) {
-    throw AppError.badRequest('No branch to record this shift against', { field: 'branchId' });
+    throw AppError.badRequest('No branch to record this shift against', {
+      field: 'branchId',
+      reason: 'NO_ACTIVE_BRANCH',
+    });
   }
 
   const branch = await prisma.branch.findUnique({
@@ -183,7 +186,12 @@ export async function startShift(
     select: { id: true, isActive: true },
   });
 
-  if (!branch) throw AppError.badRequest('Branch not found', { field: 'branchId' });
+  if (!branch) {
+    throw AppError.badRequest('Branch not found', {
+      field: 'branchId',
+      reason: 'BRANCH_NOT_FOUND',
+    });
+  }
 
   const shift = await prisma.shift.create({
     data: {
