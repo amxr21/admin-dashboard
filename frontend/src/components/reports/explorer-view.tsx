@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
@@ -10,11 +10,11 @@ import { ErrorSection } from '@/components/errors/error-section';
 import { EmptyState } from '@/components/empty-state';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingState } from '@/components/ui/loading-state';
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
-import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useReportQuery } from '@/hooks/useReportQuery';
 import { useUrlState } from '@/hooks/useUrlState';
 import {
   EXPLORER_DIMENSIONS,
@@ -85,7 +85,6 @@ export function ExplorerView() {
   const tStates = useTranslations('states');
   const formatter = useFormatter();
   const formatCurrency = useCurrencyFormat();
-  const translateError = useTranslatedApiError();
 
   const defaults = useMemo(() => defaultRange(), []);
   const { values, setValues } = useUrlState({
@@ -98,25 +97,8 @@ export function ExplorerView() {
   const dimension: ExplorerDimension = isExplorerDimension(values.dimension!) ? values.dimension! : 'category';
   const measure: ExplorerMeasure = isExplorerMeasure(values.measure!) ? values.measure! : 'revenue';
 
-  const [data, setData] = useState<Explorer | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      setData(await fetchExplorer(range, dimension));
-    } catch (caught) {
-      setError(translateError(caught));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [range, dimension, translateError]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const query = useCallback(() => fetchExplorer(range, dimension), [range, dimension]);
+  const { data, isLoading, error, setError, load } = useReportQuery<Explorer>(query);
 
   function formatMeasure(m: ExplorerMeasure, value: number): string {
     if (m === 'units' || m === 'orders') return formatter.number(value);
@@ -190,7 +172,7 @@ export function ExplorerView() {
       </div>
 
       {isLoading ? (
-        <Skeleton className="h-96 w-full" />
+        <LoadingState />
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : rows.length === 0 ? (

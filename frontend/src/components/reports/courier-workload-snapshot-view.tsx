@@ -1,13 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 
 import { ErrorSection } from '@/components/errors/error-section';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingState } from '@/components/ui/loading-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useReportQuery } from '@/hooks/useReportQuery';
 import { fetchCourierWorkloadSnapshot, type CourierWorkloadSnapshot } from '@/lib/reports-api';
 
 /**
@@ -19,32 +19,14 @@ export function CourierWorkloadSnapshotView() {
   const t = useTranslations('reports.courierWorkloadSnapshot');
   const tStates = useTranslations('states');
   const formatter = useFormatter();
-  const translateError = useTranslatedApiError();
 
-  const [data, setData] = useState<CourierWorkloadSnapshot | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      setData(await fetchCourierWorkloadSnapshot());
-    } catch (caught) {
-      setError(translateError(caught));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [translateError]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const query = useCallback(() => fetchCourierWorkloadSnapshot(), []);
+  const { data, isLoading, error, load } = useReportQuery<CourierWorkloadSnapshot>(query);
 
   return (
     <div className="space-y-4">
       {isLoading ? (
-        <Skeleton className="h-64 w-full" />
+        <LoadingState />
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : (
