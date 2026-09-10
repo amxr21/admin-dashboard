@@ -17,6 +17,7 @@ These are the six issues reported earlier and re-confirmed by the owner. They re
 - [ ] **Test every page, keeping code consistent.** The live-browser route audit covered the main admin route families until the synthetic two-worker pass reached the API's general rate limit. All touched and critical paths have focused coverage; the final combined unit, type, lint and E2E gate remains before closing this broader project-wide item.
 - [x] **Editable business/staff structure — BOTH scopes confirmed.** Existing business, branch, staff and assignment editors are linked from the owner-only Organization structure area. Configurable business/branch/staff fields, job titles, departments and cycle-safe reporting lines are implemented with an additive migration and role isolation. Backend integration, frontend editor, mobile, English and Arabic browser checks pass.
 - [x] **Bring Settings up to date with shipped features.** POS, returns and navigation-label settings now have explicit groups. Business/branch, organization, staff/access, role-permission and scheduled-report destinations are discoverable from Settings with permission-aware links. Focused tests and scheduled-report browser checks pass.
+- [ ] **Keep transitions and animation smooth across the project.** Audit page entry, pending navigation, theme/language changes, dialogs, drawers, popovers, loading feedback, tables and frequent controls against the shared motion tokens. Verify reduced-motion behavior, keyboard/focus continuity and performance at mobile, tablet and desktop sizes before closing the final gate.
 
 Owner will continue testing and reporting more findings. Do not silently close these based only on unit tests or fixture-backed browser checks.
 
@@ -49,6 +50,7 @@ This checklist tracks the current review and fixes. The existing backlog below r
 - [x] Complete focused TypeScript and lint checks; the final combined gate is tracked above.
 - [x] Create separate stacked branches for database isolation, report reliability, loading/scroll feedback, organization settings and shift branch resolution.
 - [ ] Run CI/CD and publish the stacked PRs only after the full local verification gate is clean.
+- [ ] Complete the final motion/UX and accessibility pass, including reduced-motion browser coverage.
 - [ ] Record remaining verified gaps and validation limits; update this checklist with final results.
 
 Database cleanup is complete. No deployment has been performed. The validated shift fix is isolated on its own stacked branch.

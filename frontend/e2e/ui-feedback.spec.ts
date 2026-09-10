@@ -31,6 +31,13 @@ async function mockWorkspace(page: Page) {
     if (path === '/auth/me') data = user;
     if (path === '/r/_schema') data = { resources: [] };
     if (path === '/settings') data = { settings: [] };
+    if (path === '/policies' || path === '/auth/me/sessions' || path === '/auth/me/api-keys') data = [];
+    if (path === '/auth/me/2fa') data = { enabled: false, remainingBackupCodes: 0 };
+    if (path === '/danger-zone/demo-data') data = {
+      orders: 0, products: 0, customers: 0, couriers: 0, categories: 0,
+      discounts: 0, notifications: 0, businesses: 0, branches: 0,
+      staff: 0, returns: 0, variants: 0, total: 0,
+    };
     if (path === '/branches') data = branches;
     if (path === '/branches/_brand') data = { storeName: 'Test business', storeCurrency: 'AED' };
     if (path === '/businesses') data = [{ id: 'business-1', name: 'Test business', branches }];
@@ -134,6 +141,44 @@ test('scheduled reports opens a usable format-aware form', async ({ page }) => {
   await page.keyboard.press('Escape');
   await dialog.getByRole('button', { name: /save/i }).click();
   await expect(dialog.getByRole('alert')).toContainText(/recipient/i);
+});
+
+test('motion preference respects the OS and supports an explicit override', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await openPage(page, '/en/admin/branches');
+  await expect(page.locator('html')).toHaveAttribute('data-motion', 'reduced');
+
+  await page.getByRole('button', { name: 'Add branch', exact: true }).first().click();
+  const duration = await page.getByRole('dialog').evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).animationDuration),
+  );
+  expect(duration).toBeLessThanOrEqual(0.001);
+
+  await page.evaluate(() =>
+    window.localStorage.setItem('admin-dashboard:motion-enabled', 'true'),
+  );
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.locator('html')).toHaveAttribute('data-motion', 'full');
+});
+
+test('Settings exposes the persistent animation preference', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  await openPage(page, '/en/admin/settings');
+  await page.waitForTimeout(2_000);
+  expect(errors).toEqual([]);
+  await page.getByRole('button', { name: 'Disable animations' }).click();
+
+  await expect(page.locator('html')).toHaveAttribute('data-motion', 'reduced');
+  expect(
+    await page.evaluate(() =>
+      window.localStorage.getItem('admin-dashboard:motion-enabled'),
+    ),
+  ).toBe('false');
+  await expect(page.getByRole('button', { name: 'Enable animations' })).toBeVisible();
 });
 
 for (const locale of ['en', 'ar'] as const) {

@@ -355,15 +355,28 @@ html[lang='ar'] {
      either — a 200ms full-page tint shift is exactly the kind of change that
      can trigger discomfort. */
   @media (prefers-reduced-motion: reduce) {
-    body,
-    [data-slot],
-    .bg-background,
-    .bg-card,
-    .bg-muted,
-    .bg-secondary,
-    .bg-popover {
+    html:not([data-motion='full']) body,
+    html:not([data-motion='full']) [data-slot],
+    html:not([data-motion='full']) .bg-background,
+    html:not([data-motion='full']) .bg-card,
+    html:not([data-motion='full']) .bg-muted,
+    html:not([data-motion='full']) .bg-secondary,
+    html:not([data-motion='full']) .bg-popover {
       transition: none;
     }
+  }
+
+  /* The in-app preference mirrors the OS reduced-motion path for CSS-driven
+     surfaces. MotionProvider sets this attribute and the blocking layout
+     script applies it before first paint, so neither route entry nor a drawer
+     gets one unwanted animated frame. */
+  html[data-motion='reduced'] *,
+  html[data-motion='reduced'] *::before,
+  html[data-motion='reduced'] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 
   /*
@@ -470,9 +483,9 @@ html[lang='ar'] {
   /* Respect users who asked their OS to reduce motion. Individual animations
      can still opt in deliberately — this is the default, not a ban. */
   @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
+    html:not([data-motion='full']) *,
+    html:not([data-motion='full']) *::before,
+    html:not([data-motion='full']) *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;

@@ -28,6 +28,8 @@ The owner-reported review work is split into ordered branches so each concern re
 5. `fix/shift-branch-resolution` — an unscoped branch employee with exactly one active
    assignment can start a shift while genuine multi-branch/business ambiguity still fails safely.
 6. `docs/review-verification` — final E2E coverage plus the synchronized TODO and project records.
+7. `feat/motion-ux-polish` — exposes the persistent animation preference, applies it before
+   hydration to CSS and GSAP motion, and smooths the global loading overlay using shared timings.
 
 Focused verification is green: 27/27 regular report routes in the browser; 181 backend report and
 scheduled-report cases; 132 frontend report cases; 52 shift cases; organization integration,

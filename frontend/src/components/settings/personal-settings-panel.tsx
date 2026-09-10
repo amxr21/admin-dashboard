@@ -1,11 +1,15 @@
+'use client';
+
 import { useTranslations } from 'next-intl';
-import { User } from 'lucide-react';
+import { Sparkles, User } from 'lucide-react';
 
 import { LocaleSwitcher } from '@/components/locale-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { useMotion } from '@/components/motion-provider';
+import { Button } from '@/components/ui/button';
 
 /**
- * "Your preferences" — language and theme. Unlike every other settings
+ * "Your preferences" — language, theme and motion. Unlike every other settings
  * section, these affect only the person looking at the screen and take effect
  * immediately, with nothing to save — so this section has no fields, no fetch,
  * no dirty state.
@@ -17,6 +21,8 @@ import { ThemeToggle } from '@/components/theme-toggle';
  */
 export function PersonalSettingsPanel() {
   const t = useTranslations('settings');
+  const tMotion = useTranslations('motion');
+  const { motionEnabled, setMotionEnabled, ready } = useMotion();
 
   return (
     <section aria-labelledby="settings-group-personal" className="space-y-4">
@@ -39,6 +45,22 @@ export function PersonalSettingsPanel() {
         <div className="bg-card/50 flex items-center justify-between gap-3 rounded-lg border p-4">
           <span className="text-sm font-medium">{t('personal.theme')}</span>
           <ThemeToggle />
+        </div>
+
+        <div className="bg-card/50 flex items-center justify-between gap-3 rounded-lg border p-4">
+          <span className="flex items-center gap-2 text-sm font-medium">
+            <Sparkles className="text-primary size-4" aria-hidden="true" />
+            {tMotion('label')}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            aria-pressed={motionEnabled}
+            disabled={!ready}
+            onClick={() => setMotionEnabled(!motionEnabled)}
+          >
+            {motionEnabled ? tMotion('disable') : tMotion('enable')}
+          </Button>
         </div>
       </div>
     </section>

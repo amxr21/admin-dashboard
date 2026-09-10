@@ -21,6 +21,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/hooks/useAuth';
 import { getDirection, routing } from '@/i18n/routing';
 import { getBlockingAppearanceScript } from '@/lib/apply-appearance';
+import { getBlockingMotionScript } from '@/lib/motion-preference';
 
 import '../globals.css';
 
@@ -150,6 +151,13 @@ export default async function LocaleLayout({
         <script
           suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: getBlockingAppearanceScript() }}
+        />
+        {/* Motion is also a pre-paint preference. Applying the data attribute
+            here prevents a reduced-motion user seeing the first drawer/page
+            animate before MotionProvider hydrates. */}
+        <script
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: getBlockingMotionScript() }}
         />
         <NextIntlClientProvider>
           <ThemeProvider>

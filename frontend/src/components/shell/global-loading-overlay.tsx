@@ -71,10 +71,10 @@ export function GlobalLoadingOverlay() {
 
   return (
     <div
-      className="bg-background/70 fixed inset-0 z-[90] grid place-items-center backdrop-blur-sm"
+      className="bg-background/70 fixed inset-0 z-[90] grid animate-in place-items-center fade-in-0 duration-200 backdrop-blur-sm"
       aria-label={t('loading')}
     >
-      <div className="bg-card rounded-xl border px-8 py-6 shadow-lg">
+      <div className="bg-card animate-in rounded-xl border px-8 py-6 shadow-lg fade-in-0 duration-200 motion-safe:zoom-in-95">
         <LoadingState label={t('loading')} />
       </div>
     </div>
