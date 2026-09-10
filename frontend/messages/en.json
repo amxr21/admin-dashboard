@@ -1193,6 +1193,18 @@
       "other": {
         "title": "Other",
         "description": "Everything else."
+      },
+      "pos": {
+        "title": "Point of sale",
+        "description": "Discount limits and controls for the till."
+      },
+      "returns": {
+        "title": "Returns",
+        "description": "Return windows and default restocking fees."
+      },
+      "labels": {
+        "title": "Navigation labels",
+        "description": "Name pages to match how your team works."
       }
     },
     "twoFactor": {
@@ -1388,6 +1400,29 @@
         "description": "This publishes that version's text as a new version. The current text stays in history and can be restored the same way.",
         "cancel": "Cancel",
         "action": "Revert"
+      }
+    },
+    "features": {
+      "title": "Business and feature setup",
+      "businesses": {
+        "title": "Businesses and branches",
+        "description": "Edit business details, shops, warehouses and branch assignments."
+      },
+      "structure": {
+        "title": "Organization structure",
+        "description": "Custom fields, job titles, departments and reporting lines."
+      },
+      "staff": {
+        "title": "Staff and access",
+        "description": "Invite staff, edit accounts and manage branch roles."
+      },
+      "roles": {
+        "title": "Role permissions",
+        "description": "Choose the areas each staff role can access."
+      },
+      "reports": {
+        "title": "Scheduled reports",
+        "description": "Manage report recipients, schedules and formats."
       }
     }
   },
@@ -2554,5 +2589,47 @@
     "exchangeStarted": "Return processed — ring up the replacement item now",
     "exchangeInProgress": "Exchange in progress — this sale will link to the return",
     "cancelExchange": "Cancel exchange"
+  },
+  "organization": {
+    "title": "Organization structure",
+    "description": "Adapt your business, branch and staff profiles to the way your organization works.",
+    "ownerOnly": "Only an owner or developer can manage organization structure.",
+    "profileType": "Profile type",
+    "entities": {
+      "business": "Businesses",
+      "branch": "Branches",
+      "staff": "Staff"
+    },
+    "profiles": "Profiles",
+    "customFields": "Custom fields",
+    "chooseRecord": "Choose a record",
+    "inactive": "Inactive",
+    "noRecords": "There are no records of this type yet.",
+    "manageRecords": "Manage records",
+    "selectHint": "Choose a record to edit its additional details.",
+    "reportingLines": "Reporting lines",
+    "permissionsHint": "Job titles and reporting lines describe your organization. Access permissions are managed separately under Staff.",
+    "noPosition": "No position details yet",
+    "reportsTo": "Reports to",
+    "fieldsHint": "Fields apply to every profile of the selected type. Turn a field off to hide it without deleting saved values. Field types cannot be changed after creation.",
+    "addField": "Add field",
+    "fieldLabel": "Field label",
+    "fieldType": "Field type",
+    "types": {
+      "text": "Text",
+      "number": "Number",
+      "date": "Date",
+      "boolean": "Yes or no"
+    },
+    "required": "Required",
+    "activeField": "Show this field",
+    "editCoreDetails": "Edit name, contact details and core information",
+    "jobTitle": "Job title",
+    "department": "Department",
+    "noManager": "No reporting manager",
+    "notSet": "Not set",
+    "yes": "Yes",
+    "no": "No",
+    "noFields": "No custom fields yet. Add them in the Custom fields tab."
   }
 }

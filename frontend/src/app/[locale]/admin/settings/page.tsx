@@ -11,6 +11,7 @@ import { DataExportPanel } from '@/components/settings/data-export-panel';
 import { PoliciesPanel } from '@/components/settings/policies-panel';
 import { PersonalSettingsPanel } from '@/components/settings/personal-settings-panel';
 import { SettingsForm } from '@/components/settings/settings-form';
+import { FeatureSettingsLinks } from '@/components/settings/feature-settings-links';
 
 /**
  * Settings — one scrollable page with every section stacked top to bottom
@@ -41,6 +42,7 @@ export default async function SettingsPage({
   return (
     <div className="space-y-10">
       <PageTitle title={t('title')} />
+      <FeatureSettingsLinks />
 
       {/* Personal preferences first — instant, nothing to save — then the
           server-backed store settings with their single shared save bar,

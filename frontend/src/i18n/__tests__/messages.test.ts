@@ -54,6 +54,12 @@ describe('catalogue parity', () => {
       expect(valueAt(ar as Messages, key).trim(), `ar.${key}`).not.toBe('');
     }
   });
+
+  it('has no shell-encoding replacement placeholders', () => {
+    for (const key of arKeys) {
+      expect(valueAt(ar as Messages, key), `ar.${key}`).not.toMatch(/\?{2,}/);
+    }
+  });
 });
 
 describe('Arabic is actually translated', () => {

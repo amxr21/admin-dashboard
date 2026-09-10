@@ -25,6 +25,7 @@ import { resourceRouter } from './resource.route.js';
 import { branchesRouter } from './branches.route.js';
 import { shiftsRouter } from './shifts.route.js';
 import { posRouter } from './pos.route.js';
+import { organizationRouter } from './organization.route.js';
 
 /**
  * The v1 API surface. app.ts mounts this at '/api/v1'.
@@ -49,6 +50,7 @@ v1Router.use(courierRouter);
 v1Router.use(staffRouter);
 v1Router.use(settingsRouter);
 v1Router.use(branchesRouter);
+v1Router.use(organizationRouter);
 v1Router.use(diagnosticsRouter);
 v1Router.use(reportsRouter);
 v1Router.use(demoDataRouter);
