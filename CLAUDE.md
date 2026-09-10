@@ -39,6 +39,8 @@ The owner-reported review work is split into ordered branches so each concern re
    order, payment, stock movement or sale audit event.
 10. `feat/ux-delivery-operations` — adds the assignment-centred delivery board, merged timeline,
     working-now shift view, and session-level automatic scoping for singly assigned employees.
+11. `feat/ux-supplier-outreach` — adds the thin supplier directory and an audited, receipt-derived
+    low-stock email workflow without introducing purchase orders or a procurement role.
 
 Focused verification is green: 27/27 regular report routes in the browser; 181 backend report and
 scheduled-report cases; 132 frontend report cases; 52 shift cases; organization integration,

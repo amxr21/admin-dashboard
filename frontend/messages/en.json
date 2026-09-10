@@ -903,7 +903,13 @@
       "history": "Stock history for {name}",
       "addProduct": "Add product",
       "receive": "Receive stock for {name}",
-      "receiveShort": "Receive"
+      "receiveShort": "Receive",
+      "suppliers": "Suppliers",
+      "emailSupplier": "Email a supplier about {name}",
+      "emailSupplierShort": "Email supplier"
+    },
+    "notice": {
+      "supplierEmailed": "Email sent to {supplier}."
     },
     "adjust": {
       "title": "Adjust {name}",
@@ -951,6 +957,41 @@
     "emptyLowHint": "Every product is above its low-stock threshold.",
     "emptySearchHint": "No product matches that name or SKU. Check the spelling, or clear the search to see everything.",
     "noCost": "Not tracked"
+  },
+  "suppliers": {
+    "title": "Suppliers",
+    "subtitle": "Contacts used for receiving stock and low-stock outreach.",
+    "statusLabel": "Supplier status",
+    "active": "Active",
+    "inactive": "Inactive",
+    "all": "All",
+    "noEmail": "No email",
+    "total": "{count, plural, one {# supplier} other {# suppliers}}",
+    "emptyTitle": "No suppliers match this view",
+    "emptyBody": "Add a supplier or remove the current filters.",
+    "search": { "label": "Search suppliers", "placeholder": "Name, contact, email, or phone" },
+    "columns": { "name": "Supplier", "contact": "Contact", "products": "Products", "receipts": "Receipts", "lastReceived": "Last received", "status": "Status", "actions": "Actions" },
+    "actions": { "create": "New supplier", "edit": "Edit", "deactivate": "Deactivate", "reactivate": "Reactivate" },
+    "notice": { "saved": "Supplier saved.", "deactivated": "Supplier deactivated.", "reactivated": "Supplier reactivated." },
+    "form": {
+      "createTitle": "New supplier", "editTitle": "Edit supplier",
+      "description": "Keep only the contact details needed to receive and reorder stock.",
+      "name": "Supplier name", "email": "Email", "phone": "Phone", "contactName": "Contact person", "note": "Note",
+      "nameRequired": "Supplier name is required.", "saveFailed": "Could not save supplier",
+      "cancel": "Cancel", "save": "Save supplier", "saving": "Saving…"
+    },
+    "outreach": {
+      "title": "Email supplier — {product}",
+      "description": "Choose a supplier from this product's receiving history, then review the message before sending.",
+      "supplier": "Supplier", "subject": "Subject", "message": "Message",
+      "defaultSubject": "Restock request: {product}",
+      "defaultMessage": "Hello,\n\nWe currently have {stock} units of {product} in stock. Please confirm availability and expected delivery timing for a restock.\n\nThank you.",
+      "editableHint": "This message is a starting point. Review quantities and details before sending.",
+      "loading": "Loading suppliers", "sendFailed": "Email was not sent",
+      "noHistoryTitle": "No supplier history for this product", "noHistoryBody": "Receive this product from a supplier first so the relationship is recorded.",
+      "noEmailTitle": "No supplier can be emailed", "noEmailBody": "Add an email address to an active supplier in the directory, then try again.",
+      "cancel": "Cancel", "send": "Send email", "sending": "Sending…"
+    }
   },
   "stockReason": {
     "RECEIVED": "Received",

@@ -18,7 +18,14 @@
   - [x] **UX-012:** “Working now” is the default shift-operations view; approvals remain a separate shareable view.
   - [x] **Owner blocker:** automatically resolve the sole assigned branch for Cashiers and other branch-scoped employees while preserving “All branches” for Admin/Owner and Developer.
   - [ ] Run the full local gate, publish `feat/ux-delivery-operations`, and verify the stacked GitHub checks.
-- [ ] **Batch 3 — purchasing and stock:** UX-013 supplier directory and UX-014 low-stock supplier outreach.
+- [ ] **Batch 3 — purchasing and stock:** UX-013 supplier directory and UX-014 low-stock supplier outreach. Keep Supplier intentionally thin; do not expand this into purchase orders or add a procurement role.
+  - [x] Inventory the existing Supplier model, API, receipt history, low-stock data, mail service, permissions, and audit paths.
+  - [x] Add a reusable supplier directory API with create, edit, deactivate, search, and pagination contracts.
+  - [x] Add the bilingual, responsive supplier directory and create/edit workflow using shared components.
+  - [x] Connect suppliers to received-stock history and relevant product context without duplicating source-of-truth fields.
+  - [x] Add a permission-checked, audited low-stock outreach endpoint that reuses the existing mail service.
+  - [x] Add a prefilled but editable “email supplier” workflow with explicit loading, success, failure, and missing-email states.
+  - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 2.
 - [ ] **Batch 4 — customer service:** UX-015 customer case workspace, UX-016 POS customer association, UX-017 payment/phone search, and UX-018 order-status notifications. Do not introduce a Support role.
 - [ ] **Batch 5 — workflow resilience:** UX-019 session-expiry recovery, UX-020 unsaved-change guards, UX-021 expanded global search, and UX-022 URL-backed inventory state.
 - [ ] **Batch 6 — notifications:** UX-023 unread-count correctness, UX-024 filters/action links, and UX-025 accessible row actions.

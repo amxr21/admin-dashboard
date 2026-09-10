@@ -14,6 +14,13 @@ import {
 } from '../../services/inventory.service.js';
 
 import { applyReceive, previewReceive } from '../../services/bulk-receive.service.js';
+import {
+  createSupplier,
+  listProductSuppliers,
+  listSuppliers,
+  sendSupplierOutreach,
+  updateSupplier,
+} from '../../services/suppliers.service.js';
 /**
  * Inventory.
  *
@@ -29,6 +36,62 @@ import { applyReceive, previewReceive } from '../../services/bulk-receive.servic
 export const inventoryRouter = Router();
 
 const guard = [authenticate, withBranchContext, requireArea('inventory')] as const;
+
+const supplierBody = z.object({
+  name: z.string().trim().min(1).max(160),
+  email: z.string().trim().email().max(255).nullish(),
+  phone: z.string().trim().max(40).nullish(),
+  contactName: z.string().trim().max(160).nullish(),
+  note: z.string().trim().max(255).nullish(),
+  isActive: z.boolean().optional(),
+}).strict();
+
+const supplierListQuery = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  pageSize: z.coerce.number().int().positive().max(100).optional(),
+  search: z.string().trim().min(1).max(120).optional(),
+  active: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+});
+
+inventoryRouter.get('/suppliers', ...guard, async (req, res) => {
+  const parsed = supplierListQuery.safeParse(req.query);
+  if (!parsed.success) throw AppError.badRequest('Invalid query', parsed.error.flatten());
+  res.json({ data: await listSuppliers(parsed.data) });
+});
+
+inventoryRouter.post('/suppliers', ...guard, async (req, res) => {
+  const parsed = supplierBody.safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+  res.status(201).json({ data: await createSupplier(parsed.data, req) });
+});
+
+inventoryRouter.patch('/suppliers/:id', ...guard, async (req, res) => {
+  const parsed = supplierBody.partial().safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+  res.json({ data: await updateSupplier(String(req.params.id), parsed.data, req) });
+});
+
+inventoryRouter.get('/inventory/:productId/suppliers', ...guard, async (req, res) => {
+  res.json({ data: await listProductSuppliers(String(req.params.productId), req.branchId ?? undefined) });
+});
+
+const outreachBody = z.object({
+  supplierId: z.string().trim().min(1),
+  subject: z.string().trim().min(1).max(160),
+  message: z.string().trim().min(1).max(4000),
+}).strict();
+
+inventoryRouter.post('/inventory/:productId/supplier-outreach', ...guard, async (req, res) => {
+  const parsed = outreachBody.safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+  res.json({
+    data: await sendSupplierOutreach({
+      productId: String(req.params.productId),
+      branchId: req.branchId ?? undefined,
+      ...parsed.data,
+    }, req),
+  });
+});
 
 const listQuery = z.object({
   page: z.coerce.number().int().positive().optional(),
