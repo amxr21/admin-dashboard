@@ -10,7 +10,9 @@ import {
 import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
 import { AppError } from '../errors/AppError.js';
+import { ASSIGNMENT_ON_ORDER_STATUS } from '../config/orders.config.js';
 import { audit, diff } from './audit.service.js';
+import { resolveBranchLabels } from './branches.service.js';
 
 /**
  * Couriers and their assignments.
@@ -32,6 +34,15 @@ import { audit, diff } from './audit.service.js';
  */
 
 const MAX_PAGE_SIZE = 100;
+
+/** The work that still needs operational attention. Kept in one shared
+ * constant so list filters, summary counts and tests cannot drift. */
+export const ACTIVE_DELIVERY_STATUSES: readonly DeliveryStatus[] = [
+  DeliveryStatus.ASSIGNED,
+  DeliveryStatus.PICKED_UP,
+  DeliveryStatus.OUT_FOR_DELIVERY,
+  DeliveryStatus.FAILED_ATTEMPT,
+];
 
 /**
  * No 0/O/1/I/L. Codes get read aloud down a phone line and copied off a screen
@@ -224,6 +235,270 @@ export async function getCourier(id: string) {
   };
 }
 
+export type DeliveryQueue = 'active' | 'failed' | 'all';
+
+export interface DeliveryBoardParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: DeliveryStatus;
+  driverId?: string;
+  queue?: DeliveryQueue;
+  from?: string;
+  to?: string;
+  branchId?: string;
+}
+
+/**
+ * The admin delivery read model.
+ *
+ * Assignment writes already existed, but the only admin read was nested under
+ * one courier or one order. This query is deliberately assignment-centred so
+ * today's work, failures and unassigned operational context can be reviewed
+ * without opening orders one at a time.
+ */
+export async function listDeliveryBoard(params: DeliveryBoardParams) {
+  const page = Math.max(1, params.page ?? 1);
+  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, params.pageSize ?? 50));
+  const createdAt =
+    params.from || params.to
+      ? {
+          ...(params.from ? { gte: new Date(`${params.from}T00:00:00.000Z`) } : {}),
+          ...(params.to ? { lte: new Date(`${params.to}T23:59:59.999Z`) } : {}),
+        }
+      : undefined;
+
+  const baseWhere: Prisma.DeliveryAssignmentWhereInput = {
+    ...(params.driverId ? { driverId: params.driverId } : {}),
+    ...(createdAt ? { createdAt } : {}),
+    ...(params.branchId ? { order: { branchId: params.branchId } } : {}),
+    ...(params.search
+      ? {
+          OR: [
+            { order: { orderNumber: { contains: params.search } } },
+            { driver: { name: { contains: params.search } } },
+            { customerName: { contains: params.search } },
+            { customerPhone: { contains: params.search } },
+            { address: { contains: params.search } },
+            { city: { contains: params.search } },
+          ],
+        }
+      : {}),
+  };
+
+  const queueWhere: Prisma.DeliveryAssignmentWhereInput =
+    params.status !== undefined
+      ? { status: params.status }
+      : params.queue === 'failed'
+        ? { status: DeliveryStatus.FAILED_ATTEMPT }
+        : params.queue === 'all'
+          ? {}
+          : { status: { in: [...ACTIVE_DELIVERY_STATUSES] } };
+  const where = { ...baseWhere, ...queueWhere };
+
+  const [rows, total, grouped] = await prisma.$transaction([
+    prisma.deliveryAssignment.findMany({
+      where,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        status: true,
+        customerName: true,
+        customerPhone: true,
+        address: true,
+        city: true,
+        total: true,
+        paymentMethod: true,
+        note: true,
+        attemptCount: true,
+        failureReason: true,
+        createdAt: true,
+        updatedAt: true,
+        driver: { select: { id: true, name: true, phone: true, status: true } },
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            branchId: true,
+            placedAt: true,
+          },
+        },
+      },
+    }),
+    prisma.deliveryAssignment.count({ where }),
+    // Counts ignore only the queue/status choice, while retaining search,
+    // courier, date and branch filters. Switching queues therefore never
+    // changes the figures printed on the queue controls themselves.
+    prisma.deliveryAssignment.groupBy({
+      by: ['status'],
+      where: baseWhere,
+      orderBy: { status: 'asc' },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const branches = await resolveBranchLabels(rows.map((row) => row.order.branchId));
+  const counts = Object.fromEntries(
+    Object.values(DeliveryStatus).map((status) => {
+      const match = grouped.find((row) => row.status === status);
+      const count =
+        match && typeof match._count === 'object' ? (match._count._all ?? 0) : 0;
+      return [status, count];
+    }),
+  ) as Record<DeliveryStatus, number>;
+
+  return {
+    assignments: rows.map((row) => ({
+      ...row,
+      total: row.total?.toFixed(2) ?? null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      order: {
+        ...row.order,
+        placedAt: row.order.placedAt.toISOString(),
+        branch: row.order.branchId
+          ? (branches.get(row.order.branchId) ?? null)
+          : null,
+      },
+    })),
+    counts,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+export interface DeliveryTimelineParams {
+  assignmentId: string;
+  branchId?: string;
+}
+
+/**
+ * One assignment's operational history, merged from the two sources that
+ * already own it: courier field updates in AuditLog, and order status changes
+ * that propagate into delivery status. No parallel history table is added.
+ */
+export async function getDeliveryTimeline(params: DeliveryTimelineParams) {
+  const assignment = await prisma.deliveryAssignment.findFirst({
+    where: {
+      id: params.assignmentId,
+      ...(params.branchId ? { order: { branchId: params.branchId } } : {}),
+    },
+    select: {
+      id: true,
+      createdAt: true,
+      orderId: true,
+      driver: { select: { id: true, name: true } },
+      order: { select: { id: true, orderNumber: true } },
+    },
+  });
+
+  if (!assignment) throw AppError.notFound('Assignment not found');
+
+  const [deliveryAudits, orderHistory] = await Promise.all([
+    prisma.auditLog.findMany({
+      where: {
+        entity: 'orders',
+        entityId: assignment.orderId,
+        action: {
+          in: [
+            'delivery.assignment.assigned',
+            'delivery.assignment.reassigned',
+            'delivery.assignment.details_updated',
+            'delivery.assignment.status_changed',
+          ],
+        },
+        createdAt: { gte: assignment.createdAt },
+      },
+      select: { id: true, action: true, actorEmail: true, changes: true, createdAt: true },
+    }),
+    prisma.orderStatusHistory.findMany({
+      where: { orderId: assignment.orderId, createdAt: { gte: assignment.createdAt } },
+      select: {
+        id: true,
+        fromStatus: true,
+        toStatus: true,
+        note: true,
+        changedById: true,
+        createdAt: true,
+      },
+    }),
+  ]);
+
+  const actorIds = orderHistory
+    .map((entry) => entry.changedById)
+    .filter((id): id is string => id !== null);
+  const actors = actorIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: [...new Set(actorIds)] } },
+        select: { id: true, name: true, email: true },
+      })
+    : [];
+  const actorById = new Map(actors.map((actor) => [actor.id, actor]));
+
+  const hasCreationAudit = deliveryAudits.some(
+    (entry) => entry.action === 'delivery.assignment.assigned',
+  );
+  const events = [
+    ...(hasCreationAudit
+      ? []
+      : [
+          {
+            id: `created-${assignment.id}`,
+            action: 'delivery.assignment.assigned',
+            actorName: null,
+            createdAt: assignment.createdAt.toISOString(),
+            detail: {
+              status: DeliveryStatus.ASSIGNED,
+              driverId: assignment.driver.id,
+              driverName: assignment.driver.name,
+            },
+          },
+        ]),
+    ...deliveryAudits.map((entry) => ({
+      id: `audit-${entry.id}`,
+      action: entry.action,
+      actorName: entry.actorEmail,
+      createdAt: entry.createdAt.toISOString(),
+      detail: (entry.changes as Record<string, unknown> | null) ?? {},
+    })),
+    ...orderHistory.flatMap((entry) => {
+      const toStatus = ASSIGNMENT_ON_ORDER_STATUS[entry.toStatus];
+      if (!toStatus) return [];
+      const actor = entry.changedById ? actorById.get(entry.changedById) : null;
+      return [
+        {
+          id: `order-status-${entry.id}`,
+          action: 'delivery.assignment.status_changed',
+          actorName: actor?.name ?? actor?.email ?? null,
+          createdAt: entry.createdAt.toISOString(),
+          detail: {
+            deliveryStatus: {
+              from: entry.fromStatus ? (ASSIGNMENT_ON_ORDER_STATUS[entry.fromStatus] ?? null) : null,
+              to: toStatus,
+            },
+            source: 'order',
+            note: entry.note,
+          },
+        },
+      ];
+    }),
+  ].sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+
+  return {
+    assignment: {
+      id: assignment.id,
+      order: assignment.order,
+      driver: assignment.driver,
+    },
+    events,
+  };
+}
+
 export interface CourierInput {
   name: string;
   email?: string | undefined;
@@ -350,15 +625,22 @@ export interface AssignInput {
  * updates the existing row rather than creating a second — two couriers
  * holding the same parcel is a real-world failure, not just a data one.
  */
-export async function assignOrder(input: AssignInput) {
-  const [order, courier] = await Promise.all([
+export async function assignOrder(input: AssignInput, req?: Request) {
+  const [order, courier, existing] = await Promise.all([
     prisma.order.findUnique({
       where: { id: input.orderId },
       select: { id: true, status: true, total: true, customer: { select: { name: true, phone: true } } },
     }),
     prisma.deliveryStaff.findUnique({
       where: { id: input.driverId },
-      select: { id: true, status: true },
+      select: { id: true, name: true, status: true },
+    }),
+    prisma.deliveryAssignment.findUnique({
+      where: { orderId: input.orderId },
+      select: {
+        status: true,
+        driver: { select: { id: true, name: true } },
+      },
     }),
   ]);
 
@@ -417,6 +699,28 @@ export async function assignOrder(input: AssignInput) {
     },
   });
 
+  if (req) {
+    audit(req, {
+      action: existing
+        ? 'delivery.assignment.reassigned'
+        : 'delivery.assignment.assigned',
+      entity: 'orders',
+      entityId: input.orderId,
+      changes: {
+        driver: {
+          from: existing
+            ? { id: existing.driver.id, name: existing.driver.name }
+            : null,
+          to: { id: courier.id, name: courier.name },
+        },
+        status: {
+          from: existing?.status ?? null,
+          to: DeliveryStatus.ASSIGNED,
+        },
+      },
+    });
+  }
+
   return assignment;
 }
 
@@ -438,10 +742,21 @@ export interface UpdateAssignmentInput {
  * `unassignOrder` refuses to delete one — editing the record of a completed
  * delivery erases what actually happened.
  */
-export async function updateAssignment(assignmentId: string, input: UpdateAssignmentInput) {
+export async function updateAssignment(
+  assignmentId: string,
+  input: UpdateAssignmentInput,
+  req?: Request,
+) {
   const existing = await prisma.deliveryAssignment.findUnique({
     where: { id: assignmentId },
-    select: { id: true, status: true },
+    select: {
+      id: true,
+      orderId: true,
+      status: true,
+      address: true,
+      city: true,
+      note: true,
+    },
   });
 
   if (!existing) throw AppError.notFound('Assignment not found');
@@ -469,6 +784,19 @@ export async function updateAssignment(assignmentId: string, input: UpdateAssign
       order: { select: { id: true, orderNumber: true, status: true } },
     },
   });
+
+  const changes = diff(
+    { address: existing.address, city: existing.city, note: existing.note },
+    { ...input },
+  );
+  if (req && Object.keys(changes).length > 0) {
+    audit(req, {
+      action: 'delivery.assignment.details_updated',
+      entity: 'orders',
+      entityId: existing.orderId,
+      changes,
+    });
+  }
 
   return assignment;
 }

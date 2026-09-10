@@ -35,6 +35,34 @@ interface ListBody {
 interface AssignBody {
   data: { assignment: { id: string; status: string; driver: { id: string } } };
 }
+interface BoardBody {
+  data: {
+    assignments: {
+      id: string;
+      status: DeliveryStatus;
+      customerName: string | null;
+      driver: { id: string; name: string };
+      order: {
+        id: string;
+        orderNumber: string;
+        branch: { id: string; name: string } | null;
+      };
+    }[];
+    counts: Record<DeliveryStatus, number>;
+    total: number;
+  };
+}
+interface TimelineBody {
+  data: {
+    events: {
+      id: string;
+      action: string;
+      actorName: string | null;
+      createdAt: string;
+      detail: Record<string, unknown>;
+    }[];
+  };
+}
 interface ErrorBody {
   error: { code: string; message: string; details?: unknown };
 }
@@ -69,12 +97,13 @@ async function makeCourier(status: DeliveryStaffStatus = DeliveryStaffStatus.ACT
   return courier.id;
 }
 
-async function makeOrder(status: OrderStatus = OrderStatus.CONFIRMED) {
+async function makeOrder(status: OrderStatus = OrderStatus.CONFIRMED, branchId?: string) {
   const order = await prisma.order.create({
     data: {
       orderNumber: `${RUN}-${orderIds.length}`,
       status,
       total: new Prisma.Decimal('25.00'),
+      branchId,
     },
   });
   orderIds.push(order.id);
@@ -99,6 +128,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.auditLog.deleteMany({
+    where: { entity: 'orders', entityId: { in: orderIds } },
+  });
   await prisma.deliveryAssignment.deleteMany({ where: { orderId: { in: orderIds } } });
   await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
   await prisma.deliveryStaff.deleteMany({ where: { id: { in: courierIds } } });
@@ -668,5 +700,183 @@ describe('which branches a courier serves (O2)', () => {
     // rejected one.
     const after = await prisma.deliveryStaffBranch.count({ where: { courierId: id } });
     expect(after).toBe(0);
+  });
+});
+
+describe('delivery operations board and timeline', () => {
+  let businessId = '';
+  let marinaId = '';
+  let downtownId = '';
+
+  beforeAll(async () => {
+    const business = await prisma.business.create({
+      data: { name: `${RUN} board business` },
+    });
+    businessId = business.id;
+    const [marina, downtown] = await Promise.all([
+      prisma.branch.create({ data: { businessId, name: `${RUN} board Marina` } }),
+      prisma.branch.create({ data: { businessId, name: `${RUN} board Downtown` } }),
+    ]);
+    marinaId = marina.id;
+    downtownId = downtown.id;
+  });
+
+  afterAll(async () => {
+    await prisma.branch.deleteMany({ where: { businessId } });
+    await prisma.business.deleteMany({ where: { id: businessId } });
+  });
+
+  async function makeBoardAssignment(
+    status: DeliveryStatus,
+    branchId = marinaId,
+    customerName = `${RUN} Customer`,
+  ) {
+    const orderId = await makeOrder(OrderStatus.CONFIRMED, branchId);
+    const driverId = await makeCourier();
+    const created = await request(app)
+      .post('/api/v1/assignments')
+      .set(auth(ownerToken))
+      .send({ orderId, driverId, address: `${RUN} Street` });
+    const assignmentId = (created.body as AssignBody).data.assignment.id;
+    await prisma.deliveryAssignment.update({
+      where: { id: assignmentId },
+      data: { status, customerName },
+    });
+    return { assignmentId, orderId, driverId };
+  }
+
+  it('uses the delivery permission for board and timeline reads', async () => {
+    const unauthenticated = await request(app).get('/api/v1/assignments');
+    const forbidden = await request(app)
+      .get('/api/v1/assignments')
+      .set(auth(supportToken));
+
+    expect(unauthenticated.status).toBe(401);
+    expect(forbidden.status).toBe(403);
+  });
+
+  it('validates board query values at the route boundary', async () => {
+    for (const query of ['queue=unknown', 'status=UNKNOWN', 'pageSize=101', 'from=10-09-2026']) {
+      const response = await request(app)
+        .get(`/api/v1/assignments?${query}`)
+        .set(auth(ownerToken));
+      expect(response.status).toBe(400);
+    }
+  });
+
+  it('defaults to active work, exposes failed work, and keeps stable status counts', async () => {
+    const active = await makeBoardAssignment(DeliveryStatus.OUT_FOR_DELIVERY);
+    const failed = await makeBoardAssignment(DeliveryStatus.FAILED_ATTEMPT);
+    const delivered = await makeBoardAssignment(DeliveryStatus.DELIVERED);
+
+    const activeResponse = await request(app)
+      .get(`/api/v1/assignments?search=${encodeURIComponent(RUN)}&pageSize=100`)
+      .set(auth(ownerToken));
+    expect(activeResponse.status).toBe(200);
+    const activeBody = activeResponse.body as BoardBody;
+    const activeIds = activeBody.data.assignments.map((assignment) => assignment.id);
+    expect(activeIds).toContain(active.assignmentId);
+    expect(activeIds).toContain(failed.assignmentId);
+    expect(activeIds).not.toContain(delivered.assignmentId);
+    expect(activeBody.data.counts.OUT_FOR_DELIVERY).toBeGreaterThanOrEqual(1);
+    expect(activeBody.data.counts.FAILED_ATTEMPT).toBeGreaterThanOrEqual(1);
+    expect(activeBody.data.counts.DELIVERED).toBeGreaterThanOrEqual(1);
+
+    const failedResponse = await request(app)
+      .get(`/api/v1/assignments?queue=failed&search=${encodeURIComponent(RUN)}&pageSize=100`)
+      .set(auth(ownerToken));
+    const failedRows = (failedResponse.body as BoardBody).data.assignments;
+    expect(failedRows.length).toBeGreaterThanOrEqual(1);
+    expect(failedRows.every((assignment) => assignment.status === DeliveryStatus.FAILED_ATTEMPT)).toBe(true);
+  });
+
+  it('searches human references and keeps a scoped branch isolated', async () => {
+    const marina = await makeBoardAssignment(
+      DeliveryStatus.ASSIGNED,
+      marinaId,
+      `${RUN} Searchable Person`,
+    );
+    const downtown = await makeBoardAssignment(
+      DeliveryStatus.ASSIGNED,
+      downtownId,
+      `${RUN} Other Person`,
+    );
+
+    const response = await request(app)
+      .get('/api/v1/assignments?queue=all&search=Searchable%20Person&pageSize=100')
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', marinaId);
+    expect(response.status).toBe(200);
+    const body = response.body as BoardBody;
+    expect(body.data.assignments.map((assignment) => assignment.id)).toContain(
+      marina.assignmentId,
+    );
+    expect(body.data.assignments.map((assignment) => assignment.id)).not.toContain(
+      downtown.assignmentId,
+    );
+    expect(body.data.assignments[0]?.order.branch?.id).toBe(marinaId);
+  });
+
+  it('merges assignment audits and order-driven status changes chronologically', async () => {
+    const { assignmentId, orderId, driverId } = await makeBoardAssignment(
+      DeliveryStatus.ASSIGNED,
+    );
+
+    await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { action: 'delivery.assignment.assigned', entityId: orderId },
+      }),
+    );
+
+    await request(app)
+      .patch(`/api/v1/assignments/${assignmentId}`)
+      .set(auth(ownerToken))
+      .send({ city: 'Dubai Marina' });
+    await waitFor(() =>
+      prisma.auditLog.findFirst({
+        where: { action: 'delivery.assignment.details_updated', entityId: orderId },
+      }),
+    );
+
+    await prisma.orderStatusHistory.create({
+      data: {
+        orderId,
+        fromStatus: OrderStatus.CONFIRMED,
+        toStatus: OrderStatus.SHIPPED,
+        changedById: null,
+      },
+    });
+
+    const response = await request(app)
+      .get(`/api/v1/assignments/${assignmentId}/timeline`)
+      .set(auth(ownerToken));
+    expect(response.status).toBe(200);
+    const events = (response.body as TimelineBody).data.events;
+    expect(events.map((event) => event.action)).toEqual(
+      expect.arrayContaining([
+        'delivery.assignment.assigned',
+        'delivery.assignment.details_updated',
+        'delivery.assignment.status_changed',
+      ]),
+    );
+    expect(events.map((event) => new Date(event.createdAt).getTime())).toEqual(
+      [...events]
+        .map((event) => new Date(event.createdAt).getTime())
+        .sort((left, right) => left - right),
+    );
+    expect(JSON.stringify(events)).toContain(driverId);
+    expect(JSON.stringify(events)).toContain(DeliveryStatus.OUT_FOR_DELIVERY);
+  });
+
+  it('does not reveal an assignment outside the active branch', async () => {
+    const { assignmentId } = await makeBoardAssignment(
+      DeliveryStatus.ASSIGNED,
+      downtownId,
+    );
+    const response = await request(app)
+      .get(`/api/v1/assignments/${assignmentId}/timeline`)
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', marinaId);
+    expect(response.status).toBe(404);
   });
 });

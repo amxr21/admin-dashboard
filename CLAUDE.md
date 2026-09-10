@@ -10,7 +10,8 @@
 - **Status**: active development. The 2026-09-10 review added report reliability, consistent
   loading feedback, scroll containment, editable organization structure and missing Settings
   destinations. UX-009 now makes POS checkout retries safe and passed the complete GitHub CI gate
-  in PR #195. Batch 2 delivery operations is next.
+  in PR #195. Batch 2 delivery operations and automatic employee branch scoping are implemented;
+  the full local gate and stacked PR are next.
 
 ## 2026-09-10 review stack
 
@@ -36,6 +37,8 @@ The owner-reported review work is split into ordered branches so each concern re
 9. `fix/ux-009-idempotent-checkout` — requires a UUID request key for POS checkout and atomically
    stores the first committed response, so sequential or simultaneous retries cannot duplicate an
    order, payment, stock movement or sale audit event.
+10. `feat/ux-delivery-operations` — adds the assignment-centred delivery board, merged timeline,
+    working-now shift view, and session-level automatic scoping for singly assigned employees.
 
 Focused verification is green: 27/27 regular report routes in the browser; 181 backend report and
 scheduled-report cases; 132 frontend report cases; 52 shift cases; organization integration,
@@ -129,9 +132,15 @@ the remaining local gates. No deployment has been performed.
   `courierFetch` validate: `api.ts` casts the same way at two call sites and `zod` is
   backend-only, so validating here alone would make the courier portal the one client with a
   different contract. The cast is why the bug stayed invisible, not why it happened.
-- **Still missing**: no delivery board anywhere (only a courier roster — an admin cannot see
-  today's deliveries or a failed queue without opening orders one by one), no courier performance
-  metrics.
+- **2026-09-10 (UX-010/011)**: `/admin/delivery` now opens on an assignment-centred operational
+  board with active, failed and all queues; URL-backed courier/status/date/search filters; branch
+  scoping; responsive cards; and a chronological timeline merging assignment audits with order
+  delivery-status changes. Courier setup remains available as a separate view. Courier performance
+  metrics remain open.
+- **2026-09-10 cashier branch fix**: the authenticated session reconciles its locally stored branch
+  with the branches the user may enter. A branch-scoped employee with one assignment is selected
+  automatically, stale assignments are cleared, and business-wide Owner/Developer accounts keep
+  the intentional all-branch overview.
 
 ### Reports
 - **Status**: shipped

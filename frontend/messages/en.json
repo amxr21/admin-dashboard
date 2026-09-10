@@ -1038,7 +1038,65 @@
   },
   "delivery": {
     "title": "Delivery",
-    "subtitle": "Couriers, and the access code each one signs in with.",
+    "subtitle": "Track active deliveries, resolve failures, and manage couriers.",
+    "workspace": {
+      "label": "Delivery view",
+      "board": "Delivery board",
+      "couriers": "Couriers"
+    },
+    "board": {
+      "title": "Delivery board",
+      "subtitle": "Live assignments and delivery exceptions across the selected branch.",
+      "queueLabel": "Delivery queue",
+      "queues": {
+        "active": "Active ({count})",
+        "failed": "Failed ({count})",
+        "all": "All ({count})"
+      },
+      "search": {
+        "label": "Search deliveries",
+        "placeholder": "Order, customer, phone, address, or courier"
+      },
+      "filters": {
+        "courier": "Courier",
+        "status": "Status",
+        "allCouriers": "All couriers",
+        "allStatuses": "All statuses",
+        "from": "From",
+        "to": "To"
+      },
+      "columns": {
+        "order": "Order",
+        "customer": "Customer",
+        "address": "Address",
+        "courier": "Courier",
+        "branch": "Branch",
+        "status": "Status",
+        "amount": "Amount",
+        "updated": "Updated",
+        "actions": "Actions"
+      },
+      "today": "Today",
+      "timeline": "Timeline",
+      "notRecorded": "Not recorded",
+      "invalidRange": "The start date must be on or before the end date.",
+      "emptyTitle": "No deliveries match this view",
+      "emptyBody": "Try another queue or remove one of the filters.",
+      "total": "{count, plural, one {# delivery} other {# deliveries}}"
+    },
+    "timeline": {
+      "title": "Timeline — {order}",
+      "description": "Assignment and delivery status changes, oldest first.",
+      "loading": "Loading delivery timeline",
+      "loadFailed": "Could not load the delivery timeline",
+      "byActor": "By {actor}",
+      "actions": {
+        "assigned": "Courier assigned",
+        "reassigned": "Courier reassigned",
+        "detailsUpdated": "Delivery details updated",
+        "statusChanged": "Delivery status changed"
+      }
+    },
     "empty": "No couriers yet.",
     "total": "{count, plural, one {# courier} other {# couriers}}",
     "columns": {
@@ -2333,6 +2391,13 @@
     }
   },
   "shifts": {
+    "workspace": {
+      "title": "Shift operations",
+      "subtitle": "See who is working now and review shifts that need a decision.",
+      "label": "Shift view",
+      "working": "Working now",
+      "approvals": "Approvals"
+    },
     "start": "Start shift",
     "starting": "Starting...",
     "started": "Shift started",

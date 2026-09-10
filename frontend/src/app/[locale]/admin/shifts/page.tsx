@@ -1,7 +1,7 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { NavLabelHeading } from '@/components/shell/nav-label-heading';
-import { ShiftApprovalQueue } from '@/components/staff/shift-approval-queue';
+import { ShiftOperationsWorkspace } from '@/components/staff/shift-operations-workspace';
 
 /**
  * A manager's shift-approval queue (O9.19).
@@ -18,7 +18,7 @@ export default async function ShiftsPage({
   const { locale } = await params;
   setRequestLocale(locale);
 
-  const t = await getTranslations('shifts.approval');
+  const t = await getTranslations('shifts.workspace');
 
   return (
     <div className="space-y-6">
@@ -27,7 +27,7 @@ export default async function ShiftsPage({
         <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
       </div>
 
-      <ShiftApprovalQueue />
+      <ShiftOperationsWorkspace />
     </div>
   );
 }

@@ -52,6 +52,8 @@ const TONES = {
     OUT_FOR_DELIVERY: 'info',
     DELIVERED: 'success',
     HANDED_OVER: 'success',
+    CANCELED: 'destructive',
+    RETURNED: 'muted',
     // Re-triable, not a terminal error, but still a failure at a glance —
     // distinct from the in-progress 'info' tones above.
     FAILED_ATTEMPT: 'destructive',

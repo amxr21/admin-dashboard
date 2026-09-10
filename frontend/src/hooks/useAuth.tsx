@@ -20,6 +20,7 @@ import {
   writeSession,
   type SessionUser,
 } from '@/lib/auth-storage';
+import { ensureBranchScope } from '@/lib/branch-scope';
 
 /**
  * Session state for the app.
@@ -113,11 +114,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     apiFetch<SessionUser>('/auth/me')
-      .then((fresh) => {
+      .then(async (fresh) => {
         if (cancelled) return;
         setUser(fresh);
         const token = readToken();
         if (token) writeSession(token, fresh);
+        await ensureBranchScope(fresh.role);
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -156,6 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     writeSession(result.token, result.user);
+    await ensureBranchScope(result.user.role);
     setUser(result.user);
     return { status: 'SIGNED_IN', role: result.user.role };
   }, []);
@@ -167,6 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     writeSession(result.token, result.user);
+    await ensureBranchScope(result.user.role);
     setUser(result.user);
     // Returned for the same reason as `signIn`: a 2FA sign-in must land on
     // the same page a password-only one would, and the caller cannot read it

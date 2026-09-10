@@ -12,7 +12,12 @@
 ### Approved implementation order
 
 - [x] **Batch 1 — UX-009: idempotent POS checkout.** Prevent retries after an uncertain response from creating duplicate orders, payments, or stock movements. Shipped on `fix/ux-009-idempotent-checkout`; the reusable backend primitive, client intent reuse, migration, concurrency coverage, and full GitHub CI gate are green in PR #195.
-- [ ] **Batch 2 — delivery operations:** UX-010 delivery board, UX-011 assignment timeline, and UX-012 working-now coverage. Keep permissions compatible with the three-role model rather than introducing a Manager role.
+- [ ] **Batch 2 — delivery operations:** implementation complete; full local gate and stacked PR publication pending. Keep permissions compatible with the three-role model rather than introducing a Manager role.
+  - [x] **UX-010:** branch-safe, URL-filtered delivery board with active/failed queues, responsive cards, bilingual UI, and explicit loading/error/empty states.
+  - [x] **UX-011:** chronological assignment timeline merging assignment audits with delivery status history.
+  - [x] **UX-012:** “Working now” is the default shift-operations view; approvals remain a separate shareable view.
+  - [x] **Owner blocker:** automatically resolve the sole assigned branch for Cashiers and other branch-scoped employees while preserving “All branches” for Admin/Owner and Developer.
+  - [ ] Run the full local gate, publish `feat/ux-delivery-operations`, and verify the stacked GitHub checks.
 - [ ] **Batch 3 — purchasing and stock:** UX-013 supplier directory and UX-014 low-stock supplier outreach.
 - [ ] **Batch 4 — customer service:** UX-015 customer case workspace, UX-016 POS customer association, UX-017 payment/phone search, and UX-018 order-status notifications. Do not introduce a Support role.
 - [ ] **Batch 5 — workflow resilience:** UX-019 session-expiry recovery, UX-020 unsaved-change guards, UX-021 expanded global search, and UX-022 URL-backed inventory state.
