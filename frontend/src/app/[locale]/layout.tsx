@@ -21,6 +21,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/hooks/useAuth';
 import { getDirection, routing } from '@/i18n/routing';
 import { getBlockingAppearanceScript } from '@/lib/apply-appearance';
+import { getBlockingMotionScript } from '@/lib/motion-preference';
 
 import '../globals.css';
 
@@ -134,7 +135,13 @@ export default async function LocaleLayout({
       // client markup legitimately differ on this one element.
       suppressHydrationWarning
     >
-      <body className="bg-background text-foreground font-sans antialiased">
+      {/* Browser extensions (Grammarly, etc.) inject attributes like
+          data-gr-ext-installed onto <body> before React hydrates — a real
+          mismatch, but not one this app can or should react to. */}
+      <body
+        className="bg-background text-foreground font-sans antialiased"
+        suppressHydrationWarning
+      >
         {/* Blocking, runs before hydration — same reasoning as next-themes'
             own script (see theme-provider.tsx): paints the last-known accent
             color/corner radius/density from localStorage immediately, so a
@@ -144,6 +151,13 @@ export default async function LocaleLayout({
         <script
           suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: getBlockingAppearanceScript() }}
+        />
+        {/* Motion is also a pre-paint preference. Applying the data attribute
+            here prevents a reduced-motion user seeing the first drawer/page
+            animate before MotionProvider hydrates. */}
+        <script
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: getBlockingMotionScript() }}
         />
         <NextIntlClientProvider>
           <ThemeProvider>

@@ -1,15 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 
 import { DateRangePresetField } from '@/components/reports/date-range-field';
 import { ExportButton } from '@/components/reports/export-button';
 import { ErrorSection } from '@/components/errors/error-section';
-import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingState } from '@/components/ui/loading-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useReportQuery } from '@/hooks/useReportQuery';
 import { useUrlState } from '@/hooks/useUrlState';
 import { defaultRange, fetchInventoryTurnover, type DateRange, type InventoryTurnover } from '@/lib/reports-api';
 
@@ -23,31 +23,13 @@ export function InventoryTurnoverView() {
   const t = useTranslations('reports.inventoryTurnover');
   const tStates = useTranslations('states');
   const formatter = useFormatter();
-  const translateError = useTranslatedApiError();
 
   const defaults = useMemo(() => defaultRange(), []);
   const { values, setValues } = useUrlState({ from: defaults.from, to: defaults.to, tab: 'turnover' });
   const range: DateRange = useMemo(() => ({ from: values.from!, to: values.to! }), [values.from, values.to]);
 
-  const [data, setData] = useState<InventoryTurnover | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      setData(await fetchInventoryTurnover(range));
-    } catch (caught) {
-      setError(translateError(caught));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [range, translateError]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const query = useCallback(() => fetchInventoryTurnover(range), [range]);
+  const { data, isLoading, error, setError, load } = useReportQuery<InventoryTurnover>(query);
 
   function renderRows(rows: InventoryTurnover['turnover']) {
     return rows.map((row) => (
@@ -72,7 +54,7 @@ export function InventoryTurnoverView() {
       </div>
 
       {isLoading ? (
-        <Skeleton className="h-64 w-full" />
+        <LoadingState />
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : (

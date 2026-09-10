@@ -87,6 +87,20 @@ beforeEach(() => {
 });
 
 describe('rendering a control per declared type', () => {
+  it('groups newer POS, returns and navigation settings explicitly', async () => {
+    fetchSettings.mockResolvedValue([
+      ...makeSettings(),
+      { key: 'pos.maxDiscountPercent', label: 'Max discount', type: 'number', value: 10, isDefault: true, updatedAt: null },
+      { key: 'returns.windowDays', label: 'Return window', type: 'number', value: 30, isDefault: true, updatedAt: null },
+      { key: 'labels.pos', label: 'Till label', type: 'string', value: 'Till', isDefault: true, updatedAt: null },
+    ] satisfies Setting[]);
+    render(<SettingsForm />);
+
+    expect(await screen.findByRole('heading', { name: /point of sale/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^returns$/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /navigation labels/i })).toBeInTheDocument();
+  });
+
   it('renders a checkbox for boolean', async () => {
     fetchSettings.mockResolvedValue(makeSettings());
     render(<SettingsForm />);

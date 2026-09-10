@@ -62,6 +62,9 @@ function titleCase(value: string): string {
  */
 export const SETTINGS_GROUPS = [
   { id: 'brand', icon: Store, match: (key: string) => key.startsWith('store.') },
+  { id: 'pos', icon: Store, match: (key: string) => key.startsWith('pos.') },
+  { id: 'returns', icon: SlidersHorizontal, match: (key: string) => key.startsWith('returns.') },
+  { id: 'labels', icon: Settings2, match: (key: string) => key.startsWith('labels.') },
   {
     id: 'appearance',
     icon: Palette,

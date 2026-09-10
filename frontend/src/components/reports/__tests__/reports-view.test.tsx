@@ -2,7 +2,7 @@ import { createElement, useEffect, useReducer, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 
-import { render, screen, waitFor } from '@/test/render';
+import { act, render, screen, waitFor } from '@/test/render';
 import { ApiError } from '@/lib/api';
 import { ReportsView } from '../reports-view';
 
@@ -274,6 +274,38 @@ describe('order outcomes', () => {
 });
 
 describe('failure states', () => {
+  it('clears the previous best sellers when a reload fails', async () => {
+    resolveAll();
+    render(<ReportsView />);
+    await screen.findByText('Ceramic Planter');
+    fetchOverview.mockRejectedValue(new ApiError(400, 'BAD_REQUEST', 'Invalid report range'));
+    await userEvent.click(screen.getByRole('button', { name: /^updated/i }));
+    await screen.findByText('Invalid report range');
+    expect(screen.queryByText('Ceramic Planter')).not.toBeInTheDocument();
+  });
+
+  it('ignores an old range failure after the new range succeeds', async () => {
+    resolveAll();
+    let rejectOld!: (error: unknown) => void;
+    fetchOverview.mockImplementationOnce(() => new Promise((_, reject) => { rejectOld = reject; }));
+    render(<ReportsView />);
+    await waitFor(() => expect(fetchOverview).toHaveBeenCalled());
+    await act(() => urlState.write('/admin/reports?from=2026-06-01&to=2026-06-30'));
+    await screen.findByText('Ceramic Planter');
+    await act(async () => { rejectOld(new ApiError(400, 'BAD_REQUEST', 'Old range failure')); });
+    expect(screen.queryByText('Old range failure')).not.toBeInTheDocument();
+    expect(screen.getByText('Ceramic Planter')).toBeInTheDocument();
+  });
+
+  it('normalizes invalid query options before requesting data', async () => {
+    resolveAll();
+    urlState.write('/admin/reports?granularity=invalid&compare=invalid&topLimit=NaN');
+    render(<ReportsView />);
+    await screen.findByText('Ceramic Planter');
+    expect(fetchRevenue).toHaveBeenCalledWith(expect.anything(), 'day');
+    expect(fetchTopProducts).toHaveBeenCalledWith(expect.anything(), 10);
+  });
+
   it('keeps the range refusal, which names the limit', async () => {
     // "Choose a range of 731 days or fewer" is the sentence that says what to
     // do. Flattening it to "something went wrong" hides the fix.

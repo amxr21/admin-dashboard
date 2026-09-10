@@ -213,6 +213,90 @@ describe('clocking on and off', () => {
   });
 });
 
+describe('starting a shift with no branch header, in a multi-business install', () => {
+  // Reproduces production: `defaultBranchId()` refuses to guess once a
+  // second business exists, but a cashier has no "which business" decision
+  // to make and no UI that asks them to — they should fall back to wherever
+  // their OWN roster (`UserBranch`) says they work, never the global
+  // ambiguity error a business-wide OWNER/DEVELOPER is expected to resolve.
+  let secondBusinessId = '';
+  let otherBranchId = '';
+
+  beforeAll(async () => {
+    const business = await prisma.business.create({ data: { name: `${RUN} second business` } });
+    businessIds.push(business.id);
+    secondBusinessId = business.id;
+
+    const branch = await prisma.branch.create({
+      data: { businessId: business.id, name: `${RUN} Downtown` },
+    });
+    otherBranchId = branch.id;
+  });
+
+  it('a business-wide role still gets the ambiguity error, no header, no roster row', async () => {
+    const res = await request(app).post('/api/v1/shifts').set(auth(ownerToken)).send({});
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error: { message: string } }).error.message).toMatch(/more than one business/);
+    expect((res.body as { error: { details: { reason: string } } }).error.details.reason)
+      .toBe('BRANCH_REQUIRED_MULTIPLE_BUSINESSES');
+  });
+
+  it('a branch-scoped role assigned to exactly one branch defaults to it, no header needed', async () => {
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-one-branch');
+    await prisma.userBranch.create({
+      data: { userId: cashier.id, branchId: otherBranchId, role: StaffRole.CASHIER },
+    });
+
+    const res = await request(app)
+      .post('/api/v1/shifts')
+      .set(auth(signToken(cashier)))
+      .send({});
+
+    expect(res.status).toBe(201);
+    expect((res.body as ShiftBody).data.shift.branch.id).toBe(otherBranchId);
+  });
+
+  it('a branch-scoped role assigned to more than one branch must pick', async () => {
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-two-branches');
+    await prisma.userBranch.createMany({
+      data: [
+        { userId: cashier.id, branchId, role: StaffRole.CASHIER },
+        { userId: cashier.id, branchId: otherBranchId, role: StaffRole.CASHIER },
+      ],
+    });
+
+    const res = await request(app)
+      .post('/api/v1/shifts')
+      .set(auth(signToken(cashier)))
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error: { message: string } }).error.message).toMatch(/more than one/);
+    expect((res.body as { error: { details: { reason: string } } }).error.details.reason)
+      .toBe('BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS');
+  });
+
+  it('a branch-scoped role with no roster row still gets the ambiguity error', async () => {
+    const unassigned = await makeUser(StaffRole.CASHIER, 'cashier-unassigned');
+
+    const res = await request(app)
+      .post('/api/v1/shifts')
+      .set(auth(signToken(unassigned)))
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error: { message: string } }).error.message).toMatch(/more than one business/);
+  });
+
+  afterAll(async () => {
+    await prisma.userBranch.deleteMany({ where: { branchId: { in: [branchId, otherBranchId] } } });
+    await prisma.branch.deleteMany({ where: { businessId: secondBusinessId } });
+    await prisma.business.delete({ where: { id: secondBusinessId } });
+    businessIds.splice(businessIds.indexOf(secondBusinessId), 1);
+  });
+});
+
 describe('corrections stay visible', () => {
   it('refuses editing your OWN shift, even as OWNER', async () => {
     // The person who benefits must not be the person who approves. This holds

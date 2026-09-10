@@ -41,6 +41,12 @@ pnpm dev                                       # FE :3000  ·  BE :4000
 
 ## Conventions
 
+Backend integration tests require a dedicated local MySQL database named
+`test_*` or `*_test`. Set `TEST_DATABASE_URL` in `backend/.env` when the app
+uses a different local database. The runner refuses ordinary application
+database names and remote hosts before importing the application. Do not run
+integration tests against data used by the dashboard.
+
 All non-obvious ones are documented in [FOUNDATIONS.md](FOUNDATIONS.md). The short version:
 
 - Every API route lives under `/api/v1/`.

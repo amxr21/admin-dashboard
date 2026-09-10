@@ -1,15 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { DateRangePresetField } from '@/components/reports/date-range-field';
 import { ExportButton } from '@/components/reports/export-button';
 import { EmptyState } from '@/components/empty-state';
 import { ErrorSection } from '@/components/errors/error-section';
-import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingState } from '@/components/ui/loading-state';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
-import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useReportQuery } from '@/hooks/useReportQuery';
 import { useUrlState } from '@/hooks/useUrlState';
 import {
   defaultRange,
@@ -28,31 +28,13 @@ export function CustomerNewVsReturningView() {
   const t = useTranslations('reports.customerNewVsReturning');
   const tStates = useTranslations('states');
   const formatCurrency = useCurrencyFormat();
-  const translateError = useTranslatedApiError();
 
   const defaults = useMemo(() => defaultRange(), []);
   const { values, setValues } = useUrlState({ from: defaults.from, to: defaults.to });
   const range: DateRange = useMemo(() => ({ from: values.from!, to: values.to! }), [values.from, values.to]);
 
-  const [data, setData] = useState<CustomerNewVsReturning | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      setData(await fetchCustomerNewVsReturning(range));
-    } catch (caught) {
-      setError(translateError(caught));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [range, translateError]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const query = useCallback(() => fetchCustomerNewVsReturning(range), [range]);
+  const { data, isLoading, error, setError, load } = useReportQuery<CustomerNewVsReturning>(query);
 
   return (
     <div className="space-y-4">
@@ -66,7 +48,7 @@ export function CustomerNewVsReturningView() {
       </div>
 
       {isLoading ? (
-        <Skeleton className="h-40 w-full" />
+        <LoadingState />
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : (data?.new.orders ?? 0) + (data?.returning.orders ?? 0) === 0 ? (

@@ -50,7 +50,13 @@
       "forbidden": "You don't have permission to do that.",
       "notFound": "We couldn't find what you were looking for.",
       "server": "The server had a problem. Try again in a moment.",
-      "tooLarge": "That file is too large."
+      "tooLarge": "That file is too large.",
+      "reasons": {
+        "BRANCH_REQUIRED_MULTIPLE_BUSINESSES": "Choose the branch where you are working, then start the shift again.",
+        "BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS": "Your account is assigned to more than one branch. Choose today's branch, or ask a manager which one to use.",
+        "NO_ACTIVE_BRANCH": "No active branch is available for this shift. Ask an owner to configure or assign one.",
+        "BRANCH_NOT_FOUND": "That branch is no longer available. Choose another branch and try again."
+      }
     },
     "readOnlyDemo": {
       "title": "Read-only demo",
@@ -188,6 +194,7 @@
     "shift": "Shift"
   },
   "branches": {
+    "switching": "Switching branches. Preparing your workspace…",
     "switcherLabel": "Active branch",
     "allBranches": "All branches",
     "manage": {
@@ -545,9 +552,10 @@
       "description": "Your device looks offline, or the server is briefly unavailable. Check your connection and try again."
     },
     "forbidden": {
-      "title": "You don't have access to this",
-      "description": "Your account role doesn’t include this area. If you think it should, ask an owner to update your permissions."
-    }
+  "title": "You don't have access to this",
+  "description": "Your account role doesn’t include this area. If you think it should, ask an owner to update your permissions.",
+  "descriptionWithArea": "Your account role doesn’t include {area}. If you think it should, ask an owner to update your permissions."
+}
   },
   "resource": {
     "yes": "Yes",
@@ -895,7 +903,13 @@
       "history": "Stock history for {name}",
       "addProduct": "Add product",
       "receive": "Receive stock for {name}",
-      "receiveShort": "Receive"
+      "receiveShort": "Receive",
+      "suppliers": "Suppliers",
+      "emailSupplier": "Email a supplier about {name}",
+      "emailSupplierShort": "Email supplier"
+    },
+    "notice": {
+      "supplierEmailed": "Email sent to {supplier}."
     },
     "adjust": {
       "title": "Adjust {name}",
@@ -943,6 +957,41 @@
     "emptyLowHint": "Every product is above its low-stock threshold.",
     "emptySearchHint": "No product matches that name or SKU. Check the spelling, or clear the search to see everything.",
     "noCost": "Not tracked"
+  },
+  "suppliers": {
+    "title": "Suppliers",
+    "subtitle": "Contacts used for receiving stock and low-stock outreach.",
+    "statusLabel": "Supplier status",
+    "active": "Active",
+    "inactive": "Inactive",
+    "all": "All",
+    "noEmail": "No email",
+    "total": "{count, plural, one {# supplier} other {# suppliers}}",
+    "emptyTitle": "No suppliers match this view",
+    "emptyBody": "Add a supplier or remove the current filters.",
+    "search": { "label": "Search suppliers", "placeholder": "Name, contact, email, or phone" },
+    "columns": { "name": "Supplier", "contact": "Contact", "products": "Products", "receipts": "Receipts", "lastReceived": "Last received", "status": "Status", "actions": "Actions" },
+    "actions": { "create": "New supplier", "edit": "Edit", "deactivate": "Deactivate", "reactivate": "Reactivate" },
+    "notice": { "saved": "Supplier saved.", "deactivated": "Supplier deactivated.", "reactivated": "Supplier reactivated." },
+    "form": {
+      "createTitle": "New supplier", "editTitle": "Edit supplier",
+      "description": "Keep only the contact details needed to receive and reorder stock.",
+      "name": "Supplier name", "email": "Email", "phone": "Phone", "contactName": "Contact person", "note": "Note",
+      "nameRequired": "Supplier name is required.", "saveFailed": "Could not save supplier",
+      "cancel": "Cancel", "save": "Save supplier", "saving": "Saving…"
+    },
+    "outreach": {
+      "title": "Email supplier — {product}",
+      "description": "Choose a supplier from this product's receiving history, then review the message before sending.",
+      "supplier": "Supplier", "subject": "Subject", "message": "Message",
+      "defaultSubject": "Restock request: {product}",
+      "defaultMessage": "Hello,\n\nWe currently have {stock} units of {product} in stock. Please confirm availability and expected delivery timing for a restock.\n\nThank you.",
+      "editableHint": "This message is a starting point. Review quantities and details before sending.",
+      "loading": "Loading suppliers", "sendFailed": "Email was not sent",
+      "noHistoryTitle": "No supplier history for this product", "noHistoryBody": "Receive this product from a supplier first so the relationship is recorded.",
+      "noEmailTitle": "No supplier can be emailed", "noEmailBody": "Add an email address to an active supplier in the directory, then try again.",
+      "cancel": "Cancel", "send": "Send email", "sending": "Sending…"
+    }
   },
   "stockReason": {
     "RECEIVED": "Received",
@@ -1030,7 +1079,65 @@
   },
   "delivery": {
     "title": "Delivery",
-    "subtitle": "Couriers, and the access code each one signs in with.",
+    "subtitle": "Track active deliveries, resolve failures, and manage couriers.",
+    "workspace": {
+      "label": "Delivery view",
+      "board": "Delivery board",
+      "couriers": "Couriers"
+    },
+    "board": {
+      "title": "Delivery board",
+      "subtitle": "Live assignments and delivery exceptions across the selected branch.",
+      "queueLabel": "Delivery queue",
+      "queues": {
+        "active": "Active ({count})",
+        "failed": "Failed ({count})",
+        "all": "All ({count})"
+      },
+      "search": {
+        "label": "Search deliveries",
+        "placeholder": "Order, customer, phone, address, or courier"
+      },
+      "filters": {
+        "courier": "Courier",
+        "status": "Status",
+        "allCouriers": "All couriers",
+        "allStatuses": "All statuses",
+        "from": "From",
+        "to": "To"
+      },
+      "columns": {
+        "order": "Order",
+        "customer": "Customer",
+        "address": "Address",
+        "courier": "Courier",
+        "branch": "Branch",
+        "status": "Status",
+        "amount": "Amount",
+        "updated": "Updated",
+        "actions": "Actions"
+      },
+      "today": "Today",
+      "timeline": "Timeline",
+      "notRecorded": "Not recorded",
+      "invalidRange": "The start date must be on or before the end date.",
+      "emptyTitle": "No deliveries match this view",
+      "emptyBody": "Try another queue or remove one of the filters.",
+      "total": "{count, plural, one {# delivery} other {# deliveries}}"
+    },
+    "timeline": {
+      "title": "Timeline — {order}",
+      "description": "Assignment and delivery status changes, oldest first.",
+      "loading": "Loading delivery timeline",
+      "loadFailed": "Could not load the delivery timeline",
+      "byActor": "By {actor}",
+      "actions": {
+        "assigned": "Courier assigned",
+        "reassigned": "Courier reassigned",
+        "detailsUpdated": "Delivery details updated",
+        "statusChanged": "Delivery status changed"
+      }
+    },
     "empty": "No couriers yet.",
     "total": "{count, plural, one {# courier} other {# couriers}}",
     "columns": {
@@ -1192,6 +1299,18 @@
       "other": {
         "title": "Other",
         "description": "Everything else."
+      },
+      "pos": {
+        "title": "Point of sale",
+        "description": "Discount limits and controls for the till."
+      },
+      "returns": {
+        "title": "Returns",
+        "description": "Return windows and default restocking fees."
+      },
+      "labels": {
+        "title": "Navigation labels",
+        "description": "Name pages to match how your team works."
       }
     },
     "twoFactor": {
@@ -1387,6 +1506,29 @@
         "description": "This publishes that version's text as a new version. The current text stays in history and can be restored the same way.",
         "cancel": "Cancel",
         "action": "Revert"
+      }
+    },
+    "features": {
+      "title": "Business and feature setup",
+      "businesses": {
+        "title": "Businesses and branches",
+        "description": "Edit business details, shops, warehouses and branch assignments."
+      },
+      "structure": {
+        "title": "Organization structure",
+        "description": "Custom fields, job titles, departments and reporting lines."
+      },
+      "staff": {
+        "title": "Staff and access",
+        "description": "Invite staff, edit accounts and manage branch roles."
+      },
+      "roles": {
+        "title": "Role permissions",
+        "description": "Choose the areas each staff role can access."
+      },
+      "reports": {
+        "title": "Scheduled reports",
+        "description": "Manage report recipients, schedules and formats."
       }
     }
   },
@@ -2290,6 +2432,13 @@
     }
   },
   "shifts": {
+    "workspace": {
+      "title": "Shift operations",
+      "subtitle": "See who is working now and review shifts that need a decision.",
+      "label": "Shift view",
+      "working": "Working now",
+      "approvals": "Approvals"
+    },
     "start": "Start shift",
     "starting": "Starting...",
     "started": "Shift started",
@@ -2553,5 +2702,47 @@
     "exchangeStarted": "Return processed — ring up the replacement item now",
     "exchangeInProgress": "Exchange in progress — this sale will link to the return",
     "cancelExchange": "Cancel exchange"
+  },
+  "organization": {
+    "title": "Organization structure",
+    "description": "Adapt your business, branch and staff profiles to the way your organization works.",
+    "ownerOnly": "Only an owner or developer can manage organization structure.",
+    "profileType": "Profile type",
+    "entities": {
+      "business": "Businesses",
+      "branch": "Branches",
+      "staff": "Staff"
+    },
+    "profiles": "Profiles",
+    "customFields": "Custom fields",
+    "chooseRecord": "Choose a record",
+    "inactive": "Inactive",
+    "noRecords": "There are no records of this type yet.",
+    "manageRecords": "Manage records",
+    "selectHint": "Choose a record to edit its additional details.",
+    "reportingLines": "Reporting lines",
+    "permissionsHint": "Job titles and reporting lines describe your organization. Access permissions are managed separately under Staff.",
+    "noPosition": "No position details yet",
+    "reportsTo": "Reports to",
+    "fieldsHint": "Fields apply to every profile of the selected type. Turn a field off to hide it without deleting saved values. Field types cannot be changed after creation.",
+    "addField": "Add field",
+    "fieldLabel": "Field label",
+    "fieldType": "Field type",
+    "types": {
+      "text": "Text",
+      "number": "Number",
+      "date": "Date",
+      "boolean": "Yes or no"
+    },
+    "required": "Required",
+    "activeField": "Show this field",
+    "editCoreDetails": "Edit name, contact details and core information",
+    "jobTitle": "Job title",
+    "department": "Department",
+    "noManager": "No reporting manager",
+    "notSet": "Not set",
+    "yes": "Yes",
+    "no": "No",
+    "noFields": "No custom fields yet. Add them in the Custom fields tab."
   }
 }

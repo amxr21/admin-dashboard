@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Download, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
 
@@ -142,13 +142,16 @@ export function ReportsView() {
     () => ({ from: values.from!, to: values.to! }),
     [values.from, values.to],
   );
-  const granularity = values.granularity as Granularity;
-  const comparison = values.compare as Comparison;
+  const granularity: Granularity = GRANULARITIES.find((value) => value === values.granularity) ?? 'day';
+  const comparison: Comparison = values.compare === 'none' || values.compare === 'sameLastYear'
+    ? values.compare : 'previous';
   // Backend caps this at 50 (reports.route.ts) — Number() on a hand-edited
   // URL that ignores the <Select> entirely could still exceed it, so the
   // server's own ceiling is what actually protects the endpoint; this is
   // just keeping the UI's own request sane.
-  const topLimit = Number(values.topLimit);
+  const requestedLimit = Number(values.topLimit);
+  const topLimit = Number.isInteger(requestedLimit) && requestedLimit >= 1 && requestedLimit <= 50
+    ? requestedLimit : 10;
 
   const setRange = useCallback(
     (next: DateRange) => setValues({ from: next.from, to: next.to }),
@@ -181,6 +184,7 @@ export function ReportsView() {
   const [error, setError] = useState<string | null>(null);
   const [exportingView, setExportingView] = useState<ReportView | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const request = useRef(0);
 
   const handleExport = useCallback(
     async (view: ReportView, extra?: Record<string, string | number | undefined>) => {
@@ -201,6 +205,7 @@ export function ReportsView() {
   );
 
   const load = useCallback(async () => {
+    const current = ++request.current;
     setIsLoading(true);
     setError(null);
 
@@ -235,6 +240,7 @@ export function ReportsView() {
         fetchOrderValueDistribution(range),
       ]);
 
+      if (current !== request.current) return;
       setOverview(loadedOverview);
       setPreviousOverview(loadedPreviousOverview);
       setPoints(fillRevenueGaps(series.points, range, granularity));
@@ -250,6 +256,7 @@ export function ReportsView() {
       setOrderValue(loadedOrderValue);
       setLastUpdated(new Date());
     } catch (caught) {
+      if (current !== request.current) return;
       // A 400 here is a REASON — "choose a range of 731 days or fewer" — and
       // it names the limit. Flattening it would hide the fix.
       setError(
@@ -262,16 +269,22 @@ export function ReportsView() {
       // about the current one, which reads as if they still applied.
       setOverview(null);
       setPreviousOverview(null);
+      setPoints([]);
+      setComparisonPoints(null);
+      setTop(null);
+      setBreakdown(null);
+      setLastUpdated(null);
       setFulfillment(null);
       setReturns(null);
       setOrderValue(null);
     } finally {
-      setIsLoading(false);
+      if (current === request.current) setIsLoading(false);
     }
   }, [range, granularity, comparison, topLimit, translateError]);
 
   useEffect(() => {
     void load();
+    return () => { request.current += 1; };
   }, [load]);
 
   // Matches the dashboard's own trailing-copy convention exactly — a

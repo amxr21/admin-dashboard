@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal, flushSync } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { Store, Warehouse } from 'lucide-react';
 
@@ -15,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { fetchBranches, type BranchSummary } from '@/lib/branches-api';
 import { readBranchId, writeBranchId } from '@/lib/auth-storage';
+import { LoadingState } from '@/components/ui/loading-state';
 
 /**
  * Which shop am I standing in (F8.5).
@@ -40,6 +42,7 @@ export function BranchSwitcher() {
   const t = useTranslations('branches');
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [active, setActive] = useState<string | null>(null);
+  const [isSwitching, setIsSwitching] = useState(false);
 
   useEffect(() => {
     setActive(readBranchId());
@@ -58,10 +61,12 @@ export function BranchSwitcher() {
 
   function choose(value: string) {
     const next = value === 'all' ? null : value;
+    if (isSwitching || next === active) return;
+    flushSync(() => setIsSwitching(true));
     writeBranchId(next);
     setActive(next);
-    // See the note above: a reload, deliberately.
-    window.location.reload();
+    // Give the overlay a paint before the full reload replaces the document.
+    requestAnimationFrame(() => requestAnimationFrame(() => window.location.reload()));
   }
 
   // Grouped by business, because two businesses may each have a "Main" and the
@@ -76,7 +81,13 @@ export function BranchSwitcher() {
   const activeBranch = branches.find((branch) => branch.id === active);
 
   return (
-    <Select value={active ?? 'all'} onValueChange={choose}>
+    <>
+    {isSwitching ? createPortal(
+      <div className="bg-background/90 fixed inset-0 z-[100] flex items-center justify-center backdrop-blur-sm">
+        <LoadingState label={t('switching')} />
+      </div>, document.body,
+    ) : null}
+    <Select value={active ?? 'all'} onValueChange={choose} disabled={isSwitching}>
       <SelectTrigger
         className="h-8 w-full max-w-56 text-sm"
         aria-label={t('switcherLabel')}
@@ -120,5 +131,6 @@ export function BranchSwitcher() {
         ))}
       </SelectContent>
     </Select>
+    </>
   );
 }

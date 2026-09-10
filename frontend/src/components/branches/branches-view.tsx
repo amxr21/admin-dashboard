@@ -88,7 +88,7 @@ export function BranchesView() {
         icon={Building2}
         title={t('emptyTitle')}
         description={t('emptyDescription')}
-        action={{ label: t('addBusiness'), onClick: () => undefined }}
+        action={{ label: t('addBusiness'), href: '/admin/branches/new' }}
       />
     );
   }

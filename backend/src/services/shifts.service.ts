@@ -4,6 +4,7 @@ import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { outranks } from '../config/roles.js';
 import { defaultBranchId } from './inventory.service.js';
+import { isBusinessWideRole } from './branch-roles.service.js';
 
 /**
  * Shifts — periods of WORK (F6).
@@ -86,6 +87,44 @@ export async function getOpenShift(userId: string) {
 }
 
 /**
+ * Which branch an unscoped shift-start should land on.
+ *
+ * `defaultBranchId()` refuses to guess once an install has more than one
+ * business — right for an OWNER/DEVELOPER choosing where THEY are working,
+ * wrong for a cashier or any other branch-scoped role, who has no "which
+ * business" decision to make and no UI (the branch switcher) that requires
+ * them to make one. That person is either assigned to exactly one branch via
+ * `UserBranch`, in which case that IS the answer, or assigned to none, which
+ * is a roster gap for an owner to fix, not something to fall back past.
+ *
+ * A business-wide role keeps going through `defaultBranchId()` — the
+ * single-business shortcut still applies to them, and the ambiguous case is
+ * exactly the one that error message is written for.
+ */
+async function resolveShiftBranchId(userId: string, actorRole: StaffRole): Promise<string | null> {
+  if (isBusinessWideRole(actorRole)) return defaultBranchId();
+
+  const assignments = await prisma.userBranch.findMany({
+    where: { userId, branch: { isActive: true } },
+    select: { branchId: true },
+  });
+
+  if (assignments.length === 1) return assignments[0]!.branchId;
+  if (assignments.length > 1) {
+    throw AppError.badRequest(
+      'Select a branch — you work at more than one, so there is no single default to fall back to.',
+      { field: 'branchId', reason: 'BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS' },
+    );
+  }
+
+  // No roster row at all: fall back to the same single-business shortcut a
+  // business-wide role gets, so a one-branch install with no explicit roster
+  // (the common case before anyone has touched F8's staff assignment screen)
+  // keeps working exactly as it did before per-branch roles existed.
+  return defaultBranchId();
+}
+
+/**
  * Start a shift.
  *
  * `forUserId` lets a manager open one for somebody who forgot to clock in —
@@ -133,10 +172,13 @@ export async function startShift(
     throw AppError.conflict('That person already has an open shift');
   }
 
-  const branchId = input.branchId ?? (await defaultBranchId());
+  const branchId = input.branchId ?? (await resolveShiftBranchId(userId, actor.role));
 
   if (!branchId) {
-    throw AppError.badRequest('No branch to record this shift against', { field: 'branchId' });
+    throw AppError.badRequest('No branch to record this shift against', {
+      field: 'branchId',
+      reason: 'NO_ACTIVE_BRANCH',
+    });
   }
 
   const branch = await prisma.branch.findUnique({
@@ -144,7 +186,12 @@ export async function startShift(
     select: { id: true, isActive: true },
   });
 
-  if (!branch) throw AppError.badRequest('Branch not found', { field: 'branchId' });
+  if (!branch) {
+    throw AppError.badRequest('Branch not found', {
+      field: 'branchId',
+      reason: 'BRANCH_NOT_FOUND',
+    });
+  }
 
   const shift = await prisma.shift.create({
     data: {

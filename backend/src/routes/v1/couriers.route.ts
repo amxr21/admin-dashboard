@@ -1,4 +1,4 @@
-import { DeliveryStaffStatus } from '@prisma/client';
+import { DeliveryStaffStatus, DeliveryStatus } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -9,7 +9,9 @@ import { withBranchContext } from '../../middleware/branch-context.js';
 import {
   assignOrder,
   createCourier,
+  getDeliveryTimeline,
   getCourier,
+  listDeliveryBoard,
   listCourierBranches,
   listCouriers,
   setCourierBranches,
@@ -73,6 +75,19 @@ const updateAssignmentBody = z
     note: z.string().trim().max(255).optional(),
   })
   .strict();
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+const deliveryBoardQuery = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  pageSize: z.coerce.number().int().positive().max(100).optional(),
+  search: z.string().trim().min(1).max(120).optional(),
+  status: z.nativeEnum(DeliveryStatus).optional(),
+  driverId: z.string().trim().min(1).max(64).optional(),
+  queue: z.enum(['active', 'failed', 'all']).optional(),
+  from: z.string().trim().regex(DATE_PATTERN).optional(),
+  to: z.string().trim().regex(DATE_PATTERN).optional(),
+});
 
 couriersRouter.get('/couriers', ...guard, async (req, res) => {
   const parsed = listQuery.safeParse(req.query);
@@ -178,12 +193,35 @@ couriersRouter.delete('/couriers/:id/access-code', ...guard, async (req, res) =>
   res.status(204).send();
 });
 
+/** The assignment-centred operational board. The older courier routes remain
+ * the roster; neither endpoint is overloaded with two unrelated jobs. */
+couriersRouter.get('/assignments', ...guard, async (req, res) => {
+  const parsed = deliveryBoardQuery.safeParse(req.query);
+  if (!parsed.success) throw AppError.badRequest('Invalid query', parsed.error.flatten());
+
+  res.json({
+    data: await listDeliveryBoard({
+      ...parsed.data,
+      branchId: req.branchId ?? undefined,
+    }),
+  });
+});
+
+couriersRouter.get('/assignments/:id/timeline', ...guard, async (req, res) => {
+  res.json({
+    data: await getDeliveryTimeline({
+      assignmentId: String(req.params.id),
+      branchId: req.branchId ?? undefined,
+    }),
+  });
+});
+
 couriersRouter.post('/assignments', ...guard, async (req, res) => {
   const parsed = assignBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
 
   const user = requireUser(req);
-  const assignment = await assignOrder(parsed.data);
+  const assignment = await assignOrder(parsed.data, req);
 
   req.log.info({
     event: 'delivery.order.assigned',
@@ -211,7 +249,7 @@ couriersRouter.patch('/assignments/:id', ...guard, async (req, res) => {
 
   const user = requireUser(req);
   const id = String(req.params.id);
-  const assignment = await updateAssignment(id, parsed.data);
+  const assignment = await updateAssignment(id, parsed.data, req);
 
   req.log.info({ event: 'delivery.assignment.updated', assignmentId: id, userId: user.id });
 

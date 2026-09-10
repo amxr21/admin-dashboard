@@ -1,13 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { EmptyState } from '@/components/empty-state';
 import { ErrorSection } from '@/components/errors/error-section';
-import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingState } from '@/components/ui/loading-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useReportQuery } from '@/hooks/useReportQuery';
 import { fetchProductsWithoutReviews, type ProductsWithoutReviews } from '@/lib/reports-api';
 
 /**
@@ -18,32 +18,14 @@ import { fetchProductsWithoutReviews, type ProductsWithoutReviews } from '@/lib/
 export function ProductsWithoutReviewsView() {
   const t = useTranslations('reports.productsWithoutReviews');
   const tStates = useTranslations('states');
-  const translateError = useTranslatedApiError();
 
-  const [data, setData] = useState<ProductsWithoutReviews | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      setData(await fetchProductsWithoutReviews());
-    } catch (caught) {
-      setError(translateError(caught));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [translateError]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const query = useCallback(() => fetchProductsWithoutReviews(), []);
+  const { data, isLoading, error, load } = useReportQuery<ProductsWithoutReviews>(query);
 
   return (
     <div className="space-y-4">
       {isLoading ? (
-        <Skeleton className="h-64 w-full" />
+        <LoadingState />
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : data?.products.length === 0 ? (

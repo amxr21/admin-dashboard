@@ -11,6 +11,7 @@ import {
 } from 'react';
 
 import { gsap } from '@/lib/gsap';
+import { MOTION_STORAGE_KEY } from '@/lib/motion-preference';
 
 /**
  * Global motion control. Two jobs:
@@ -35,7 +36,6 @@ import { gsap } from '@/lib/gsap';
  */
 
 const MOTION_OFF_TIMESCALE = 200;
-const STORAGE_KEY = 'admin-dashboard:motion-enabled';
 
 interface MotionContextValue {
   /** False when motion should be suppressed, from OS preference or the toggle. */
@@ -71,7 +71,7 @@ export function MotionProvider({ children }: { children: ReactNode }) {
     const query = window.matchMedia('(prefers-reduced-motion: reduce)');
 
     // An explicit in-app choice outranks the OS setting in both directions.
-    const stored = window.localStorage.getItem(STORAGE_KEY);
+    const stored = window.localStorage.getItem(MOTION_STORAGE_KEY);
     if (stored !== null) {
       setMotionEnabledState(stored === 'true');
     } else {
@@ -81,7 +81,7 @@ export function MotionProvider({ children }: { children: ReactNode }) {
 
     const onChange = (event: MediaQueryListEvent) => {
       // Only follow the OS if the user hasn't overridden it here.
-      if (window.localStorage.getItem(STORAGE_KEY) === null) {
+      if (window.localStorage.getItem(MOTION_STORAGE_KEY) === null) {
         setMotionEnabledState(!event.matches);
       }
     };
@@ -93,14 +93,19 @@ export function MotionProvider({ children }: { children: ReactNode }) {
   // Apply the master switch. See the note above on why this is a high
   // timeScale rather than 0.
   useEffect(() => {
+    // The blocking layout script already applied the correct CSS preference
+    // before paint. Do not replace it with the server-safe initial value
+    // while the saved/OS preference is still being resolved.
+    if (!ready) return;
     gsap.globalTimeline.timeScale(motionEnabled ? 1 : MOTION_OFF_TIMESCALE);
-  }, [motionEnabled]);
+    document.documentElement.dataset.motion = motionEnabled ? 'full' : 'reduced';
+  }, [motionEnabled, ready]);
 
   const setMotionEnabled = useCallback((enabled: boolean) => {
     setMotionEnabledState(enabled);
     // Persisted so the choice survives navigation and reloads. An admin tool
     // that forgets this setting every page load is worse than not offering it.
-    window.localStorage.setItem(STORAGE_KEY, String(enabled));
+    window.localStorage.setItem(MOTION_STORAGE_KEY, String(enabled));
   }, []);
 
   const value = useMemo(

@@ -1,12 +1,13 @@
 'use client';
 
 import { useGSAP } from '@gsap/react';
-import { useRef } from 'react';
+import { useRef, type ComponentProps } from 'react';
 import { Inbox, Plus, type LucideIcon } from 'lucide-react';
 
 import { gsap } from '@/lib/gsap';
 import { DURATION, EASE, DISTANCE, REDUCED } from '@/lib/motion-tokens';
 import { Button } from '@/components/ui/button';
+import { Link } from '@/i18n/navigation';
 import { cn } from '@/lib/utils';
 
 /**
@@ -29,12 +30,14 @@ interface EmptyStateProps {
    *  next step to offer. */
   action?: {
     label: string;
-    onClick: () => void;
     /** Defaults to `Plus`, which suits "create the first one". A filtered
      *  empty state offers "clear filters" instead, where a plus would be
      *  actively misleading about what the button does. */
     icon?: LucideIcon;
-  };
+  } & (
+    | { href: ComponentProps<typeof Link>['href']; onClick?: never }
+    | { onClick: () => void; href?: never }
+  );
   className?: string;
 }
 
@@ -91,7 +94,12 @@ export function EmptyState({ icon: Icon = Inbox, title, description, action, cla
       {action ? (
         (() => {
           const ActionIcon = action.icon ?? Plus;
-          return (
+          const content = <><ActionIcon aria-hidden />{action.label}</>;
+          return action.href ? (
+            <Button data-empty-state-reveal variant="outline" size="sm" className="mt-1" asChild>
+              <Link href={action.href}>{content}</Link>
+            </Button>
+          ) : (
             <Button
               data-empty-state-reveal
               variant="outline"
@@ -99,8 +107,7 @@ export function EmptyState({ icon: Icon = Inbox, title, description, action, cla
               onClick={action.onClick}
               className="mt-1"
             >
-              <ActionIcon aria-hidden />
-              {action.label}
+              {content}
             </Button>
           );
         })()

@@ -108,7 +108,7 @@ export interface SplitPayment {
   reference?: string;
 }
 
-export async function checkout(input: {
+export interface CheckoutInput {
   lines: CheckoutLine[];
   /** Required UNLESS `splitPayments` is given instead — send one or the
    *  other, never both (the server refuses both together). */
@@ -136,9 +136,15 @@ export async function checkout(input: {
    *  validates the return exists, is resolved as REPLACEMENT, and is not
    *  already linked. */
   exchangeReturnId?: string;
-}): Promise<CheckoutResult> {
+}
+
+export async function checkout(
+  input: CheckoutInput,
+  idempotencyKey: string,
+): Promise<CheckoutResult> {
   return apiFetch<CheckoutResult>('/pos/checkout', {
     method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(input),
   });
 }

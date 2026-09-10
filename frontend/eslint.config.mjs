@@ -4,11 +4,18 @@
 import { FlatCompat } from '@eslint/eslintrc';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const compat = new FlatCompat({ baseDirectory: __dirname });
+const require = createRequire(import.meta.url);
+const compat = new FlatCompat({
+  baseDirectory: __dirname,
+  // pnpm keeps Next's plugins with the config that declares them, rather
+  // than hoisting those transitive dependencies into this package.
+  resolvePluginsRelativeTo: dirname(require.resolve('eslint-config-next')),
+});
 
 const config = [
   ...compat.extends('next/core-web-vitals', 'next/typescript'),

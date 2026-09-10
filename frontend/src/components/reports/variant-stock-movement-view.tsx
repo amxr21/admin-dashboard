@@ -1,14 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 
 import { DateRangePresetField } from '@/components/reports/date-range-field';
 import { ExportButton } from '@/components/reports/export-button';
 import { ErrorSection } from '@/components/errors/error-section';
-import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingState } from '@/components/ui/loading-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useReportQuery } from '@/hooks/useReportQuery';
 import { useUrlState } from '@/hooks/useUrlState';
 import {
   defaultRange,
@@ -27,31 +27,13 @@ export function VariantStockMovementView() {
   const t = useTranslations('reports.variantStockMovement');
   const tStates = useTranslations('states');
   const formatter = useFormatter();
-  const translateError = useTranslatedApiError();
 
   const defaults = useMemo(() => defaultRange(), []);
   const { values, setValues } = useUrlState({ from: defaults.from, to: defaults.to });
   const range: DateRange = useMemo(() => ({ from: values.from!, to: values.to! }), [values.from, values.to]);
 
-  const [data, setData] = useState<VariantStockMovement | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      setData(await fetchVariantStockMovement(range));
-    } catch (caught) {
-      setError(translateError(caught));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [range, translateError]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const query = useCallback(() => fetchVariantStockMovement(range), [range]);
+  const { data, isLoading, error, setError, load } = useReportQuery<VariantStockMovement>(query);
 
   return (
     <div className="space-y-4">
@@ -65,7 +47,7 @@ export function VariantStockMovementView() {
       </div>
 
       {isLoading ? (
-        <Skeleton className="h-64 w-full" />
+        <LoadingState />
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : (

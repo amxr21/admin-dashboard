@@ -1,14 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 
 import { EmptyState } from '@/components/empty-state';
 import { ExportButton } from '@/components/reports/export-button';
 import { ErrorSection } from '@/components/errors/error-section';
-import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingState } from '@/components/ui/loading-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useReportQuery } from '@/hooks/useReportQuery';
 import { fetchLowStockSnapshot, type LowStockSnapshot } from '@/lib/reports-api';
 
 /** No date range — the export route ignores from/to (live catalogue
@@ -24,27 +24,9 @@ export function LowStockSnapshotView() {
   const t = useTranslations('reports.lowStockSnapshot');
   const tStates = useTranslations('states');
   const formatter = useFormatter();
-  const translateError = useTranslatedApiError();
 
-  const [data, setData] = useState<LowStockSnapshot | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      setData(await fetchLowStockSnapshot());
-    } catch (caught) {
-      setError(translateError(caught));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [translateError]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const query = useCallback(() => fetchLowStockSnapshot(), []);
+  const { data, isLoading, error, setError, load } = useReportQuery<LowStockSnapshot>(query);
 
   return (
     <div className="space-y-4">
@@ -54,7 +36,7 @@ export function LowStockSnapshotView() {
       </div>
 
       {isLoading ? (
-        <Skeleton className="h-64 w-full" />
+        <LoadingState />
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : data?.products.length === 0 ? (

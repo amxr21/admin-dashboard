@@ -1,14 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 
 import { ExportButton } from '@/components/reports/export-button';
 import { ErrorSection } from '@/components/errors/error-section';
-import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingState } from '@/components/ui/loading-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
-import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useReportQuery } from '@/hooks/useReportQuery';
 import { fetchCustomerLifetimeValue, type CustomerLifetimeValue } from '@/lib/reports-api';
 
 /** LTV has no date range (it's an all-time total) — the export route
@@ -28,27 +28,9 @@ export function CustomerLifetimeValueView() {
   const tStates = useTranslations('states');
   const formatter = useFormatter();
   const formatCurrency = useCurrencyFormat();
-  const translateError = useTranslatedApiError();
 
-  const [data, setData] = useState<CustomerLifetimeValue | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      setData(await fetchCustomerLifetimeValue());
-    } catch (caught) {
-      setError(translateError(caught));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [translateError]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const query = useCallback(() => fetchCustomerLifetimeValue(), []);
+  const { data, isLoading, error, setError, load } = useReportQuery<CustomerLifetimeValue>(query);
 
   return (
     <div className="space-y-4">
@@ -57,7 +39,7 @@ export function CustomerLifetimeValueView() {
       </div>
 
       {isLoading ? (
-        <Skeleton className="h-64 w-full" />
+        <LoadingState />
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : (

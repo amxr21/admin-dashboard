@@ -22,6 +22,7 @@ beforeEach(() => {
 afterEach(() => {
   media?.restore();
   media = null;
+  delete document.documentElement.dataset.motion;
 });
 
 function Probe() {
@@ -79,6 +80,7 @@ describe('MotionProvider', () => {
     renderProvider();
 
     expect(gsap.globalTimeline.timeScale()).toBe(1);
+    expect(document.documentElement).toHaveAttribute('data-motion', 'full');
   });
 
   it('lets the user override the OS preference', async () => {
@@ -105,6 +107,7 @@ describe('MotionProvider', () => {
     await user.click(screen.getByRole('button', { name: 'toggle' }));
 
     expect(window.localStorage.getItem('admin-dashboard:motion-enabled')).toBe('false');
+    expect(document.documentElement).toHaveAttribute('data-motion', 'reduced');
   });
 
   it('restores a stored choice over the OS preference', () => {
@@ -115,6 +118,7 @@ describe('MotionProvider', () => {
     renderProvider();
 
     expect(screen.getByTestId('enabled')).toHaveTextContent('true');
+    expect(document.documentElement).toHaveAttribute('data-motion', 'full');
   });
 
   it('follows OS changes only while the user has not overridden', () => {

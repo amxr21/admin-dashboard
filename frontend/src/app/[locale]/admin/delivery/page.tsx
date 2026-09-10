@@ -1,7 +1,7 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { NavLabelHeading } from '@/components/shell/nav-label-heading';
-import { CouriersTable } from '@/components/delivery/couriers-table';
+import { DeliveryWorkspace } from '@/components/delivery/delivery-workspace';
 
 /**
  * Delivery — couriers and their access credentials.
@@ -27,7 +27,7 @@ export default async function DeliveryPage({
         <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
       </div>
 
-      <CouriersTable />
+      <DeliveryWorkspace />
     </div>
   );
 }

@@ -48,7 +48,9 @@ import {
   scanProduct,
   voidSale,
   type ParkedSale,
+  type CheckoutInput,
 } from '@/lib/pos-api';
+import { requestIntentFor, type RequestIntent } from '@/lib/request-intent';
 import { addOrderNote } from '@/lib/orders-api';
 import { ThermalReceipt, type ReceiptData } from '@/components/pos/thermal-receipt';
 import { ProductGrid } from '@/components/pos/product-grid';
@@ -114,6 +116,7 @@ export function SaleScreen() {
   const t = useTranslations('pos');
   const translateError = useTranslatedApiError();
   const { maxCashierDiscountPercent } = useAppSettings();
+  const checkoutIntentRef = useRef<RequestIntent | null>(null);
 
   const [lines, setLines] = useState<CartLine[]>([]);
   /** Set once a manager approves a discount above the cap, for the CURRENT
@@ -437,7 +440,7 @@ export function SaleScreen() {
     setError(null);
 
     try {
-      const result = await checkout({
+      const checkoutInput: CheckoutInput = {
         lines: lines.map((line) => ({
           productId: line.product.id,
           quantity: line.quantity,
@@ -463,7 +466,11 @@ export function SaleScreen() {
             }),
         ...(overrideToken ? { overrideToken } : {}),
         ...(pendingExchangeReturnId ? { exchangeReturnId: pendingExchangeReturnId } : {}),
-      });
+      };
+      const intent = requestIntentFor(checkoutInput, checkoutIntentRef.current);
+      checkoutIntentRef.current = intent;
+
+      const result = await checkout(checkoutInput, intent.key);
 
       // Kept on screen rather than toasted away: the change to hand back is
       // the one number the cashier still needs AFTER the sale completes, and
@@ -504,6 +511,7 @@ export function SaleScreen() {
       // The exchange it was linked to is done — the next sale is ordinary
       // again, not another leg of the same exchange.
       setPendingExchangeReturnId(null);
+      checkoutIntentRef.current = null;
       // The sale just decremented branch stock — the grid must reflect that
       // for the NEXT customer, or a just-sold-out item still shows as
       // available. Found by walking through an actual sale end to end, not

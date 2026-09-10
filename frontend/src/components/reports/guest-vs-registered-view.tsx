@@ -1,15 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { DateRangePresetField } from '@/components/reports/date-range-field';
 import { ExportButton } from '@/components/reports/export-button';
 import { EmptyState } from '@/components/empty-state';
 import { ErrorSection } from '@/components/errors/error-section';
-import { Skeleton } from '@/components/ui/skeleton';
+import { LoadingState } from '@/components/ui/loading-state';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
-import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useReportQuery } from '@/hooks/useReportQuery';
 import { useUrlState } from '@/hooks/useUrlState';
 import { defaultRange, fetchGuestVsRegistered, type DateRange, type GuestVsRegistered } from '@/lib/reports-api';
 
@@ -22,31 +22,13 @@ export function GuestVsRegisteredView() {
   const t = useTranslations('reports.guestVsRegistered');
   const tStates = useTranslations('states');
   const formatCurrency = useCurrencyFormat();
-  const translateError = useTranslatedApiError();
 
   const defaults = useMemo(() => defaultRange(), []);
   const { values, setValues } = useUrlState({ from: defaults.from, to: defaults.to });
   const range: DateRange = useMemo(() => ({ from: values.from!, to: values.to! }), [values.from, values.to]);
 
-  const [data, setData] = useState<GuestVsRegistered | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      setData(await fetchGuestVsRegistered(range));
-    } catch (caught) {
-      setError(translateError(caught));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [range, translateError]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const query = useCallback(() => fetchGuestVsRegistered(range), [range]);
+  const { data, isLoading, error, setError, load } = useReportQuery<GuestVsRegistered>(query);
 
   return (
     <div className="space-y-4">
@@ -60,7 +42,7 @@ export function GuestVsRegisteredView() {
       </div>
 
       {isLoading ? (
-        <Skeleton className="h-40 w-full" />
+        <LoadingState />
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
       ) : (data?.guest.orders ?? 0) + (data?.registered.orders ?? 0) === 0 ? (

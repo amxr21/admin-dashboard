@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
-import { Boxes, FilterX, History, PackagePlus, Search, SearchX, SlidersHorizontal } from 'lucide-react';
+import { Boxes, FilterX, History, MailPlus, PackagePlus, Search, SearchX, SlidersHorizontal, Truck } from 'lucide-react';
 
 import { DataTable, type Column } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
@@ -11,6 +11,7 @@ import { Link, useRouter } from '@/i18n/navigation';
 import { useResourceSchema } from '@/components/providers/schema-provider';
 import { MovementLogSheet } from '@/components/inventory/movement-log-sheet';
 import { StockAdjustSheet } from '@/components/inventory/stock-adjust-sheet';
+import { SupplierOutreachSheet } from '@/components/suppliers/supplier-outreach-sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -88,6 +89,7 @@ export function InventoryTable() {
    */
   const [receiving, setReceiving] = useState<InventoryRow | null>(null);
   const [viewingLog, setViewingLog] = useState<string | null>(null);
+  const [contactingSupplier, setContactingSupplier] = useState<InventoryRow | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -198,6 +200,17 @@ export function InventoryTable() {
       align: 'end',
       cell: (row) => (
         <div className="flex justify-end gap-1">
+          {row.isLow ? (
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={t('actions.emailSupplier', { name: row.name })}
+              onClick={() => setContactingSupplier(row)}
+            >
+              <MailPlus aria-hidden />
+              {t('actions.emailSupplierShort')}
+            </Button>
+          ) : null}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -277,6 +290,12 @@ export function InventoryTable() {
             </Link>
           </Button>
         ) : null}
+        <Button asChild variant="outline">
+          <Link href="/admin/inventory/suppliers">
+            <Truck aria-hidden />
+            {t('actions.suppliers')}
+          </Link>
+        </Button>
       </div>
 
       {notice ? (
@@ -401,6 +420,13 @@ export function InventoryTable() {
           setReceiving(null);
           setNotice(message);
           void load();
+        }}
+      />
+      <SupplierOutreachSheet
+        product={contactingSupplier}
+        onOpenChange={(open) => { if (!open) setContactingSupplier(null); }}
+        onSent={(supplier) => {
+          setNotice(t('notice.supplierEmailed', { supplier }));
         }}
       />
 

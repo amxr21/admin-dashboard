@@ -16,6 +16,34 @@ import { apiFetch } from '@/lib/api';
 
 export type CourierStatus = 'ACTIVE' | 'ON_SHIFT' | 'INACTIVE';
 
+export type DeliveryStatus =
+  | 'ASSIGNED'
+  | 'PICKED_UP'
+  | 'OUT_FOR_DELIVERY'
+  | 'DELIVERED'
+  | 'HANDED_OVER'
+  | 'CANCELED'
+  | 'RETURNED'
+  | 'FAILED_ATTEMPT';
+
+export const DELIVERY_STATUSES: readonly DeliveryStatus[] = [
+  'ASSIGNED',
+  'PICKED_UP',
+  'OUT_FOR_DELIVERY',
+  'FAILED_ATTEMPT',
+  'DELIVERED',
+  'HANDED_OVER',
+  'CANCELED',
+  'RETURNED',
+];
+
+export const ACTIVE_DELIVERY_STATUSES: readonly DeliveryStatus[] = [
+  'ASSIGNED',
+  'PICKED_UP',
+  'OUT_FOR_DELIVERY',
+  'FAILED_ATTEMPT',
+];
+
 export const COURIER_STATUSES: CourierStatus[] = ['ACTIVE', 'ON_SHIFT', 'INACTIVE'];
 
 export interface Courier {
@@ -143,8 +171,96 @@ export async function revokeAccessCode(id: string): Promise<void> {
   await apiFetch<undefined>(`/couriers/${id}/access-code`, { method: 'DELETE' });
 }
 
+export type DeliveryQueue = 'active' | 'failed' | 'all';
+
+export interface DeliveryBoardAssignment {
+  id: string;
+  status: DeliveryStatus;
+  customerName: string | null;
+  customerPhone: string | null;
+  address: string | null;
+  city: string | null;
+  total: string | null;
+  paymentMethod: string | null;
+  note: string | null;
+  attemptCount: number;
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  driver: { id: string; name: string; phone: string | null; status: CourierStatus };
+  order: {
+    id: string;
+    orderNumber: string;
+    status: string;
+    branchId: string | null;
+    branch: { id: string; name: string; code: string | null } | null;
+    placedAt: string;
+  };
+}
+
+export interface DeliveryBoardResult {
+  assignments: DeliveryBoardAssignment[];
+  counts: Record<DeliveryStatus, number>;
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface DeliveryBoardParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: DeliveryStatus;
+  driverId?: string;
+  queue?: DeliveryQueue;
+  from?: string;
+  to?: string;
+}
+
+export async function fetchDeliveryBoard(
+  params: DeliveryBoardParams = {},
+): Promise<DeliveryBoardResult> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') {
+      query.set(key, String(value));
+    }
+  }
+  const suffix = query.toString();
+  return apiFetch<DeliveryBoardResult>(`/assignments${suffix ? `?${suffix}` : ''}`);
+}
+
+export interface DeliveryTimelineEvent {
+  id: string;
+  action:
+    | 'delivery.assignment.assigned'
+    | 'delivery.assignment.reassigned'
+    | 'delivery.assignment.details_updated'
+    | 'delivery.assignment.status_changed';
+  actorName: string | null;
+  createdAt: string;
+  detail: Record<string, unknown>;
+}
+
+export interface DeliveryTimelineResult {
+  assignment: {
+    id: string;
+    order: { id: string; orderNumber: string };
+    driver: { id: string; name: string };
+  };
+  events: DeliveryTimelineEvent[];
+}
+
+export async function fetchDeliveryTimeline(
+  assignmentId: string,
+): Promise<DeliveryTimelineResult> {
+  return apiFetch<DeliveryTimelineResult>(`/assignments/${assignmentId}/timeline`);
+}
+
 export interface Assignment {
   id: string;
+  /** Legacy order-detail payloads do not yet narrow this server enum. */
   status: string;
   address: string | null;
   city: string | null;

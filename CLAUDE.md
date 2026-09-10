@@ -7,8 +7,47 @@
 - **Stack**: Next.js 15 (App Router) + TypeScript · Express 5 + TypeScript · both self-hosted on a
   Hostinger KVM VPS via Coolify (moved off Vercel/Render 2026-09-03) ·
   MySQL via Prisma (Aiven) · pnpm workspace · Node 22.
-- **Status**: active development. Every admin section has a real page; what remains before the
-  `dev` → `main` gate is security/readiness work, not features (see Current work).
+- **Status**: active development. The 2026-09-10 review added report reliability, consistent
+  loading feedback, scroll containment, editable organization structure and missing Settings
+  destinations. UX-009 now makes POS checkout retries safe and passed the complete GitHub CI gate
+  in PR #195. Batch 2 delivery operations and automatic employee branch scoping are implemented;
+  the full local gate and stacked PR are next.
+
+## 2026-09-10 review stack
+
+The owner-reported review work is split into ordered branches so each concern remains reviewable:
+
+1. `fix/test-database-isolation` — integration tests require a dedicated database whose name
+   contains `test`; confirmed local category/POS test garbage was backed up and removed.
+2. `fix/report-reliability` — all 27 report views share stale-request protection and consistent
+   loading/error/retry behavior; overview validation no longer leaves stale panels visible.
+3. `fix/loading-scroll-feedback` — delayed navigation and API work show an accessible global
+   overlay, branch switching explains workspace preparation immediately, and modal/sidebar
+   scrollers no longer compete.
+4. `feat/organization-settings` — owners can define business/branch/staff fields and edit job
+   titles, departments and cycle-safe reporting lines. Settings now links every shipped
+   configuration area and includes POS, returns and navigation-label groups.
+5. `fix/shift-branch-resolution` — an unscoped branch employee with exactly one active
+   assignment can start a shift while genuine multi-branch/business ambiguity still fails safely.
+6. `docs/review-verification` — final E2E coverage plus the synchronized TODO and project records.
+7. `feat/motion-ux-polish` — exposes the persistent animation preference, applies it before
+   hydration to CSS and GSAP motion, and smooths the global loading overlay using shared timings.
+8. `fix/shell-action-errors` — permission-gates the notification bell and translates stable shift
+   branch-conflict reason codes into useful English/Arabic actions instead of a generic 400 error.
+9. `fix/ux-009-idempotent-checkout` — requires a UUID request key for POS checkout and atomically
+   stores the first committed response, so sequential or simultaneous retries cannot duplicate an
+   order, payment, stock movement or sale audit event.
+10. `feat/ux-delivery-operations` — adds the assignment-centred delivery board, merged timeline,
+    working-now shift view, and session-level automatic scoping for singly assigned employees.
+11. `feat/ux-supplier-outreach` — adds the thin supplier directory and an audited, receipt-derived
+    low-stock email workflow without introducing purchase orders or a procurement role.
+
+Focused verification is green: 27/27 regular report routes in the browser; 181 backend report and
+scheduled-report cases; 132 frontend report cases; 52 shift cases; organization integration,
+English/Arabic mobile layout, scheduled-report validation, loading, branch switching and scroll
+checks. The reported notification and shift failures also pass focused unit, lint, type and live
+browser checks after a clean frontend restart. The full combined suite and production build are
+the remaining local gates. No deployment has been performed.
 
 ## Features
 
@@ -37,9 +76,23 @@
   revenue calculation already reads `.total` as the full amount, and changing its meaning would
   have silently under-reported revenue everywhere without touching those files. The invoice
   renders Subtotal/Tax/Total only when recorded; a pre-migration order still shows the single
-  Total row it always did. No live checkout/order-creation flow exists yet (only
-  `prisma/demo-seed.ts` and tests create orders), so the calculation lives in the demo seeder for
-  now — a real checkout flow will need to call the same math when it's built.
+  Total row it always did. The live POS checkout now calls the same shared calculation and stores
+  its resulting subtotal/tax/total snapshots with the order.
+
+### POS checkout retry safety (UX-009)
+- **Status**: implemented; pending full branch gate and GitHub checks.
+- **Contract**: `POST /api/v1/pos/checkout` requires a UUID `Idempotency-Key` header. A retry by
+  the same authenticated actor with the same key and request returns the original `201` body and
+  sets `Idempotency-Replayed: true`; reusing the key for different details returns `409`.
+- **Atomicity**: the generic `IdempotencyRecord` claim, order, lines, payments and stock movements
+  commit in one Prisma transaction. Simultaneous duplicates serialize on the unique claim without
+  producing an operational error log. Only the request that creates the sale writes its audit
+  event.
+- **Retention**: records are retained for seven days and pruned by the existing daily scheduler.
+  The expiry index keeps cleanup bounded and lets future critical mutations reuse the same
+  service without adding feature-specific replay tables.
+- **Where**: `backend/src/services/idempotency.service.ts`, `backend/src/services/pos.service.ts`,
+  `backend/src/routes/v1/pos.route.ts`, and `frontend/src/lib/request-intent.ts`.
 
 ### Inventory
 - **Status**: shipped
@@ -81,9 +134,15 @@
   `courierFetch` validate: `api.ts` casts the same way at two call sites and `zod` is
   backend-only, so validating here alone would make the courier portal the one client with a
   different contract. The cast is why the bug stayed invisible, not why it happened.
-- **Still missing**: no delivery board anywhere (only a courier roster — an admin cannot see
-  today's deliveries or a failed queue without opening orders one by one), no courier performance
-  metrics.
+- **2026-09-10 (UX-010/011)**: `/admin/delivery` now opens on an assignment-centred operational
+  board with active, failed and all queues; URL-backed courier/status/date/search filters; branch
+  scoping; responsive cards; and a chronological timeline merging assignment audits with order
+  delivery-status changes. Courier setup remains available as a separate view. Courier performance
+  metrics remain open.
+- **2026-09-10 cashier branch fix**: the authenticated session reconciles its locally stored branch
+  with the branches the user may enter. A branch-scoped employee with one assignment is selected
+  automatically, stale assignments are cleared, and business-wide Owner/Developer accounts keep
+  the intentional all-branch overview.
 
 ### Reports
 - **Status**: shipped
@@ -571,6 +630,13 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-09-10 (UX-009)** — POS checkout is idempotent across lost responses and simultaneous
+  submissions. A generic actor-scoped record stores a canonical request hash and response in the
+  same transaction as order/payment/stock writes; mismatched reuse returns 409, successful replay
+  returns the original receipt, and the till retains its UUID until checkout details change.
+  Seven-day daily cleanup prevents unbounded growth. Focused concurrency coverage, both full test
+  suites, lint, typechecks, builds, merge integrity and GitGuardian passed locally or in GitHub PR
+  #195; Batch 1 is closed.
 - **2026-09-08 (O6 + O7)** — The controls F8 never shipped. F8 built the multi-shop ENGINE
   (businesses, branches, per-branch stock, query scoping, per-branch roles, a switcher) and left
   every row creatable only by a migration or the seeder: `UserBranch` was read-only, there was no
