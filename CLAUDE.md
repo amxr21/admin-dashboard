@@ -9,8 +9,8 @@
   MySQL via Prisma (Aiven) · pnpm workspace · Node 22.
 - **Status**: active development. The 2026-09-10 review added report reliability, consistent
   loading feedback, scroll containment, editable organization structure and missing Settings
-  destinations. UX-009 now makes POS checkout retries safe. The changes are awaiting the final
-  combined verification gate and PRs.
+  destinations. UX-009 now makes POS checkout retries safe and passed the complete GitHub CI gate
+  in PR #195. Batch 2 delivery operations is next.
 
 ## 2026-09-10 review stack
 
@@ -623,8 +623,9 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   submissions. A generic actor-scoped record stores a canonical request hash and response in the
   same transaction as order/payment/stock writes; mismatched reuse returns 409, successful replay
   returns the original receipt, and the till retains its UUID until checkout details change.
-  Seven-day daily cleanup prevents unbounded growth. Focused backend concurrency coverage and the
-  full frontend test suite pass; remote GitHub verification remains before this batch is closed.
+  Seven-day daily cleanup prevents unbounded growth. Focused concurrency coverage, both full test
+  suites, lint, typechecks, builds, merge integrity and GitGuardian passed locally or in GitHub PR
+  #195; Batch 1 is closed.
 - **2026-09-08 (O6 + O7)** — The controls F8 never shipped. F8 built the multi-shop ENGINE
   (businesses, branches, per-branch stock, query scoping, per-branch roles, a switcher) and left
   every row creatable only by a migration or the seeder: `UserBranch` was read-only, there was no
