@@ -7,8 +7,33 @@
 - **Stack**: Next.js 15 (App Router) + TypeScript · Express 5 + TypeScript · both self-hosted on a
   Hostinger KVM VPS via Coolify (moved off Vercel/Render 2026-09-03) ·
   MySQL via Prisma (Aiven) · pnpm workspace · Node 22.
-- **Status**: active development. Every admin section has a real page; what remains before the
-  `dev` → `main` gate is security/readiness work, not features (see Current work).
+- **Status**: active development. The 2026-09-10 review added report reliability, consistent
+  loading feedback, scroll containment, editable organization structure and missing Settings
+  destinations. The stacked changes are awaiting the final combined verification gate and PRs.
+
+## 2026-09-10 review stack
+
+The owner-reported review work is split into ordered branches so each concern remains reviewable:
+
+1. `fix/test-database-isolation` — integration tests require a dedicated database whose name
+   contains `test`; confirmed local category/POS test garbage was backed up and removed.
+2. `fix/report-reliability` — all 27 report views share stale-request protection and consistent
+   loading/error/retry behavior; overview validation no longer leaves stale panels visible.
+3. `fix/loading-scroll-feedback` — delayed navigation and API work show an accessible global
+   overlay, branch switching explains workspace preparation immediately, and modal/sidebar
+   scrollers no longer compete.
+4. `feat/organization-settings` — owners can define business/branch/staff fields and edit job
+   titles, departments and cycle-safe reporting lines. Settings now links every shipped
+   configuration area and includes POS, returns and navigation-label groups.
+5. `fix/shift-branch-resolution` — an unscoped branch employee with exactly one active
+   assignment can start a shift while genuine multi-branch/business ambiguity still fails safely.
+6. `docs/review-verification` — final E2E coverage plus the synchronized TODO and project records.
+
+Focused verification is green: 27/27 regular report routes in the browser; 181 backend report and
+scheduled-report cases; 132 frontend report cases; 52 shift cases; organization integration,
+English/Arabic mobile layout, scheduled-report validation, loading, branch switching and scroll
+checks. The full combined suite and production build are the remaining local gates. No deployment
+has been performed.
 
 ## Features
 
