@@ -131,7 +131,7 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
   const canSeeSettings = canAccessArea(role, 'settings');
 
   return (
-    <nav className="flex flex-1 flex-col gap-4 overflow-y-auto" aria-label={t('dashboard')}>
+    <nav className="flex flex-1 flex-col gap-2 overflow-y-auto" aria-label={t('dashboard')}>
       {groups.map((group, groupIndex) => {
         // Hide whole groups the role cannot reach, rather than leaving an
         // empty heading behind.

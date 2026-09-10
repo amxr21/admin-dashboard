@@ -1,0 +1,563 @@
+{
+  "fetchAuditActivityByEntity": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "rows": [
+      {
+        "entity": "products",
+        "action": "product.updated",
+        "count": 340
+      }
+    ]
+  },
+  "fetchAuditOutcomeTrend": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "points": [
+      {
+        "date": "2026-01-05",
+        "success": 40,
+        "denied": 2,
+        "error": 0
+      }
+    ]
+  },
+  "fetchCategoryBreakdown": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "categories": [
+      {
+        "categoryId": "c1",
+        "categoryName": "Home & Garden",
+        "units": 30,
+        "revenue": "300.00"
+      },
+      {
+        "categoryId": "c2",
+        "categoryName": "Stationery",
+        "units": 10,
+        "revenue": "100.00"
+      }
+    ]
+  },
+  "fetchCourierPerformance": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "couriers": [
+      {
+        "driverId": "d1",
+        "name": "Sami Haddad",
+        "total": 10,
+        "byStatus": {
+          "DELIVERED": 8,
+          "OUT_FOR_DELIVERY": 2
+        }
+      }
+    ]
+  },
+  "fetchCourierWorkloadSnapshot": {
+    "byStatus": [
+      {
+        "status": "ACTIVE",
+        "count": 3
+      }
+    ],
+    "couriers": [
+      {
+        "driverId": "d1",
+        "name": "Sami Haddad",
+        "status": "ACTIVE",
+        "openAssignments": 4
+      }
+    ]
+  },
+  "fetchCustomerGeography": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "rows": [
+      {
+        "city": "Dubai",
+        "country": "AE",
+        "revenue": "500.00",
+        "orders": 5
+      }
+    ]
+  },
+  "fetchCustomerLifetimeValue": {
+    "customers": [
+      {
+        "customerId": "c1",
+        "name": "Amina Yusuf",
+        "email": "amina@example.test",
+        "revenue": "900.00",
+        "orders": 6,
+        "averageOrderValue": "150.00"
+      }
+    ]
+  },
+  "fetchCustomerNewVsReturning": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "new": {
+      "revenue": "100.00",
+      "orders": 2
+    },
+    "returning": {
+      "revenue": "300.00",
+      "orders": 4
+    }
+  },
+  "fetchCustomerOrderFrequency": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "buckets": [
+      {
+        "label": "1",
+        "customers": 10
+      },
+      {
+        "label": "2",
+        "customers": 4
+      },
+      {
+        "label": "3",
+        "customers": 1
+      },
+      {
+        "label": "4+",
+        "customers": 1
+      }
+    ],
+    "totalCustomers": 16,
+    "repeatRate": 0.375
+  },
+  "fetchDeliveryCycleTime": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "deliveredCount": 40,
+    "averageHours": 18.4,
+    "medianHours": 16
+  },
+  "fetchDeliveryZoneBreakdown": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "zones": [
+      {
+        "zone": "North",
+        "region": "NR",
+        "assignments": 12,
+        "collectibleValue": "900.00"
+      }
+    ]
+  },
+  "fetchExplorer": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "dimension": "category",
+    "rows": [
+      {
+        "key": "c1",
+        "label": "Home & Garden",
+        "revenue": "300.00",
+        "units": 30,
+        "orders": 10,
+        "averageOrderValue": "30.00"
+      },
+      {
+        "key": "c2",
+        "label": "Stationery",
+        "revenue": "100.00",
+        "units": 10,
+        "orders": 5,
+        "averageOrderValue": "20.00"
+      }
+    ]
+  },
+  "fetchGuestVsRegistered": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "guest": {
+      "revenue": "20.00",
+      "orders": 1
+    },
+    "registered": {
+      "revenue": "400.00",
+      "orders": 8
+    }
+  },
+  "fetchInventoryTurnover": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "turnover": [
+      {
+        "productId": "p1",
+        "name": "Fast Mover",
+        "sku": "SKU-1",
+        "stock": 10,
+        "unitsSold": 40
+      },
+      {
+        "productId": "p2",
+        "name": "Stale Widget",
+        "sku": "SKU-2",
+        "stock": 20,
+        "unitsSold": 0
+      }
+    ],
+    "deadStock": [
+      {
+        "productId": "p2",
+        "name": "Stale Widget",
+        "sku": "SKU-2",
+        "stock": 20,
+        "unitsSold": 0
+      }
+    ]
+  },
+  "fetchLowStockSnapshot": {
+    "threshold": 5,
+    "products": [
+      {
+        "productId": "p1",
+        "name": "Widget",
+        "sku": "W-1",
+        "stock": 2,
+        "daysSinceLastRestock": 10
+      }
+    ]
+  },
+  "fetchPaymentMethodBreakdown": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "methods": [
+      {
+        "paymentMethod": "card",
+        "revenue": "400.00",
+        "orders": 4
+      }
+    ]
+  },
+  "fetchProductMargin": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "products": [
+      {
+        "productId": "p1",
+        "name": "Widget",
+        "sku": "W-1",
+        "revenue": "100.00",
+        "cogs": "40.00",
+        "margin": "60.00",
+        "marginPercent": 0.6,
+        "units": 5
+      }
+    ],
+    "orderLinesWithoutCost": 0
+  },
+  "fetchProductReviewSummary": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "products": [
+      {
+        "productId": "p1",
+        "name": "Widget",
+        "reviewCount": 3,
+        "averageRating": 4.3,
+        "distribution": {
+          "1": 0,
+          "2": 0,
+          "3": 1,
+          "4": 1,
+          "5": 1
+        }
+      }
+    ]
+  },
+  "fetchProductsWithoutReviews": {
+    "products": [
+      {
+        "productId": "p1",
+        "name": "Widget",
+        "sku": "W-1"
+      }
+    ]
+  },
+  "fetchRefundRateTrend": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-02-28"
+    },
+    "points": [
+      {
+        "date": "2026-01-01",
+        "revenue": "1000.00",
+        "refunded": "250.00",
+        "refundRate": 0.25
+      },
+      {
+        "date": "2026-02-01",
+        "revenue": "2000.00",
+        "refunded": "0.00",
+        "refundRate": 0
+      }
+    ]
+  },
+  "fetchOverview": {
+    "range": {
+      "from": "2026-06-28",
+      "to": "2026-07-27"
+    },
+    "revenue": "12345.67",
+    "orders": 42,
+    "canceledOrders": 3,
+    "newCustomers": 7,
+    "lowStockProducts": 2,
+    "averageOrderValue": "316.55"
+  },
+  "fetchRevenue": {
+    "range": {
+      "from": "2026-06-28",
+      "to": "2026-07-27"
+    },
+    "granularity": "day",
+    "points": [
+      {
+        "date": "2026-01-01",
+        "revenue": "100.00",
+        "orders": 2
+      },
+      {
+        "date": "2026-01-02",
+        "revenue": "250.50",
+        "orders": 3
+      }
+    ]
+  },
+  "fetchTopProducts": {
+    "range": {
+      "from": "2026-06-28",
+      "to": "2026-07-27"
+    },
+    "products": [
+      {
+        "productId": "p1",
+        "name": "Ceramic Planter",
+        "quantity": 10,
+        "revenue": "350.00"
+      },
+      {
+        "productId": null,
+        "name": null,
+        "quantity": 4,
+        "revenue": "80.00"
+      }
+    ]
+  },
+  "fetchStatusBreakdown": {
+    "range": {
+      "from": "2026-06-28",
+      "to": "2026-07-27"
+    },
+    "statuses": [
+      {
+        "status": "DELIVERED",
+        "orders": 30,
+        "total": "10000.00"
+      },
+      {
+        "status": "PENDING",
+        "orders": 0,
+        "total": "0.00"
+      },
+      {
+        "status": "CANCELED",
+        "orders": 3,
+        "total": "999.00"
+      }
+    ]
+  },
+  "fetchFulfillmentHealth": {
+    "range": {
+      "from": "2026-06-28",
+      "to": "2026-07-27"
+    },
+    "avgHoursInStatus": [
+      {
+        "status": "PENDING",
+        "slaHours": 24,
+        "avgHours": 5.5
+      }
+    ],
+    "needsAttention": [
+      {
+        "orderId": "o1",
+        "orderNumber": "ORD-1024",
+        "status": "PENDING",
+        "hoursInStatus": 40
+      }
+    ]
+  },
+  "fetchReturnsSummary": {
+    "range": {
+      "from": "2026-06-28",
+      "to": "2026-07-27"
+    },
+    "returnCount": 2,
+    "orderCount": 42,
+    "returnRate": 0.047,
+    "refundValue": "210.00",
+    "unitsReturned": 3,
+    "topReturnedProducts": [
+      {
+        "productId": "p9",
+        "name": "Woven Basket",
+        "unitsReturned": 2,
+        "returnCount": 1
+      }
+    ]
+  },
+  "fetchOrderValueDistribution": {
+    "range": {
+      "from": "2026-06-28",
+      "to": "2026-07-27"
+    },
+    "buckets": [
+      {
+        "label": "0–50",
+        "count": 10
+      },
+      {
+        "label": "50–100",
+        "count": 4
+      }
+    ]
+  },
+  "fetchReturnReasons": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "returns": [
+      {
+        "rmaNumber": "RMA-001",
+        "reason": "Wrong size delivered",
+        "status": "APPROVED",
+        "createdAt": "2026-01-05T00:00:00.000Z"
+      }
+    ]
+  },
+  "fetchReturnResolutionBreakdown": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "byResolution": [
+      {
+        "resolution": "REFUND",
+        "count": 3,
+        "refundedValue": "150.00"
+      }
+    ],
+    "byStatus": [
+      {
+        "status": "APPROVED",
+        "count": 3
+      }
+    ]
+  },
+  "fetchReviewModerationThroughput": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "submitted": 10,
+    "approved": 7,
+    "rejected": 1,
+    "pending": 2,
+    "averageHoursToModeration": 12.5
+  },
+  "fetchStaffActivity": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "staff": [
+      {
+        "actorId": "u1",
+        "actorEmail": "owner@example.test",
+        "actorRole": "OWNER",
+        "actionCount": 42,
+        "deniedCount": 0
+      },
+      {
+        "actorId": "u2",
+        "actorEmail": "support@example.test",
+        "actorRole": "SUPPORT",
+        "actionCount": 5,
+        "deniedCount": 3
+      }
+    ],
+    "windowStart": "2026-01-01T00:00:00.000Z",
+    "windowEnd": "2026-02-01T00:00:00.000Z"
+  },
+  "fetchStockAdjustmentReasons": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "reasons": [
+      {
+        "reason": "RECEIVED",
+        "movements": 4,
+        "netUnits": 120
+      }
+    ]
+  },
+  "fetchVariantStockMovement": {
+    "range": {
+      "from": "2026-01-01",
+      "to": "2026-01-31"
+    },
+    "variants": [
+      {
+        "variantId": "v1",
+        "name": "Red / L",
+        "productName": "T-Shirt",
+        "sku": "TS-RL",
+        "stockAllBranches": 10,
+        "sold": 5,
+        "received": 20
+      }
+    ]
+  }
+}

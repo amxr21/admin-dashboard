@@ -188,6 +188,7 @@
     "shift": "Shift"
   },
   "branches": {
+    "switching": "Switching branches. Preparing your workspace…",
     "switcherLabel": "Active branch",
     "allBranches": "All branches",
     "manage": {

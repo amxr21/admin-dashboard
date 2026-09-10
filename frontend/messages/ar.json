@@ -188,6 +188,7 @@
     "shift": "الوردية"
   },
   "branches": {
+    "switching": "جارٍ تبديل الفرع وتجهيز مساحة العمل…",
     "switcherLabel": "الفرع النشط",
     "allBranches": "كل الفروع",
     "manage": {

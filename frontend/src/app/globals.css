@@ -1,6 +1,14 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+/* Radix locks the document, but this shell scrolls inside main and nav.
+   Hide those background scrollbars during a modal; portalled drawer content
+   remains scrollable, and overflow:hidden preserves the background position. */
+body[data-scroll-locked] [data-slot='app-shell'] main,
+body[data-scroll-locked] [data-slot='app-shell'] nav {
+  overflow: hidden;
+}
+
 /*
  * ─── admin-dashboard design tokens ──────────────────────────────────────────
  *

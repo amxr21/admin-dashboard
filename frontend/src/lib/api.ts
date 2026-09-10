@@ -14,6 +14,7 @@
 
 import { API_BASE_URL } from '@/lib/api-config';
 import { readBranchId, readToken } from '@/lib/auth-storage';
+import { withLoadingActivity } from '@/lib/loading-activity';
 
 const API_URL = API_BASE_URL;
 
@@ -45,10 +46,24 @@ type ErrorBody = {
   error?: { code?: string; message?: string; requestId?: string; details?: unknown };
 };
 
+export type ApiRequestInit = RequestInit & {
+  /** GET pages render their own loading state; opt in only for imperative GET actions. */
+  globalLoading?: boolean;
+};
+
 export async function apiFetch<T>(
   path: string,
-  init: RequestInit = {},
+  init: ApiRequestInit = {},
 ): Promise<T> {
+  const { globalLoading, ...requestInit } = init;
+  const method = (requestInit.method ?? 'GET').toUpperCase();
+  if (globalLoading || method !== 'GET') {
+    return withLoadingActivity(() => performApiFetch<T>(path, requestInit));
+  }
+  return performApiFetch<T>(path, requestInit);
+}
+
+async function performApiFetch<T>(path: string, init: RequestInit): Promise<T> {
   // Attached here rather than at each call site, so no request can forget it.
   // Reading storage per-request (not once at module load) matters: a module
   // constant would capture the token at import time and keep sending a stale
@@ -120,6 +135,10 @@ export async function apiFetch<T>(
  * than fighting it.
  */
 export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  return withLoadingActivity(() => performApiUpload<T>(path, formData));
+}
+
+async function performApiUpload<T>(path: string, formData: FormData): Promise<T> {
   const token = readToken();
   // Carried here too, so an upload is authorised against the same branch as
   // every other request from this tab. Leaving it off would make this the one
@@ -168,6 +187,10 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
  * exists only because saving a file has no other browser API.
  */
 export async function apiDownload(path: string, fallbackFilename: string): Promise<void> {
+  return withLoadingActivity(() => performApiDownload(path, fallbackFilename));
+}
+
+async function performApiDownload(path: string, fallbackFilename: string): Promise<void> {
   const token = readToken();
   // Exports must match what is on screen: a CSV downloaded while scoped to
   // one branch that quietly contained every branch is the F4.3 problem again,

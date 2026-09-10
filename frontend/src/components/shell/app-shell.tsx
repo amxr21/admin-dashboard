@@ -11,6 +11,7 @@ import { DiagnosticsBar } from '@/components/shell/diagnostics-bar';
 import { BranchSwitcher } from '@/components/shell/branch-switcher';
 import { ShiftControl } from '@/components/shell/shift-control';
 import { GlobalSearch } from '@/components/shell/global-search';
+import { GlobalLoadingOverlay } from '@/components/shell/global-loading-overlay';
 import { NotificationsBell } from '@/components/shell/notifications-bell';
 import { OnboardingWelcome } from '@/components/shell/onboarding-welcome';
 import { usePageTitle } from '@/components/shell/page-title';
@@ -170,8 +171,9 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden">
+    <div data-slot="app-shell" className="flex h-dvh overflow-hidden">
       <OnboardingWelcome />
+      <GlobalLoadingOverlay />
 
       {/* Desktop sidebar. Hidden below lg; the drawer covers those widths.
           STRUCTURALLY sized (h-full inside an h-dvh/overflow-hidden shell) —
