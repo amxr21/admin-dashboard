@@ -110,7 +110,17 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
             renaming production tables or changing existing relation data. Not reproduced: the live
             parity diff returned "No difference detected" against the migrated local database.
       - [x] Run focused startup/schema-integrity tests. 17/17 pass; targeted ESLint clean.
-      - [ ] Run the real migration-history parity check in Linux GitHub CI.
+      - [x] Run the real migration-history parity check in Linux GitHub CI. **Its first real run
+            failed, and the check itself was the cause.** PR #220's `Backend · Tests` died at
+            "Apply migrations to the test database" with `P3005: The database schema is not empty`,
+            while parent PR #219 was fully green. The new step pointed
+            `SCHEMA_CHECK_SHADOW_DATABASE_URL` at `admin_dashboard_test` — the same database the
+            tests use. `migrate diff --from-migrations` replays all 57 migrations INTO the shadow
+            database to compute its comparison, leaving it populated with no migration history, so
+            the following `migrate deploy` correctly refused. Fixed by giving the check its own
+            `admin_dashboard_shadow_test` database, created in the step because the service block
+            only auto-creates the test one and Prisma resets a shadow database without creating it.
+            The name still satisfies the script's loopback + contains-"test" guard.
       - [ ] Run backend lint, type-check, build, merge-integrity, and full relevant tests. Owner
             directed skipping database/server-dependent suites and the production build this
             session; focused startup/schema tests and targeted lint pass locally.
@@ -125,10 +135,38 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
 
 ## U1 — till correctness and cashier safety (P0/P1)
 
-- [ ] **URG-005 — Prevent overselling authoritatively.** Reject checkout when requested quantity
+- [x] **URG-005 — Prevent overselling authoritatively.** Reject checkout when requested quantity
       exceeds the selected branch’s available stock, inside the same transaction that creates the
       order/payment/stock movement. Cover concurrent checkouts so two cashiers cannot both consume
       the final units.
+      **Root cause (confirmed by reading, not assumed):** `executeIdempotently` opens the checkout
+      transaction with no `isolationLevel`, so it runs at MySQL's default REPEATABLE READ.
+      `checkoutOnce` read branch stock into a map, checked `line.quantity > available`, then issued
+      an UNCONDITIONAL `branchStock.upsert({ update: { quantity: { decrement } } })`. Two cashiers
+      with DIFFERENT idempotency keys both read `available = 1`, both passed the check, and both
+      decremented — the shelf reaching -1. `@@unique([productId, branchId])` constrains the row's
+      IDENTITY, not its VALUE, so the upsert could not catch it.
+      **Fix:** the decrement is now a conditional `updateMany` carrying
+      `quantity: { gte: line.quantity }` in the WHERE clause; `count === 0` is the refusal, and it
+      re-reads the row to name the real remaining count. Check and write are one atomic statement —
+      the same TOCTOU-closing shape the password-reset redemption already uses. The read-based
+      check is retained as the FRIENDLY refusal (it names the product) but is explicitly no longer
+      the safety boundary.
+      **Rejected:** Serializable isolation — it would serialize every sale including the
+      overwhelming majority that never contend for one row, and add deadlock retries across the
+      whole checkout to fix a single-row conflict.
+      **Preserved:** the `inventory.allowNegativeStock` escape hatch (O5.8) still takes the
+      unconditional path, because a shop mid-stocktake has deliberately accepted lagging counts.
+      **Audited, no change needed:** the other three `branchStock` writers cannot oversell —
+      void/restock and return-restock INCREMENT, the inventory adjustment is an explicit human act
+      rather than a race, and the product-create hook writes an opening figure.
+      **Deliberately unchanged:** the till still WARNS rather than blocks above stock
+      (`sale-screen.tsx`), matching the documented "the server decides" split; URG-005 is a
+      server-authority requirement and the server is now authoritative.
+      **Verification:** backend typecheck + targeted ESLint clean. Two new integration tests (a
+      two-cashier race on distinct idempotency keys, and an over-quantity refusal) CANNOT run
+      locally — `admin_dashboard_test` has 54 tables but an unbaselined `_prisma_migrations`, so
+      they get their first real run in CI.
 - [ ] **URG-006 — Hide out-of-stock items from till browsing.** Product browsing/search should omit
       variants with no sellable stock at the active branch. A direct barcode/SKU scan of an
       unavailable item must show an explicit “out of stock” result rather than silently doing

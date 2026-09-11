@@ -507,8 +507,19 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   asserted to contain no `deploy`/`dev`/`push`) is now the sole authority; deploy/status failures are
   logged loudly and non-fatal; a *thrown* runner error still aborts, since a crashed process is no
   evidence the schema is healthy.
-- **Next step**: commit URG-004, push, open the PR against `fix/urgent-pos-checkout-api-500`, and
-  inspect GitHub checks — including the migration-history parity check's first real Linux CI run.
+- **The URG-005 finding worth remembering**: POS checkout could oversell under concurrency. The
+  transaction runs at MySQL's default REPEATABLE READ (`executeIdempotently` sets no
+  `isolationLevel`), and `checkoutOnce` read stock into a map, checked it, then decremented
+  UNCONDITIONALLY. Two cashiers with different idempotency keys both read `available = 1`, both
+  passed, both decremented, and the shelf went to -1. **A unique constraint guards a row's IDENTITY,
+  never its VALUE** — `@@unique([productId, branchId])` could not catch this, and no amount of
+  re-reading before the write can. Fixed by moving the condition INTO the write:
+  `updateMany({ where: { quantity: { gte: n } }, data: { decrement: n } })`, with `count === 0` as
+  the refusal — the same TOCTOU-closing idiom as the password-reset redemption. Serializable
+  isolation was rejected as it would serialize every non-contending sale. **Generalise**: any
+  check-then-write on a shared counter is a race unless the check is part of the write statement.
+  The `inventory.allowNegativeStock` escape hatch (O5.8) deliberately keeps the unconditional path.
+- **Next step**: URG-006 (hide out-of-stock items from till browsing), continuing the U1 queue.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.

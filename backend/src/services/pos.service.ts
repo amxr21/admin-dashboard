@@ -578,6 +578,11 @@ async function checkoutOnce(
          * mid-stocktake, or one whose counts are known to lag, must not have
          * its till stop working over bookkeeping. Hence the setting, and hence
          * its default.
+         *
+         * This read-based check is the FRIENDLY refusal — it names the product
+         * and the real remaining count, which the atomic guard at the
+         * decrement below cannot do as helpfully. It is not the safety
+         * boundary: see the conditional decrement for why.
          */
         throw AppError.badRequest(
           `Only ${String(available)} of ${product.name} left at this branch`,
@@ -675,11 +680,61 @@ async function checkoutOnce(
         },
       });
 
-      await tx.branchStock.upsert({
-        where: { productId_branchId: { productId: line.productId, branchId } },
-        create: { productId: line.productId, branchId, quantity: -line.quantity },
-        update: { quantity: { decrement: line.quantity } },
-      });
+      /**
+       * URG-005 — the real oversell boundary.
+       *
+       * The read-based check above cannot hold: this transaction runs at
+       * MySQL's default REPEATABLE READ (see `executeIdempotently`), so two
+       * cashiers selling the last unit each read `available = 1`, each pass
+       * that check, and each reach this decrement. `@@unique([productId,
+       * branchId])` constrains the row's IDENTITY, not its VALUE, so an
+       * unconditional `decrement` commits both and the shelf goes to -1.
+       *
+       * Putting the quantity condition in the WHERE clause makes the check and
+       * the write one atomic statement — the same TOCTOU-closing shape the
+       * password-reset redemption uses. The loser updates 0 rows and is
+       * refused, so the units cannot be sold twice.
+       *
+       * Serializable isolation was rejected: it would serialize every sale,
+       * including the overwhelming majority that never contend for one row,
+       * and add deadlock retries across the whole checkout to fix a conflict
+       * that belongs to a single row.
+       */
+      if (allowNegative) {
+        // The deliberate mid-stocktake escape hatch (O5.8) — counts are known
+        // to lag here, so going negative is the accepted outcome, not a race.
+        await tx.branchStock.upsert({
+          where: { productId_branchId: { productId: line.productId, branchId } },
+          create: { productId: line.productId, branchId, quantity: -line.quantity },
+          update: { quantity: { decrement: line.quantity } },
+        });
+      } else {
+        const claimed = await tx.branchStock.updateMany({
+          where: {
+            productId: line.productId,
+            branchId,
+            // The whole point: only decrement if the units are still there.
+            quantity: { gte: line.quantity },
+          },
+          data: { quantity: { decrement: line.quantity } },
+        });
+
+        if (claimed.count === 0) {
+          // Either another sale took the units between the read above and
+          // here, or this product has no stock row at this branch at all.
+          // Both mean the same thing to the cashier: it is not on the shelf.
+          const current = await tx.branchStock.findUnique({
+            where: { productId_branchId: { productId: line.productId, branchId } },
+            select: { quantity: true },
+          });
+          const remaining = current?.quantity ?? 0;
+
+          throw AppError.badRequest(
+            `Only ${String(remaining)} of ${byId.get(line.productId)?.name ?? 'that product'} left at this branch`,
+            { field: 'quantity', productId: line.productId, available: remaining },
+          );
+        }
+      }
 
       await tx.product.update({
         where: { id: line.productId },
