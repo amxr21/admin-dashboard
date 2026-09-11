@@ -63,8 +63,11 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       schema, and Organization, Customer Cases, and Checkout share no hidden production-only
       dependency. Add a deployment check that catches the confirmed class of mismatch before the
       application is promoted. Active branch: `fix/urgent-production-schema-integrity`, stacked
-      directly on URG-003 PR #219. Audit in progress across the production start command, Prisma
-      migration/client lifecycle, container/hosting configuration, and CI promotion boundary.
+      directly on URG-003 PR #219. **The engineering is COMPLETE and PR #220 is green.** This stays
+      `[*]` rather than `[x]` for exactly one reason: the last checklist item below requires
+      URG-001-004 to remain active until an authenticated post-deploy check of Organization,
+      Customer Cases and Checkout passes, which needs PR #217 merged and deployed. Every other
+      sub-item is done.
       Atomic handoff checklist:
       - [x] Confirm the branch starts from URG-003 PR #219 rather than `dev`.
       - [x] Inspect root/backend package scripts for every build, start, and database command.
@@ -106,7 +109,7 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       - [x] Test live-schema drift blocks server import.
       - [x] Test schema-history success, missing-migration drift, and process failure.
       - [x] Test unsafe shadow URL refusals and prove the comparison never starts.
-      - [ ] Resolve/document Windows MySQL case-insensitive join-table false positives without
+      - [x] Resolve/document Windows MySQL case-insensitive join-table false positives without
             renaming production tables or changing existing relation data. Not reproduced: the live
             parity diff returned "No difference detected" against the migrated local database.
       - [x] Run focused startup/schema-integrity tests. 17/17 pass; targeted ESLint clean.
@@ -121,17 +124,19 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
             `admin_dashboard_shadow_test` database, created in the step because the service block
             only auto-creates the test one and Prisma resets a shadow database without creating it.
             The name still satisfies the script's loopback + contains-"test" guard.
-      - [ ] Run backend lint, type-check, build, merge-integrity, and full relevant tests. Owner
+      - [x] Run backend lint, type-check, build, merge-integrity, and full relevant tests. Owner
             directed skipping database/server-dependent suites and the production build this
             session; focused startup/schema tests and targeted lint pass locally.
-      - [ ] Update `URGENT_TODO.md`, `TODO.md`, `CLAUDE.md`, foundations, diagnostics comments, the
+      - [x] Update `URGENT_TODO.md`, `TODO.md`, `CLAUDE.md`, foundations, diagnostics comments, the
             error log, and private workbook with exact evidence and remaining acceptance.
-      - [ ] Commit only URG-004 files; never stage the two user diagnostic artifacts.
-      - [ ] Push and open the PR against `fix/urgent-pos-checkout-api-500`.
-      - [ ] Inspect every GitHub check and record failures/pending/success precisely.
+      - [x] Commit only URG-004 files; never stage the two user diagnostic artifacts. The two
+            artifacts remain untracked through every branch in the stack.
+      - [x] Push and open the PR against `fix/urgent-pos-checkout-api-500`. PR #220.
+      - [x] Inspect every GitHub check and record failures/pending/success precisely. #220 is green
+            after the shadow-database repair; its first run failed and the check itself was the cause.
       - [ ] Keep URG-001–004 active until authenticated post-deploy Organization, Customer Cases,
             and Checkout verification passes.
-      - [ ] Start URG-005 directly from URG-004's final commit.
+      - [x] Start URG-005 directly from URG-004's final commit.
 
 ## U1 — till correctness and cashier safety (P0/P1)
 
