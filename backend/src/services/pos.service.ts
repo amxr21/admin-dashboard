@@ -14,6 +14,7 @@ import { audit } from './audit.service.js';
 import { verifyOverrideToken } from './auth.service.js';
 import { defaultBranchId } from './inventory.service.js';
 import { executeIdempotently } from './idempotency.service.js';
+import { normalizePhone } from '../lib/phone.js';
 import { computeOrderTotals, getTaxRate } from './order-math.service.js';
 import { getSettingValue } from './settings.service.js';
 
@@ -402,6 +403,19 @@ async function checkoutOnce(
   }
 
   const branchId = input.branchId ?? (await defaultBranchId());
+
+  if (input.customerId) {
+    const customer = await tx.customer.findUnique({
+      where: { id: input.customerId },
+      select: { id: true },
+    });
+    if (!customer) {
+      throw AppError.badRequest('The selected customer no longer exists', {
+        field: 'customerId',
+      });
+    }
+  }
+
   const taxRate = await getTaxRate();
   const allowNegative = Boolean(await getSettingValue('inventory.allowNegativeStock'));
 
@@ -741,6 +755,25 @@ async function checkoutOnce(
     },
     },
   };
+}
+
+/** Minimal, purpose-built lookup for the till. Cashiers can associate a sale
+ * without receiving the full customer-management surface or internal notes. */
+export async function searchPosCustomers(query: string) {
+  const normalizedPhone = normalizePhone(query);
+  return prisma.customer.findMany({
+    where: {
+      OR: [
+        { name: { contains: query } },
+        { email: { contains: query } },
+        { phone: { contains: query } },
+        ...(normalizedPhone.length >= 2 ? [{ phoneNormalized: { contains: normalizedPhone } }] : []),
+      ],
+    },
+    select: { id: true, name: true, email: true, phone: true },
+    orderBy: { name: 'asc' },
+    take: 8,
+  });
 }
 
 /**

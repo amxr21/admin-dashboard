@@ -10,6 +10,8 @@ import {
   canTransition,
   nextStatuses,
 } from '../config/orders.config.js';
+import { notifyCustomerOrderStatus } from './customer-order-notifications.service.js';
+import { normalizePhone } from '../lib/phone.js';
 
 /**
  * Orders — the one resource the generic engine cannot express.
@@ -48,7 +50,7 @@ export interface OrderListParams {
   /** Inclusive ISO dates filtering on `placedAt`. */
   from?: string;
   to?: string;
-  /** Matches order number, customer name or customer email. */
+  /** Matches order/customer identity and payment reference. */
   search?: string;
   sort?: OrderSortField;
   dir?: 'asc' | 'desc';
@@ -80,10 +82,16 @@ function buildWhere(params: OrderListParams): Prisma.OrderWhereInput {
 
   if (params.search) {
     const contains = params.search;
+    const normalizedPhone = normalizePhone(contains);
     where.OR = [
       { orderNumber: { contains } },
       { customer: { name: { contains } } },
       { customer: { email: { contains } } },
+      { customer: { phone: { contains } } },
+      ...(normalizedPhone.length >= 3
+        ? [{ customer: { phoneNormalized: { contains: normalizedPhone } } }]
+        : []),
+      { payments: { some: { reference: { contains } } } },
     ];
   }
 
@@ -586,6 +594,8 @@ export async function changeOrderStatus(id: string, input: ChangeStatusInput) {
       });
     }
   });
+
+  await notifyCustomerOrderStatus(id, input.to);
 
   return getOrder(id);
 }

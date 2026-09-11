@@ -11,6 +11,7 @@ import {
   History,
   LayoutDashboard,
   LogIn,
+  MessagesSquare,
   Package,
   RotateCcw,
   ScanLine,
@@ -97,6 +98,7 @@ export const NAVIGATION: readonly NavGroup[] = [
     labelKey: 'people',
     items: [
       { href: '/admin/delivery', labelKey: 'delivery', icon: Truck, area: 'delivery' },
+      { href: '/admin/customer-cases', labelKey: 'customerCases', icon: MessagesSquare, area: 'customers' },
     ],
   },
   {

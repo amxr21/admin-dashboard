@@ -401,6 +401,7 @@ model User {
   shiftsEdited         Shift[]               @relation("ShiftEditor")
   shiftsApproved       Shift[]               @relation("ShiftApprover")
   parkedSales          ParkedSale[]
+  customerCases        CustomerCase[]         @relation("CustomerCaseAssignee")
 
   @@index([role])
   @@index([createdAt])
@@ -878,6 +879,8 @@ model Customer {
   name          String  @db.VarChar(200)
   email         String  @unique @db.VarChar(255)
   phone         String? @db.VarChar(48)
+  /// Digits-only indexed search key. Never returned through the resource API.
+  phoneNormalized String? @map("phone_normalized") @db.VarChar(32)
   city          String? @db.VarChar(96)
   country       String? @db.VarChar(96)
   /// Staff-only, never surfaced to the customer. Plain free text — no tag
@@ -907,11 +910,14 @@ model Customer {
   discounts     Discount[]
   cartItems     CartItem[]
   wishlistItems WishlistItem[]
+  cases         CustomerCase[]
+  orderNotifications CustomerOrderNotification[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([createdAt])
+  @@index([phoneNormalized])
   @@map("customers")
 }
 
@@ -971,6 +977,8 @@ model Order {
   /// Set on the return this order exists to replace (O9.8) — a plain sale
   /// never has one. See `Return.exchangeOrderId`'s own comment.
   exchangeFor   Return?  @relation("ExchangeReplacement")
+  customerCases CustomerCase[]
+  customerNotifications CustomerOrderNotification[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -979,6 +987,93 @@ model Order {
   @@index([customerId])
   @@index([placedAt])
   @@map("orders")
+}
+
+enum CustomerCaseStatus {
+  OPEN
+  WAITING
+  RESOLVED
+  CLOSED
+}
+
+enum CustomerCasePriority {
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum CustomerDeliveryStatus {
+  PENDING
+  SENT
+  SKIPPED
+  FAILED
+}
+
+/// A reusable customer-service work item. It is permission-scoped through the
+/// `customers` area rather than tied to a business-specific staff role.
+model CustomerCase {
+  id          String               @id @default(cuid())
+  caseNumber  String               @unique @map("case_number") @db.VarChar(40)
+  title       String               @db.VarChar(200)
+  description String?              @db.Text
+  status      CustomerCaseStatus   @default(OPEN)
+  priority    CustomerCasePriority @default(NORMAL)
+  branchId    String?              @map("branch_id") @db.VarChar(64)
+
+  customerId String?   @map("customer_id")
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  orderId    String?   @map("order_id")
+  order      Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  assignedToId String? @map("assigned_to_id")
+  assignedTo   User?   @relation("CustomerCaseAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdById  String  @map("created_by_id") @db.VarChar(64)
+  resolvedAt   DateTime? @map("resolved_at")
+
+  notes     CustomerCaseNote[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([branchId, status, updatedAt])
+  @@index([customerId])
+  @@index([orderId])
+  @@index([assignedToId])
+  @@map("customer_cases")
+}
+
+/// Append-only collaboration history for a customer case.
+model CustomerCaseNote {
+  id       String       @id @default(cuid())
+  caseId   String       @map("case_id")
+  case     CustomerCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  body     String       @db.Text
+  authorId String       @map("author_id") @db.VarChar(64)
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  @@index([caseId, createdAt])
+  @@map("customer_case_notes")
+}
+
+/// Durable outcome of attempting to tell a customer about an order status.
+/// The row stores delivery metadata, never the message body.
+model CustomerOrderNotification {
+  id             String                 @id @default(cuid())
+  orderId        String                 @map("order_id")
+  order          Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerId     String?                @map("customer_id")
+  customer       Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  orderStatus    OrderStatus            @map("order_status")
+  channel        String                 @default("email") @db.VarChar(24)
+  recipient      String?                @db.VarChar(255)
+  deliveryStatus CustomerDeliveryStatus @default(PENDING) @map("delivery_status")
+  failureCode    String?                @map("failure_code") @db.VarChar(64)
+  sentAt         DateTime?              @map("sent_at")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+
+  @@unique([orderId, orderStatus, channel], map: "uq_customer_order_notification")
+  @@index([deliveryStatus, createdAt])
+  @@map("customer_order_notifications")
 }
 
 /// Durable result of a mutation that a client may safely retry after losing

@@ -488,6 +488,14 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
+- **2026-09-10 — Batch 4 customer service is under final verification.** A bespoke, branch-safe
+  customer-case workspace now provides reusable status, priority, ownership, related
+  customer/order records, and append-only notes through the existing `customers` permission
+  area—no Support-specific role or business-specific templates. The till can optionally link an
+  existing customer through a minimal lookup while anonymous sales remain the default. Order
+  search includes indexed normalized phone identity and payment references. Status changes write
+  a separate customer-delivery outcome and never roll back when SMTP is unavailable. Focused
+  backend tests pass 6/6; focused frontend tests pass 3/3. Full local and GitHub gates remain.
 - **`TODO.md` is the master task list — read it, not this file, for what's open.** This
   file describes what the system IS; that file says what is LEFT. **Every other task list has
   been folded into it** — `MASTER_TODO.md`, `O7-PLAN.md`, `.claude-workbook/NEXT-STEP.md` and
@@ -630,6 +638,11 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-09-10 (UX-015/016/017/018)** — Added a reusable customer-case workspace, optional POS
+  customer association, indexed normalized-phone/payment-reference order discovery, and durable
+  customer-facing order-status email outcomes. Case access reuses the `customers` permission area
+  instead of introducing another role. Customer emails cannot make order transitions fail; only
+  recipient/channel/status/failure metadata is persisted, never the message body.
 - **2026-09-10 (UX-009)** — POS checkout is idempotent across lost responses and simultaneous
   submissions. A generic actor-scoped record stores a canonical request hash and response in the
   same transaction as order/payment/stock writes; mismatched reuse returns 409, successful replay

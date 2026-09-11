@@ -5,6 +5,7 @@ import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { logger } from '../logger.js';
 import { defaultBranchId } from './inventory.service.js';
+import { normalizePhone } from '../lib/phone.js';
 
 /// The category tree's own cap (S7.6) — decided rather than left unbounded:
 /// a shop's catalogue nav is Category → Subcategory → Sub-subcategory in
@@ -75,6 +76,16 @@ export interface ResourceHooks {
 }
 
 export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>> = {
+  customers: {
+    beforeWrite: (data): Promise<void> => {
+      if (!Object.prototype.hasOwnProperty.call(data, 'phone')) return Promise.resolve();
+      const phone = data.phone;
+      data.phoneNormalized = typeof phone === 'string' && phone.trim()
+        ? normalizePhone(phone)
+        : null;
+      return Promise.resolve();
+    },
+  },
   categories: {
     /**
      * The category tree (S7.6): depth cap and circular-parent prevention.

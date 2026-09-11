@@ -16,6 +16,7 @@ import {
   parkSale,
   resumeParkedSale,
   scanProduct,
+  searchPosCustomers,
   voidSale,
 } from '../../services/pos.service.js';
 import { getOpenShift } from '../../services/shifts.service.js';
@@ -113,6 +114,18 @@ posRouter.get('/pos/browse/categories', ...guard, async (_req, res) => {
   const categories = await browseCategories();
 
   res.status(200).json({ data: { categories } });
+});
+
+const customerSearchQuery = z.object({
+  q: z.string().trim().min(2).max(120),
+});
+
+posRouter.get('/pos/customers', ...guard, async (req, res) => {
+  const parsed = customerSearchQuery.safeParse(req.query);
+  if (!parsed.success) {
+    throw AppError.badRequest('Enter at least two characters', parsed.error.flatten());
+  }
+  res.json({ data: { customers: await searchPosCustomers(parsed.data.q) } });
 });
 
 const checkoutSchema = z.object({

@@ -12,12 +12,12 @@
 ### Approved implementation order
 
 - [x] **Batch 1 — UX-009: idempotent POS checkout.** Prevent retries after an uncertain response from creating duplicate orders, payments, or stock movements. Shipped on `fix/ux-009-idempotent-checkout`; the reusable backend primitive, client intent reuse, migration, concurrency coverage, and full GitHub CI gate are green in PR #195.
-- [ ] **Batch 2 — delivery operations:** implementation complete; full local gate and stacked PR publication pending. Keep permissions compatible with the three-role model rather than introducing a Manager role.
+- [x] **Batch 2 — delivery operations:** implemented on `feat/ux-delivery-operations`; the complete GitHub build/lint/typecheck/unit/integration/merge-integrity gate is green in PR #196. Permissions remain compatible with the three-role model without introducing another role.
   - [x] **UX-010:** branch-safe, URL-filtered delivery board with active/failed queues, responsive cards, bilingual UI, and explicit loading/error/empty states.
   - [x] **UX-011:** chronological assignment timeline merging assignment audits with delivery status history.
   - [x] **UX-012:** “Working now” is the default shift-operations view; approvals remain a separate shareable view.
   - [x] **Owner blocker:** automatically resolve the sole assigned branch for Cashiers and other branch-scoped employees while preserving “All branches” for Admin/Owner and Developer.
-  - [ ] Run the full local gate, publish `feat/ux-delivery-operations`, and verify the stacked GitHub checks.
+  - [x] Run the full local gate, publish `feat/ux-delivery-operations`, and verify the stacked GitHub checks.
 - [ ] **Batch 3 — purchasing and stock:** UX-013 supplier directory and UX-014 low-stock supplier outreach. Keep Supplier intentionally thin; do not expand this into purchase orders or add a procurement role.
   - [x] Inventory the existing Supplier model, API, receipt history, low-stock data, mail service, permissions, and audit paths.
   - [x] Add a reusable supplier directory API with create, edit, deactivate, search, and pagination contracts.
@@ -26,7 +26,14 @@
   - [x] Add a permission-checked, audited low-stock outreach endpoint that reuses the existing mail service.
   - [x] Add a prefilled but editable “email supplier” workflow with explicit loading, success, failure, and missing-email states.
   - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 2.
-- [ ] **Batch 4 — customer service:** UX-015 customer case workspace, UX-016 POS customer association, UX-017 payment/phone search, and UX-018 order-status notifications. Do not introduce a Support role.
+- [ ] **Batch 4 — customer service:** UX-015 customer case workspace, UX-016 POS customer association, UX-017 payment/phone search, and UX-018 order-status notifications. Do not introduce a Support role; authorize through reusable permission areas.
+  - [x] Inventory existing customer, order, payment, POS, notification, email, branch, and audit contracts before choosing schema changes.
+  - [x] Define a reusable customer-case model and lifecycle with status, priority, ownership, notes, and related records; keep business-specific case templates out of scope.
+  - [x] Add branch-safe, validated, audited customer-case APIs and a bilingual responsive workspace with URL-backed filters and explicit states.
+  - [x] Add optional existing-customer association to POS checkout without duplicating customer identity snapshots or blocking anonymous sales.
+  - [x] Extend order search to normalized customer phone and payment reference through one server-side search contract.
+  - [x] Add customer-facing order-status notifications with explicit recipient/channel eligibility, delivery outcome, and privacy-safe auditing.
+  - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 3.
 - [ ] **Batch 5 — workflow resilience:** UX-019 session-expiry recovery, UX-020 unsaved-change guards, UX-021 expanded global search, and UX-022 URL-backed inventory state.
 - [ ] **Batch 6 — notifications:** UX-023 unread-count correctness, UX-024 filters/action links, and UX-025 accessible row actions.
 - [ ] **Batch 7 — operational navigation:** UX-026 durable return-detail navigation, UX-027 URL-backed shift filters, UX-028 staff bulk lifecycle actions, and UX-029 related-record links.

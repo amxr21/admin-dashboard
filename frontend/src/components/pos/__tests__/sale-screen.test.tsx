@@ -38,6 +38,7 @@ const {
   fetchOrder,
   createReturn,
   approveReturn,
+  searchPosCustomers,
 } = vi.hoisted(() => ({
   scanProduct: vi.fn(),
   checkout: vi.fn(),
@@ -54,6 +55,7 @@ const {
   fetchOrder: vi.fn(),
   createReturn: vi.fn(),
   approveReturn: vi.fn(),
+  searchPosCustomers: vi.fn(),
 }));
 
 vi.mock('@/lib/pos-api', async (importOriginal) => ({
@@ -67,6 +69,7 @@ vi.mock('@/lib/pos-api', async (importOriginal) => ({
   listParkedSales,
   resumeParkedSale,
   discardParkedSale,
+  searchPosCustomers,
 }));
 
 vi.mock('@/lib/auth-api', async (importOriginal) => ({
@@ -110,6 +113,7 @@ beforeEach(() => {
   // Fetched once on mount for the parked-carts panel — empty keeps it quiet
   // for tests that aren't about parking (see the dedicated describe below).
   listParkedSales.mockResolvedValue([]);
+  searchPosCustomers.mockResolvedValue([]);
 });
 
 async function scan(code: string) {
@@ -129,6 +133,41 @@ async function takePaymentThroughConfirm() {
 }
 
 describe('building a sale', () => {
+  it('associates an optional selected customer with this sale only', async () => {
+    searchPosCustomers.mockResolvedValue([{ id: 'customer-1', name: 'Sara Ali', email: 'sara@example.test', phone: '+971501234567' }]);
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({ orderId: 'o1', orderNumber: 'POS-1', subtotal: '4.50', taxAmount: '0.00', total: '4.50', change: null });
+    render(<SaleScreen />);
+
+    await userEvent.type(screen.getByLabelText(/^customer$/i), 'Sara');
+    await userEvent.click(await screen.findByRole('option', { name: /Sara Ali/i }));
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+    await takePaymentThroughConfirm();
+
+    await waitFor(() => expect(checkout).toHaveBeenCalledWith(
+      expect.objectContaining({ customerId: 'customer-1' }),
+      expect.any(String),
+    ));
+    expect(screen.queryByText('Sara Ali')).not.toBeInTheDocument();
+  });
+
+  it('supports keyboard selection in the customer lookup', async () => {
+    searchPosCustomers.mockResolvedValue([
+      { id: 'customer-1', name: 'Sara Ali', email: 'sara@example.test', phone: null },
+      { id: 'customer-2', name: 'Omar Saleh', email: 'omar@example.test', phone: null },
+    ]);
+    render(<SaleScreen />);
+
+    const lookup = screen.getByLabelText(/^customer$/i);
+    await userEvent.type(lookup, 'Sa');
+    await screen.findByRole('option', { name: /Sara Ali/i });
+    await userEvent.keyboard('{ArrowDown}{Enter}');
+
+    expect(screen.getByText('Omar Saleh')).toBeInTheDocument();
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
   it('adds a scanned product to the cart', async () => {
     scanProduct.mockResolvedValue(makeProduct());
 

@@ -148,6 +148,7 @@
     "discounts": "Discounts",
     "reviews": "Reviews",
     "delivery": "Delivery",
+    "customerCases": "Customer service",
     "returns": "Returns",
     "reports": "Reports",
     "settings": "Settings",
@@ -2567,7 +2568,66 @@
       "logins": "Sign-ins"
     }
   },
+  "customerCases": {
+    "title": "Customer service",
+    "subtitle": "Track customer questions and issues through a clear, owned workflow.",
+    "search": "Search cases",
+    "searchPlaceholder": "Case, customer, or order",
+    "all": "All",
+    "newCase": "New case",
+    "createDescription": "Record the issue, connect useful context, and assign an owner when known.",
+    "create": "Create case",
+    "created": "Customer case created",
+    "saving": "Saving…",
+    "emptyTitle": "No customer cases",
+    "emptyBody": "Create a case when a customer question or issue needs follow-up.",
+    "notLinked": "Not linked",
+    "unassigned": "Unassigned",
+    "noDescription": "No description recorded.",
+    "notes": "Case notes",
+    "noNotes": "No notes yet.",
+    "addNote": "Add note",
+    "saveNote": "Save note",
+    "unknownAuthor": "Former staff member",
+    "columns": {
+      "case": "Case",
+      "customer": "Customer",
+      "order": "Order",
+      "status": "Status",
+      "priority": "Priority",
+      "owner": "Owner",
+      "updated": "Updated"
+    },
+    "status": {
+      "OPEN": "Open",
+      "WAITING": "Waiting",
+      "RESOLVED": "Resolved",
+      "CLOSED": "Closed"
+    },
+    "priority": {
+      "NORMAL": "Normal",
+      "HIGH": "High",
+      "URGENT": "Urgent"
+    },
+    "form": {
+      "title": "Title",
+      "description": "Description",
+      "links": "Find related records or an owner",
+      "linksPlaceholder": "Search customers, orders, or staff",
+      "customers": "Customers",
+      "orders": "Orders",
+      "assignees": "Assignees"
+    }
+  },
   "pos": {
+    "customer": {
+      "label": "Customer",
+      "placeholder": "Search by name, email, or phone",
+      "hint": "Enter at least 2 characters",
+      "empty": "No matching customers",
+      "optional": "Optional — leave blank for a walk-in sale.",
+      "remove": "Remove"
+    },
     "title": "Till",
     "subtitle": "Scan items, take payment, print a receipt.",
     "scanLabel": "Scan or type a code",
