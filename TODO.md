@@ -122,10 +122,22 @@ earlier remote run to finish, but must retain the merge order.
   non-secret response contract and add regression coverage. Implemented on
   `fix/configuration-readiness-localization`; focused verification: backend diagnostics/email tests
   12/12, frontend configuration/message tests 22/22, both typechecks and targeted ESLint pass.
-- [ ] **Batch 12 — staff detail workspace (UX-034, reopened P1).** Add a durable, permission-aware
+- [x] **Batch 12 — staff detail workspace (UX-034, reopened P1).** Adds a durable, permission-aware
   staff route composing reusable identity, branch membership, activity, sessions, and permitted
-  account actions. Keep job/profile data separate from security roles and preserve all rank,
-  self-change, last-admin/owner, and branch-scope guards.
+  account actions. Job/profile data stays separate from security roles and every rank,
+  self-change, last-admin/owner, and branch-scope guard is preserved.
+  The read path now refuses in READ wording via `assertCanViewStaff`, which shares `loadSubject`
+  with the write guard so the rank rule cannot drift; the six write call sites in
+  `branch-roles.service.ts` and `shifts.service.ts` are unchanged. Coverage corrected while doing
+  so: the existing rank test passed through the AREA guard, never rank — `staff` is granted only to
+  OWNER and DEVELOPER, and DEVELOPER is the one rank above OWNER, so an OWNER reading a DEVELOPER is
+  the single reachable rank refusal. Both layers are now asserted separately and the wording
+  assertion was watched failing against the reverted code.
+  Verification: backend staff 56/56, frontend staff 50/50 across 8 files, both typechecks and
+  `eslint src` clean, en/ar parity 19/19. Static a11y/RTL review passed (one `h1`, sections labelled
+  by `h2`, `force-ltr` on every identifier, `<bdi>` on actor email, no physical offsets, `min-w-0` +
+  `truncate` on flex children). Live browser verification is deferred to the combined pass rather
+  than restarting the owner's running dev server.
 - [ ] **Batch 13 — simplify customer handling at the till.** Remove the prominent customer-search
   section from the primary sale flow. Keep anonymous checkout as the default and retain the shared
   backend customer-association contract for future/secondary workflows unless the owner later asks

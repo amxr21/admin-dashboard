@@ -1779,6 +1779,60 @@
       "description": "Creates the account and gives you a one-time activation code to hand over — you never see or set their password.",
       "send": "Send invite"
     },
+    "detail": {
+      "back": "Back to staff",
+      "loading": "Loading staff details",
+      "loadFailed": "Staff details could not be loaded",
+      "notFound": "That staff account no longer exists.",
+      "noExpiry": "No expiry",
+      "yes": "Yes",
+      "no": "No",
+      "cancel": "Cancel",
+      "actions": {
+        "edit": "Edit account",
+        "resetToken": "Issue reset token"
+      },
+      "identity": {
+        "title": "Account & access",
+        "role": "Security role",
+        "phone": "Phone",
+        "lastLogin": "Last sign-in",
+        "lastSeen": "Last activity",
+        "created": "Created",
+        "failedLogins": "Failed sign-ins (24h)",
+        "accessExpiry": "Access expiry"
+      },
+      "profile": {
+        "title": "Job profile",
+        "jobTitle": "Job title",
+        "department": "Department",
+        "manager": "Reports to"
+      },
+      "branches": {
+        "title": "Branch assignments",
+        "inactive": "Inactive branch",
+        "empty": "No branch assignments. Business-wide roles can work without one; branch-scoped staff need an assignment before starting the till."
+      },
+      "sessions": {
+        "title": "Sessions & devices",
+        "unknownDevice": "Unknown device",
+        "empty": "No active sessions.",
+        "signOut": "Sign out",
+        "signOutAll": "Sign out everywhere",
+        "confirmTitle": "Sign out this account?",
+        "confirmOne": "This device will need to sign in again. Other sessions stay active.",
+        "confirmAll": "Every device for this account will need to sign in again.",
+        "confirm": "Sign out",
+        "signedOutOne": "That device was signed out.",
+        "signedOutAll": "The account was signed out everywhere."
+      },
+      "activity": {
+        "title": "Recent activity",
+        "empty": "No recorded activity yet.",
+        "byPerson": "View actions by this person",
+        "aboutPerson": "View changes to this account"
+      }
+    },
     "permissions": {
       "title": "Permissions",
       "description": "Which areas each role can reach. Enforced by the server — this is a read-only view of that model.",

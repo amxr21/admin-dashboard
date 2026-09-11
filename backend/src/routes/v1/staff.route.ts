@@ -12,6 +12,7 @@ import {
   createStaff,
   inviteStaff,
   issueStaffPasswordResetToken,
+  getStaffDetail,
   listStaff,
   resetStaffPassword,
   transferOwnership,
@@ -105,6 +106,11 @@ staffRouter.get('/staff', ...guard, async (req, res) => {
   if (!parsed.success) throw AppError.badRequest('Invalid query', parsed.error.flatten());
 
   res.json({ data: await listStaff(parsed.data) });
+});
+
+staffRouter.get('/staff/:id', ...guard, async (req, res) => {
+  const actor = requireUser(req);
+  res.json({ data: await getStaffDetail(actor, String(req.params.id)) });
 });
 
 staffRouter.post('/staff', ...guard, async (req, res) => {

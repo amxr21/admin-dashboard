@@ -271,6 +271,17 @@ describe('StaffTable access expiry column', () => {
  * access (see audit.route.ts).
  */
 describe('StaffTable view activity link', () => {
+  it('opens the durable staff workspace from the person name', async () => {
+    resolveWith([makeStaff({ id: 's9', name: 'Mariam' })]);
+
+    render(<StaffTable />);
+
+    expect(await screen.findByRole('link', { name: 'Mariam' })).toHaveAttribute(
+      'href',
+      '/admin/staff/s9',
+    );
+  });
+
   it('links to the audit trail scoped to that staff member, even when not editable', async () => {
     // A DEVELOPER outranks OWNER in this app's hierarchy, so the row is
     // correctly non-editable — the link must still be there.

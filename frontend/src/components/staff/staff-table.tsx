@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { Link } from '@/i18n/navigation';
 import { DataTable, type Column } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { InviteStaffSheet } from '@/components/staff/invite-staff-sheet';
@@ -272,7 +273,9 @@ export function StaffTable() {
       cell: (member) => (
         <div className="min-w-0">
           <p className="truncate font-medium">
-            {member.name ?? member.email}
+            <Link href={`/admin/staff/${member.id}`} className="hover:underline">
+              {member.name ?? member.email}
+            </Link>
             {member.id === user?.id ? (
               <span className="text-muted-foreground ms-2 text-xs font-normal">
                 {t('you')}
