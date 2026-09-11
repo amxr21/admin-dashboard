@@ -24,6 +24,11 @@ const userIds: string[] = [];
 let orderId = '';
 let customerId = '';
 let productId = '';
+let supplierId = '';
+let customerCaseId = '';
+let businessId = '';
+let branchA = '';
+let branchB = '';
 let ownerToken = '';
 let supportToken = ''; // orders + customers, NOT products
 let fulfillmentToken = ''; // orders + products, NOT customers
@@ -62,22 +67,50 @@ beforeAll(async () => {
   });
   productId = product.id;
 
+  const business = await prisma.business.create({
+    data: {
+      name: `${RUN} Business`,
+      branches: {
+        create: [
+          { name: `${RUN} A`, code: `SEA-${Date.now()}`, isDefault: true },
+          { name: `${RUN} B`, code: `SEB-${Date.now()}` },
+        ],
+      },
+    },
+    include: { branches: true },
+  });
+  businessId = business.id;
+  branchA = business.branches.find((branch) => branch.isDefault)!.id;
+  branchB = business.branches.find((branch) => !branch.isDefault)!.id;
+
   const order = await prisma.order.create({
     data: {
       orderNumber: `${RUN}-ZEPHYR-1`,
       status: 'PENDING',
       total: new Prisma.Decimal('29.99'),
       customerId,
+      branchId: branchA,
       items: { create: [{ productId, quantity: 1, price: new Prisma.Decimal('29.99') }] },
     },
   });
   orderId = order.id;
+
+  const supplier = await prisma.supplier.create({ data: { name: `${RUN} Zephyr Supply`, email: `${RUN}-supply@example.test` } });
+  supplierId = supplier.id;
+  const customerCase = await prisma.customerCase.create({
+    data: { caseNumber: `${RUN}-CASE-1`, title: `${RUN} Zephyr issue`, branchId: branchA, customerId, orderId, createdById: userIds[0]! },
+  });
+  customerCaseId = customerCase.id;
 });
 
 afterAll(async () => {
+  await prisma.customerCase.deleteMany({ where: { id: customerCaseId } });
   await prisma.order.deleteMany({ where: { id: orderId } });
+  await prisma.supplier.deleteMany({ where: { id: supplierId } });
   await prisma.product.deleteMany({ where: { id: productId } });
   await prisma.customer.deleteMany({ where: { id: customerId } });
+  await prisma.branch.deleteMany({ where: { businessId } });
+  await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.$disconnect();
 });
@@ -87,6 +120,8 @@ interface SearchBody {
     orders: { id: string; title: string; subtitle: string | null; href: string }[];
     customers: { id: string; title: string; subtitle: string | null; href: string }[];
     products: { id: string; title: string; subtitle: string | null; href: string }[];
+    suppliers: { id: string; title: string; subtitle: string | null; href: string }[];
+    customerCases: { id: string; title: string; subtitle: string | null; href: string }[];
   };
 }
 
@@ -152,6 +187,20 @@ describe('matches across categories', () => {
     const body = res.body as SearchBody;
     expect(body.data.products.map((p) => p.id)).toContain(productId);
   });
+
+  it('finds suppliers and customer cases with direct filtered destinations', async () => {
+    const res = await request(app).get('/api/v1/search').query({ q: `${RUN} Zephyr` }).set(auth(ownerToken)).set('X-Branch-Id', branchA);
+    const body = res.body as SearchBody;
+    expect(body.data.suppliers.find((row) => row.id === supplierId)?.href).toContain('/admin/inventory/suppliers?search=');
+    expect(body.data.customerCases.find((row) => row.id === customerCaseId)?.href).toContain('/admin/customer-cases?search=');
+  });
+
+  it('withholds branch-owned orders and cases outside the active branch', async () => {
+    const res = await request(app).get('/api/v1/search').query({ q: RUN }).set(auth(ownerToken)).set('X-Branch-Id', branchB);
+    const body = res.body as SearchBody;
+    expect(body.data.orders.map((row) => row.id)).not.toContain(orderId);
+    expect(body.data.customerCases.map((row) => row.id)).not.toContain(customerCaseId);
+  });
 });
 
 describe('per-category permission gating', () => {
@@ -188,7 +237,7 @@ describe('short and empty queries', () => {
 
     expect(res.status).toBe(200);
     const body = res.body as SearchBody;
-    expect(body.data).toEqual({ orders: [], customers: [], products: [] });
+    expect(body.data).toEqual({ orders: [], customers: [], products: [], suppliers: [], customerCases: [] });
   });
 
   it('rejects a query over the length ceiling as a 400, not a truncated search', async () => {

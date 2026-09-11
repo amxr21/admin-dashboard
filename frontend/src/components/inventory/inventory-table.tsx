@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { useSearchParams } from 'next/navigation';
 import { Boxes, FilterX, History, MailPlus, PackagePlus, Search, SearchX, SlidersHorizontal, Truck } from 'lucide-react';
 
 import { DataTable, type Column } from '@/components/data-table';
@@ -18,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useUrlState } from '@/hooks/useUrlState';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import {
   fetchInventory,
@@ -55,7 +55,7 @@ export function InventoryTable() {
   const formatCurrency = useCurrencyFormat();
   const translateError = useTranslatedApiError();
   const { tablePageSize } = useAppSettings();
-  const searchParams = useSearchParams();
+  const { values, setValues } = useUrlState({ page: '1', pageSize: '', search: '', lowStock: '' });
   const { resources } = useResourceSchema();
   const router = useRouter();
 
@@ -66,13 +66,11 @@ export function InventoryTable() {
     resources.find((resource) => resource.resource === 'products')?.permissions.create === true;
 
   const [result, setResult] = useState<InventoryListResult | null>(null);
-  const [page, setPage] = useState(1);
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
-  // Seeded from `?lowStock=true` — the dashboard's "View low stock" quick
-  // action deep-links here, same lazy-initializer pattern Audit uses for its
-  // own `?entity=`/`?entityId=` deep link.
-  const [lowOnly, setLowOnly] = useState(() => searchParams.get('lowStock') === 'true');
+  const page = Math.max(1, Number(values.page) || 1);
+  const pageSize = Math.max(1, Number(values.pageSize) || tablePageSize);
+  const search = values.search?.trim() ?? '';
+  const lowOnly = values.lowStock === 'true';
+  const [searchInput, setSearchInput] = useState(search);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -99,7 +97,7 @@ export function InventoryTable() {
       setResult(
         await fetchInventory({
           page,
-          pageSize: tablePageSize,
+          pageSize,
           ...(search ? { search } : {}),
           ...(lowOnly ? { lowStock: true } : {}),
         }),
@@ -110,21 +108,25 @@ export function InventoryTable() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, search, lowOnly, tablePageSize, translateError]);
+  }, [page, pageSize, search, lowOnly, translateError]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
+
   // Debounced so typing doesn't fire a request per keystroke.
   useEffect(() => {
     const timer = setTimeout(() => {
-      setSearch(searchInput.trim());
-      setPage(1);
+      const next = searchInput.trim();
+      if (next !== search) setValues({ search: next || null, page: null });
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchInput]);
+  }, [search, searchInput, setValues]);
 
   const columns: readonly Column<InventoryRow>[] = [
     {
@@ -272,8 +274,7 @@ export function InventoryTable() {
           variant={lowOnly ? 'default' : 'outline'}
           aria-pressed={lowOnly}
           onClick={() => {
-            setLowOnly((current) => !current);
-            setPage(1);
+            setValues({ lowStock: lowOnly ? null : 'true', page: null }, { history: 'push' });
           }}
         >
           {t('filters.lowOnly')}
@@ -331,8 +332,7 @@ export function InventoryTable() {
               action={{
                 label: t('filters.showAll'),
                 onClick: () => {
-                  setLowOnly(false);
-                  setPage(1);
+                  setValues({ lowStock: null, page: null }, { history: 'push' });
                 },
                 icon: FilterX,
               }}
@@ -346,8 +346,7 @@ export function InventoryTable() {
                 label: t('search.clear'),
                 onClick: () => {
                   setSearchInput('');
-                  setSearch('');
-                  setPage(1);
+                  setValues({ search: null, page: null }, { history: 'push' });
                 },
                 icon: FilterX,
               }}
@@ -388,7 +387,7 @@ export function InventoryTable() {
               variant="outline"
               size="sm"
               disabled={page <= 1 || isLoading}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              onClick={() => setValues({ page: String(Math.max(1, page - 1)) }, { history: 'push' })}
             >
               {t('pagination.previous')}
             </Button>
@@ -399,9 +398,7 @@ export function InventoryTable() {
               variant="outline"
               size="sm"
               disabled={page >= result.totalPages || isLoading}
-              onClick={() =>
-                setPage((current) => Math.min(result.totalPages, current + 1))
-              }
+              onClick={() => setValues({ page: String(Math.min(result.totalPages, page + 1)) }, { history: 'push' })}
             >
               {t('pagination.next')}
             </Button>

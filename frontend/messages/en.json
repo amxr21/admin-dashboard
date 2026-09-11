@@ -76,6 +76,7 @@
     "accountDeactivated": "This account has been deactivated.",
     "accessEnded": "This account's access period has ended.",
     "rateLimited": "Too many attempts from this address. Try again shortly.",
+    "sessionExpired": "Your session expired. Sign in again to continue where you left off.",
     "haveResetCode": "Have a reset code?",
     "reset": {
       "title": "Set a new password",
@@ -170,6 +171,8 @@
       "orders": "Orders",
       "customers": "Customers",
       "products": "Products",
+      "suppliers": "Suppliers",
+      "customerCases": "Customer cases",
       "noResults": "No matches"
     },
     "descriptions": {
@@ -704,6 +707,7 @@
     },
     "discard": {
       "title": "Discard your unsaved changes?",
+      "description": "If you continue, the changes on this page will be lost.",
       "confirm": "Discard",
       "cancel": "Keep editing"
     },

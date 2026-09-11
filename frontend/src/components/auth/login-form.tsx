@@ -1,9 +1,9 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Suspense, useState, type FormEvent } from 'react';
+import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { CheckCircle2, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { landingFor } from '@/config/areas';
 import { Link, useRouter } from '@/i18n/navigation';
 import { ApiError } from '@/lib/api';
+import { hasPendingSessionRecovery, takeSessionReturnPath } from '@/lib/session-recovery';
 
 /**
  * Sign-in form.
@@ -55,6 +56,21 @@ function ResetSuccessNotice({ suppressed }: { suppressed: boolean }) {
       {/* Icon AND colour — never colour alone, per the app-wide rule. */}
       <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden />
       <span>{t('reset.done')}</span>
+    </div>
+  );
+}
+
+function SessionExpiredNotice() {
+  const t = useTranslations('auth');
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => setVisible(hasPendingSessionRecovery()), []);
+  if (!visible) return null;
+
+  return (
+    <div role="status" className="flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+      <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <span>{t('sessionExpired')}</span>
     </div>
   );
 }
@@ -138,7 +154,7 @@ export function LoginForm() {
       // a question they are not allowed to ask.
       // replace, not push — Back must not return to a login form the user has
       // already passed.
-      router.replace(landingFor(result.role));
+      router.replace(takeSessionReturnPath() ?? landingFor(result.role));
     } catch (caught) {
       setError(messageFor(caught));
       // Deliberately NOT clearing the email. Retyping it after a typo in the
@@ -159,7 +175,7 @@ export function LoginForm() {
 
     try {
       const role = await verifyTwoFactor(pendingToken, code);
-      router.replace(landingFor(role));
+      router.replace(takeSessionReturnPath() ?? landingFor(role));
     } catch (caught) {
       setError(messageFor(caught));
       // The code is single-use and time-boxed, so a wrong one is always
@@ -263,6 +279,7 @@ export function LoginForm() {
       <Suspense fallback={null}>
         <ResetSuccessNotice suppressed={error !== null} />
       </Suspense>
+      <SessionExpiredNotice />
 
       {error ? (
         // role=alert so it is announced immediately — a sighted user sees the

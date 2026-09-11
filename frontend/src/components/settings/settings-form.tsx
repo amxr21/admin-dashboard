@@ -24,6 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import {
   fetchSettings,
   fieldErrorsFrom,
@@ -251,6 +252,9 @@ export function SettingsForm() {
     }
   }
 
+  const isDirty = Object.keys(changes()).length > 0;
+  useUnsavedChangesGuard(isDirty && !isSaving);
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -270,8 +274,6 @@ export function SettingsForm() {
       />
     );
   }
-
-  const isDirty = Object.keys(changes()).length > 0;
 
   return (
     <div className="space-y-6">

@@ -53,7 +53,7 @@ interface PageResult {
 }
 
 interface ContentResult {
-  kind: 'order' | 'customer' | 'product';
+  kind: 'order' | 'customer' | 'product' | 'supplier' | 'customerCase';
   href: string;
   label: string;
   subtitle: string | null;
@@ -72,7 +72,9 @@ export function GlobalSearch({ role }: { role: StaffRole }) {
     orders: SearchHit[];
     customers: SearchHit[];
     products: SearchHit[];
-  }>({ orders: [], customers: [], products: [] });
+    suppliers: SearchHit[];
+    customerCases: SearchHit[];
+  }>({ orders: [], customers: [], products: [], suppliers: [], customerCases: [] });
   const [isSearchingContent, setIsSearchingContent] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -131,7 +133,7 @@ export function GlobalSearch({ role }: { role: StaffRole }) {
   useEffect(() => {
     const q = query.trim();
     if (q.length < MIN_CONTENT_QUERY_LENGTH) {
-      setContentGroups({ orders: [], customers: [], products: [] });
+      setContentGroups({ orders: [], customers: [], products: [], suppliers: [], customerCases: [] });
       setIsSearchingContent(false);
       return;
     }
@@ -147,7 +149,7 @@ export function GlobalSearch({ role }: { role: StaffRole }) {
         })
         .catch(() => {
           if (cancelled) return;
-          setContentGroups({ orders: [], customers: [], products: [] });
+          setContentGroups({ orders: [], customers: [], products: [], suppliers: [], customerCases: [] });
         })
         .finally(() => {
           if (!cancelled) setIsSearchingContent(false);
@@ -172,6 +174,8 @@ export function GlobalSearch({ role }: { role: StaffRole }) {
       ...contentGroups.orders.map(toResult('order')),
       ...contentGroups.customers.map(toResult('customer')),
       ...contentGroups.products.map(toResult('product')),
+      ...contentGroups.suppliers.map(toResult('supplier')),
+      ...contentGroups.customerCases.map(toResult('customerCase')),
     ];
   }, [contentGroups]);
 
@@ -289,6 +293,22 @@ export function GlobalSearch({ role }: { role: StaffRole }) {
           labelKey="searchGroups.products"
           results={contentResults.filter((r) => r.kind === 'product')}
           results0={pageResults.length + contentGroups.orders.length + contentGroups.customers.length}
+          activeIndex={activeIndex}
+          onSelect={go}
+          onHover={setActiveIndex}
+        />
+        <ResultGroup
+          labelKey="searchGroups.suppliers"
+          results={contentResults.filter((r) => r.kind === 'supplier')}
+          results0={pageResults.length + contentGroups.orders.length + contentGroups.customers.length + contentGroups.products.length}
+          activeIndex={activeIndex}
+          onSelect={go}
+          onHover={setActiveIndex}
+        />
+        <ResultGroup
+          labelKey="searchGroups.customerCases"
+          results={contentResults.filter((r) => r.kind === 'customerCase')}
+          results0={pageResults.length + contentGroups.orders.length + contentGroups.customers.length + contentGroups.products.length + contentGroups.suppliers.length}
           activeIndex={activeIndex}
           onSelect={go}
           onHover={setActiveIndex}

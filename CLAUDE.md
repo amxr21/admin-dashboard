@@ -488,6 +488,17 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
+- **2026-09-11 — Batch 5 workflow resilience is implemented locally on
+  `feat/ux-workflow-resilience`.** Authenticated API 401s now use one reusable recovery contract:
+  clear invalid auth once, remember the locale-neutral admin destination, explain expiry at login,
+  and return there after password or 2FA authentication. A shared dirty-source registry protects
+  browser unload and ordinary in-app link navigation while existing form-specific discard dialogs
+  remain authoritative. Global search now includes independently permission-gated suppliers and
+  branch-scoped customer cases. Inventory search, low-stock mode, page and page size round-trip
+  through the URL for share/back/forward behavior. Focused validation: 51 frontend tests and 15
+  backend search tests pass; frontend/backend typechecks and targeted lint pass. Production build
+  remains intentionally deferred while the owner's Next dev server owns `.next`; GitHub PR/check
+  operations require refreshed `gh` authentication.
 - **2026-09-10 — Batch 4 customer service is under final verification.** A bespoke, branch-safe
   customer-case workspace now provides reusable status, priority, ownership, related
   customer/order records, and append-only notes through the existing `customers` permission
@@ -638,6 +649,9 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-09-11 (UX-019/020/021/022)** — Added single-shot session-expiry recovery with return-to-
+  destination login, reusable unload/in-app dirty-form protection, supplier/customer-case global
+  search groups with permission and branch boundaries, and fully URL-backed inventory list state.
 - **2026-09-10 (UX-015/016/017/018)** — Added a reusable customer-case workspace, optional POS
   customer association, indexed normalized-phone/payment-reference order discovery, and durable
   customer-facing order-status email outcomes. Case access reuses the `customers` permission area

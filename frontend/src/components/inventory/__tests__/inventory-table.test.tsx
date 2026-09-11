@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createElement, useEffect, useReducer, type ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 
 import { render, screen, waitFor } from '@/test/render';
@@ -25,11 +26,50 @@ vi.mock('@/lib/inventory-api', async (importOriginal) => {
   return { ...actual, fetchInventory, fetchMovements, adjustStock };
 });
 
-// The dashboard's "View low stock" quick action deep-links here via
-// `?lowStock=true`, read with `useSearchParams` — no query string in these
-// tests, same as visiting the page directly.
+const urlState = vi.hoisted(() => {
+  let current = new URLSearchParams();
+  const listeners = new Set<() => void>();
+
+  return {
+    get: () => current,
+    reset: (query = '') => {
+      current = new URLSearchParams(query);
+    },
+    write: (href: string) => {
+      current = new URLSearchParams(href.split('?')[1] ?? '');
+      for (const listener of listeners) listener();
+    },
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+});
+
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ href, children, ...props }: Record<string, unknown>) =>
+    createElement('a', { href, ...props }, children as ReactNode),
+  useRouter: () => ({
+    push: (href: string) => urlState.write(href),
+    replace: (href: string) => urlState.write(href),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  usePathname: () => '/admin/inventory',
+  redirect: vi.fn(),
+  getPathname: ({ href }: { href: string }) => href,
+}));
+
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => {
+    const [, force] = useReducer((count: number) => count + 1, 0);
+    useEffect(() => urlState.subscribe(force), []);
+    return urlState.get();
+  },
 }));
 
 function makeRow(overrides: Partial<InventoryRow> = {}): InventoryRow {
@@ -62,9 +102,33 @@ function resolveWith(products: InventoryRow[], threshold = 5) {
 }
 
 beforeEach(() => {
+  urlState.reset();
   fetchInventory.mockReset();
   fetchMovements.mockReset();
   adjustStock.mockReset();
+});
+
+describe('shareable inventory state', () => {
+  it('restores search, low-stock, page, and page size from a copied URL', async () => {
+    urlState.reset('search=planter&lowStock=true&page=2&pageSize=10');
+    resolveWith([makeRow()]);
+
+    render(<InventoryTable />);
+
+    await waitFor(() => {
+      expect(fetchInventory).toHaveBeenCalledWith({
+        page: 2,
+        pageSize: 10,
+        search: 'planter',
+        lowStock: true,
+      });
+    });
+    expect(screen.getByRole('textbox', { name: /^search$/i })).toHaveValue('planter');
+    expect(screen.getByRole('button', { name: /low stock only/i })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
 });
 
 describe('the low-stock rule belongs to the server', () => {

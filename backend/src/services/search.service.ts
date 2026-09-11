@@ -44,24 +44,27 @@ export interface SearchResults {
   orders: SearchResult[];
   customers: SearchResult[];
   products: SearchResult[];
+  suppliers: SearchResult[];
+  customerCases: SearchResult[];
 }
 
 function money(value: { toFixed: (digits: number) => string }): string {
   return value.toFixed(2);
 }
 
-export async function search(role: StaffRole, query: string): Promise<SearchResults> {
+export async function search(role: StaffRole, query: string, branchId: string | null): Promise<SearchResults> {
   const q = query.trim();
 
-  const empty: SearchResults = { orders: [], customers: [], products: [] };
+  const empty: SearchResults = { orders: [], customers: [], products: [], suppliers: [], customerCases: [] };
   if (q.length < MIN_QUERY_LENGTH) return empty;
 
   const canSee = (area: Area) => canAccessArea(role, area);
 
-  const [orders, customers, products] = await Promise.all([
+  const [orders, customers, products, suppliers, customerCases] = await Promise.all([
     canSee('orders')
       ? prisma.order.findMany({
           where: {
+            ...(branchId ? { branchId } : {}),
             OR: [
               { orderNumber: { contains: q } },
               { customer: { name: { contains: q } } },
@@ -93,6 +96,36 @@ export async function search(role: StaffRole, query: string): Promise<SearchResu
           take: MAX_RESULTS_PER_CATEGORY,
         })
       : Promise.resolve([]),
+    canSee('inventory')
+      ? prisma.supplier.findMany({
+          where: {
+            OR: [
+              { name: { contains: q } },
+              { email: { contains: q } },
+              { phone: { contains: q } },
+              { contactName: { contains: q } },
+            ],
+          },
+          select: { id: true, name: true, email: true, phone: true },
+          orderBy: { updatedAt: 'desc' },
+          take: MAX_RESULTS_PER_CATEGORY,
+        })
+      : Promise.resolve([]),
+    canSee('customers')
+      ? prisma.customerCase.findMany({
+          where: {
+            ...(branchId ? { branchId } : {}),
+            OR: [
+              { caseNumber: { contains: q } },
+              { title: { contains: q } },
+              { customer: { name: { contains: q } } },
+            ],
+          },
+          select: { id: true, caseNumber: true, title: true, customer: { select: { name: true } } },
+          orderBy: { updatedAt: 'desc' },
+          take: MAX_RESULTS_PER_CATEGORY,
+        })
+      : Promise.resolve([]),
   ]);
 
   return {
@@ -120,6 +153,18 @@ export async function search(role: StaffRole, query: string): Promise<SearchResu
       title: product.name,
       subtitle: product.sku,
       href: `/admin/r/products?search=${encodeURIComponent(product.sku ?? product.name)}`,
+    })),
+    suppliers: suppliers.map((supplier) => ({
+      id: supplier.id,
+      title: supplier.name,
+      subtitle: supplier.email ?? supplier.phone,
+      href: `/admin/inventory/suppliers?search=${encodeURIComponent(supplier.email ?? supplier.name)}`,
+    })),
+    customerCases: customerCases.map((customerCase) => ({
+      id: customerCase.id,
+      title: customerCase.caseNumber,
+      subtitle: customerCase.customer?.name ?? customerCase.title,
+      href: `/admin/customer-cases?search=${encodeURIComponent(customerCase.caseNumber)}`,
     })),
   };
 }

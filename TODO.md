@@ -34,7 +34,13 @@
   - [x] Extend order search to normalized customer phone and payment reference through one server-side search contract.
   - [x] Add customer-facing order-status notifications with explicit recipient/channel eligibility, delivery outcome, and privacy-safe auditing.
   - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 3.
-- [ ] **Batch 5 — workflow resilience:** UX-019 session-expiry recovery, UX-020 unsaved-change guards, UX-021 expanded global search, and UX-022 URL-backed inventory state.
+- [ ] **Batch 5 — workflow resilience:** UX-019 session-expiry recovery, UX-020 unsaved-change guards, UX-021 expanded global search, and UX-022 URL-backed inventory state. Keep recovery and dirty-state handling reusable across business workflows; do not encode behavior around legacy role names.
+  - [x] Inventory the shared API/auth boundary, login redirect flow, dirty-form implementations, global-search contract, inventory filters, branch scope, and existing URL-state primitives.
+  - [x] Add one session-expiry recovery contract that clears invalid auth once, preserves the intended in-app destination, and avoids redirect loops or repeated expiry notices.
+  - [x] Add a reusable unsaved-change guard for browser unload and in-app navigation, then adopt it on the approved dirty forms without replacing their existing discard dialogs.
+  - [x] Expand global search through independently permission-gated, branch-safe result groups with lightweight result shapes and direct destinations.
+  - [x] Move inventory search/filter/pagination/view state into the URL with stable defaults, reset rules, and back/forward/share-link behavior.
+  - [ ] Add focused frontend/backend coverage, run the local gate, and publish a PR stacked on Batch 4.
 - [ ] **Batch 6 — notifications:** UX-023 unread-count correctness, UX-024 filters/action links, and UX-025 accessible row actions.
 - [ ] **Batch 7 — operational navigation:** UX-026 durable return-detail navigation, UX-027 URL-backed shift filters, UX-028 staff bulk lifecycle actions, and UX-029 related-record links.
 - [ ] **Batch 8 — catalogue governance:** UX-030 localized product content and UX-031 catalogue version history/restore.

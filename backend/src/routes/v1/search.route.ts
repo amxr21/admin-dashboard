@@ -34,6 +34,6 @@ searchRouter.get('/search', authenticate, withBranchContext, async (req, res) =>
   // every area the caller can reach, so searching with the global role would
   // hand back records from areas they cannot open at this branch — a read
   // path around the area guard, and one nobody would think to check.
-  const data = await search(effectiveRole(req), parsed.data.q);
+  const data = await search(effectiveRole(req), parsed.data.q, req.branchId ?? null);
   res.status(200).json({ data });
 });

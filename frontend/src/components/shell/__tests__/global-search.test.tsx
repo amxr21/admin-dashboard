@@ -30,7 +30,7 @@ vi.mock('@/components/providers/schema-provider', () => ({
 const search = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/search-api', () => ({ search }));
 
-const EMPTY = { orders: [], customers: [], products: [] };
+const EMPTY = { orders: [], customers: [], products: [], suppliers: [], customerCases: [] };
 
 beforeEach(() => {
   search.mockReset();
@@ -82,6 +82,8 @@ describe('grouped, keyboard-navigable results', () => {
       orders: [{ id: 'o1', title: 'ORD-1001', subtitle: 'Jane Doe — 84.00', href: '/admin/orders/o1' }],
       customers: [{ id: 'c1', title: 'Jane Doe', subtitle: 'jane@example.test', href: '/admin/r/customers?search=jane%40example.test' }],
       products: [],
+      suppliers: [{ id: 's1', title: 'North Supply', subtitle: 'orders@example.test', href: '/admin/inventory/suppliers?search=orders' }],
+      customerCases: [{ id: 'case1', title: 'CASE-101', subtitle: 'Jane Doe', href: '/admin/customer-cases?search=CASE-101' }],
     });
 
     const user = userEvent.setup();
@@ -89,7 +91,11 @@ describe('grouped, keyboard-navigable results', () => {
     await user.type(screen.getByRole('combobox'), 'jane');
 
     expect(await screen.findByText('ORD-1001')).toBeInTheDocument();
-    expect(screen.getByText('Jane Doe')).toBeInTheDocument();
+    expect(screen.getAllByText('Jane Doe')).toHaveLength(2);
+    expect(screen.getByText('North Supply')).toBeInTheDocument();
+    expect(screen.getByText('CASE-101')).toBeInTheDocument();
+    expect(screen.getByText(/^suppliers$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^customer cases$/i)).toBeInTheDocument();
     // The empty PRODUCTS group renders no heading at all — an empty section
     // reads as a rendering bug, same discipline the sidebar nav applies.
     expect(screen.queryByText(/^products$/i)).not.toBeInTheDocument();
@@ -100,6 +106,8 @@ describe('grouped, keyboard-navigable results', () => {
       orders: [{ id: 'o1', title: 'ORD-1001', subtitle: null, href: '/admin/orders/o1' }],
       customers: [],
       products: [],
+      suppliers: [],
+      customerCases: [],
     });
 
     const user = userEvent.setup();

@@ -15,6 +15,7 @@
 import { API_BASE_URL } from '@/lib/api-config';
 import { readBranchId, readToken } from '@/lib/auth-storage';
 import { withLoadingActivity } from '@/lib/loading-activity';
+import { handleSessionExpired } from '@/lib/session-recovery';
 
 const API_URL = API_BASE_URL;
 
@@ -98,6 +99,7 @@ async function performApiFetch<T>(path: string, init: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
+    if (response.status === 401 && token) handleSessionExpired();
     // A 502 from the proxy, or a crash before the error handler ran, returns
     // HTML — not the JSON envelope. Don't let that throw a parse error and
     // mask the real status code.
@@ -156,6 +158,7 @@ async function performApiUpload<T>(path: string, formData: FormData): Promise<T>
   });
 
   if (!response.ok) {
+    if (response.status === 401 && token) handleSessionExpired();
     let body: ErrorBody = {};
     try {
       body = (await response.json()) as ErrorBody;
@@ -206,6 +209,7 @@ async function performApiDownload(path: string, fallbackFilename: string): Promi
   });
 
   if (!response.ok) {
+    if (response.status === 401 && token) handleSessionExpired();
     let body: ErrorBody = {};
     try {
       body = (await response.json()) as ErrorBody;
