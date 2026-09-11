@@ -70,6 +70,9 @@ export function BranchSheet({
   onSaved,
 }: BranchSheetProps) {
   const t = useTranslations('branches.form');
+  // URG-013 — shared format-example placeholder, same string every phone
+  // input in the app uses (see resource-form.tsx's placeholderFor).
+  const tCommon = useTranslations('common');
   const translateError = useTranslatedApiError();
   const { editPanelMode } = useAppSettings();
 
@@ -183,6 +186,7 @@ export function BranchSheet({
               <Input
                 id={`branch-${field}`}
                 type={field === 'phone' ? 'tel' : 'text'}
+                placeholder={field === 'phone' ? tCommon('placeholders.phone') : undefined}
                 value={values[field] ?? ''}
                 onChange={(event) => set(field, event.target.value)}
                 aria-invalid={field === 'name' && nameError ? true : undefined}

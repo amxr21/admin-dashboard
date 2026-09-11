@@ -62,6 +62,9 @@ export function StaffSheet({
   onSaved,
 }: StaffSheetProps) {
   const t = useTranslations('staff');
+  // URG-013 — shared format-example placeholders (see resource-form.tsx's
+  // placeholderFor).
+  const tCommon = useTranslations('common');
   const tRole = useTranslations('roles');
   const translateError = useTranslatedApiError();
   // The LIVE `security.minPasswordLength`, not a hardcoded 12 — the server
@@ -203,6 +206,7 @@ export function StaffSheet({
               id="staff-email"
               // A real type so globals.css forces LTR on the address.
               type="email"
+              placeholder={tCommon('placeholders.email')}
               value={email}
               maxLength={255}
               // The email IS the identity here; changing it would silently move
@@ -240,6 +244,7 @@ export function StaffSheet({
             <Input
               id="staff-phone"
               type="tel"
+              placeholder={tCommon('placeholders.phone')}
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
             />

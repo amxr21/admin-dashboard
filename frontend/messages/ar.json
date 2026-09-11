@@ -20,7 +20,12 @@
     "savedNotice": "تم الحفظ.",
     "saving": "جارٍ الحفظ…",
     "unsavedChangesPlain": "تغييرات غير محفوظة",
-    "unsavedChanges": "{count, plural, zero {لا تغييرات غير محفوظة} one {تغيير واحد غير محفوظ} two {تغييران غير محفوظين} few {# تغييرات غير محفوظة} many {# تغييراً غير محفوظ} other {# تغيير غير محفوظ}}"
+    "unsavedChanges": "{count, plural, zero {لا تغييرات غير محفوظة} one {تغيير واحد غير محفوظ} two {تغييران غير محفوظين} few {# تغييرات غير محفوظة} many {# تغييراً غير محفوظ} other {# تغيير غير محفوظ}}",
+    "placeholders": {
+      "email": "name@example.com",
+      "phone": "+1 555 123 4567",
+      "url": "https://example.com"
+    }
   },
   "language": {
     "label": "اللغة",

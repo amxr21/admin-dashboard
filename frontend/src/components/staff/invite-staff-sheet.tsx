@@ -59,6 +59,9 @@ export function InviteStaffSheet({
   onInvited,
 }: InviteStaffSheetProps) {
   const t = useTranslations('staff');
+  // URG-013 — shared format-example placeholders (see resource-form.tsx's
+  // placeholderFor).
+  const tCommon = useTranslations('common');
   const tRole = useTranslations('roles');
   const translateError = useTranslatedApiError();
   const { editPanelMode, defaultInviteRole } = useAppSettings();
@@ -188,6 +191,7 @@ export function InviteStaffSheet({
             <Input
               id="invite-email"
               type="email"
+              placeholder={tCommon('placeholders.email')}
               value={email}
               maxLength={255}
               onChange={(event) => {
@@ -217,6 +221,7 @@ export function InviteStaffSheet({
             <Input
               id="invite-phone"
               type="tel"
+              placeholder={tCommon('placeholders.phone')}
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
             />

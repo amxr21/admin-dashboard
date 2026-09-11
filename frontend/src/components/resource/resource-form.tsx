@@ -776,6 +776,10 @@ function FormField({
   onBlur,
 }: FormFieldProps) {
   const t = useTranslations('resourceForm');
+  // URG-013 — email/phone/url format-example placeholders are shared across
+  // every form in the app (see placeholderFor below), not resourceForm-only,
+  // so they live in `common` rather than being duplicated per namespace.
+  const tCommon = useTranslations('common');
   const id = `field-${field.name}`;
   const errorId = `${id}-error`;
 
@@ -932,7 +936,7 @@ function FormField({
         value={text}
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
-        placeholder={placeholderFor(field)}
+        placeholder={placeholderFor(field, tCommon)}
         {...aria}
       />
     );
@@ -987,7 +991,27 @@ function inputType(field: FieldConfig): string {
   }
 }
 
-function placeholderFor(field: FieldConfig): string | undefined {
-  if (field.type === 'money') return '0.00';
-  return undefined;
+/**
+ * URG-013 — only for field TYPES generic enough that one example is true for
+ * every field of that type, everywhere in the app (an email is always
+ * shaped like an email). `text`/`longtext`/`number` are deliberately left
+ * alone: their real content varies per FIELD (a product name vs. a SKU vs.
+ * a quantity vs. someone's age), so any single example would be a guess at
+ * best and actively misleading at worst — exactly what URG-013 itself warns
+ * against. A per-field placeholder for those would belong in
+ * `admin.config.ts`, not here.
+ */
+function placeholderFor(field: FieldConfig, tCommon: ReturnType<typeof useTranslations<'common'>>): string | undefined {
+  switch (field.type) {
+    case 'money':
+      return '0.00';
+    case 'email':
+      return tCommon('placeholders.email');
+    case 'phone':
+      return tCommon('placeholders.phone');
+    case 'url':
+      return tCommon('placeholders.url');
+    default:
+      return undefined;
+  }
 }

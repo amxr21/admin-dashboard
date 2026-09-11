@@ -20,7 +20,12 @@
     "savedNotice": "Saved.",
     "saving": "Saving…",
     "unsavedChangesPlain": "Unsaved changes",
-    "unsavedChanges": "{count, plural, one {# unsaved change} other {# unsaved changes}}"
+    "unsavedChanges": "{count, plural, one {# unsaved change} other {# unsaved changes}}",
+    "placeholders": {
+      "email": "name@example.com",
+      "phone": "+1 555 123 4567",
+      "url": "https://example.com"
+    }
   },
   "language": {
     "label": "Language",
