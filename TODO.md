@@ -167,8 +167,14 @@ earlier remote run to finish, but must retain the merge order.
 
 #### Decisions required when their batch is reached
 
-- Configuration access: recommended default is read-only non-secret readiness for Admin and
-  Developer; approve before changing authorization.
+- [x] Configuration access — **APPROVED AND DONE 2026-09-11: OWNER and DEVELOPER, read-only.**
+  `GET /diagnostics/configuration` is now `requireRole(OWNER, DEVELOPER)` and the sidebar link
+  matches. Only that route widened: `/diagnostics`, `/db/migrations` and `/db/tables` stay
+  DEVELOPER-only because row counts, table sizes and migration drift are developer tooling, and a
+  test pins each of them at 403 for an OWNER so the widening cannot spread by copy-paste. Still
+  `requireRole`, never `requireArea` — MANAGER holds `settings` and must not reach this, which an
+  area check could not express. The response contract is unchanged (booleans and links, no value
+  ever), which is what makes a wider audience safe.
 - Multi-currency: approve configured currencies and the rate/change/reconciliation policy before
   schema or checkout work.
 - Role migration: approve the complete legacy-account and branch-assignment mapping before any

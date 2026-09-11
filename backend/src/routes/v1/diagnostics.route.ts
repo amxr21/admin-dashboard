@@ -21,6 +21,14 @@ import { getEmailDeliveryReadiness } from '../../services/email.service.js';
  * holds `*`. So this is the case `requireRole` was written for and never used
  * on until now.
  *
+ * ─── THE AUDIENCE IS NOT UNIFORM ACROSS THIS FILE ────────────────────
+ * Database internals (`/db/migrations`, `/db/tables`) and the health summary
+ * stay DEVELOPER-only: row counts, table sizes and migration drift are
+ * developer tooling. `/configuration` also admits OWNER, because "is email
+ * actually working, and what breaks while it is not" is the owner's question
+ * about their own deployment — see that route's own note. Each route states
+ * its audience; do not assume the file has one.
+ *
  * ─── WHAT THIS DELIBERATELY DOES NOT RETURN ──────────────────────────
  * No connection strings, no secrets, no DSN, no env dump. Those are the things
  * a diagnostics page is most tempting to include and most dangerous to: it is
@@ -304,7 +312,22 @@ async function configurationStatus() {
 diagnosticsRouter.get(
   '/diagnostics/configuration',
   authenticate,
-  requireRole(StaffRole.DEVELOPER),
+  /**
+   * OWNER as well as DEVELOPER, unlike every other endpoint in this file.
+   *
+   * The three above report DATABASE internals — row counts, table sizes,
+   * migration drift — which are developer tooling and mean nothing to the
+   * person running the shop. This one answers "is email actually working, and
+   * what breaks while it is not", which is the owner's own question about
+   * their own deployment. Making them ask a developer to read a page of
+   * booleans helps nobody.
+   *
+   * Still `requireRole`, not `requireArea`: operating the deployment is not a
+   * business area, and an area check would hand it to anyone granted `*`
+   * later. The response contract is unchanged — booleans and links only, no
+   * value ever, which is what makes widening the audience safe at all.
+   */
+  requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
   async (req, res) => {
     res.json({ data: await configurationStatus() });
     req.log.info({ event: 'diagnostics.configuration.viewed', userId: req.user?.id });

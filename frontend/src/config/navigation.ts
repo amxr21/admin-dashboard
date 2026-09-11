@@ -142,14 +142,15 @@ export const SETTINGS_NAV_ITEM: NavItem = {
 };
 
 /**
- * Configuration reference — DEVELOPER-only, so it carries NO `area`.
+ * Configuration reference — OWNER and DEVELOPER, so it carries NO `area`.
  *
- * Areas describe the business (orders, products, staff) and OWNER holds `*`,
- * which would hand this to an owner as well. Operating the deployment is not
- * a business area, so the render site gates it on the ROLE instead — the same
- * distinction `diagnostics.route.ts` draws for `requireRole` over
- * `requireArea`. Hiding the link is presentation only; the API refuses
- * everyone else regardless.
+ * Areas describe the business (orders, products, staff). Operating the
+ * deployment is not one, so the render site gates on the ROLE instead — the
+ * same distinction `diagnostics.route.ts` draws for `requireRole` over
+ * `requireArea`. That distinction still matters after widening: MANAGER holds
+ * `settings` and must not reach this, which an area check could not express.
+ * Hiding the link is presentation only; the API refuses everyone else
+ * regardless.
  */
 export const CONFIGURATION_NAV_ITEM: NavItem = {
   href: '/admin/configuration',
