@@ -9,6 +9,33 @@ body[data-scroll-locked] [data-slot='app-shell'] nav {
   overflow: hidden;
 }
 
+/* URG-011: the sidebar nav (19+ items, grows with schema resources — see
+   sidebar-nav.tsx) can still legitimately need its own scrollbar on a short
+   viewport even after tightening its row spacing. <main> is the shell's one
+   INTENDED content scroller (app-shell.tsx); nav scrolling is a structural
+   fallback for its own fixed-size track, not a second content area. Styled
+   thin/low-contrast so the two never read as two competing scrollbars on
+   screen at once — main's stays the one obvious scroller. Firefox uses the
+   two-property fallback; everything else gets the ::-webkit- rules. Both are
+   pure styling and inert where unsupported. */
+[data-slot='app-shell'] nav {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+[data-slot='app-shell'] nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+[data-slot='app-shell'] nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-slot='app-shell'] nav::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 9999px;
+}
+
 /*
  * ─── admin-dashboard design tokens ──────────────────────────────────────────
  *

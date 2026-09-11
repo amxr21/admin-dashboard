@@ -137,7 +137,14 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
   const canSeeConfiguration = role === 'DEVELOPER' || role === 'OWNER';
 
   return (
-    <nav className="flex flex-1 flex-col gap-2 overflow-y-auto" aria-label={t('dashboard')}>
+    // gap-1 (was gap-2), and the row/heading spacing trimmed below: with
+    // 19+ items the accumulated spacing was tall enough that the nav needed
+    // its own scrollbar on common laptop heights (~700-750px content),
+    // producing a second scroller alongside <main>'s (URG-011). overflow-y-auto
+    // stays as a fallback for a genuinely short screen or a business with many
+    // custom resources — at that point a scrollbar here is the correct single
+    // scroller for its own region, not a second one competing with <main>.
+    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto" aria-label={t('dashboard')}>
       {groups.map((group, groupIndex) => {
         // Hide whole groups the role cannot reach, rather than leaving an
         // empty heading behind.
@@ -151,7 +158,7 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
             {group.labelKey ? (
               <h2
                 className={cn(
-                  'text-muted-foreground px-3 pb-1 text-xs font-medium tracking-wide uppercase',
+                  'text-muted-foreground px-3 pb-0.5 text-xs font-medium tracking-wide uppercase',
                   // Kept in the DOM for assistive tech, just not painted — an
                   // icon rail has no room for a heading, but the grouping is
                   // still real structure a screen reader should get.
@@ -162,7 +169,7 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
               </h2>
             ) : null}
 
-            <ul className="space-y-0.5">
+            <ul className="space-y-px">
               {visible.map((item) => (
                 <NavLinkItem
                   key={item.href}
@@ -282,7 +289,10 @@ function NavLinkItem({ item, collapsed, isRtl, isActive, onNavigate, count }: Na
             // only for sighted users.
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+              // py-1.5 (was py-2) — URG-011: the accumulated row height across
+              // 19+ items forced the sidebar into its own scrollbar on common
+              // laptop heights, producing a second scroller alongside <main>'s.
+              'relative flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors',
               collapsed && 'justify-center px-2',
               isActive
                 ? 'bg-primary/10 text-primary font-medium'
