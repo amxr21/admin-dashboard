@@ -58,11 +58,70 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       build, and merge-integrity checks pass. PR #219 is open against URG-002 PR #218, is mergeable,
       and its GitHub CI is running (GitGuardian passed). Remaining acceptance: CI, then an
       authenticated checkout after parent PR #217 deploys its migration gate.
-- [ ] **URG-004 — Production release/schema integrity check.** Verify that every migration required
+- [*] **URG-004 — Production release/schema integrity check.** Verify that every migration required
       by the merged stack is deployed exactly once, the generated Prisma client matches the running
       schema, and Organization, Customer Cases, and Checkout share no hidden production-only
       dependency. Add a deployment check that catches the confirmed class of mismatch before the
-      application is promoted.
+      application is promoted. Active branch: `fix/urgent-production-schema-integrity`, stacked
+      directly on URG-003 PR #219. Audit in progress across the production start command, Prisma
+      migration/client lifecycle, container/hosting configuration, and CI promotion boundary.
+      Atomic handoff checklist:
+      - [x] Confirm the branch starts from URG-003 PR #219 rather than `dev`.
+      - [x] Inspect root/backend package scripts for every build, start, and database command.
+      - [x] Inspect GitHub CI and locate the migration-validation/promotion boundary.
+      - [x] Inspect the Coolify-facing production start path.
+      - [x] Confirm `npm start` is the sole repository-controlled production server entry.
+      - [x] Confirm startup database commands use the APP_MODE/database-host safety guard.
+      - [x] Confirm backend build generates Prisma Client from committed `schema.prisma`.
+      - [x] Confirm CI applies committed migrations before integration tests.
+      - [x] Identify the gap where a schema edit can compile without a matching migration.
+      - [x] Add one reusable migration-history versus Prisma-schema comparison script.
+      - [x] Require an explicit shadow database URL for the history comparison.
+      - [x] Reject missing, malformed, non-MySQL, remote, and non-test shadow URLs.
+      - [x] Ensure the comparison cannot reset a production/shared database.
+      - [x] Add schema-history parity before CI migration application/integration tests.
+      - [x] Give schema drift an actionable missing-migration failure distinct from process failure.
+      - [x] Run `prisma migrate status` after production `migrate deploy`.
+      - [x] Block server import when migration deployment fails.
+      - [x] Block server import when migration history/status is unhealthy.
+      - [x] Add a read-only running-database versus `schema.prisma` parity check after status.
+      - [x] Block server import when the live database shape differs from application schema.
+      - [x] Verify the live parity command cannot mutate the database. `migrate diff` only
+            introspects and compares; the argument list is asserted to contain no
+            `deploy`/`dev`/`push`.
+      - [x] **Corrected which signal may block startup (real defect found this session).** The gate
+            originally refused to serve traffic on any non-zero `prisma migrate deploy` OR
+            `prisma migrate status`. Verified locally that `admin_dashboard_test` holds all 54
+            correct tables with `_prisma_migrations` missing: `migrate status` exits 1 reporting all
+            57 migrations unapplied while the live schema diff reports "No difference detected", and
+            `migrate deploy` fails replaying migration #1 over existing tables. The original gate
+            would therefore have turned a recoverable bookkeeping gap — seen four times on this
+            project — into a total production outage. Live schema shape is now the sole authority;
+            deploy/status failures are logged loudly and non-fatal; a thrown runner error still
+            aborts.
+      - [x] Test exact startup order: deploy -> status -> live schema parity -> server import.
+      - [x] Test deploy/status non-zero are non-fatal when live schema matches, and that process
+            rejection still blocks server import.
+      - [x] Test the live schema check still runs after both migration commands fail.
+      - [x] Test live-schema drift blocks server import.
+      - [x] Test schema-history success, missing-migration drift, and process failure.
+      - [x] Test unsafe shadow URL refusals and prove the comparison never starts.
+      - [ ] Resolve/document Windows MySQL case-insensitive join-table false positives without
+            renaming production tables or changing existing relation data. Not reproduced: the live
+            parity diff returned "No difference detected" against the migrated local database.
+      - [x] Run focused startup/schema-integrity tests. 17/17 pass; targeted ESLint clean.
+      - [ ] Run the real migration-history parity check in Linux GitHub CI.
+      - [ ] Run backend lint, type-check, build, merge-integrity, and full relevant tests. Owner
+            directed skipping database/server-dependent suites and the production build this
+            session; focused startup/schema tests and targeted lint pass locally.
+      - [ ] Update `URGENT_TODO.md`, `TODO.md`, `CLAUDE.md`, foundations, diagnostics comments, the
+            error log, and private workbook with exact evidence and remaining acceptance.
+      - [ ] Commit only URG-004 files; never stage the two user diagnostic artifacts.
+      - [ ] Push and open the PR against `fix/urgent-pos-checkout-api-500`.
+      - [ ] Inspect every GitHub check and record failures/pending/success precisely.
+      - [ ] Keep URG-001–004 active until authenticated post-deploy Organization, Customer Cases,
+            and Checkout verification passes.
+      - [ ] Start URG-005 directly from URG-004's final commit.
 
 ## U1 — till correctness and cashier safety (P0/P1)
 

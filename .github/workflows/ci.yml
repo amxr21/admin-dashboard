@@ -223,6 +223,14 @@ jobs:
       # any test imports it, before a single test runs.
       - run: pnpm --filter ./backend db:generate
 
+      - name: Verify migration history matches Prisma schema
+        working-directory: backend
+        env:
+          # The comparison replays migration history in a shadow database and
+          # can reset it. The script independently refuses remote/non-test URLs.
+          SCHEMA_CHECK_SHADOW_DATABASE_URL: mysql://root:test@127.0.0.1:3306/admin_dashboard_test
+        run: pnpm check:schema
+
       - name: Apply migrations to the test database
         working-directory: backend
         env:

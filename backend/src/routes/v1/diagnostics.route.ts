@@ -61,9 +61,15 @@ const MIGRATIONS_DIR = path.join(
  * Migration folders on disk vs. rows Prisma has actually recorded as applied.
  *
  * ─── WHY THIS IS READ-ONLY, WITH NO "APPLY" ACTION NEXT TO IT ────────────
- * The deploy's build command already runs `prisma migrate deploy` on every
- * deploy — migrations are applied automatically, before this process is even
- * serving traffic. Adding an HTTP-triggered "run migrations now" button next
+ * The versioned production start command runs `prisma migrate deploy`, then
+ * `prisma migrate status`, then a read-only comparison of the running database
+ * against `schema.prisma` on every deploy. Only that last shape comparison
+ * decides whether this process serves traffic: migration history can be
+ * incomplete on a database whose tables are entirely correct, and refusing to
+ * boot there would cause an outage rather than prevent one. Migrations are
+ * therefore already applied before this process is serving traffic, and the
+ * view below reports history purely so a bookkeeping gap stays visible.
+ * Adding an HTTP-triggered "run migrations now" button next
  * to that would either do nothing (already applied) or fight the deploy
  * pipeline, and it would depend on the `prisma` CLI still being present at
  * runtime, which the build step needs but the running service does not.

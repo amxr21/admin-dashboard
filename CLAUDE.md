@@ -486,20 +486,29 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **Active branch**: `fix/urgent-pos-checkout-api-500`, stacked directly on URG-002 PR #218. Two
+- **Active branch**: `fix/urgent-production-schema-integrity`, stacked directly on URG-003 PR #219. Two
   pre-existing untracked diagnostic artifacts (`frontend/branch-sheet-open.png` and
   `frontend/scroll-check.mjs`) remain intentionally untouched.
-- **In progress**: URG-003 implementation and local verification are complete. A valid fake
-  unauthenticated production checkout reaches the normal JSON 401 boundary. The first authenticated
-  checkout query reads `idempotency_records`, added by migration
-  `20260910120000_add_idempotency_records`, so skipped production migrations remain the strongest
-  cause of the reported 500. The independent parser-boundary defect is fixed: request context now
-  exists before JSON parsing, malformed JSON returns the shared `400 BAD_REQUEST` envelope, and
-  oversized JSON returns `413 PAYLOAD_TOO_LARGE`, both with correlated request IDs. Focused tests pass
-  77/77; backend lint, type-check, build, and merge-integrity checks pass.
-- **Next step**: PR #219 is open against URG-002 PR #218 and mergeable; GitHub CI is running while
-  work proceeds. Start URG-004 directly on top. Final checkout acceptance remains authenticated
-  post-deploy.
+- **In progress**: URG-004 release/schema integrity. The audit is complete and its fix is implemented
+  locally. URG-003 PR #219 is open against URG-002 PR #218 and mergeable; its CI continues while work
+  proceeds.
+- **The URG-004 finding worth remembering**: the startup gate as first written blocked the HTTP
+  server on any non-zero `prisma migrate deploy` *or* `prisma migrate status`. That conflates
+  migration BOOKKEEPING with schema CORRECTNESS, and the two diverge exactly when
+  `_prisma_migrations` is lost while real tables survive — which has now happened four times on this
+  project. Verified locally: `admin_dashboard_test` holds all 54 correct tables with no
+  `_prisma_migrations`, so `migrate status` exits 1 calling all 57 migrations unapplied while the
+  live schema diff reports "No difference detected", and `migrate deploy` fails replaying migration
+  #1 over existing tables. The gate meant to stop a drift-induced 500 on some endpoints would
+  instead have caused a total outage that is far harder to diagnose. **A deployment gate must block
+  on the condition that actually breaks requests, never on a proxy for it** — and the failure a gate
+  can itself cause has to be weighed against the failure it prevents. The running-database vs
+  `schema.prisma` comparison (`migrate diff`, read-only: it cannot write, and the argument list is
+  asserted to contain no `deploy`/`dev`/`push`) is now the sole authority; deploy/status failures are
+  logged loudly and non-fatal; a *thrown* runner error still aborts, since a crashed process is no
+  evidence the schema is healthy.
+- **Next step**: commit URG-004, push, open the PR against `fix/urgent-pos-checkout-api-500`, and
+  inspect GitHub checks — including the migration-history parity check's first real Linux CI run.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.

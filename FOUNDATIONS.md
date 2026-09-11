@@ -82,9 +82,27 @@ Rules: never hand-edit a production database. Never `db push` against prod. Migr
 
 Production startup is also a migration gate: `npm start` runs
 `scripts/start-production.mjs`, which executes the guarded `prisma migrate deploy`
-path before importing `dist/server.js`. If migration deployment fails, that
-container exits without serving traffic. Keep `prisma` in runtime dependencies;
-do not rely on a host-dashboard pre-deploy command as the only schema safeguard.
+path, reports `prisma migrate status`, and then compares the RUNNING database
+against `schema.prisma` before importing `dist/server.js`. Only that last shape
+comparison decides whether the container serves traffic: if the live database
+differs from the application schema, it exits without serving.
+
+Deploy and status failures are logged loudly but are deliberately NOT fatal.
+Migration bookkeeping and schema correctness diverge whenever
+`_prisma_migrations` is lost while the real tables survive — which has happened
+four times on this project. On such a database `migrate status` reports every
+migration as unapplied and `migrate deploy` fails replaying the first migration
+over existing tables, while every query works perfectly. Gating on either would
+turn a recoverable bookkeeping gap into a total outage, which is worse than the
+drift-induced 500 the gate exists to prevent. **Block on the condition that
+actually breaks requests, not on a proxy for it.** A *thrown* runner error still
+aborts startup, because a crashed process is no evidence the schema is healthy.
+
+CI separately replays committed migration folders into a disposable,
+loopback-only test database and compares their result with `schema.prisma`; a
+schema edit with no migration cannot be promoted. Keep `prisma` in runtime
+dependencies and both controls in versioned code; do not rely on a
+host-dashboard pre-deploy command as the only safeguard.
 
 **If `migrate dev` says a migration is "applied but missing from the local migrations directory" and offers to reset:** do not accept it. That prompt cannot tell real drift (someone deleted a migration file) from harmless bookkeeping residue (a failed attempt that got rolled back, then retried under a new timestamp) — it raises the same alarm either way. Query `_prisma_migrations` directly first: a row with `rolled_back_at` set and `finished_at` null, immediately followed by a same-named migration that DID finish, is the harmless case — but `prisma migrate resolve --rolled-back <name>` will not clear it if the row is already marked rolled back (it's a no-op, and `migrate dev` will raise the same alarm again). Instead, avoid `migrate dev` for this migration entirely: confirm `prisma migrate deploy` reports no pending migrations (it doesn't run this reconciliation), generate the new migration's SQL with `prisma migrate diff --from-schema-datamodel <previous schema.prisma> --to-schema-datamodel <current schema.prisma> --script` (no DB connection needed), write it into a hand-created `prisma/migrations/<timestamp>_<name>/migration.sql`, then apply with `migrate deploy`. Never `migrate reset` against a shared database. Full incident: `.claude-workbook/errors-log.md`, 2026-07-31.
 
