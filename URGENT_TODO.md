@@ -226,13 +226,21 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       before the confirm dialog rather than at it — the same reasoning the manager-override dialog
       already used. The server independently enforces the rule, so this is a courtesy, not the
       boundary.
-      **Blast radius, measured not estimated:** of 21 existing untendered cash sales in the backend
-      suite, 18 are negative-path tests refused before payment (bad product id, oversell, duplicate
-      line, discount cap, split-shape) and were left alone — adding tenders there would mask what
-      they assert. Only 3 genuinely completed a cash sale and were updated. On the frontend, 16
-      tests broke because Take Payment is now disabled until cash covers the total; 11 flowed
-      through the shared `takePaymentThroughConfirm` helper and were fixed at that one point, the
-      rest individually.
+      **Blast radius — first measurement was WRONG, corrected by CI.** An initial scan claimed only
+      3 backend tests completed a cash sale. That scan looked ±6 lines around `method: 'cash'` for a
+      `tendered:` token, so it missed sales whose assertion sits further away and missed
+      split-payment cash legs entirely. CI found 5 more: the two-cashier oversell race (which failed
+      `[400, 400]` — neither side could win), `refuses reuse of a key for different sale details`,
+      both discount-override completions, and `records the order paymentMethod as "split"` (which
+      asserts on the order row rather than a status code, so no `toBe(201)` existed to detect).
+      **8 backend tests needed a tender, not 3.** The remaining 13 untendered cash sales are
+      genuine negative-path tests refused before payment and were deliberately left alone — adding
+      tenders there would mask what they assert.
+      **Lesson recorded:** a proximity-based grep is not a measurement. A test "completes a sale" if
+      it reads back `data.orderId`, the order row, or payments — not only if it asserts `201`.
+      On the frontend, 16 tests broke because Take Payment is now disabled until cash covers the
+      total; 11 flowed through the shared `takePaymentThroughConfirm` helper and were fixed at that
+      one point, the rest individually.
       **Verification:** 32/32 POS frontend tests; en/ar parity 2278/2278; both typechecks and
       targeted ESLint clean. The three new backend tender tests (cash with no tender refused, cash
       split leg with no tender refused, card with no tender still accepted) could not run locally —
