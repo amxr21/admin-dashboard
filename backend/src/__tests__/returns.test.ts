@@ -318,6 +318,121 @@ describe('approving a return', () => {
     expect(res.status).toBe(400);
   });
 
+  it('requires a refund reason when the resolution is REFUND (URG-009)', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'REFUND', refundAmount: '10.00', restock: false });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/why this refund/i);
+  });
+
+  it('requires a note when the refund reason is OTHER (URG-009)', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '10.00',
+        refundReason: 'OTHER',
+        restock: false,
+      });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/describe the refund reason/i);
+  });
+
+  it('refuses a refund reason on a non-refund resolution (URG-009)', async () => {
+    // A refund reason on a REPLACEMENT would be a stored fact that never
+    // happened.
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'REPLACEMENT', refundReason: 'DAMAGED', restock: false });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('records the refund reason and its note (URG-009)', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '10.00',
+        refundReason: 'OTHER',
+        refundReasonNote: 'Store policy goodwill',
+        restock: false,
+      });
+
+    expect(res.status).toBe(200);
+
+    const row = await prisma.return.findUnique({
+      where: { id },
+      select: { refundReason: true, refundReasonNote: true },
+    });
+    expect(row?.refundReason).toBe('OTHER');
+    expect(row?.refundReasonNote).toBe('Store policy goodwill');
+  });
+
+  it('stores no note for a catalogued refund reason (URG-009)', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '10.00',
+        refundReason: 'DAMAGED',
+        restock: false,
+      });
+
+    expect(res.status).toBe(200);
+
+    const row = await prisma.return.findUnique({
+      where: { id },
+      select: { refundReason: true, refundReasonNote: true },
+    });
+    expect(row?.refundReason).toBe('DAMAGED');
+    // NULL, never an empty string — "no note" is the real state.
+    expect(row?.refundReasonNote).toBeNull();
+  });
+
   it('requires a refund amount when the resolution is REFUND', async () => {
     const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
     const created = await request(app)

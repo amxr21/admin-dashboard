@@ -121,9 +121,38 @@ export async function createReturn(input: CreateReturnInput): Promise<ReturnDeta
   return body.return;
 }
 
+/**
+ * Why a refund was GIVEN (URG-009) — mirrors the backend enum. Declared here
+ * rather than imported so the client keeps no Prisma dependency.
+ *
+ * Distinct from the requester's own return `category`: that is why the customer
+ * says they are sending it back, this is why staff chose to refund. They can
+ * legitimately disagree.
+ */
+export type RefundReason =
+  | 'DAMAGED'
+  | 'WRONG_ITEM'
+  | 'NOT_AS_DESCRIBED'
+  | 'FAULTY'
+  | 'CHANGED_MIND'
+  | 'OTHER';
+
+export const REFUND_REASONS: RefundReason[] = [
+  'DAMAGED',
+  'WRONG_ITEM',
+  'NOT_AS_DESCRIBED',
+  'FAULTY',
+  'CHANGED_MIND',
+  'OTHER',
+];
+
 export interface ApproveReturnInput {
   resolution: Exclude<ReturnResolution, 'NONE'>;
   refundAmount?: string;
+  /** Required when resolution is REFUND, refused otherwise (URG-009). */
+  refundReason?: RefundReason;
+  /** Required free text when the reason is OTHER, and only then. */
+  refundReasonNote?: string;
   restock: boolean;
   /** Proof a manager approved in place (O9.7) — required when the caller is
    *  a cashier, ignored otherwise. Verified server-side against the

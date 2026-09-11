@@ -268,9 +268,49 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       **Verification:** 34/34 POS frontend tests including two new ones — focus stays inside the
       dialog when a charge is refused, and returns to the scan field after a successful sale.
       Frontend typecheck and targeted ESLint clean.
-- [ ] **URG-009 — Configurable refund reasons with Other.** Present an approved reason catalogue;
+- [x] **URG-009 — Configurable refund reasons with Other.** Present an approved reason catalogue;
       selecting `Other` reveals a required free-text field. Persist a stable reason code plus the
       optional note, show it in refund/audit views, and validate both client and server.
+      **Owner decisions (2026-09-12):** exactly one reason plus an `Other` note; a fixed enum in
+      code rather than an admin-managed catalogue; values chosen without waiting for approval.
+      **Catalogue:** DAMAGED, WRONG_ITEM, NOT_AS_DESCRIBED, FAULTY, CHANGED_MIND, OTHER.
+      **Deliberately separate from the existing `ReturnCategory`.** That enum records why the
+      CUSTOMER says they are returning an item; this records why STAFF chose to refund. The two can
+      legitimately disagree — a customer claiming NOT_AS_DESCRIBED may be refunded as CHANGED_MIND
+      once staff inspect it — and collapsing them into one column would lose exactly that
+      disagreement.
+      **Contract:** required when `resolution = REFUND`, refused on any other resolution (a refund
+      reason on a REPLACEMENT is a stored fact that never happened); the note is required for OTHER
+      and refused for a catalogued reason, so the code stays the thing reports group by. Both
+      columns are written in the SAME transaction as the refund itself.
+      **Where:** `RefundReason` enum + `Return.refundReason`/`refundReasonNote`
+      (`20260912000000_add_refund_and_cancellation_reasons`, additive and nullable — existing
+      refunds are a real "never recorded" gap, never backfilled with a guess),
+      `assertRefundReason` in `returns.service.ts`, `approveBody` in `returns.route.ts`,
+      `return-detail-sheet.tsx`, `returns-api.ts`.
+- [x] **URG-010 — Configurable order-cancellation reasons with Other.** Before cancelling, require a
+      reason from an approved catalogue; selecting `Other` reveals required free text. Persist and
+      audit the code/note and keep cancellation authorization and stock effects transactional.
+      **Catalogue:** OUT_OF_STOCK, CUSTOMER_REQUEST, DUPLICATE_ORDER, PAYMENT_FAILED,
+      UNABLE_TO_FULFILL, OTHER. Kept as its OWN enum rather than shared with refunds: a cancellation
+      happens before fulfilment and has different causes, so one shared list would force both to
+      carry values that are nonsense for the other.
+      **The bulk hole this avoids:** validation lives in `changeOrderStatus`, not the route, because
+      `bulkChangeOrderStatus` calls that same function. A check in the route alone would have left
+      the bulk path able to cancel up to 200 orders with no reason at all. The bulk dialog asks once
+      — cancelling fifty orders is one decision, not fifty — and the server writes a copy onto each
+      row.
+      **Where:** `CancellationReason` enum + `Order.cancellationReason`/`cancellationReasonNote`
+      (same migration), `assertCancellationReason` in `orders.service.ts`, `statusBody` and
+      `bulkStatusBody` in `orders.route.ts`, `order-status-control.tsx`, `orders-table.tsx`,
+      `orders-api.ts`. The reason travels in an options object rather than as more positional
+      arguments — `(id, to, note, reason, reasonNote)` is unreadable at the call site.
+      **Verification for both:** frontend typecheck and targeted ESLint clean; en/ar parity
+      2302/2302 with 24 new keys per locale. **Backend typecheck could not run locally** — two
+      backend dev servers (PIDs 43392 and 14964) hold the Prisma Windows query-engine DLL, so
+      `prisma generate` fails with EPERM and the new enum types are absent from the local client.
+      Not resolved by killing them: they are the owner's. Backend lint passes (it needs no generated
+      client), and CI generates its own, so CI is the real gate for the backend half.
 - [ ] **URG-010 — Configurable order-cancellation reasons with Other.** Before cancelling, require a
       reason from an approved catalogue; selecting `Other` reveals required free text. Persist and
       audit the code/note and keep cancellation authorization and stock effects transactional.
