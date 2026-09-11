@@ -1633,6 +1633,19 @@
       "resetToken": "إصدار رمز إعادة تعيين لـ {name}",
       "invite": "دعوة"
     },
+    "bulk": {
+      "activate": "تفعيل",
+      "deactivate": "تعطيل",
+      "confirmActivate": "تفعيل {count, plural, zero {لا حسابات} one {حساب واحد} two {حسابين} few {# حسابات} many {# حسابًا} other {# حساب}}؟",
+      "confirmDeactivate": "تعطيل {count, plural, zero {لا حسابات} one {حساب واحد} two {حسابين} few {# حسابات} many {# حسابًا} other {# حساب}}؟",
+      "description": "يتم التحقق من كل حساب وفق قواعد الوصول الحالية. تبقى التغييرات الناجحة مطبقة إذا رُفض حساب آخر.",
+      "confirm": "تطبيق التغييرات",
+      "cancel": "إلغاء",
+      "applying": "جارٍ التطبيق…",
+      "activated": "تم تفعيل {count, plural, zero {لا حسابات} one {حساب واحد} two {حسابين} few {# حسابات} many {# حسابًا} other {# حساب}}.",
+      "deactivated": "تم تعطيل {count, plural, zero {لا حسابات} one {حساب واحد} two {حسابين} few {# حسابات} many {# حسابًا} other {# حساب}}.",
+      "failed": "تعذر تحديث {count, plural, zero {أي حساب} one {حساب واحد} two {حسابين} few {# حسابات} many {# حسابًا} other {# حساب}}. بقيت هذه الحسابات محددة."
+    },
     "notice": {
       "created": "يمكن لـ {name} تسجيل الدخول الآن.",
       "updated": "تم حفظ {name}.",

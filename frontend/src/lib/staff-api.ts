@@ -153,6 +153,38 @@ export async function updateStaff(
   return body.staff;
 }
 
+export interface BulkStaffLifecycleResult {
+  succeeded: string[];
+  failed: { id: string; message: string }[];
+}
+
+/**
+ * Apply lifecycle changes one at a time so each account keeps the backend's
+ * rank, self-deactivation, and last-owner safeguards. Sequential execution is
+ * intentional: parallel last-owner checks could all pass against the same
+ * stale owner count. One refusal does not discard the successful rows.
+ */
+export async function bulkSetStaffActive(
+  ids: readonly string[],
+  isActive: boolean,
+): Promise<BulkStaffLifecycleResult> {
+  const result: BulkStaffLifecycleResult = { succeeded: [], failed: [] };
+
+  for (const id of ids) {
+    try {
+      await updateStaff(id, { isActive });
+      result.succeeded.push(id);
+    } catch (caught) {
+      result.failed.push({
+        id,
+        message: caught instanceof Error ? caught.message : 'Unknown error',
+      });
+    }
+  }
+
+  return result;
+}
+
 export async function unlockStaff(id: string): Promise<StaffMember> {
   const body = await apiFetch<{ staff: StaffMember }>(`/staff/${id}/unlock`, {
     method: 'POST',

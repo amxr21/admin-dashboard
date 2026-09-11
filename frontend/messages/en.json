@@ -1633,6 +1633,19 @@
       "resetToken": "Issue a reset token for {name}",
       "invite": "Invite"
     },
+    "bulk": {
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "confirmActivate": "Activate {count, plural, one {# account} other {# accounts}}?",
+      "confirmDeactivate": "Deactivate {count, plural, one {# account} other {# accounts}}?",
+      "description": "Each account is checked against the current access rules. Successful changes remain applied if another account is refused.",
+      "confirm": "Apply changes",
+      "cancel": "Cancel",
+      "applying": "Applying…",
+      "activated": "Activated {count, plural, one {# account} other {# accounts}}.",
+      "deactivated": "Deactivated {count, plural, one {# account} other {# accounts}}.",
+      "failed": "Could not update {count, plural, one {# account} other {# accounts}}. Those accounts remain selected."
+    },
     "notice": {
       "created": "{name} can now sign in.",
       "updated": "{name} saved.",

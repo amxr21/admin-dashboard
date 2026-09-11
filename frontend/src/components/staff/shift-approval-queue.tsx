@@ -50,13 +50,19 @@ import {
  * even see, since the two pages answer different questions for different
  * people.
  */
-export function ShiftApprovalQueue() {
+interface ShiftApprovalQueueProps {
+  page?: number;
+  onPageChange?: (page: number) => void;
+}
+
+export function ShiftApprovalQueue({ page: controlledPage, onPageChange }: ShiftApprovalQueueProps = {}) {
   const t = useTranslations('shifts.approval');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
 
   const [result, setResult] = useState<ShiftListResult | null>(null);
-  const [page, setPage] = useState(1);
+  const [localPage, setLocalPage] = useState(1);
+  const page = controlledPage ?? localPage;
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -199,7 +205,7 @@ export function ShiftApprovalQueue() {
           totalPages={result.totalPages}
           total={result.total}
           pageSize={result.pageSize}
-          onPageChange={setPage}
+          onPageChange={onPageChange ?? setLocalPage}
         />
       ) : null}
 

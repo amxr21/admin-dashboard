@@ -47,7 +47,13 @@
   - [x] Add stable URL-backed notification filters and permission-safe direct action destinations.
   - [x] Give every notification row an explicit keyboard- and screen-reader-accessible action contract without turning the whole row into an ambiguous control.
   - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 5.
-- [ ] **Batch 7 — operational navigation:** UX-026 durable return-detail navigation, UX-027 URL-backed shift filters, UX-028 staff bulk lifecycle actions, and UX-029 related-record links.
+- [ ] **Batch 7 — operational navigation:** UX-026 durable return-detail navigation, UX-027 URL-backed shift filters, UX-028 staff bulk lifecycle actions, and UX-029 related-record links. Extend shared URL/action/link contracts and keep lifecycle authorization permission-based rather than tied to legacy role names.
+  - [x] Inventory return detail routing, shift filter state, staff lifecycle APIs/selections, related entities, permissions, and current coverage.
+  - [x] Give return details a durable address and preserve list context when entering and leaving a record.
+  - [x] Move approved shift filters/views into stable URL state with clean defaults and back/forward/share behavior.
+  - [x] Add validated, permission-checked staff bulk lifecycle actions with partial-failure-safe feedback.
+  - [x] Add contextual related-record links through reusable destination helpers, exposing only destinations the current user can access.
+  - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 6.
 - [ ] **Batch 8 — catalogue governance:** UX-030 localized product content and UX-031 catalogue version history/restore.
 - [ ] **Batch 9 — remaining state and account workflows:** UX-032 URL-backed dashboard state, UX-033 normalized field validation, UX-034 staff detail workspace, and UX-035 forgotten-password initiation.
 - [ ] **Role simplification foundation:** replace the currently enabled role set with Admin, Developer, and Cashier after approving the production-safe legacy-role mapping and migration. Prepared role templates remain out of scope.

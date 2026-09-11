@@ -60,6 +60,8 @@ interface DataTableProps<T> {
   /** Omit to disable selection entirely — no checkbox column renders. */
   selectedIds?: ReadonlySet<string>;
   onSelectionChange?: (ids: Set<string>) => void;
+  /** Disable selection for rows the caller cannot legally include in a bulk action. */
+  isRowSelectable?: (row: T) => boolean;
 
   emptyMessage?: ReactNode;
   /** Rendered above the table when at least one row is selected. */
@@ -137,6 +139,7 @@ export function DataTable<T>({
   onRetry,
   selectedIds,
   onSelectionChange,
+  isRowSelectable,
   emptyMessage,
   bulkActions,
   skeletonRows = 5,
@@ -208,7 +211,10 @@ export function DataTable<T>({
     });
   }, [data, columns, sort, collator]);
 
-  const allIds = useMemo(() => sortedData.map(getRowId), [sortedData, getRowId]);
+  const allIds = useMemo(
+    () => sortedData.filter((row) => isRowSelectable?.(row) ?? true).map(getRowId),
+    [sortedData, getRowId, isRowSelectable],
+  );
 
   const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds?.has(id));
   const someSelected = allIds.some((id) => selectedIds?.has(id));
@@ -281,11 +287,11 @@ export function DataTable<T>({
     >
       {selectable && someSelected && bulkActions ? (
         <div className="bg-muted flex flex-col gap-2 rounded-md px-3 py-2">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-medium">
               {tCounts('selected', { count: selectedIds.size })}
             </span>
-            <div className="ms-auto flex items-center gap-2">
+            <div className="ms-auto flex flex-wrap items-center justify-end gap-2">
               {bulkActions(selectedIds)}
               {/* Deselecting by unticking each row is the only way out
                   otherwise, and a selection that survives a filter change is
@@ -341,6 +347,7 @@ export function DataTable<T>({
           selectable={selectable}
           selectedIds={selectedIds}
           toggleRow={toggleRow}
+          isRowSelectable={isRowSelectable}
           selectRowLabel={t('selectRow')}
           errorTitle={tStates('error.title')}
           emptyTitle={tStates('empty.title')}
@@ -449,6 +456,7 @@ export function DataTable<T>({
             sortedData.map((row) => {
               const id = getRowId(row);
               const isSelected = selectedIds?.has(id) ?? false;
+              const rowSelectable = isRowSelectable?.(row) ?? true;
 
               return (
                 <TableRow key={id} data-state={isSelected ? 'selected' : undefined}>
@@ -458,6 +466,7 @@ export function DataTable<T>({
                         checked={isSelected}
                         onCheckedChange={() => toggleRow(id)}
                         aria-label={t('selectRow')}
+                        disabled={!rowSelectable}
                       />
                     </TableCell>
                   ) : null}
@@ -502,6 +511,7 @@ interface MobileCardListProps<T> {
   selectable: boolean;
   selectedIds?: ReadonlySet<string>;
   toggleRow: (id: string) => void;
+  isRowSelectable?: (row: T) => boolean;
   selectRowLabel: string;
   errorTitle: string;
   emptyTitle: string;
@@ -519,6 +529,7 @@ function MobileCardList<T>({
   selectable,
   selectedIds,
   toggleRow,
+  isRowSelectable,
   selectRowLabel,
   errorTitle,
   emptyTitle,
@@ -560,6 +571,7 @@ function MobileCardList<T>({
       {sortedData.map((row) => {
         const id = getRowId(row);
         const isSelected = selectedIds?.has(id) ?? false;
+        const rowSelectable = isRowSelectable?.(row) ?? true;
 
         return (
           <div
@@ -574,6 +586,7 @@ function MobileCardList<T>({
                   onCheckedChange={() => toggleRow(id)}
                   aria-label={selectRowLabel}
                   className="mt-0.5"
+                  disabled={!rowSelectable}
                 />
               ) : null}
 

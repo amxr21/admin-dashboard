@@ -29,6 +29,8 @@ import { Link } from '@/i18n/navigation';
 import { deleteRow, fetchRows, type ResourceRow } from '@/lib/resource-api';
 import { markAllNotificationsRead, markNotificationRead } from '@/lib/notifications-api';
 import { announceNotificationsChanged, getSafeNotificationLink } from '@/lib/notification-events';
+import { useAuth } from '@/hooks/useAuth';
+import type { StaffRole } from '@/config/areas';
 
 /**
  * The full notifications list — a bespoke card-based view, not the generic
@@ -49,6 +51,8 @@ export function NotificationsList() {
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
   const { editPanelMode } = useAppSettings();
+  const { user } = useAuth();
+  const actorRole = (user?.role ?? 'DEMO') as StaffRole;
   const { values, setValues } = useUrlState({ page: '1', search: '', status: 'all' });
 
   const [rows, setRows] = useState<ResourceRow[] | null>(null);
@@ -340,9 +344,9 @@ export function NotificationsList() {
                 <p className="text-sm text-pretty">{String(openRow.body)}</p>
               ) : null}
 
-              {getSafeNotificationLink(openRow.link) ? (
+              {getSafeNotificationLink(openRow.link, actorRole) ? (
                 <Button asChild>
-                  <Link href={getSafeNotificationLink(openRow.link)!}>
+                  <Link href={getSafeNotificationLink(openRow.link, actorRole)!}>
                     <ExternalLink className="icon-directional" aria-hidden />
                     {t('openLink')}
                   </Link>

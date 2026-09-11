@@ -488,6 +488,15 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
+- **2026-09-11 — Batch 7 operational navigation is implemented locally on
+  `feat/ux-operational-navigation`, stacked on Batch 6.** Return drawers have durable
+  `?detail=<id>` addresses while preserving list search/status/page context. Shift working and
+  approval views share URL-backed pagination. Staff tables provide selectable, confirmed bulk
+  activation/deactivation by sequentially reusing the existing rank/self/last-owner checked API;
+  partial successes remain applied and refusals remain selected. A central related-record helper
+  builds encoded destinations only when the current role can access them, and notification action
+  links now apply the same permission check. Focused validation: 53 frontend tests, frontend
+  typecheck, and targeted lint pass.
 - **2026-09-11 — Batch 6 notification center is implemented locally on
   `feat/ux-notification-center`, stacked on Batch 5.** The page now reads the global unread total
   from the server rather than counting only the current page, synchronizes mutations with the
@@ -657,6 +666,9 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-09-11 (UX-026/027/028/029)** — Added durable return-detail URLs, URL-backed shift view
+  pagination, partial-failure-safe staff lifecycle bulk actions, selectable-row constraints, and
+  centralized permission-aware related-record destinations.
 - **2026-09-11 (UX-023/024/025)** — Corrected notification unread totals and shell/list
   synchronization, added URL-backed read/search/page filters plus guarded internal destinations,
   and replaced nested row controls with explicit accessible actions.

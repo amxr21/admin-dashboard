@@ -29,6 +29,10 @@ import { useUrlState } from '@/hooks/useUrlState';
 import { useBranchColumn } from '@/hooks/useBranchColumn';
 import { BranchCell } from '@/components/branch-cell';
 import { useAppSettings } from '@/components/providers/settings-provider';
+import { useAuth } from '@/hooks/useAuth';
+import { Link } from '@/i18n/navigation';
+import { getRelatedRecordHref } from '@/lib/related-record-links';
+import type { StaffRole } from '@/config/areas';
 import { fetchReturns, type ReturnListResult, type ReturnListRow, type ReturnStatus } from '@/lib/returns-api';
 
 const ALL = 'all';
@@ -46,6 +50,8 @@ export function ReturnsTable() {
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
   const { tablePageSize } = useAppSettings();
+  const { user } = useAuth();
+  const actorRole = (user?.role ?? 'DEMO') as StaffRole;
 
   /** Per-table density override — see resource-table.tsx / useTableDensity.ts. */
   const { override: densityOverride, setOverride: setDensityOverride } =
@@ -75,7 +81,21 @@ export function ReturnsTable() {
   // Holds raw keystrokes; only the debounced value reaches the URL.
   const [searchInput, setSearchInput] = useState(search);
   const [error, setError] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(values.detail || null);
+
+  useEffect(() => {
+    setOpenId(values.detail || null);
+  }, [values.detail]);
+
+  function openDetail(id: string) {
+    setOpenId(id);
+    setValues({ detail: id }, { history: 'push' });
+  }
+
+  function closeDetail() {
+    setOpenId(null);
+    setValues({ detail: null }, { history: 'push' });
+  }
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -126,7 +146,7 @@ export function ReturnsTable() {
       cell: (row) => (
         <button
           type="button"
-          onClick={() => setOpenId(row.id)}
+          onClick={() => openDetail(row.id)}
           className="hover:text-primary font-medium underline-offset-4 hover:underline"
         >
           <span className="force-ltr">{row.rmaNumber}</span>
@@ -140,7 +160,16 @@ export function ReturnsTable() {
       // Not a link (the RMA column already navigates), so it can be the
       // copyable one — pasting an order number into search is the usual next
       // step from this row.
-      cell: (row) => <CopyableId value={row.order.orderNumber} />,
+      cell: (row) => {
+        const href = getRelatedRecordHref(actorRole, 'order', row.order.id);
+        return href ? (
+          <Link href={href} className="hover:text-primary underline-offset-4 hover:underline">
+            <span className="force-ltr">{row.order.orderNumber}</span>
+          </Link>
+        ) : (
+          <CopyableId value={row.order.orderNumber} />
+        );
+      },
       sortValue: (row) => row.order.orderNumber,
     },
     {
@@ -310,7 +339,7 @@ export function ReturnsTable() {
         returnId={openId}
         open={openId !== null}
         onOpenChange={(open) => {
-          if (!open) setOpenId(null);
+          if (!open) closeDetail();
         }}
         onChanged={(text) => {
           toast.success(text);

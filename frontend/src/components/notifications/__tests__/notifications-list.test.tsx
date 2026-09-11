@@ -66,6 +66,10 @@ vi.mock('@/lib/notifications-api', () => ({
   markNotificationRead,
 }));
 
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({ user: { id: 'u1', role: 'OWNER' } }),
+}));
+
 function makeRow(overrides: Partial<ResourceRow> = {}): ResourceRow {
   return {
     id: 'n1',

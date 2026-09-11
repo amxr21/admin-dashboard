@@ -1,4 +1,18 @@
+import { canAccessArea, type Area, type StaffRole } from '@/config/areas';
+
 const NOTIFICATIONS_CHANGED_EVENT = 'admin-dashboard:notifications-changed';
+
+const DESTINATION_AREAS: readonly [prefix: string, area: Area][] = [
+  ['/admin/customer-cases', 'customers'],
+  ['/admin/inventory', 'inventory'],
+  ['/admin/delivery', 'delivery'],
+  ['/admin/returns', 'returns'],
+  ['/admin/orders', 'orders'],
+  ['/admin/staff', 'staff'],
+  ['/admin/audit', 'staff'],
+  ['/admin/r/products', 'products'],
+  ['/admin/r/customers', 'customers'],
+];
 
 export function announceNotificationsChanged() {
   if (typeof window !== 'undefined') {
@@ -13,7 +27,13 @@ export function subscribeToNotificationChanges(listener: () => void) {
 }
 
 /** Notifications may only navigate inside the authenticated admin surface. */
-export function getSafeNotificationLink(value: unknown): string | null {
+export function getSafeNotificationLink(value: unknown, role: StaffRole): string | null {
   if (typeof value !== 'string') return null;
-  return value === '/admin' || value.startsWith('/admin/') ? value : null;
+  if (value === '/admin') return value;
+  if (!value.startsWith('/admin/')) return null;
+
+  const match = DESTINATION_AREAS.find(([prefix]) =>
+    value === prefix || value.startsWith(`${prefix}/`) || value.startsWith(`${prefix}?`),
+  );
+  return match && canAccessArea(role, match[1]) ? value : null;
 }

@@ -20,9 +20,10 @@ describe('notification state coordination', () => {
   });
 
   it('accepts only authenticated internal admin destinations', () => {
-    expect(getSafeNotificationLink('/admin/returns')).toBe('/admin/returns');
-    expect(getSafeNotificationLink('https://example.test/phishing')).toBeNull();
-    expect(getSafeNotificationLink('//example.test/phishing')).toBeNull();
-    expect(getSafeNotificationLink('/login')).toBeNull();
+    expect(getSafeNotificationLink('/admin/returns', 'CASHIER')).toBe('/admin/returns');
+    expect(getSafeNotificationLink('/admin/inventory', 'CASHIER')).toBeNull();
+    expect(getSafeNotificationLink('https://example.test/phishing', 'OWNER')).toBeNull();
+    expect(getSafeNotificationLink('//example.test/phishing', 'OWNER')).toBeNull();
+    expect(getSafeNotificationLink('/login', 'OWNER')).toBeNull();
   });
 });
