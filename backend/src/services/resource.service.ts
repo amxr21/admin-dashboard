@@ -189,6 +189,9 @@ export interface ListParams {
   dir?: 'asc' | 'desc';
   /** field → value. Keys are validated against the config. */
   filters?: Record<string, string>;
+  /** Trusted service-built alternatives for the free-text search group. Never
+   * populated directly from query keys; localized product ids use this. */
+  extraSearchConditions?: Record<string, unknown>[];
 }
 
 export interface ListResult {
@@ -242,7 +245,10 @@ function buildWhere(config: ResourceConfig, params: ListParams): Record<string, 
 
   if (search && searchable.length > 0) {
     conditions.push({
-      OR: searchable.map((name) => ({ [name]: { contains: search } })),
+      OR: [
+        ...searchable.map((name) => ({ [name]: { contains: search } })),
+        ...(params.extraSearchConditions ?? []),
+      ],
     });
   }
 
@@ -840,7 +846,7 @@ export async function deleteResourceRow(
 
   // A resource may refuse the plain delete and do something else — see
   // resource-hooks.ts for why that lives in code rather than config.
-  const outcome = await hooksFor(config.resource)?.beforeDelete?.(id);
+  const outcome = await hooksFor(config.resource)?.beforeDelete?.(id, req);
 
   if (outcome?.handled) {
     // Re-read so the caller gets the row as it now stands, not as it was.
@@ -891,7 +897,7 @@ export interface ResourceExportResult {
  */
 export async function listResourceForExport(
   config: ResourceConfig,
-  params: Pick<ListParams, 'search' | 'filters' | 'sort' | 'dir'>,
+  params: Pick<ListParams, 'search' | 'filters' | 'sort' | 'dir' | 'extraSearchConditions'>,
 ): Promise<ResourceExportResult> {
   const delegate = delegateFor(config);
   const where = buildWhere(config, params);

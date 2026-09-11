@@ -6,6 +6,7 @@ import { AppError } from '../errors/AppError.js';
 import { logger } from '../logger.js';
 import { defaultBranchId } from './inventory.service.js';
 import { normalizePhone } from '../lib/phone.js';
+import { recordCatalogueVersion } from './product-catalogue-version.service.js';
 
 /// The category tree's own cap (S7.6) — decided rather than left unbounded:
 /// a shop's catalogue nav is Category → Subcategory → Sub-subcategory in
@@ -60,7 +61,7 @@ export interface ResourceHooks {
    * Runs INSTEAD of the generic delete when it returns `handled: true`.
    * Returning `handled: false` falls through to the normal delete.
    */
-  beforeDelete?: (id: string) => Promise<DeleteOutcome>;
+  beforeDelete?: (id: string, req: Request) => Promise<DeleteOutcome>;
   /**
    * Runs AFTER a successful generic update, given the row as it was before
    * and after. Side-effect only — return value is ignored, and a throw here
@@ -209,7 +210,7 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
       // Nothing to place. A zero-stock product is the normal case for a
       // catalogue entry added before its first delivery, and writing a
       // 0 row would be indistinguishable from one that was counted.
-      if (quantity <= 0) return;
+      if (quantity > 0) {
 
       // The switcher's own branch FIRST (O9.18) — an owner creating a
       // product while scoped to "Marina" must have the opening stock land
@@ -219,16 +220,19 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
       // Shares defaultBranchId() rather than picking a fallback branch here
       // — a second copy of "which branch when none is named" is free to
       // drift from the flagged-default rule F8.2 established.
-      const branchId = req.branchId ?? (await defaultBranchId());
+        const branchId = req.branchId ?? (await defaultBranchId());
 
-      await prisma.branchStock.upsert({
-        where: { productId_branchId: { productId: String(row.id), branchId } },
-        create: { productId: String(row.id), branchId, quantity },
+        await prisma.branchStock.upsert({
+          where: { productId_branchId: { productId: String(row.id), branchId } },
+          create: { productId: String(row.id), branchId, quantity },
         // A row already existing here is not expected on a create, but an
         // upsert costs nothing and a crash would be a worse answer than
         // recording the figure that was just entered.
-        update: { quantity },
-      });
+          update: { quantity },
+        });
+      }
+
+      await recordCatalogueVersion(String(row.id), 'CREATE', 'Created product', req);
     },
 
     /**
@@ -243,7 +247,7 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
      * Products never ordered are genuinely deleted: they are catalogue
      * mistakes, and keeping them clutters every list forever.
      */
-    beforeDelete: async (id: string): Promise<DeleteOutcome> => {
+    beforeDelete: async (id: string, req: Request): Promise<DeleteOutcome> => {
       const orderedCount = await prisma.orderItem.count({ where: { productId: id } });
 
       if (orderedCount === 0) return { handled: false };
@@ -252,6 +256,8 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
         where: { id },
         data: { status: ProductStatus.ARCHIVED },
       });
+
+      await recordCatalogueVersion(id, 'UPDATE', 'Archived product', req);
 
       return { handled: true, action: 'archived' };
     },
@@ -276,21 +282,43 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
     ): Promise<void> => {
       const previousSlug = typeof before.slug === 'string' ? before.slug : null;
       const nextSlug = typeof after.slug === 'string' ? after.slug : null;
-      if (!previousSlug || previousSlug === nextSlug) return;
+      if (previousSlug && previousSlug !== nextSlug) {
+        try {
+          await prisma.productRedirect.create({
+            data: { oldSlug: previousSlug, productId: String(after.id) },
+          });
+        } catch (error) {
+          const detail = {
+            event: 'product.redirect.write_failed',
+            productId: String(after.id),
+            oldSlug: previousSlug,
+            error: error instanceof Error ? error.message : String(error),
+          };
+          if (typeof req.log?.error === 'function') req.log.error(detail);
+          else logger.error(detail);
+        }
+      }
 
-      try {
-        await prisma.productRedirect.create({
-          data: { oldSlug: previousSlug, productId: String(after.id) },
-        });
-      } catch (error) {
-        const detail = {
-          event: 'product.redirect.write_failed',
-          productId: String(after.id),
-          oldSlug: previousSlug,
-          error: error instanceof Error ? error.message : String(error),
-        };
-        if (typeof req.log?.error === 'function') req.log.error(detail);
-        else logger.error(detail);
+      const changed = Object.keys(after).filter(
+        (key) => JSON.stringify(before[key] ?? null) !== JSON.stringify(after[key] ?? null),
+      );
+      if (changed.length > 0) {
+        try {
+          await recordCatalogueVersion(
+            String(after.id),
+            'UPDATE',
+            `Updated ${changed.slice(0, 6).join(', ')}`,
+            req,
+          );
+        } catch (error) {
+          const detail = {
+            event: 'product.catalogue_version.write_failed',
+            productId: String(after.id),
+            error: error instanceof Error ? error.message : String(error),
+          };
+          if (typeof req.log?.error === 'function') req.log.error(detail);
+          else logger.error(detail);
+        }
       }
     },
   },

@@ -488,6 +488,14 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
+- **2026-09-11 — Batch 8 catalogue governance is implemented locally on
+  `feat/ux-catalogue-governance`, stacked on Batch 7.** Products now have additive Arabic content
+  records behind one locale/fallback resolver used by admin reads/search/export, POS, global
+  search and the public storefront. Governed product edits produce immutable snapshots with actor
+  metadata; history is permission checked and restore always creates a new version. Restore
+  previews use optimistic timestamps, preserve stock, and return safe conflicts for stale previews,
+  duplicate identities, or deleted category/tag references. Focused validation: 61 frontend tests
+  and 9 catalogue integration tests pass; both typechecks and targeted lint pass.
 - **2026-09-11 — Batch 7 operational navigation is implemented locally on
   `feat/ux-operational-navigation`, stacked on Batch 6.** Return drawers have durable
   `?detail=<id>` addresses while preserving list search/status/page context. Shift working and
@@ -666,6 +674,9 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-09-11 (UX-030/031)** — Added reusable English-fallback/Arabic product content across
+  catalogue consumers, immutable governed-product snapshots, permission-checked history, and a
+  conflict-safe restore flow that preserves stock and appends a new version plus audit record.
 - **2026-09-11 (UX-026/027/028/029)** — Added durable return-detail URLs, URL-backed shift view
   pagination, partial-failure-safe staff lifecycle bulk actions, selectable-row constraints, and
   centralized permission-aware related-record destinations.

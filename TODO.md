@@ -54,7 +54,13 @@
   - [x] Add validated, permission-checked staff bulk lifecycle actions with partial-failure-safe feedback.
   - [x] Add contextual related-record links through reusable destination helpers, exposing only destinations the current user can access.
   - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 6.
-- [ ] **Batch 8 — catalogue governance:** UX-030 localized product content and UX-031 catalogue version history/restore.
+- [ ] **Batch 8 — catalogue governance:** UX-030 localized product content and UX-031 catalogue version history/restore. Keep localization and versioning behind shared product contracts so future languages and catalogue fields do not require page-local schema forks.
+  - [x] Inventory the product schema, resource metadata/forms, import/export paths, audit records, permissions, and existing product coverage before choosing additive storage contracts.
+  - [x] Define one reusable localized-content contract with an explicit fallback locale and validation shared by create, edit, read, search, POS, and import/export paths.
+  - [x] Add bilingual product-content editing and rendering with clear fallback behavior, without duplicating the canonical product identity or stock/price fields.
+  - [x] Add immutable catalogue versions for governed product changes with actor, timestamp, change summary, and a permission-checked detail/history API.
+  - [x] Add an explicit restore preview and confirmation flow that creates a new version rather than deleting history, with conflict-safe validation and audit coverage.
+  - [ ] Add focused backend/frontend coverage, complete the accessibility/responsive review, run the local gate, and publish a PR stacked on Batch 7.
 - [ ] **Batch 9 — remaining state and account workflows:** UX-032 URL-backed dashboard state, UX-033 normalized field validation, UX-034 staff detail workspace, and UX-035 forgotten-password initiation.
 - [ ] **Role simplification foundation:** replace the currently enabled role set with Admin, Developer, and Cashier after approving the production-safe legacy-role mapping and migration. Prepared role templates remain out of scope.
 

@@ -25,6 +25,11 @@ import {
   requireResource,
   updateResourceRow,
 } from '../../services/resource.service.js';
+import {
+  findLocalizedProductIds,
+  localizeProductRows,
+  productLocaleFromHeader,
+} from '../../services/product-content.service.js';
 
 /**
  * The schema-driven resource engine.
@@ -103,6 +108,10 @@ resourceRouter.get('/r/:resource', authenticate, withBranchContext, async (req, 
     if (typeof value === 'string') filters[key] = value;
   }
 
+  const locale = productLocaleFromHeader(req.get('accept-language'));
+  const localizedIds = config.resource === 'products'
+    ? await findLocalizedProductIds(typeof search === 'string' ? search : undefined, locale)
+    : [];
   const result = await listResource(config, {
     page: page ? Number(page) : undefined,
     pageSize: pageSize ? Number(pageSize) : undefined,
@@ -110,9 +119,14 @@ resourceRouter.get('/r/:resource', authenticate, withBranchContext, async (req, 
     sort: typeof sort === 'string' ? sort : undefined,
     dir: dir === 'asc' ? 'asc' : dir === 'desc' ? 'desc' : undefined,
     filters,
+    extraSearchConditions: localizedIds.length > 0 ? [{ id: { in: localizedIds } }] : undefined,
   });
 
-  res.status(200).json({ data: result });
+  const rows = config.resource === 'products'
+    ? await localizeProductRows(result.rows, locale)
+    : result.rows;
+
+  res.status(200).json({ data: { ...result, rows } });
 });
 
 /**
@@ -135,12 +149,24 @@ resourceRouter.get('/r/:resource/export', authenticate, withBranchContext, async
     if (typeof value === 'string') filters[key] = value;
   }
 
-  const { rows, truncated } = await listResourceForExport(config, {
+  const locale = productLocaleFromHeader(req.get('accept-language'));
+  const localizedIds = config.resource === 'products'
+    ? await findLocalizedProductIds(typeof search === 'string' ? search : undefined, locale)
+    : [];
+  const exportResult = await listResourceForExport(config, {
     search: typeof search === 'string' ? search : undefined,
     sort: typeof sort === 'string' ? sort : undefined,
     dir: dir === 'asc' ? 'asc' : dir === 'desc' ? 'desc' : undefined,
     filters,
+    extraSearchConditions: localizedIds.length > 0 ? [{ id: { in: localizedIds } }] : undefined,
   });
+  const rows = config.resource === 'products'
+    ? await localizeProductRows(
+        exportResult.rows,
+        locale,
+      )
+    : exportResult.rows;
+  const { truncated } = exportResult;
 
   audit(req, {
     action: `${config.resource}.export`,
@@ -309,7 +335,13 @@ resourceRouter.get('/r/:resource/:id', authenticate, async (req, res) => {
   await guardArea(req);
   const config = requireResource(String(req.params.resource));
 
-  const row = await getResourceRow(config, String(req.params.id));
+  const rawRow = await getResourceRow(config, String(req.params.id));
+  const row = config.resource === 'products'
+    ? (await localizeProductRows(
+        [rawRow],
+        productLocaleFromHeader(req.get('accept-language')),
+      ))[0]
+    : rawRow;
 
   res.status(200).json({ data: { row } });
 });

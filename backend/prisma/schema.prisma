@@ -705,6 +705,7 @@ model Product {
   imageUrl    String?       @map("image_url") @db.VarChar(512)
   status      ProductStatus @default(ACTIVE)
   stock       Int           @default(0)
+  catalogueVersion Int      @default(0) @map("catalogue_version")
 
   /// Per-product low-stock threshold, overriding `inventory.lowStockThreshold`
   /// (the store-wide setting) for THIS product.
@@ -773,6 +774,8 @@ model Product {
   cartItems     CartItem[]
   wishlistItems WishlistItem[]
   tags          Tag[]
+  translations  ProductTranslation[]
+  catalogueVersions ProductCatalogueVersion[]
 
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
@@ -783,6 +786,54 @@ model Product {
   @@index([categoryId])
   @@index([createdAt])
   @@map("products")
+}
+
+/// Locale-specific catalogue copy. Product identity, price, stock, status,
+/// shipping data and relations remain on Product; this table contains only
+/// content that may legitimately vary by language. The canonical Product
+/// columns are the explicit `en` fallback, preserving every existing API and
+/// integration while allowing additional locale rows without schema changes.
+model ProductTranslation {
+  id              String  @id @default(cuid())
+  locale          String  @db.VarChar(10)
+  name            String? @db.VarChar(200)
+  description     String? @db.Text
+  metaTitle       String? @map("meta_title") @db.VarChar(160)
+  metaDescription String? @map("meta_description") @db.VarChar(320)
+
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([productId, locale])
+  @@index([locale])
+  @@map("product_translations")
+}
+
+/// Immutable snapshots of governed catalogue fields. Stock and movement rows
+/// are intentionally excluded: restoring product copy or price must never
+/// rewrite the physical inventory ledger. Actor details are denormalised so
+/// history remains intelligible after a staff account is removed.
+model ProductCatalogueVersion {
+  id         String @id @default(cuid())
+  version    Int
+  source     String @db.VarChar(24)
+  summary    String @db.VarChar(255)
+  snapshot   Json
+  actorId    String? @map("actor_id") @db.VarChar(191)
+  actorEmail String? @map("actor_email") @db.VarChar(320)
+  actorRole  String? @map("actor_role") @db.VarChar(32)
+
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([productId, version])
+  @@index([productId, createdAt])
+  @@map("product_catalogue_versions")
 }
 
 /// One row per slug a product used to have. Written automatically whenever

@@ -694,7 +694,9 @@
     "choose": "Choose…",
     "manageVariants": "Manage variants",
     "manageGallery": "Manage gallery",
-    "variantsAfterSave": "Save this product first — variants and gallery images attach to a real product record, which doesn't exist yet.",
+    "manageLocalizedContent": "Localized content",
+    "viewHistory": "Version history",
+    "variantsAfterSave": "Save this product first — localized content, variants and gallery images attach to a real product record, which doesn't exist yet.",
     "noOptions": "None available.",
     "errors": {
       "required": "This field is required.",
@@ -1053,6 +1055,62 @@
     "delete": "Remove image",
     "altLabel": "Alt text",
     "altPlaceholder": "Describe this image for screen readers"
+  },
+  "productContent": {
+    "title": "Localized content — {name}",
+    "subtitle": "Arabic catalogue copy. English remains the default content and fills any field left blank here.",
+    "fallbackHelp": "Blank fields automatically use the English value. Clearing every field removes this translation without affecting the product.",
+    "loading": "Loading localized content",
+    "retry": "Try again",
+    "save": "Save Arabic content",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "saved": "Arabic product content saved.",
+    "fields": {
+      "name": "Arabic name",
+      "description": "Arabic description",
+      "metaTitle": "Arabic meta title",
+      "metaDescription": "Arabic meta description"
+    },
+    "discard": {
+      "title": "Discard localized-content changes?",
+      "description": "The Arabic text you changed has not been saved.",
+      "keep": "Keep editing",
+      "confirm": "Discard"
+    }
+  },
+  "productHistory": {
+    "title": "Version history — {name}",
+    "subtitle": "Immutable snapshots of catalogue changes. Restoring creates another version; it never removes history.",
+    "loading": "Loading version history",
+    "empty": "No catalogue versions have been recorded yet.",
+    "retry": "Try again",
+    "version": "Version {version}",
+    "preview": "Preview restore",
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {page} of {total}",
+    "restoreTitle": "Restore version {version}?",
+    "restoreDescription": "Review the snapshot below. Current catalogue fields will be replaced, and this restore will be recorded as a new version.",
+    "stockUnaffected": "Stock quantities and movement history are not part of catalogue restore and will remain unchanged.",
+    "restore": "Restore this version",
+    "restoring": "Restoring…",
+    "cancel": "Cancel",
+    "restored": "Version {version} restored as a new catalogue version.",
+    "conflict": "This product changed after the preview loaded. Close this preview, review the newest version, and try again.",
+    "fallback": "Uses English fallback",
+    "sources": {
+      "CREATE": "Product created",
+      "UPDATE": "Product updated",
+      "TRANSLATION": "Localized content updated",
+      "RESTORE": "Earlier version restored"
+    },
+    "fields": {
+      "name": "Name",
+      "price": "Price",
+      "status": "Status",
+      "arabicName": "Arabic name"
+    }
   },
   "notificationsBell": {
     "unread": "{count, plural, one {# unread notification} other {# unread notifications}}",

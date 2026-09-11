@@ -20,6 +20,7 @@ import {
   voidSale,
 } from '../../services/pos.service.js';
 import { getOpenShift } from '../../services/shifts.service.js';
+import { productLocaleFromHeader } from '../../services/product-content.service.js';
 
 /**
  * The till (O5).
@@ -61,7 +62,11 @@ posRouter.get('/pos/scan', ...guard, async (req, res) => {
   // Stock is reported for the branch the till is standing in — the number the
   // cashier can actually reach. `withBranchContext` resolves it from the
   // switcher's header.
-  const product = await scanProduct(parsed.data.code, req.branchId ?? null);
+  const product = await scanProduct(
+    parsed.data.code,
+    req.branchId ?? null,
+    productLocaleFromHeader(req.get('accept-language')),
+  );
 
   res.status(200).json({ data: { product } });
 });
@@ -97,6 +102,7 @@ posRouter.get('/pos/browse', ...guard, async (req, res) => {
     ids: parsed.data.ids
       ? parsed.data.ids.split(',').map((id) => id.trim()).filter(Boolean)
       : undefined,
+    locale: productLocaleFromHeader(req.get('accept-language')),
   });
 
   res.status(200).json({ data: { products } });

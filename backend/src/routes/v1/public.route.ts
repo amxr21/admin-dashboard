@@ -24,6 +24,7 @@ import {
   toggleWishlist,
   trackOrder,
 } from '../../services/storefront.service.js';
+import { productLocaleFromHeader } from '../../services/product-content.service.js';
 
 /**
  * The PUBLIC storefront API, mounted at /api/v1/public.
@@ -94,13 +95,15 @@ publicRouter.get('/public/config', async (_req, res) => {
 
 // ─── Catalogue (no auth) ────────────────────────────────────────────
 
-publicRouter.get('/public/products', async (_req, res) => {
-  res.json({ data: await listPublicProducts() });
+publicRouter.get('/public/products', async (req, res) => {
+  res.json({
+    data: await listPublicProducts(productLocaleFromHeader(req.get('accept-language'))),
+  });
 });
 
 // Static path BEFORE the :slug route, or "/menu" is captured as a slug.
-publicRouter.get('/public/products/menu', async (_req, res) => {
-  res.json({ data: await getPublicMenu() });
+publicRouter.get('/public/products/menu', async (req, res) => {
+  res.json({ data: await getPublicMenu(productLocaleFromHeader(req.get('accept-language'))) });
 });
 
 // Lowercase letters, digits and hyphens — matches how slugs are generated and
@@ -115,7 +118,12 @@ publicRouter.get('/public/products/:slug', async (req, res) => {
   const slug = slugParam.safeParse(req.params.slug);
   if (!slug.success) throw AppError.notFound('Product not found');
 
-  res.json({ data: await getPublicProductBySlug(slug.data) });
+  res.json({
+    data: await getPublicProductBySlug(
+      slug.data,
+      productLocaleFromHeader(req.get('accept-language')),
+    ),
+  });
 });
 
 // ─── Sign-in ────────────────────────────────────────────────────────

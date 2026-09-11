@@ -84,6 +84,9 @@ async function performApiFetch<T>(path: string, init: RequestInit): Promise<T> {
    * case.
    */
   const branchId = readBranchId();
+  const locale = typeof document === 'undefined'
+    ? undefined
+    : document.documentElement.lang.split('-')[0];
 
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -91,6 +94,7 @@ async function performApiFetch<T>(path: string, init: RequestInit): Promise<T> {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(branchId ? { 'X-Branch-Id': branchId } : {}),
+      ...(locale ? { 'Accept-Language': locale } : {}),
       ...init.headers,
     },
     // Send cookies too, so a future move to httpOnly cookie auth needs no

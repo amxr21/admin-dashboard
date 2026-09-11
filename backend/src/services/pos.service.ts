@@ -17,6 +17,10 @@ import { executeIdempotently } from './idempotency.service.js';
 import { normalizePhone } from '../lib/phone.js';
 import { computeOrderTotals, getTaxRate } from './order-math.service.js';
 import { getSettingValue } from './settings.service.js';
+import {
+  localizeProductRows,
+  type ProductLocale,
+} from './product-content.service.js';
 
 /**
  * The till's own reads (O5).
@@ -66,6 +70,7 @@ export interface ScannedProduct {
 export async function scanProduct(
   code: string,
   branchId: string | null,
+  locale: ProductLocale = 'en',
 ): Promise<ScannedProduct> {
   const trimmed = code.trim();
 
@@ -103,9 +108,11 @@ export async function scanProduct(
           })
         )?.quantity ?? 0);
 
+  const localized = (await localizeProductRows([product], locale))[0]!;
+
   return {
     id: product.id,
-    name: product.name,
+    name: String(localized.name),
     sku: product.sku,
     barcode: product.barcode,
     price: product.price.toFixed(2),
@@ -159,6 +166,7 @@ export interface BrowseProductsParams {
    *  from an ordinary browse — nothing here re-sells something no longer
    *  sellable. */
   ids?: string[] | undefined;
+  locale?: ProductLocale | undefined;
 }
 
 /**
@@ -183,7 +191,16 @@ export async function browseProducts(
   const products = await prisma.product.findMany({
     where: {
       status: 'ACTIVE',
-      ...(q ? { name: { contains: q } } : {}),
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q } },
+              ...(params.locale === 'ar'
+                ? [{ translations: { some: { locale: 'ar', name: { contains: q } } } }]
+                : []),
+            ],
+          }
+        : {}),
       ...(params.categoryId ? { categoryId: params.categoryId } : {}),
       ...(params.ids && params.ids.length > 0 ? { id: { in: params.ids } } : {}),
     },
@@ -217,10 +234,12 @@ export async function browseProducts(
     for (const row of rows) stockByProductId.set(row.productId, row.quantity);
   }
 
-  return products.map((product) => ({
+  const localized = await localizeProductRows(products, params.locale ?? 'en');
+
+  return localized.map((product) => ({
     id: product.id,
     name: product.name,
-    price: product.price.toFixed(2),
+    price: (product.price as { toFixed: (digits: number) => string }).toFixed(2),
     imageUrl: product.imageUrl,
     categoryId: product.categoryId,
     // Missing row means the branch holds none of it — same reasoning as the

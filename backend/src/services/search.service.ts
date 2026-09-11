@@ -2,6 +2,10 @@ import type { StaffRole } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { canAccessArea, type Area } from '../config/roles.js';
+import {
+  localizeProductRows,
+  type ProductLocale,
+} from './product-content.service.js';
 
 /**
  * Cross-entity search — orders, customers, products by name/SKU — for the
@@ -52,7 +56,12 @@ function money(value: { toFixed: (digits: number) => string }): string {
   return value.toFixed(2);
 }
 
-export async function search(role: StaffRole, query: string, branchId: string | null): Promise<SearchResults> {
+export async function search(
+  role: StaffRole,
+  query: string,
+  branchId: string | null,
+  locale: ProductLocale = 'en',
+): Promise<SearchResults> {
   const q = query.trim();
 
   const empty: SearchResults = { orders: [], customers: [], products: [], suppliers: [], customerCases: [] };
@@ -89,7 +98,13 @@ export async function search(role: StaffRole, query: string, branchId: string | 
     canSee('products')
       ? prisma.product.findMany({
           where: {
-            OR: [{ name: { contains: q } }, { sku: { contains: q } }],
+            OR: [
+              { name: { contains: q } },
+              { sku: { contains: q } },
+              ...(locale === 'ar'
+                ? [{ translations: { some: { locale: 'ar', name: { contains: q } } } }]
+                : []),
+            ],
           },
           select: { id: true, name: true, sku: true },
           orderBy: { createdAt: 'desc' },
@@ -127,6 +142,7 @@ export async function search(role: StaffRole, query: string, branchId: string | 
         })
       : Promise.resolve([]),
   ]);
+  const localizedProducts = await localizeProductRows(products, locale);
 
   return {
     orders: orders.map((order) => ({
@@ -148,11 +164,13 @@ export async function search(role: StaffRole, query: string, branchId: string | 
       // single-record URL that doesn't exist anywhere in this app.
       href: `/admin/r/customers?search=${encodeURIComponent(customer.email)}`,
     })),
-    products: products.map((product) => ({
+    products: localizedProducts.map((product) => ({
       id: product.id,
-      title: product.name,
-      subtitle: product.sku,
-      href: `/admin/r/products?search=${encodeURIComponent(product.sku ?? product.name)}`,
+      title: String(product.name),
+      subtitle: typeof product.sku === 'string' ? product.sku : null,
+      href: `/admin/r/products?search=${encodeURIComponent(
+        typeof product.sku === 'string' ? product.sku : String(product.name)
+      )}`,
     })),
     suppliers: suppliers.map((supplier) => ({
       id: supplier.id,
