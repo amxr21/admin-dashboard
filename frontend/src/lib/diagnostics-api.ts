@@ -51,3 +51,33 @@ export interface TableStat {
 export async function fetchTableStats(): Promise<TableStat[]> {
   return apiFetch<TableStat[]>('/diagnostics/db/tables');
 }
+
+/**
+ * One integration the owner configures through env vars on the host.
+ *
+ * `configured` and `partial` are separate states on purpose: partial means
+ * some but not all of a group's variables are set, which is a typo to fix,
+ * while neither means a deliberate decision not to use that integration.
+ */
+export interface IntegrationStatus {
+  key: string;
+  configured: boolean;
+  partial: boolean;
+  /** What stops working while this is unconfigured. */
+  impact: string;
+  dashboard?: string | null;
+}
+
+export interface ConfigurationStatus {
+  mode: {
+    appMode: string;
+    nodeEnv: string;
+    isProduction: boolean;
+    corsOriginCount: number;
+  };
+  integrations: IntegrationStatus[];
+}
+
+export async function fetchConfigurationStatus(): Promise<ConfigurationStatus> {
+  return apiFetch<ConfigurationStatus>('/diagnostics/configuration');
+}

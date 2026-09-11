@@ -339,26 +339,17 @@ export function LoginForm() {
         )}
       </Button>
 
-      {/* The ONLY discoverable routes to account recovery. Without these,
+      {/* The ONLY discoverable route to account recovery. Without this,
           someone locked out has to be sent the URL by hand — and the
-          admin-issued token they were given would have nowhere to go. Both
-          are offered because the two paths serve different people: one was
-          handed a code, the other has nobody to ask. */}
-      <p className="text-muted-foreground text-center text-sm">
-        <Link
-          href="/forgot-password"
-          className="hover:text-foreground underline underline-offset-4"
-        >
-          {t('forgotPassword')}
-        </Link>
-      </p>
-
+          admin-issued token they were given would have nowhere to go. One
+          link, because /reset-password now holds both steps: ask for a code
+          there, or redeem one you were already given. */}
       <p className="text-muted-foreground text-center text-sm">
         <Link
           href="/reset-password"
           className="hover:text-foreground underline underline-offset-4"
         >
-          {t('haveResetCode')}
+          {t('forgotPassword')}
         </Link>
       </p>
     </form>

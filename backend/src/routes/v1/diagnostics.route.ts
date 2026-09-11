@@ -214,3 +214,95 @@ diagnosticsRouter.get(
     req.log.info({ event: 'diagnostics.db.tables.viewed', userId: req.user?.id });
   },
 );
+
+/**
+ * What the OWNER has to configure, and whether this environment has it.
+ *
+ * ─── STILL BOOLEANS AND LINKS ONLY ───────────────────────────────────
+ * Same rule as `GET /diagnostics`, and it matters more here because this
+ * endpoint enumerates the secrets by NAME. It reports whether each one is
+ * present and what breaks while it is not — never a value, never a prefix,
+ * never a length. A "just the last four characters" affordance is exactly how
+ * a status page becomes an exfiltration tool, and `requireRole(DEVELOPER)` is
+ * one role change away from not being true.
+ *
+ * The three `*_SECRET`s that are REQUIRED are not reported at all: the app
+ * cannot boot without them (env.ts refuses), so a running server answering
+ * this request is itself the proof they are set. Reporting `true` always
+ * would be a row that can never say anything else.
+ *
+ * `impact` exists so this reads as a checklist rather than a dump — an
+ * unconfigured integration is only worth acting on if you know what stops
+ * working, and that sentence is the thing an owner cannot derive from a
+ * variable name.
+ */
+function configurationStatus() {
+  const smtpVars = [env.SMTP_HOST, env.SMTP_PORT, env.SMTP_USER, env.SMTP_PASSWORD];
+  const cloudinaryVars = [
+    env.CLOUDINARY_CLOUD_NAME,
+    env.CLOUDINARY_API_KEY,
+    env.CLOUDINARY_API_SECRET,
+  ];
+
+  return {
+    mode: {
+      appMode: env.APP_MODE,
+      nodeEnv: env.NODE_ENV,
+      isProduction,
+      // The ORIGINS are not secret (a browser sends them in every request)
+      // and a wrong one is the single most common cause of "the site loads
+      // but every call fails", so the count is worth showing. The values
+      // themselves stay out: they name the deployment's hostnames.
+      corsOriginCount: env.CORS_ORIGINS.length,
+    },
+    integrations: [
+      {
+        key: 'email',
+        // Partial is its own state, not a variant of missing: three of four
+        // SMTP vars set is a typo to fix, while none set is a decision not to
+        // send mail. Collapsing them would hide the difference.
+        configured: smtpVars.every(Boolean),
+        partial: smtpVars.some(Boolean) && !smtpVars.every(Boolean),
+        impact:
+          'Password reset codes, low-stock supplier outreach, scheduled reports and customer order-status emails are not delivered.',
+      },
+      {
+        key: 'uploads',
+        configured: cloudinaryVars.every(Boolean),
+        partial: cloudinaryVars.some(Boolean) && !cloudinaryVars.every(Boolean),
+        impact: 'Product and brand image uploads fail; existing images are unaffected.',
+      },
+      {
+        key: 'errorTracking',
+        configured: Boolean(env.SENTRY_DSN),
+        partial: false,
+        impact:
+          'Crashes are only in the server logs — nothing is grouped, alerted on, or tied to a release.',
+        dashboard: env.SENTRY_DASHBOARD_URL ?? null,
+      },
+      {
+        key: 'logs',
+        configured: Boolean(env.LOGS_DASHBOARD_URL),
+        partial: false,
+        impact: 'No aggregated log search; logs are readable only on the host.',
+        dashboard: env.LOGS_DASHBOARD_URL ?? null,
+      },
+      {
+        key: 'customerSignIn',
+        configured: Boolean(env.GOOGLE_CLIENT_ID),
+        partial: false,
+        impact: 'Storefront customers cannot sign in with Google; staff sign-in is unaffected.',
+      },
+    ],
+  };
+}
+
+diagnosticsRouter.get(
+  '/diagnostics/configuration',
+  authenticate,
+  requireRole(StaffRole.DEVELOPER),
+  (req, res) => {
+    res.json({ data: configurationStatus() });
+    req.log.info({ event: 'diagnostics.configuration.viewed', userId: req.user?.id });
+  },
+);

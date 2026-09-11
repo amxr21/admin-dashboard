@@ -1,7 +1,7 @@
 import { KeyRound } from 'lucide-react';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { ResetPasswordForm } from '@/components/auth/reset-password-form';
+import { PasswordRecoveryPanel } from '@/components/auth/password-recovery-panel';
 import { LocaleSwitcher } from '@/components/locale-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Link } from '@/i18n/navigation';
@@ -44,7 +44,7 @@ export default async function ResetPasswordPage({
               <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
             </div>
 
-            <ResetPasswordForm />
+            <PasswordRecoveryPanel />
 
             <p className="text-muted-foreground mt-4 text-center text-sm">
               <Link href="/login" className="hover:text-foreground underline underline-offset-4">

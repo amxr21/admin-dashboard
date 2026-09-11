@@ -14,6 +14,13 @@ import { isAccountEmailValid, normalizeAccountEmail } from '@/lib/identity-valid
 /**
  * Ask for a reset code by email, for someone with no admin to ask.
  *
+ * Rendered as the FIRST step of /reset-password rather than on a page of its
+ * own. Recovery has one address: someone who lands here holding a code skips
+ * straight to the form below, and someone who needs one asks for it here and
+ * redeems it in the same place when it arrives. A second page would split one
+ * task across two URLs and leave the emailed code pointing somewhere other
+ * than where it was requested.
+ *
  * ─── SUCCESS SAYS THE SAME THING FOR EVERY ADDRESS ───────────────────
  * The backend answers 200 whether or not the address belongs to an account,
  * so this form renders ONE confirmation and never reports "sent" versus "no

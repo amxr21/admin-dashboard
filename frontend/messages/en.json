@@ -78,7 +78,6 @@
     "rateLimited": "Too many attempts from this address. Try again shortly.",
     "sessionExpired": "Your session expired. Sign in again to continue where you left off.",
     "forgotPassword": "Forgot your password?",
-    "haveResetCode": "Have a reset code?",
     "reset": {
       "title": "Set a new password",
       "subtitle": "Enter the code you were given, then choose a password.",
@@ -104,8 +103,8 @@
       "rateLimited": "Too many attempts from this address. Try again shortly.",
       "sentTitle": "Check your inbox",
       "sentBody": "If that address has an account, a reset code is on its way. It expires shortly and can only be used once.",
-      "haveCode": "Already have a code?",
-      "backToLogin": "Back to sign in"
+      "needCode": "Don't have a code?",
+      "requestOne": "Email me one"
     },
     "twoFactor": {
       "title": "Two-step verification",
@@ -154,6 +153,7 @@
     }
   },
   "nav": {
+    "configuration": "Configuration",
     "dashboard": "Dashboard",
     "orders": "Orders",
     "products": "Products",
@@ -2334,6 +2334,32 @@
     "dismiss": "Got it"
   },
   "diagnostics": {
+    "configuration": {
+      "title": "Configuration",
+      "subtitle": "What this deployment needs set up on the host, and what is set right now. Values are never shown — only whether each one is present.",
+      "environment": "Environment",
+      "appMode": "App mode",
+      "nodeEnv": "Node environment",
+      "corsOrigins": "Allowed origins",
+      "modeHint": "The mode selects which database and allowed-origin list the server uses. There is no fallback: a missing value stops the server from starting rather than pointing it somewhere unintended.",
+      "integrations": "Integrations",
+      "allConfigured": "Everything optional is configured.",
+      "someUnconfigured": "{count, plural, one {# integration is not configured.} other {# integrations are not configured.}}",
+      "stateConfigured": "Configured",
+      "statePartial": "Incomplete",
+      "stateMissing": "Not configured",
+      "openDashboard": "Open dashboard",
+      "secretsNote": "Required signing secrets are not listed: the server refuses to start without them, so this page loading at all confirms they are set.",
+      "refresh": "Refresh",
+      "retry": "Try again",
+      "keys": {
+        "email": "Outgoing email (SMTP)",
+        "uploads": "Image uploads",
+        "errorTracking": "Error tracking",
+        "logs": "Log aggregation",
+        "customerSignIn": "Customer Google sign-in"
+      }
+    },
     "label": "Developer diagnostics",
     "uptime": "Uptime",
     "databaseReachable": "Database reachable",
