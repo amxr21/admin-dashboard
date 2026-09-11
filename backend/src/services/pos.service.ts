@@ -709,15 +709,52 @@ async function checkoutOnce(
           update: { quantity: { decrement: line.quantity } },
         });
       } else {
-        const claimed = await tx.branchStock.updateMany({
-          where: {
-            productId: line.productId,
-            branchId,
-            // The whole point: only decrement if the units are still there.
-            quantity: { gte: line.quantity },
-          },
-          data: { quantity: { decrement: line.quantity } },
-        });
+        let claimed: { count: number };
+
+        try {
+          claimed = await tx.branchStock.updateMany({
+            where: {
+              productId: line.productId,
+              branchId,
+              // The whole point: only decrement if the units are still there.
+              quantity: { gte: line.quantity },
+            },
+            data: { quantity: { decrement: line.quantity } },
+          });
+        } catch (err) {
+          /**
+           * P2034 — write conflict / deadlock, the EXPECTED way to lose this
+           * race rather than a bug. Both transactions have already written an
+           * order, its items and a stock movement before reaching here, so
+           * they hold locks and then contend on this one `branch_stock` row;
+           * InnoDB aborts one of them.
+           *
+           * Left unmapped it reaches the cashier as a generic 500 and Sentry
+           * as an incident, which is wrong on both counts — nothing is broken,
+           * somebody else simply got there first. Mapped to the SAME 400 the
+           * pre-flight check above returns, so both ways of losing the last
+           * units look identical to the till. This mirrors the storefront's
+           * P2034 branch, which maps to 409 because ITS pre-flight returns
+           * 409; the rule being copied is "both paths look the same", not the
+           * particular status code.
+           *
+           * Not retried: the transaction is already rolled back, and retrying
+           * inside a claimed idempotency key would re-run the whole sale. A
+           * clean refusal the cashier can simply repeat is the safer answer.
+           *
+           * The true remaining count cannot be re-read here — the transaction
+           * is aborted — so this message stays general while the `count === 0`
+           * refusal below keeps naming the exact figure.
+           */
+          if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2034') {
+            throw err;
+          }
+
+          throw AppError.badRequest(
+            `${byId.get(line.productId)?.name ?? 'That product'} just sold out at this branch`,
+            { field: 'quantity', productId: line.productId },
+          );
+        }
 
         if (claimed.count === 0) {
           // Either another sale took the units between the read above and
