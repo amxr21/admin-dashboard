@@ -152,18 +152,16 @@ export function ConfigurationView() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{t(`keys.${integration.key}`)}</span>
                   <span className="text-muted-foreground text-xs">
-                    {integration.configured
-                      ? t('stateConfigured')
-                      : integration.partial
-                        ? t('statePartial')
-                        : t('stateMissing')}
+                    {t(`readiness.${integration.readinessCode}`)}
                   </span>
                 </div>
 
                 {/* The impact line is the point of the row: a variable name
                     alone does not tell you whether to care. */}
                 {!integration.configured ? (
-                  <p className="text-muted-foreground text-xs">{integration.impact}</p>
+                  <p className="text-muted-foreground text-xs">
+                    {t(`impacts.${integration.impactCode}`)}
+                  </p>
                 ) : null}
 
                 {integration.dashboard ? (
@@ -174,7 +172,7 @@ export function ConfigurationView() {
                     className="text-primary inline-flex items-center gap-1 text-xs underline underline-offset-4"
                   >
                     {t('openDashboard')}
-                    <ExternalLink className="size-3" aria-hidden />
+                    <ExternalLink className="icon-directional size-3" aria-hidden />
                   </a>
                 ) : null}
               </div>

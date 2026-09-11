@@ -1,4 +1,8 @@
+import { createHmac } from 'node:crypto';
+import type { Request } from 'express';
 import rateLimit from 'express-rate-limit';
+
+import { env } from '../config/env.js';
 
 /**
  * Per-IP rate limiters.
@@ -14,10 +18,10 @@ import rateLimit from 'express-rate-limit';
  *
  * Neither is sufficient. Removing either one reopens the gap.
  *
- * NOTE: the store is in-memory, so counts are per-process. On Render's free
- * tier that is one instance and this is correct. The moment the API scales to
- * multiple instances, this needs a shared store (Redis) or an attacker can
- * multiply their budget by the instance count. Tracked in PROJECT_STATUS.md.
+ * NOTE: the store is in-memory, so counts are per-process. That matches the
+ * current single-process Coolify deployment. Before adding API replicas or
+ * clustered workers, move these limiters to one shared Redis-compatible store
+ * or an attacker can multiply their budget by the process count.
  */
 
 /**
@@ -85,6 +89,54 @@ export const passwordResetRequestRateLimit = rateLimit({
     error: {
       code: 'RATE_LIMITED',
       message: 'Too many attempts from this address. Try again shortly.',
+    },
+  },
+});
+
+/**
+ * Stable, privacy-preserving reset-request identity.
+ *
+ * The limiter must follow an address across rotating IPs, but its in-memory
+ * store must not become a readable list of staff addresses. HMAC (rather than
+ * a plain hash) prevents an attacker who can inspect the store from checking a
+ * dictionary of likely emails without also holding the reset secret.
+ */
+export function passwordResetIdentifierKey(email: unknown): string {
+  const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '__invalid__';
+
+  return createHmac('sha256', env.PASSWORD_RESET_SECRET)
+    .update(`password-reset-request:${normalized}`)
+    .digest('hex');
+}
+
+/**
+ * The other half of initiation throttling: one normalized address gets one
+ * budget even when requests arrive through a botnet or rotating proxies.
+ * Mounted after the IP limiter so both independent ceilings apply.
+ */
+export const passwordResetRequestIdentifierRateLimit = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  // `req.body` is `any` at this layer — the route's Zod schema runs AFTER the
+  // limiter, by design (a limiter that only counted well-formed requests would
+  // be bypassed by sending malformed ones). `passwordResetIdentifierKey`
+  // already treats anything non-string as one shared bucket, so reading the
+  // field defensively here is the whole contract.
+  keyGenerator: (req: Request) => {
+    const body: unknown = req.body;
+    const email =
+      typeof body === 'object' && body !== null && 'email' in body
+        ? body.email
+        : undefined;
+
+    return passwordResetIdentifierKey(email);
+  },
+  message: {
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many attempts for this account. Try again shortly.',
     },
   },
 });

@@ -133,39 +133,35 @@ async function takePaymentThroughConfirm() {
 }
 
 describe('building a sale', () => {
-  it('associates an optional selected customer with this sale only', async () => {
-    searchPosCustomers.mockResolvedValue([{ id: 'customer-1', name: 'Sara Ali', email: 'sara@example.test', phone: '+971501234567' }]);
+  /**
+   * The till sells anonymously (owner decision, 2026-09-11).
+   *
+   * The customer lookup was removed from the primary sale flow because it was
+   * not useful at the counter. The BACKEND contract is deliberately intact —
+   * `POST /pos/checkout` still accepts `customerId`, and `searchPosCustomers`
+   * still exists in `pos-api.ts` — so a future secondary workflow can attach a
+   * customer without rebuilding the server side. These two tests assert the
+   * removal is real at the till and nowhere deeper.
+   */
+  it('sells anonymously — no customer lookup in the sale flow', async () => {
+    render(<SaleScreen />);
+
+    expect(screen.queryByLabelText(/^customer$/i)).toBeNull();
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('never sends a customerId, so a sale cannot silently carry one', async () => {
     scanProduct.mockResolvedValue(makeProduct());
     checkout.mockResolvedValue({ orderId: 'o1', orderNumber: 'POS-1', subtotal: '4.50', taxAmount: '0.00', total: '4.50', change: null });
     render(<SaleScreen />);
 
-    await userEvent.type(screen.getByLabelText(/^customer$/i), 'Sara');
-    await userEvent.click(await screen.findByRole('option', { name: /Sara Ali/i }));
     await scan('5012345678900');
     await screen.findByText('Flat white');
     await takePaymentThroughConfirm();
 
-    await waitFor(() => expect(checkout).toHaveBeenCalledWith(
-      expect.objectContaining({ customerId: 'customer-1' }),
-      expect.any(String),
-    ));
-    expect(screen.queryByText('Sara Ali')).not.toBeInTheDocument();
-  });
-
-  it('supports keyboard selection in the customer lookup', async () => {
-    searchPosCustomers.mockResolvedValue([
-      { id: 'customer-1', name: 'Sara Ali', email: 'sara@example.test', phone: null },
-      { id: 'customer-2', name: 'Omar Saleh', email: 'omar@example.test', phone: null },
-    ]);
-    render(<SaleScreen />);
-
-    const lookup = screen.getByLabelText(/^customer$/i);
-    await userEvent.type(lookup, 'Sa');
-    await screen.findByRole('option', { name: /Sara Ali/i });
-    await userEvent.keyboard('{ArrowDown}{Enter}');
-
-    expect(screen.getByText('Omar Saleh')).toBeInTheDocument();
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    await waitFor(() => expect(checkout).toHaveBeenCalled());
+    const [payload] = checkout.mock.calls[0] as [Record<string, unknown>];
+    expect(payload).not.toHaveProperty('customerId');
   });
 
   it('adds a scanned product to the cart', async () => {

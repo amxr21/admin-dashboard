@@ -7,6 +7,7 @@ import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import { effectiveRole, withBranchContext } from '../../middleware/branch-context.js';
 import { verifyOverrideToken } from '../../services/auth.service.js';
+import { listAcceptedTenders } from '../../services/tender-currency.service.js';
 import {
   browseCategories,
   browseProducts,
@@ -122,6 +123,19 @@ posRouter.get('/pos/browse/categories', ...guard, async (_req, res) => {
   res.status(200).json({ data: { categories } });
 });
 
+/**
+ * Which currencies this till accepts, and at what rate.
+ *
+ * The till reads this instead of deciding for itself: the rate shown on
+ * screen has to be the rate the server will actually apply, and two copies of
+ * that arithmetic is how a receipt ends up disagreeing with the drawer. An
+ * install that configured nothing gets exactly one entry — its own currency —
+ * so the control can hide itself entirely.
+ */
+posRouter.get('/pos/tenders', ...guard, async (_req, res) => {
+  res.status(200).json({ data: { tenders: await listAcceptedTenders() } });
+});
+
 const customerSearchQuery = z.object({
   q: z.string().trim().min(2).max(120),
 });
@@ -209,6 +223,11 @@ const checkoutSchema = z.object({
    *  sale otherwise; the service validates the return exists, is resolved as
    *  REPLACEMENT, and is not already linked before writing the connection. */
   exchangeReturnId: z.string().trim().min(1).optional(),
+  /** The currency the customer actually paid in. Absent means the store's own
+   *  currency, which is the overwhelming majority — the service refuses any
+   *  code without a configured rate rather than falling back to the base,
+   *  since a silent fallback would record a sale in the wrong money. */
+  tenderCurrency: z.string().trim().length(3).toUpperCase().optional(),
 });
 
 const idempotencyKeySchema = z.string().uuid().max(64);

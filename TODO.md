@@ -18,66 +18,219 @@
   - [x] **UX-012:** “Working now” is the default shift-operations view; approvals remain a separate shareable view.
   - [x] **Owner blocker:** automatically resolve the sole assigned branch for Cashiers and other branch-scoped employees while preserving “All branches” for Admin/Owner and Developer.
   - [x] Run the full local gate, publish `feat/ux-delivery-operations`, and verify the stacked GitHub checks.
-- [ ] **Batch 3 — purchasing and stock:** UX-013 supplier directory and UX-014 low-stock supplier outreach. Keep Supplier intentionally thin; do not expand this into purchase orders or add a procurement role.
+- [x] **Batch 3 — purchasing and stock:** UX-013 supplier directory and UX-014 low-stock supplier outreach. Keep Supplier intentionally thin; do not expand this into purchase orders or add a procurement role. Merged through PR #197.
   - [x] Inventory the existing Supplier model, API, receipt history, low-stock data, mail service, permissions, and audit paths.
   - [x] Add a reusable supplier directory API with create, edit, deactivate, search, and pagination contracts.
   - [x] Add the bilingual, responsive supplier directory and create/edit workflow using shared components.
   - [x] Connect suppliers to received-stock history and relevant product context without duplicating source-of-truth fields.
   - [x] Add a permission-checked, audited low-stock outreach endpoint that reuses the existing mail service.
   - [x] Add a prefilled but editable “email supplier” workflow with explicit loading, success, failure, and missing-email states.
-  - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 2.
-- [ ] **Batch 4 — customer service:** UX-015 customer case workspace, UX-016 POS customer association, UX-017 payment/phone search, and UX-018 order-status notifications. Do not introduce a Support role; authorize through reusable permission areas.
+  - [x] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 2.
+- [x] **Batch 4 — customer service:** UX-015 customer case workspace, UX-016 POS customer association, UX-017 payment/phone search, and UX-018 order-status notifications. Do not introduce a Support role; authorize through reusable permission areas. Merged in the final stack through PR #204.
   - [x] Inventory existing customer, order, payment, POS, notification, email, branch, and audit contracts before choosing schema changes.
   - [x] Define a reusable customer-case model and lifecycle with status, priority, ownership, notes, and related records; keep business-specific case templates out of scope.
   - [x] Add branch-safe, validated, audited customer-case APIs and a bilingual responsive workspace with URL-backed filters and explicit states.
   - [x] Add optional existing-customer association to POS checkout without duplicating customer identity snapshots or blocking anonymous sales.
   - [x] Extend order search to normalized customer phone and payment reference through one server-side search contract.
   - [x] Add customer-facing order-status notifications with explicit recipient/channel eligibility, delivery outcome, and privacy-safe auditing.
-  - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 3.
-- [ ] **Batch 5 — workflow resilience:** UX-019 session-expiry recovery, UX-020 unsaved-change guards, UX-021 expanded global search, and UX-022 URL-backed inventory state. Keep recovery and dirty-state handling reusable across business workflows; do not encode behavior around legacy role names.
+  - [x] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 3.
+- [x] **Batch 5 — workflow resilience:** UX-019 session-expiry recovery, UX-020 unsaved-change guards, UX-021 expanded global search, and UX-022 URL-backed inventory state. Keep recovery and dirty-state handling reusable across business workflows; do not encode behavior around legacy role names. Merged in the final stack through PR #204.
   - [x] Inventory the shared API/auth boundary, login redirect flow, dirty-form implementations, global-search contract, inventory filters, branch scope, and existing URL-state primitives.
   - [x] Add one session-expiry recovery contract that clears invalid auth once, preserves the intended in-app destination, and avoids redirect loops or repeated expiry notices.
   - [x] Add a reusable unsaved-change guard for browser unload and in-app navigation, then adopt it on the approved dirty forms without replacing their existing discard dialogs.
   - [x] Expand global search through independently permission-gated, branch-safe result groups with lightweight result shapes and direct destinations.
   - [x] Move inventory search/filter/pagination/view state into the URL with stable defaults, reset rules, and back/forward/share-link behavior.
-  - [ ] Add focused frontend/backend coverage, run the local gate, and publish a PR stacked on Batch 4.
-- [ ] **Batch 6 — notifications:** UX-023 unread-count correctness, UX-024 filters/action links, and UX-025 accessible row actions. Keep notification destinations and read-state reusable and permission-safe; do not specialize them around legacy roles.
+  - [x] Add focused frontend/backend coverage, run the local gate, and publish a PR stacked on Batch 4.
+- [x] **Batch 6 — notifications:** UX-023 unread-count correctness, UX-024 filters/action links, and UX-025 accessible row actions. Keep notification destinations and read-state reusable and permission-safe; do not specialize them around legacy roles. Merged in the final stack through PR #204.
   - [x] Inventory the notification API, bell, list, permissions, read-state transitions, destinations, and existing coverage.
   - [x] Make unread totals consistent after individual/bulk read actions, refreshes, and concurrent notification arrival.
   - [x] Add stable URL-backed notification filters and permission-safe direct action destinations.
   - [x] Give every notification row an explicit keyboard- and screen-reader-accessible action contract without turning the whole row into an ambiguous control.
-  - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 5.
-- [ ] **Batch 7 — operational navigation:** UX-026 durable return-detail navigation, UX-027 URL-backed shift filters, UX-028 staff bulk lifecycle actions, and UX-029 related-record links. Extend shared URL/action/link contracts and keep lifecycle authorization permission-based rather than tied to legacy role names.
+  - [x] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 5.
+- [x] **Batch 7 — operational navigation:** UX-026 durable return-detail navigation, UX-027 URL-backed shift filters, UX-028 staff bulk lifecycle actions, and UX-029 related-record links. Extend shared URL/action/link contracts and keep lifecycle authorization permission-based rather than tied to legacy role names. Merged in the final stack through PR #204.
   - [x] Inventory return detail routing, shift filter state, staff lifecycle APIs/selections, related entities, permissions, and current coverage.
   - [x] Give return details a durable address and preserve list context when entering and leaving a record.
   - [x] Move approved shift filters/views into stable URL state with clean defaults and back/forward/share behavior.
   - [x] Add validated, permission-checked staff bulk lifecycle actions with partial-failure-safe feedback.
   - [x] Add contextual related-record links through reusable destination helpers, exposing only destinations the current user can access.
-  - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 6.
-- [ ] **Batch 8 — catalogue governance:** UX-030 localized product content and UX-031 catalogue version history/restore. Keep localization and versioning behind shared product contracts so future languages and catalogue fields do not require page-local schema forks.
+  - [x] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 6.
+- [x] **Batch 8 — catalogue governance:** UX-030 localized product content and UX-031 catalogue version history/restore. Keep localization and versioning behind shared product contracts so future languages and catalogue fields do not require page-local schema forks. Merged in the final stack through PR #204.
   - [x] Inventory the product schema, resource metadata/forms, import/export paths, audit records, permissions, and existing product coverage before choosing additive storage contracts.
   - [x] Define one reusable localized-content contract with an explicit fallback locale and validation shared by create, edit, read, search, POS, and import/export paths.
   - [x] Add bilingual product-content editing and rendering with clear fallback behavior, without duplicating the canonical product identity or stock/price fields.
   - [x] Add immutable catalogue versions for governed product changes with actor, timestamp, change summary, and a permission-checked detail/history API.
   - [x] Add an explicit restore preview and confirmation flow that creates a new version rather than deleting history, with conflict-safe validation and audit coverage.
-  - [ ] Add focused backend/frontend coverage, complete the accessibility/responsive review, run the local gate, and publish a PR stacked on Batch 7.
+  - [x] Add focused backend/frontend coverage, complete the accessibility/responsive review, run the local gate, and publish a PR stacked on Batch 7.
 - [ ] **Batch 9 — remaining state and account workflows:** UX-032 URL-backed dashboard state, UX-033 normalized field validation, UX-034 staff detail workspace, and UX-035 forgotten-password initiation. Keep state, validation, staff presentation, and account recovery behind reusable contracts; do not encode business-specific roles or expose whether an account exists.
   - [x] Inventory dashboard state, shared form/API validators, staff routes/data/actions, authentication recovery primitives, permissions, and existing coverage.
   - [x] Move approved dashboard filters and view state into stable URL parameters with clean defaults and back/forward/share behavior.
   - [x] Centralize normalization and field-specific validation at request boundaries, then reuse matching constraints and messages in affected forms.
-  - [x] Add a permission-aware staff detail workspace that composes reusable identity, branch, activity, and account-action sections without introducing new role types.
+  - [ ] **UX-034 correction:** add the actual permission-aware staff detail workspace. The merged implementation only adds a Staff-to-Branches assignment link; it does not provide a person-centred identity, branch, activity, and account-action workspace.
   - [x] Add forgotten-password initiation with one neutral response for known and unknown addresses, bounded token handling, audit-safe logging, and accessible bilingual UI states.
   - [x] Add focused backend/frontend coverage, complete the accessibility/responsive review, and run the local gate. Full suites pass (backend 1178/1178 across 56 files; frontend 1204 passed/1 pre-existing skip across 151 files), both typechecks and `eslint src` are clean on both sides, and en/ar parity holds at 19/19. Live browser review of `/forgot-password` at 390 px and 1440 px in English and Arabic: correct `dir`, real translated copy, an LTR-forced email field inside the RTL page, an associated label, no horizontal overflow, a working keyboard path and no console errors. An unknown address still renders the neutral confirmation and removes the form.
   - [x] Consolidate account recovery onto one address. `/forgot-password` was folded into `/reset-password`: requesting a code and redeeming one are the same task minutes-to-days apart, so a second page left the emailed code pointing somewhere other than where it was requested. The request step is a collapsed section above the redemption form, which stays the default because most arrivals already hold a code.
   - [x] Add an owner-facing configuration reference at `/admin/configuration` (DEVELOPER-only). `GET /diagnostics/configuration` reports app mode, allowed-origin COUNT, and per-integration configured/partial/missing state with the impact of each gap. Booleans and links only — the response is asserted against live secret values in `diagnostics-configuration.test.ts`, so adding a value, host or prefix fails the suite. The three required signing secrets are deliberately absent: the server cannot boot without them, so the page loading proves they are set.
-  - [ ] Publish a PR stacked on Batch 8.
+  - [x] Publish and merge the final stack through PR #204; all reported GitHub checks passed.
 - [ ] **Role simplification foundation:** replace the currently enabled role set with Admin, Developer, and Cashier after approving the production-safe legacy-role mapping and migration. Prepared role templates remain out of scope.
+
+### Post-merge documentation and correction checkpoint — 2026-09-11
+
+- [x] Synchronize local `dev` with merged `origin/dev` at `acaff8f` without touching the two local diagnostic artifacts.
+- [x] Record the owner-reported problems and how the recent branches resolved them in `docs/features.md`.
+- [x] Record current verified defects, release gaps, and approval-dependent decisions in `docs/features.md`.
+- [x] Catalogue supported end-user journey families, recovery paths, and user value in `docs/ux.md` and the private workbook.
+- [ ] Fix UX-034, configuration email-readiness truth, configuration impact localization, and password-reset timing/abuse hardening after owner approval.
+- [ ] Decide whether the future Admin role may view the non-secret configuration reference.
+- [ ] **Point 4 — final combined gate:** after the approved corrections, run project-wide unit, type, lint, build, and E2E checks plus the motion, accessibility, responsive, and native-Arabic review. Do not treat focused/merged CI as closing this broader gate.
+
+### Owner review notes pending discussion — 2026-09-11
+
+These are captured for discussion only. Do not implement or fold them into point 4 until the owner
+confirms the intended behavior and priority.
+
+- [ ] **Till currencies:** consider accepting multiple currencies at the till, with the default
+  currency taken from the existing Settings source of truth. Define supported currencies,
+  exchange-rate ownership, rounding, tender/change behavior, receipt display, reconciliation, and
+  reporting before implementation so historical transaction amounts remain trustworthy.
+- [ ] **Till customer search:** reconsider/remove the customer-search section because the owner
+  does not find it useful. Confirm whether anonymous checkout should be the only till flow or
+  whether optional customer association should remain available through a less prominent action.
+- [ ] **Loading overlay redesign:** replace the current long/vertical presentation with a compact
+  horizontal flex-row treatment and review the component's overall visual design. Preserve the
+  shared loading coordinator, accessibility semantics, bilingual/RTL behavior, reduced motion,
+  and anti-flicker timing.
+- [ ] **Multi-branch dashboard summary:** discuss redesigning the dashboard to show a concise
+  summary of every branch when the business has more than one, while keeping the single-branch
+  experience simple. Define aggregate-versus-branch metrics and navigation before approval.
+
+### Prioritized continuation plan — approved 2026-09-11
+
+Work through this queue in order. Each implementation batch gets its own branch, focused tests,
+commit, remote branch, and GitHub check review. Later branches may stack without waiting for an
+earlier remote run to finish, but must retain the merge order.
+
+- [x] **Batch 10 — account-recovery privacy and abuse hardening (P1).** Equalize the observable
+  forgot-password path for known, unknown, and inactive accounts; add identifier-aware throttling
+  without storing/logging raw addresses; preserve the neutral response; add timing-shape,
+  enumeration, expiry, replay, rate-limit, and email-failure coverage. Implemented on
+  `fix/account-recovery-hardening`; focused verification: 69/69 reset/auth tests pass sequentially,
+  targeted ESLint and backend typecheck pass. (The two integration files share destructive database
+  fixtures and therefore must not run in parallel with each other.)
+- [x] **Batch 11 — configuration correctness and localization (P1/P2).** Derive email readiness
+  from the same SMTP + `email.enabled` + `email.fromAddress` contract used by delivery; replace
+  backend English impact prose with stable codes localized in English/Arabic; preserve the
+  non-secret response contract and add regression coverage. Implemented on
+  `fix/configuration-readiness-localization`; focused verification: backend diagnostics/email tests
+  12/12, frontend configuration/message tests 22/22, both typechecks and targeted ESLint pass.
+- [x] **Batch 12 — staff detail workspace (UX-034, reopened P1).** Adds a durable, permission-aware
+  staff route composing reusable identity, branch membership, activity, sessions, and permitted
+  account actions. Job/profile data stays separate from security roles and every rank,
+  self-change, last-admin/owner, and branch-scope guard is preserved.
+  The read path now refuses in READ wording via `assertCanViewStaff`, which shares `loadSubject`
+  with the write guard so the rank rule cannot drift; the six write call sites in
+  `branch-roles.service.ts` and `shifts.service.ts` are unchanged. Coverage corrected while doing
+  so: the existing rank test passed through the AREA guard, never rank — `staff` is granted only to
+  OWNER and DEVELOPER, and DEVELOPER is the one rank above OWNER, so an OWNER reading a DEVELOPER is
+  the single reachable rank refusal. Both layers are now asserted separately and the wording
+  assertion was watched failing against the reverted code.
+  Verification: backend staff 56/56, frontend staff 50/50 across 8 files, both typechecks and
+  `eslint src` clean, en/ar parity 19/19. Static a11y/RTL review passed (one `h1`, sections labelled
+  by `h2`, `force-ltr` on every identifier, `<bdi>` on actor email, no physical offsets, `min-w-0` +
+  `truncate` on flex children). Live browser verification is deferred to the combined pass rather
+  than restarting the owner's running dev server.
+- [x] **Batch 13 — simplify customer handling at the till.** The customer-search section is gone
+  from the primary sale flow; the till now sells anonymously. Removed at the UI layer ONLY — the
+  shared backend contract is deliberately intact (`POST /pos/checkout` still accepts `customerId`,
+  `searchPosCustomers` still exists in `pos-api.ts`), so a future secondary workflow can attach a
+  customer without rebuilding the server side, and the decision stays reversible. The two tests
+  covering the removed lookup were replaced rather than deleted: one asserts no lookup renders, the
+  other that checkout never sends a `customerId`, so the new behaviour is pinned instead of merely
+  untested. Dead `pos.customer.*` keys removed from both locales.
+- [x] **Batch 14 — loading-overlay visual redesign.** The global overlay and the branch-switch
+  overlay are now one compact horizontal row (spinner + label in a rounded card) instead of a tall
+  card. The cause was the shared `LoadingState`, whose `min-h-48` column is correct for a panel
+  filling a page and wrong for a floating overlay saying one short word — so the CALLERS changed,
+  not the primitive, which 32 other surfaces still use as intended. The shared loading coordinator,
+  its 120 ms anti-flicker delay and the concurrent-request counting are untouched; this is
+  presentation only. `role="status"` moved onto the new row so the announcement survives, logical
+  properties (`ps`/`pe`) keep RTL padding correct, `motion-reduce:animate-none` is preserved, and
+  `max-w` + `truncate` stop a long label overflowing on a phone. The branch-switch label WRAPS
+  rather than truncating, because that explanation is the reason that overlay exists.
+  Verification: shell suites 131/131 across 15 files, frontend typecheck and eslint clean.
+  **Coverage gap found and closed afterwards:** the single pre-existing overlay test asserted only
+  anti-flicker timing and `role="status"`, and `branch-switcher.tsx` had NO test file at all — the
+  spinner could have been deleted outright with every suite still green. Added four structural
+  assertions to the global overlay (row not column, no `min-h-48`, width constrained, logical
+  `ps`/`pe` padding) and a first `branch-switcher` suite covering the single-branch no-render, the
+  failed-load no-render, and the explained overlay painted before reload. Both were watched failing:
+  deleting the branch spinner fails the overlay test, and reverting the row to the tall
+  `LoadingState` treatment fails three of the four new assertions.
+- [x] **Batch 15 — multi-branch dashboard summary.** A "By branch" table sits under the KPI strip
+  showing revenue, orders and units for every active branch, with a row click switching the
+  workspace to it. A single-branch business renders NOTHING — a comparison of one repeats the strip
+  above it, and having one branch is not a problem needing an empty state.
+  New `GET /reports/branch-comparison` backed by two grouped aggregates rather than `getOverview`
+  in a loop (which would be N round-trips of eight queries, each needing an explicit `branchId` —
+  the per-call-site scoping `scoped()` exists to prevent). It is the one report deliberately NOT
+  wrapped in `scoped()`: applying the active branch would reduce a comparison to a single row.
+  Aggregate-vs-branch is explicit — the strip is the aggregate (or the active branch), the table is
+  always every branch. Deliberately fewer columns than the overview: new customers are not
+  branch-scoped and low stock is a point-in-time count, so neither belongs in a row a reader would
+  add up. Branches come from the branch table, not from orders, so a branch that sold nothing still
+  gets a row. URL-backed dashboard state (UX-032) is untouched; the table reads the same `range`.
+  Verification: dashboard 36/36, backend reports 75/75, both typechecks and eslint clean.
+- [*] **Batch 16 — multi-currency till foundation.** Policy settled with the owner 2026-09-11:
+  manual rates configured in Settings (same opt-in shape as Cloudinary/SMTP — no external feed, so
+  a till never depends on a network call to finish a sale), change given in the TENDERED currency,
+  receipt showing both currencies plus the rate used, and shift close counting each currency
+  SEPARATELY.
+  **Backend foundation done.** Additive nullable `tender_currency`/`tender_amount`/`tender_rate` on
+  `payments` (migration `20260911140000`, applied to both local and test databases after printing
+  the target). `Payment.amount` deliberately stays in the STORE currency, so every existing revenue,
+  shift and report query kept summing one comparable unit and needed no change at all. The rate is
+  SNAPSHOTTED per sale — the receipt prints it, so re-deriving it later would make a reprint
+  disagree with the customer's copy; same rule as `OrderItem.cost` and `Order.total`. A rate of 0
+  means "not accepted", so shipping this enabled nothing on any existing install, and an unaccepted
+  code is REFUSED rather than falling back to the base (a fallback would record a sale in the wrong
+  money undetectably). `getShiftTakings` gained a per-currency breakdown from `tenderAmount`, leaving
+  the existing base-currency reconciliation untouched.
+  Verification: full backend 1213/1213 across 58 files, typecheck and eslint clean.
+  - [ ] **Remaining: the till UI.** A currency control on the sale screen reading `GET /pos/tenders`,
+    the receipt showing both currencies and the rate, and the per-currency count at shift close.
+    The contract and every guard are in place and tested; this is the presentation layer only.
+- [ ] **Role simplification migration (approval gate).** Migrate enabled roles to Admin,
+  Developer, and Cashier only after the owner approves how every legacy
+  Owner/Manager/Fulfillment/Support/Demo account and branch assignment maps. Prepared roles remain
+  out of scope and future templates must be configurable data.
+- [ ] **Release infrastructure and language readiness.** Rewrite disabled pull-request E2E for
+  Coolify, obtain native-Arabic review, and choose a production monitoring replacement/plan. These
+  have external dependencies and do not block safe local implementation batches.
+- [ ] **Point 4 — final project gate.** After the batches and approved migration work above, run
+  the combined unit, type, lint, production-build, E2E, accessibility, responsive, motion, and
+  native-Arabic checks; resolve failures before calling the project ready.
+
+#### Decisions required when their batch is reached
+
+- [x] Configuration access — **APPROVED AND DONE 2026-09-11: OWNER and DEVELOPER, read-only.**
+  `GET /diagnostics/configuration` is now `requireRole(OWNER, DEVELOPER)` and the sidebar link
+  matches. Only that route widened: `/diagnostics`, `/db/migrations` and `/db/tables` stay
+  DEVELOPER-only because row counts, table sizes and migration drift are developer tooling, and a
+  test pins each of them at 403 for an OWNER so the widening cannot spread by copy-paste. Still
+  `requireRole`, never `requireArea` — MANAGER holds `settings` and must not reach this, which an
+  area check could not express. The response contract is unchanged (booleans and links, no value
+  ever), which is what makes a wider audience safe.
+- Multi-currency: approve configured currencies and the rate/change/reconciliation policy before
+  schema or checkout work.
+- Role migration: approve the complete legacy-account and branch-assignment mapping before any
+  destructive enum/data migration.
 
 For each batch: work on its own branch, run the relevant local gate, publish the remote branch, verify the GitHub checks, summarize the result, then begin the next batch.
 
 ## CRITICAL — owner-reported issues, 2026-09-10
 
-These are the six issues reported earlier and re-confirmed by the owner. They remain open until the stated checks are complete. Implementation alone is not a completed verification. Add further owner findings here as testing continues.
+These are the original six issues reported and re-confirmed by the owner. Their focused checks are
+complete and they are retained here as resolved evidence. New post-merge findings and the broader
+point-4 gate are tracked above; do not silently close future owner findings on unit tests alone.
 
 - [x] **Test every reports page, section, chart, and interaction.** All 27 regular report routes passed fixture-backed browser coverage with populated chart/table states, loading, error and retry behavior. Backend integration coverage passed for every report endpoint, permissions, date/range validation, explorer dimensions, scheduled reports, CSV, real XLSX and real PDF output. Shared request-generation protection prevents stale responses from replacing newer results, and failed overview reloads clear stale panels.
 - [x] **Show a loading overlay whenever a click starts a delayed action.** Same-origin route clicks and all API mutations/uploads/downloads now feed one concurrent-safe overlay after a 120 ms anti-flicker delay; branch switching keeps its immediate, explanatory overlay. Unit and focused browser checks pass.
@@ -125,10 +278,10 @@ This checklist tracks the current review and fixes. The existing backlog below r
 - [x] Investigate drawer and sidebar scrolling at desktop/mobile sizes; verify the shared fix and exact sidebar height.
 - [x] Complete focused TypeScript and lint checks; the final combined gate is tracked above.
 - [x] Create separate stacked branches for database isolation, report reliability, loading/scroll feedback, organization settings and shift branch resolution.
-- [ ] Make branch assignment discoverable from Staff as well as the branch roster; keep the implementation on its own stacked branch.
-- [ ] Run CI/CD and publish the stacked PRs only after the full local verification gate is clean.
+- [x] Make branch assignment discoverable from Staff as well as the branch roster; the merged link opens Branches, where roster assignment is managed. This is discovery only and does not close UX-034.
+- [x] Publish and merge the implementation stack; PR #204 completed the reported GitHub checks.
 - [ ] Complete the final motion/UX and accessibility pass, including reduced-motion browser coverage.
-- [ ] Record remaining verified gaps and validation limits; update this checklist with final results.
+- [x] Record remaining verified gaps and validation limits in `docs/features.md`; point 4 remains open.
 
 Database cleanup is complete. No deployment has been performed. The validated shift fix is isolated on its own stacked branch.
 
@@ -234,13 +387,11 @@ branch; revisit if that changes.
 
 # 🧪 2026-09-10 — owner-reported, listed not yet all triaged
 
-Raised directly by the owner in one message. Reports-page testing was
-in progress (dev servers up, no browser-automation tool available in this
-environment, mid-setup with Playwright via the project's own `frontend`
-devDependency) when the shift bug above interrupted it — restart that pass
-before ticking off the first item.
+**Historical intake only — all six items below are resolved.** The current status and evidence are
+in the CRITICAL section above and `docs/features.md`; this original wording is retained only to
+preserve what the owner reported before investigation.
 
-- [ ] **Reports pages** — "test all reports page pages, sections and charts,
+- [x] **Reports pages** — "test all reports page pages, sections and charts,
       some of them are not working, some produce errors, others don't respond
       at all." Not yet systematically verified this session. 27 report
       pages/views exist under `frontend/src/app/[locale]/admin/reports/` (see
@@ -250,19 +401,19 @@ before ticking off the first item.
       other MCP browser tool is available in this environment) hitting every
       page, capturing console errors, network 4xx/5xx, and broken/empty
       charts specifically, not just a green page-loads check.
-- [ ] **No loading feedback on click** — "when I click something, I need to
+- [x] **No loading feedback on click** — "when I click something, I need to
       know I have clicked it, so there always needs to be a loading overlay
       for loading delays." General UI gap, not scoped to one page. Overlaps
       the pre-existing PENDING item "Loading-overlay blur / nav-transition
       smoothness" and the §U in-flight-button-state gap already tracked
       elsewhere in this file — those are the closest existing scope, worth
       reconciling into one item rather than opening a second.
-- [ ] **No loading indicator on page open** — "when I open a specific page and
+- [x] **No loading indicator on page open** — "when I open a specific page and
       it's loading, I need to know that it is loading, not just blank." Likely
       the same root gap as above (missing/inconsistent skeleton or spinner
       coverage across pages) rather than a separate issue — needs a page-by-
       page audit to confirm before assuming one fix covers both.
-- [ ] **No overlay while switching branches** — "switching between branches
+- [x] **No overlay while switching branches** — "switching between branches
       will be much better if it is providing an overlay covering the whole
       page saying that the database is being fetched, pages are being
       prepared, etc." `branch-switcher.tsx`'s `choose()` currently does
@@ -272,7 +423,7 @@ before ticking off the first item.
       comment for why), so the fix is a full-screen loading overlay shown
       the instant the branch is chosen, before the reload fires, not a
       component-level spinner.
-- [ ] **Double scrollbar on "add branch"** — "I have 2 scroll bars within the
+- [x] **Double scrollbar on "add branch"** — "I have 2 scroll bars within the
       same page of adding a new branch. How come? This kind of scrolling issue
       happens on other pages as well." Not yet root-caused. Prime suspect
       given this codebase's history (see the 2026-08-01 Changelog entry in
@@ -285,7 +436,7 @@ before ticking off the first item.
       other pages as well" means whatever's found here should be checked
       against the Sheet primitive generally (`components/ui/sheet.tsx`), not
       just patched on this one page.
-- [ ] **Navbar has an unnecessary scrollbar** — likely related to the item
+- [x] **Navbar has an unnecessary scrollbar** — likely related to the item
       above (same Sheet/overflow pattern, or a sidebar-specific overflow rule)
       but not confirmed the same root cause. Check `sidebar-nav.tsx` /
       whatever renders the collapsed rail's `overflow` rules.

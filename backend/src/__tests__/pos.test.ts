@@ -636,6 +636,92 @@ describe('taking a sale (O5.7, O5.8)', () => {
     }
   });
 
+  /**
+   * Paying in a currency other than the store's own.
+   *
+   * The property that matters is which column holds which currency:
+   * `amount` stays in the STORE currency so every revenue, shift and report
+   * query keeps summing one comparable unit, while `tenderAmount`/`change`
+   * are in what the customer actually handed over — because change is given
+   * in the tendered currency and the drawer is counted per currency at close.
+   */
+  it('records a foreign-currency sale in both currencies, with the rate snapshotted', async () => {
+    const product = await makeProduct({ sku: `${RUN}-FX-1`, price: '100.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    // Store sells in AED; USD accepted at 0.25 per 1 AED. A 100 AED sale is
+    // therefore 25 USD, and 30 USD tendered owes 5 USD change.
+    await prisma.setting.upsert({
+      where: { key: 'pos.tenderRate.USD' },
+      create: { key: 'pos.tenderRate.USD', value: 0.25 },
+      update: { value: 0.25 },
+    });
+
+    try {
+      const res = await sell({
+        lines: [{ productId: product.id, quantity: 1 }],
+        method: 'cash',
+        tenderCurrency: 'USD',
+        tendered: '30.00',
+      });
+
+      expect(res.status).toBe(201);
+
+      const payment = await prisma.payment.findFirstOrThrow({
+        where: { orderId: (res.body as { data: { orderId: string } }).data.orderId },
+      });
+
+      // Base currency — what the books and every report read.
+      expect(payment.amount.toFixed(2)).toBe('100.00');
+      // Tendered currency — what was physically on the counter.
+      expect(payment.tenderCurrency).toBe('USD');
+      expect(payment.tenderAmount?.toFixed(2)).toBe('25.00');
+      expect(payment.change?.toFixed(2)).toBe('5.00');
+      // Snapshotted, so editing the setting later cannot rewrite this receipt.
+      expect(payment.tenderRate?.toString()).toBe('0.25');
+    } finally {
+      await prisma.setting.deleteMany({ where: { key: 'pos.tenderRate.USD' } });
+    }
+  });
+
+  it('refuses a currency with no configured rate, rather than charging in the base', async () => {
+    // A silent fallback would record a sale in AED that the customer paid in
+    // USD, and nothing downstream could ever detect it.
+    const product = await makeProduct({ sku: `${RUN}-FX-2`, price: '10.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sell({
+      lines: [{ productId: product.id, quantity: 1 }],
+      method: 'cash',
+      tenderCurrency: 'GBP',
+      tendered: '50.00',
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('leaves the tender columns null for a sale in the store currency', async () => {
+    // The ordinary case must stay indistinguishable from a pre-migration row.
+    const product = await makeProduct({ sku: `${RUN}-FX-3`, price: '10.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sell({
+      lines: [{ productId: product.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '20.00',
+    });
+
+    expect(res.status).toBe(201);
+
+    const payment = await prisma.payment.findFirstOrThrow({
+      where: { orderId: (res.body as { data: { orderId: string } }).data.orderId },
+    });
+
+    expect(payment.tenderCurrency).toBeNull();
+    expect(payment.tenderAmount).toBeNull();
+    expect(payment.tenderRate).toBeNull();
+  });
+
   it('refuses tendered less than the total', async () => {
     const product = await makeProduct({ sku: `${RUN}-SELL-8`, price: '30.00', stock: 5 });
     await stockAt(product.id, 5);

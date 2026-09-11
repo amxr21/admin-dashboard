@@ -592,8 +592,41 @@ export async function getShiftTakings(shiftId: string) {
 
   const removedTotal = removed._sum.amount ?? new Prisma.Decimal(0);
 
+  /**
+   * Cash held in a currency other than the store's own, counted SEPARATELY.
+   *
+   * Owner decision: change is given in whatever was tendered, so a drawer can
+   * end the day holding two currencies — and each is counted in its own units
+   * at close. Converting them into one expected total would make a genuine
+   * shortfall indistinguishable from the rate moving during the shift, which
+   * is the one thing a variance figure must never be ambiguous about.
+   *
+   * `tenderAmount`, not `amount`: the cashier counts the notes actually in the
+   * drawer, which are foreign currency. `amount` is the base-currency value of
+   * the same payment and is what the existing `cash`/`expectedCash`
+   * reconciliation above already covers — so this is additive and changes none
+   * of it.
+   */
+  const foreignRows = await prisma.payment.groupBy({
+    by: ['tenderCurrency'],
+    where: { shiftId, tenderCurrency: { not: null }, method: 'cash' },
+    _sum: { tenderAmount: true, change: true },
+  });
+
+  const byTenderCurrency = foreignRows
+    .filter((row) => row.tenderCurrency !== null)
+    .map((row) => ({
+      currency: row.tenderCurrency as string,
+      // Taken minus change given back, both in that currency — what should
+      // physically remain in the drawer for it.
+      expected: (row._sum.tenderAmount ?? new Prisma.Decimal(0))
+        .sub(row._sum.change ?? new Prisma.Decimal(0))
+        .toFixed(2),
+    }));
+
   return {
     byMethod,
+    byTenderCurrency,
     cash,
     // What should physically be in the drawer, given sales and what has
     // left it since — the figure `closeTill` actually reconciles against.

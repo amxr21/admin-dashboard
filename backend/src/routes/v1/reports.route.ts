@@ -28,6 +28,7 @@ import {
   getLowStockSnapshot,
   getNeedsAttention,
   getOrderValueDistribution,
+  getBranchComparison,
   getOverview,
   getPaymentMethodBreakdown,
   getProductMargin,
@@ -175,6 +176,23 @@ const seriesQuery = rangeQuery.extend({
 
 const topQuery = rangeQuery.extend({
   limit: z.coerce.number().int().min(1).max(50).optional(),
+});
+
+/**
+ * Every branch side by side, for the multi-branch dashboard summary.
+ *
+ * Deliberately NOT wrapped in `scoped()`: this endpoint's whole purpose is to
+ * compare branches, so applying the active branch would reduce it to a single
+ * row and make the comparison impossible. It is the one report that reads
+ * across the branch boundary on purpose — which is safe because the guard
+ * above still requires the `reports` area, and the rows carry no data a
+ * report for one branch would not already show.
+ */
+reportsRouter.get('/reports/branch-comparison', ...guard, async (req, res) => {
+  const parsed = rangeQuery.safeParse(req.query);
+  if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
+
+  res.json({ data: await getBranchComparison(parsed.data) });
 });
 
 reportsRouter.get('/reports/overview', ...guard, async (req, res) => {
