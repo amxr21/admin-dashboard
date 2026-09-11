@@ -51,9 +51,11 @@ function SelectTrigger({
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       className={cn(
+        // URG-012 — h-8 (was h-9), matching Input/Button so a form row's
+        // controls stay the same height.
         'border-input bg-background ring-offset-background placeholder:text-muted-foreground',
-        'focus:ring-ring flex h-9 w-full items-center justify-between gap-2 rounded-md border',
-        'px-3 py-2 text-sm focus:ring-2 focus:ring-offset-2 focus:outline-none',
+        'focus:ring-ring flex h-8 w-full items-center justify-between gap-2 rounded-md border',
+        'px-3 py-1.5 text-sm focus:ring-2 focus:ring-offset-2 focus:outline-none',
         'disabled:cursor-not-allowed disabled:opacity-50',
         // Matches the 200ms colour transition the rest of the system uses.
         'transition-colors',
