@@ -109,10 +109,13 @@ Work through this queue in order. Each implementation batch gets its own branch,
 commit, remote branch, and GitHub check review. Later branches may stack without waiting for an
 earlier remote run to finish, but must retain the merge order.
 
-- [*] **Batch 10 — account-recovery privacy and abuse hardening (P1, in progress).** Equalize the observable
+- [x] **Batch 10 — account-recovery privacy and abuse hardening (P1).** Equalize the observable
   forgot-password path for known, unknown, and inactive accounts; add identifier-aware throttling
   without storing/logging raw addresses; preserve the neutral response; add timing-shape,
-  enumeration, expiry, replay, rate-limit, and email-failure coverage.
+  enumeration, expiry, replay, rate-limit, and email-failure coverage. Implemented on
+  `fix/account-recovery-hardening`; focused verification: 69/69 reset/auth tests pass sequentially,
+  targeted ESLint and backend typecheck pass. (The two integration files share destructive database
+  fixtures and therefore must not run in parallel with each other.)
 - [ ] **Batch 11 — configuration correctness and localization (P1/P2).** Derive email readiness
   from the same SMTP + `email.enabled` + `email.fromAddress` contract used by delivery; replace
   backend English impact prose with stable codes localized in English/Arabic; preserve the

@@ -291,25 +291,24 @@ the remaining local gates. No deployment has been performed.
   REQUESTED/APPROVED/REJECTED only; the spec's fuller ~8-state lifecycle (label sent → in transit
   → received → inspected → resolved) is a separate, larger, not-yet-started piece of work.
 
-### Password reset (admin-issued)
-- **Status**: 🔴 **BACKEND ONLY on this branch — the redemption page is MISSING.** Verified
-  2026-09-05: `find frontend/src/app -ipath "*reset*"` returns nothing, and the only copy of
-  `/[locale]/reset-password/` lives in unmerged checkpoint `a9c350b`. `POST /auth/reset-password`
-  and `frontend/src/lib/auth-api.ts`'s caller both exist — only the page is gone.
-  **This also breaks the staff INVITE flow**, which hands a new manager a 24h token pointing at
-  a 404, so an invited person cannot sign in at all. Tracked as `TODO.md` **F5.1**.
-  The 2026-08-07 note below is kept because it explains the intended design, but its "shipped
-  end-to-end" claim is FALSE for this branch — this is the second time this entry has
-  overstated the frontend's existence, so verify with `find` before trusting it again.
-- **What**: An admin issues a single-use, 30-minute token (`POST /staff/:id/reset-token`); the
-  locked-out user redeems it themselves (`POST /auth/reset-password`) to set a new password without
-  the admin ever learning it.
+### Password reset (self-service and admin-issued)
+- **Status**: shipped end to end. The localized `/[locale]/reset-password/` redemption page serves
+  both emailed self-service links and one-time tokens issued by an authorized admin.
+- **What**: a user may request a reset through `POST /auth/forgot-password`, or an admin may issue a
+  single-use token through `POST /staff/:id/reset-token`. The holder redeems it through
+  `POST /auth/reset-password` and chooses a password without an administrator learning it.
 - **Where**: `backend/src/services/password-reset.service.ts`, `backend/src/routes/v1/auth.route.ts`,
   `frontend/src/lib/auth-api.ts`, `frontend/src/components/auth/reset-password-form.tsx`,
   `frontend/src/app/[locale]/reset-password/`, `frontend/src/components/staff/reset-token-panel.tsx`.
 - **Notes**: HMAC-SHA256 at rest (same shape as courier access codes), atomic claim via
   `updateMany` in the WHERE clause — closes a TOCTOU double-redeem race found during security
-  review. Revokes all sessions (`tokenVersion` bump) on redemption.
+  review. Revokes all sessions (`tokenVersion` bump) on redemption. Forgot-password requests use
+  both per-IP and HMAC-keyed per-address limits, never put a raw address in limiter storage/logs,
+  perform the same indexed lookup for known/unknown/inactive addresses, and send the neutral HTTP
+  response before deferred token/email work. Deferred work rechecks that the account is active and
+  has an explicit logged failure path. The current in-memory limits and scheduler fit one API
+  process; replicas require shared rate-limit storage, and guaranteed delivery requires a durable
+  outbox/queue.
 - **2026-08-07 correction**: this entry previously read "shipped", but the feature was
   **backend-only** — a full-repo grep for `reset-password|resetPassword|reset-token|forgot` in
   `frontend/src` returned zero real matches. There was no button to issue a token and no page to

@@ -110,47 +110,94 @@ export async function createResetToken(userId: string, ttlMinutes: number = TOKE
  * would mean an install with no SMTP answers differently from one with
  * it — the same leak again, in a quieter form. The failure is logged for
  * an operator instead, which is who can actually act on it.
+ *
+ * ─── WHY THE WORK IS SPLIT IN TWO ────────────────────────────────────
+ * Only the account lookup happens before the response. Generating a token
+ * and handing a message to SMTP take time that an UNKNOWN address never
+ * spends, so doing them inline would let an attacker read the difference
+ * off the clock — the same enumeration the identical body exists to deny.
+ * The caller responds after `prepare`, then runs the returned dispatch.
  */
-export async function requestPasswordReset(req: Request, email: string): Promise<void> {
+export type PasswordResetDispatch = () => Promise<void>;
+
+export async function preparePasswordReset(
+  req: Request,
+  email: string,
+): Promise<PasswordResetDispatch> {
   const user = await prisma.user.findUnique({
     where: { email },
     select: { id: true, email: true, name: true, isActive: true },
   });
 
-  if (!user || !user.isActive) {
-    // Logged WITHOUT the address: this is an unauthenticated endpoint, so the
-    // log would otherwise accumulate a list of addresses probed by anyone.
-    req.log.info({ event: 'auth.password-reset.requested', delivered: false });
-    return;
-  }
+  return async () => {
+    // Re-read immediately before issuing the credential. The account may be
+    // deactivated after the neutral response's lookup but before this deferred
+    // task runs; a captured `isActive: true` must never outlive that change.
+    const activeUser = user?.isActive
+      ? await prisma.user.findFirst({
+          where: { id: user.id, isActive: true },
+          select: { id: true, email: true, name: true },
+        })
+      : null;
 
-  const { token, expiresAt } = await createResetToken(user.id);
+    if (!activeUser) {
+      // Logged WITHOUT the address: this is an unauthenticated endpoint, so
+      // the log would otherwise accumulate a list of addresses probed by
+      // anyone.
+      req.log.info({ event: 'auth.password-reset.requested', delivered: false });
+      return;
+    }
 
-  const minutes = Math.round((expiresAt.getTime() - Date.now()) / 60_000);
-  const delivered = await sendEmailToRecipients(
-    [user.email],
-    'Reset your password',
-    [
-      `Hello${user.name ? ` ${user.name}` : ''},`,
-      '',
-      'Use this one-time code to set a new password:',
-      '',
-      `    ${token}`,
-      '',
-      `The code expires in ${minutes} minutes and can only be used once.`,
-      'If you did not request this, you can ignore this message — your password has not changed.',
-    ].join('\n'),
-  );
+    const { token, expiresAt } = await createResetToken(activeUser.id);
 
-  req.log.info({ event: 'auth.password-reset.requested', delivered });
+    const minutes = Math.round((expiresAt.getTime() - Date.now()) / 60_000);
+    const delivered = await sendEmailToRecipients(
+      [activeUser.email],
+      'Reset your password',
+      [
+        `Hello${activeUser.name ? ` ${activeUser.name}` : ''},`,
+        '',
+        'Use this one-time code to set a new password:',
+        '',
+        `    ${token}`,
+        '',
+        `The code expires in ${minutes} minutes and can only be used once.`,
+        'If you did not request this, you can ignore this message — your password has not changed.',
+      ].join('\n'),
+    );
 
-  // The token itself is NEVER audited — `changes` records that a reset was
-  // asked for, not the credential that would let anyone act on it.
-  audit(req, {
-    action: 'user.password-reset.requested',
-    entity: 'user',
-    entityId: user.id,
-    changes: { delivered },
+    req.log.info({ event: 'auth.password-reset.requested', delivered });
+
+    // The token itself is NEVER audited — `changes` records that a reset was
+    // asked for, not the credential that would let anyone act on it.
+    audit(req, {
+      action: 'user.password-reset.requested',
+      entity: 'user',
+      entityId: activeUser.id,
+      changes: { delivered },
+    });
+  };
+}
+
+/**
+ * Schedule post-response work with its own explicit failure path.
+ *
+ * Reset initiation is safe to retry and acknowledges no completed business
+ * mutation, so an in-process task is proportionate for the current deployment.
+ * If guaranteed delivery becomes a requirement, replace this scheduler with a
+ * durable outbox/queue rather than moving SMTP work back onto the HTTP path.
+ */
+export function schedulePasswordResetDispatch(
+  req: Request,
+  dispatch: PasswordResetDispatch,
+): void {
+  setImmediate(() => {
+    void dispatch().catch((error: unknown) => {
+      req.log.error({
+        event: 'auth.password-reset.dispatch-failed',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   });
 }
 
