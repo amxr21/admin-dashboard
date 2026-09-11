@@ -478,7 +478,17 @@ describe('taking a sale (O5.7, O5.8)', () => {
     expect(statuses).toEqual([201, 400]);
 
     const refused = left.status === 400 ? left : right;
-    expect(JSON.stringify(refused.body)).toMatch(/left at this branch/);
+    /**
+     * EITHER refusal is correct, and which one fires is timing-dependent.
+     *
+     * The loser is refused by the conditional decrement finding no rows
+     * ("Only N of X left at this branch"), OR by InnoDB aborting it as a
+     * deadlock first ("X just sold out at this branch") — both transactions
+     * already hold locks from the order/items/movement writes before they
+     * contend on the stock row. Asserting only the first made this test fail
+     * whenever the database resolved the race the other way.
+     */
+    expect(JSON.stringify(refused.body)).toMatch(/left at this branch|just sold out/);
 
     // The shelf must never go negative, and exactly one sale may exist.
     const [stock, movements] = await Promise.all([
