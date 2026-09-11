@@ -172,11 +172,25 @@ earlier remote run to finish, but must retain the merge order.
   add up. Branches come from the branch table, not from orders, so a branch that sold nothing still
   gets a row. URL-backed dashboard state (UX-032) is untouched; the table reads the same `range`.
   Verification: dashboard 36/36, backend reports 75/75, both typechecks and eslint clean.
-- [ ] **Batch 16 — multi-currency till foundation (financial design gate).** Use the Settings
-  currency as the till default, then add configured tender currencies only after defining rate
-  source/versioning, rounding, tender and change currency, receipt representation, shift
-  reconciliation, refunds, and report semantics. Historical base/tender amounts must be snapshots,
-  never recalculated from current rates.
+- [*] **Batch 16 — multi-currency till foundation.** Policy settled with the owner 2026-09-11:
+  manual rates configured in Settings (same opt-in shape as Cloudinary/SMTP — no external feed, so
+  a till never depends on a network call to finish a sale), change given in the TENDERED currency,
+  receipt showing both currencies plus the rate used, and shift close counting each currency
+  SEPARATELY.
+  **Backend foundation done.** Additive nullable `tender_currency`/`tender_amount`/`tender_rate` on
+  `payments` (migration `20260911140000`, applied to both local and test databases after printing
+  the target). `Payment.amount` deliberately stays in the STORE currency, so every existing revenue,
+  shift and report query kept summing one comparable unit and needed no change at all. The rate is
+  SNAPSHOTTED per sale — the receipt prints it, so re-deriving it later would make a reprint
+  disagree with the customer's copy; same rule as `OrderItem.cost` and `Order.total`. A rate of 0
+  means "not accepted", so shipping this enabled nothing on any existing install, and an unaccepted
+  code is REFUSED rather than falling back to the base (a fallback would record a sale in the wrong
+  money undetectably). `getShiftTakings` gained a per-currency breakdown from `tenderAmount`, leaving
+  the existing base-currency reconciliation untouched.
+  Verification: full backend 1213/1213 across 58 files, typecheck and eslint clean.
+  - [ ] **Remaining: the till UI.** A currency control on the sale screen reading `GET /pos/tenders`,
+    the receipt showing both currencies and the rate, and the per-currency count at shift close.
+    The contract and every guard are in place and tested; this is the presentation layer only.
 - [ ] **Role simplification migration (approval gate).** Migrate enabled roles to Admin,
   Developer, and Cashier only after the owner approves how every legacy
   Owner/Manager/Fulfillment/Support/Demo account and branch assignment maps. Prepared roles remain

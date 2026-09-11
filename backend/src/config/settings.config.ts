@@ -74,6 +74,66 @@ export const SETTINGS = {
     label: 'Currency',
     description: 'Formatting only — it does not convert existing prices.',
   },
+
+  /**
+   * Accepting a second currency at the till.
+   *
+   * ─── WHY RATES ARE MANUAL, AND ONE SETTING EACH ──────────────────────
+   * Same opt-in shape as Cloudinary and SMTP: a rate left at 0 means "this
+   * currency is not accepted", so shipping this enabled nothing anywhere.
+   * There is no external rate feed by owner decision — a till must not depend
+   * on a network call to finish a sale, and a stale feed would be worse than a
+   * number somebody chose on purpose.
+   *
+   * One declared setting per currency rather than a JSON map, keeping the
+   * "every setting is individually declared" rule this registry exists to
+   * enforce (the same reason the nav labels are six settings, not one map).
+   *
+   * The rate is "how many of THIS currency equal one unit of the store
+   * currency", so a store in AED accepting USD sets `usd` to about 0.27.
+   * Stated on every label because the inverse is an equally natural reading
+   * and getting it backwards is silently wrong rather than obviously broken.
+   */
+  'pos.tenderRate.AED': {
+    type: 'number',
+    default: 0,
+    area: 'settings',
+    min: 0,
+    label: 'AED per 1 store currency',
+    description: '0 means AED is not accepted at the till. Ignored when AED is the store currency.',
+  },
+  'pos.tenderRate.SAR': {
+    type: 'number',
+    default: 0,
+    area: 'settings',
+    min: 0,
+    label: 'SAR per 1 store currency',
+    description: '0 means SAR is not accepted at the till. Ignored when SAR is the store currency.',
+  },
+  'pos.tenderRate.USD': {
+    type: 'number',
+    default: 0,
+    area: 'settings',
+    min: 0,
+    label: 'USD per 1 store currency',
+    description: '0 means USD is not accepted at the till. Ignored when USD is the store currency.',
+  },
+  'pos.tenderRate.EUR': {
+    type: 'number',
+    default: 0,
+    area: 'settings',
+    min: 0,
+    label: 'EUR per 1 store currency',
+    description: '0 means EUR is not accepted at the till. Ignored when EUR is the store currency.',
+  },
+  'pos.tenderRate.GBP': {
+    type: 'number',
+    default: 0,
+    area: 'settings',
+    min: 0,
+    label: 'GBP per 1 store currency',
+    description: '0 means GBP is not accepted at the till. Ignored when GBP is the store currency.',
+  },
   'ui.defaultLocale': {
     type: 'enum',
     default: 'en',

@@ -17,6 +17,7 @@ import { executeIdempotently } from './idempotency.service.js';
 import { normalizePhone } from '../lib/phone.js';
 import { computeOrderTotals, getTaxRate } from './order-math.service.js';
 import { getSettingValue } from './settings.service.js';
+import { resolveTenderRate } from './tender-currency.service.js';
 import {
   localizeProductRows,
   type ProductLocale,
@@ -282,8 +283,11 @@ export interface CheckoutInput {
   /** 'cash' | 'card' | … — free text, mirroring `Order.paymentMethod`.
    *  Required UNLESS `splitPayments` is given instead — see its own note. */
   method?: string | undefined;
-  /** Cash handed over. Omitted for a card sale, where nothing is tendered. */
+  /** Cash handed over, IN `tenderCurrency` when one is given. Omitted for a
+   *  card sale, where nothing is tendered. */
   tendered?: string | undefined;
+  /** What the customer paid in. Absent means the store's own currency. */
+  tenderCurrency?: string | undefined;
   branchId?: string | undefined;
   /** The till session this belongs to, so the drawer can be reconciled. */
   /**
@@ -521,6 +525,18 @@ async function checkoutOnce(
     }
   }
 
+  /**
+   * Resolved BEFORE the transaction, and only when a currency was named.
+   *
+   * It reads settings, which is its own query — doing that inside the write
+   * transaction would hold row locks open across an unrelated read for every
+   * sale, including the overwhelming majority paid in the store's own
+   * currency. An unaccepted code throws here, before anything is written.
+   */
+  const tenderInfo = input.tenderCurrency
+    ? await resolveTenderRate(input.tenderCurrency)
+    : null;
+
   const created = await (async () => {
     // Read INSIDE the transaction: the price that goes on the receipt must be
     // the price at the moment of sale, not one fetched before the customer
@@ -723,15 +739,32 @@ async function checkoutOnce(
     } else {
       const tendered = input.tendered === undefined ? null : new Prisma.Decimal(input.tendered);
 
-      if (tendered !== null && tendered.lessThan(totals.total)) {
+      /**
+       * The whole comparison happens in the TENDERED currency.
+       *
+       * `tenderDue` is the sale total expressed in what the customer is
+       * handing over, so "is this enough?" and the change owed are both
+       * answered in the notes actually on the counter. Comparing foreign cash
+       * against a base-currency total would reject a correct payment (or
+       * accept a short one) depending on which way the rate points.
+       *
+       * Change is given in the tendered currency by owner decision, which is
+       * why `change` is stored in those units too — the drawer is counted per
+       * currency at close.
+       */
+      const tenderDue = tenderInfo ? totals.total.mul(tenderInfo.rate).toDecimalPlaces(2) : totals.total;
+
+      if (tendered !== null && tendered.lessThan(tenderDue)) {
         throw AppError.badRequest('That is less than the total', { field: 'tendered' });
       }
 
-      totalChange = tendered === null ? null : tendered.sub(totals.total);
+      totalChange = tendered === null ? null : tendered.sub(tenderDue);
 
       await tx.payment.create({
         data: {
           orderId: order.id,
+          // Always the STORE currency, so every existing revenue, shift and
+          // report query keeps summing one comparable unit.
           amount: totals.total,
           method: input.method as string,
           tendered,
@@ -739,6 +772,15 @@ async function checkoutOnce(
           // against what the cashier actually did (see `Payment`'s own
           // note).
           change: totalChange,
+          ...(tenderInfo
+            ? {
+                tenderCurrency: tenderInfo.currency,
+                tenderAmount: tenderDue,
+                // Snapshotted: the receipt prints this rate, so re-deriving it
+                // later would make a reprint disagree with the customer's copy.
+                tenderRate: tenderInfo.rate,
+              }
+            : {}),
           ...(input.shiftId ? { shiftId: input.shiftId } : {}),
           actorId,
           ...(input.note ? { note: input.note } : {}),
