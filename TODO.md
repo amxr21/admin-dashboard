@@ -146,9 +146,18 @@ earlier remote run to finish, but must retain the merge order.
   covering the removed lookup were replaced rather than deleted: one asserts no lookup renders, the
   other that checkout never sends a `customerId`, so the new behaviour is pinned instead of merely
   untested. Dead `pos.customer.*` keys removed from both locales.
-- [ ] **Batch 14 — loading-overlay visual redesign.** Replace the long vertical treatment with a
-  compact horizontal flex-row component using the existing shared coordinator. Verify clear
-  progress semantics, RTL ordering, reduced motion, focus continuity, and mobile/desktop fit.
+- [x] **Batch 14 — loading-overlay visual redesign.** The global overlay and the branch-switch
+  overlay are now one compact horizontal row (spinner + label in a rounded card) instead of a tall
+  card. The cause was the shared `LoadingState`, whose `min-h-48` column is correct for a panel
+  filling a page and wrong for a floating overlay saying one short word — so the CALLERS changed,
+  not the primitive, which 32 other surfaces still use as intended. The shared loading coordinator,
+  its 120 ms anti-flicker delay and the concurrent-request counting are untouched; this is
+  presentation only. `role="status"` moved onto the new row so the announcement survives, logical
+  properties (`ps`/`pe`) keep RTL padding correct, `motion-reduce:animate-none` is preserved, and
+  `max-w` + `truncate` stop a long label overflowing on a phone. The branch-switch label WRAPS
+  rather than truncating, because that explanation is the reason that overlay exists.
+  Verification: shell suites 122/122 across 14 files (including the existing `role="status"`
+  assertion), frontend typecheck and eslint clean.
 - [ ] **Batch 15 — multi-branch dashboard summary.** When more than one branch is available, show
   concise comparable branch summaries plus a clear aggregate/branch distinction and direct branch
   navigation; preserve the simple current experience for single-branch businesses and URL-backed
