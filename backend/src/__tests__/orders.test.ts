@@ -190,7 +190,10 @@ describe('the transition matrix, walked exhaustively', () => {
         const res = await request(app)
           .patch(`/api/v1/orders/${id}/status`)
           .set(auth(ownerToken))
-          .send({ to });
+          // URG-010 — a cancellation must say why, and ONLY a cancellation may:
+          // sending a reason on any other transition is itself refused, so this
+          // cannot be applied unconditionally.
+          .send(to === OrderStatus.CANCELED ? { to, cancellationReason: 'OUT_OF_STOCK' } : { to });
 
         if (legal) {
           expect(res.status).toBe(200);

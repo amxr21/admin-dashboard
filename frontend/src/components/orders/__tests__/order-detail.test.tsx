@@ -468,7 +468,14 @@ describe('the status control offers only what the server allows', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() => {
-      expect(changeOrderStatus).toHaveBeenCalledWith('o1', 'SHIPPED', 'left the warehouse');
+      // The 4th argument is the cancellation detail (URG-010) — undefined for
+      // any move that is not a cancellation.
+      expect(changeOrderStatus).toHaveBeenCalledWith(
+        'o1',
+        'SHIPPED',
+        'left the warehouse',
+        undefined,
+      );
     });
   });
 
