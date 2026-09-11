@@ -470,7 +470,13 @@ describe('taking a sale (O5.7, O5.8)', () => {
     const product = await makeProduct({ sku: `${RUN}-OVERSELL-RACE`, price: '9.00', stock: 2 });
     await stockAt(product.id, 2);
 
-    const body = { lines: [{ productId: product.id, quantity: 2 }], method: 'cash' };
+    // Enough cash for either sale to complete (URG-007) — the point of this
+    // test is that STOCK refuses one of them, not the tender.
+    const body = {
+      lines: [{ productId: product.id, quantity: 2 }],
+      method: 'cash',
+      tendered: '99.00',
+    };
 
     const [left, right] = await Promise.all([sell(body), sell(body)]);
 
@@ -557,13 +563,16 @@ describe('taking a sale (O5.7, O5.8)', () => {
     await stockAt(product.id, 5);
     const key = randomUUID();
 
+    // Both carry the SAME tender (URG-007) so the only difference between the
+    // two payloads stays the quantity — which is what makes the second a
+    // key-reuse mismatch rather than a tender refusal.
     const first = await sell(
-      { lines: [{ productId: product.id, quantity: 1 }], method: 'cash' },
+      { lines: [{ productId: product.id, quantity: 1 }], method: 'cash', tendered: '99.00' },
       ownerToken,
       key,
     );
     const mismatch = await sell(
-      { lines: [{ productId: product.id, quantity: 2 }], method: 'cash' },
+      { lines: [{ productId: product.id, quantity: 2 }], method: 'cash', tendered: '99.00' },
       ownerToken,
       key,
     );
@@ -1215,6 +1224,7 @@ describe('discounts at the till (O9 Tier 3)', () => {
       const res = await sellWithDiscount({
         lines: [{ productId: product.id, quantity: 1, discountPercent: 30 }],
         method: 'cash',
+        tendered: '99.00',
         overrideToken: approval.overrideToken,
       });
 
@@ -1232,6 +1242,7 @@ describe('discounts at the till (O9 Tier 3)', () => {
       const res = await sellWithDiscount({
         lines: [{ productId: product.id, quantity: 1, discountPercent: 20 }],
         method: 'cash',
+        tendered: '99.00',
       });
 
       expect(res.status).toBe(201);
@@ -1465,7 +1476,8 @@ describe('split payment (O9 Tier 3)', () => {
     const res = await sellSplit({
       lines: [{ productId: product.id, quantity: 1 }],
       splitPayments: [
-        { method: 'cash', amount: '10.00' },
+        // The cash leg records what was handed over (URG-007).
+        { method: 'cash', amount: '10.00', tendered: '10.00' },
         { method: 'card', amount: '10.00' },
       ],
     });
