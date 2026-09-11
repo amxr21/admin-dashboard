@@ -202,10 +202,41 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       scan, still adds when no branch is in context, and the pre-existing quantity warning still only
       warns); en/ar parity holds at 2273/2273 with the new key in both locales; i18n parity suite
       19/19; frontend typecheck and targeted ESLint clean.
-- [ ] **URG-007 — Enforce cash received against the amount due.** For cash tenders, the accepted
+- [x] **URG-007 — Enforce cash received against the amount due.** For cash tenders, the accepted
       amount must be at least the total due in the tender currency; the UI must prevent submission
       and explain the shortage, while the backend independently refuses underpayment. Change must
       use the same rounding and tender-rate contract as checkout.
+      **Root cause:** the server guard read `if (tendered !== null && tendered.lessThan(tenderDue))`,
+      and `tendered` is `null` whenever the field is omitted — which Zod allowed, since it is
+      `.optional()`. So a cash sale that simply sent no `tendered` **skipped the underpayment check
+      entirely** and completed with `tendered: null, change: null`. The same hole existed per-entry
+      in the split path. The frontend made it reachable rather than theoretical: it only included
+      `tendered` when non-empty, and Take Payment was disabled solely on an empty cart.
+      **Owner decision:** cash requires a tendered amount (asked 2026-09-11, "Require it for cash").
+      **Fix:** a cash `method`, and each cash split leg, must record what was handed over; both
+      refuse with `Enter the cash received` otherwise. Compared against `tenderDue`, not the base
+      total, so the existing foreign-currency contract is preserved untouched. Card and transfer are
+      unaffected — `null` there means "not applicable", never "unrecorded".
+      **Second gap found while fixing it:** `splitLines` carried a `tendered` field in state and
+      sent it, but **no input was ever rendered for a split leg** — only method and amount. So
+      `line.tendered` was permanently `''` and every cash leg omitted its tender. Requiring it
+      server-side without this would have made every split sale containing a cash leg impossible
+      from the till. The per-leg input is now rendered for cash legs only.
+      **UI half:** the shortfall (missing or short) is explained above Take Payment and disables it,
+      before the confirm dialog rather than at it — the same reasoning the manager-override dialog
+      already used. The server independently enforces the rule, so this is a courtesy, not the
+      boundary.
+      **Blast radius, measured not estimated:** of 21 existing untendered cash sales in the backend
+      suite, 18 are negative-path tests refused before payment (bad product id, oversell, duplicate
+      line, discount cap, split-shape) and were left alone — adding tenders there would mask what
+      they assert. Only 3 genuinely completed a cash sale and were updated. On the frontend, 16
+      tests broke because Take Payment is now disabled until cash covers the total; 11 flowed
+      through the shared `takePaymentThroughConfirm` helper and were fixed at that one point, the
+      rest individually.
+      **Verification:** 32/32 POS frontend tests; en/ar parity 2278/2278; both typechecks and
+      targeted ESLint clean. The three new backend tender tests (cash with no tender refused, cash
+      split leg with no tender refused, card with no tender still accepted) could not run locally —
+      `admin_dashboard_test` has an unbaselined `_prisma_migrations` — so CI is their first gate.
 - [ ] **URG-008 — Fix checkout dialog focus/`aria-hidden` warning.** Move focus into the opened
       dialog and restore it safely on close so the previously focused `#pos-scan` input is never
       hidden from assistive technology. Verify keyboard-only checkout and cancellation.

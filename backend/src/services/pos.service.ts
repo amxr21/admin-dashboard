@@ -802,6 +802,24 @@ async function checkoutOnce(
         const entryTendered =
           entry.tendered === undefined ? null : new Prisma.Decimal(entry.tendered);
 
+        /**
+         * URG-007 — a CASH leg must record what was handed over.
+         *
+         * Previously the check below only ran when `tendered` was present, so
+         * a cash leg that simply omitted it skipped the comparison entirely
+         * and stored `tendered: null, change: null` on a sale that really did
+         * take notes across the counter. The drawer then reconciles against a
+         * figure nobody recorded.
+         *
+         * Only cash: a card or transfer leg legitimately hands nothing over,
+         * and `null` there means "not applicable", never "unrecorded".
+         */
+        if (entry.method === 'cash' && entryTendered === null) {
+          throw AppError.badRequest('Enter the cash received for this payment', {
+            field: 'splitPayments',
+          });
+        }
+
         if (entryTendered !== null && entryTendered.lessThan(amount)) {
           throw AppError.badRequest('That is less than this payment', {
             field: 'splitPayments',
@@ -845,6 +863,22 @@ async function checkoutOnce(
        * currency at close.
        */
       const tenderDue = tenderInfo ? totals.total.mul(tenderInfo.rate).toDecimalPlaces(2) : totals.total;
+
+      /**
+       * URG-007 — a cash sale must record what was handed over.
+       *
+       * The comparison below only ran when `tendered` was present, so a cash
+       * sale that omitted it skipped the underpayment check altogether and
+       * completed with `tendered: null, change: null`. Cash genuinely crossed
+       * the counter, so "not recorded" is a gap in the drawer's own audit
+       * trail, not a legitimate state the way it is for a card sale.
+       *
+       * Checked against `tenderDue`, not the base total, so a foreign-currency
+       * sale is judged in the notes actually being handed over.
+       */
+      if (input.method === 'cash' && tendered === null) {
+        throw AppError.badRequest('Enter the cash received', { field: 'tendered' });
+      }
 
       if (tendered !== null && tendered.lessThan(tenderDue)) {
         throw AppError.badRequest('That is less than the total', { field: 'tendered' });

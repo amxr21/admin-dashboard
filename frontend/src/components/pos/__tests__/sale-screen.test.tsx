@@ -128,6 +128,15 @@ async function scan(code: string) {
  * every existing checkout test still exercises the real path.
  */
 async function takePaymentThroughConfirm() {
+  // URG-007 — a cash sale will not proceed until the cash received covers the
+  // total, so fill it in the way a cashier would before reaching the dialog.
+  // Only when the field is actually on screen: a card sale has none, and a
+  // test that already typed its own amount must not have it overwritten.
+  const cashField = screen.queryByLabelText(/^cash received$/i);
+  if (cashField && (cashField as HTMLInputElement).value.trim() === '') {
+    await userEvent.type(cashField, '9999.00');
+  }
+
   await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
   await userEvent.click(await screen.findByRole('button', { name: /confirm & charge/i }));
 }
@@ -235,6 +244,47 @@ describe('building a sale', () => {
     });
   });
 
+  it('blocks a cash sale until the cash received covers the total (URG-007)', async () => {
+    scanProduct.mockResolvedValue(makeProduct());
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+
+    // Cash is the default method, and nothing has been entered yet.
+    expect(await screen.findByText(/enter the cash received/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /take payment/i })).toBeDisabled();
+
+    // Still short: 4.50 owed, 3.00 offered.
+    await userEvent.type(screen.getByLabelText(/cash received/i), '3.00');
+    expect(await screen.findByText(/1\.50 less than the total/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /take payment/i })).toBeDisabled();
+
+    // Covers it — the sale may proceed.
+    await userEvent.clear(screen.getByLabelText(/cash received/i));
+    await userEvent.type(screen.getByLabelText(/cash received/i), '5.00');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /take payment/i })).toBeEnabled();
+    });
+  });
+
+  it('does not ask for cash on a card sale (URG-007)', async () => {
+    scanProduct.mockResolvedValue(makeProduct());
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+
+    await userEvent.click(screen.getByLabelText(/^payment$/i));
+    await userEvent.click(await screen.findByRole('option', { name: /card/i }));
+
+    // Nothing is handed over on a card sale, so there is nothing to be short of.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /take payment/i })).toBeEnabled();
+    });
+    expect(screen.queryByText(/enter the cash received/i)).not.toBeInTheDocument();
+  });
+
   it('refuses to add a scanned product the branch has none of (URG-006)', async () => {
     // Unlike the quantity warning below, this BLOCKS — adding a line at all is
     // a different decision from correcting the quantity of one already added,
@@ -275,8 +325,14 @@ describe('building a sale', () => {
     await userEvent.click(screen.getByRole('button', { name: /one more flat white/i }));
 
     expect(await screen.findByText(/only 1 in stock here/i)).toBeInTheDocument();
-    // Still sellable — the button is not disabled by this warning.
-    expect(screen.getByRole('button', { name: /take payment/i })).toBeEnabled();
+
+    // Still sellable — the button is not disabled by THIS warning. The cash
+    // amount is filled in only so URG-007's separate guard is not what keeps
+    // the button disabled; the over-stock warning itself never blocks.
+    await userEvent.type(screen.getByLabelText(/^cash received$/i), '99.00');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /take payment/i })).toBeEnabled();
+    });
   });
 });
 
@@ -465,6 +521,9 @@ describe('discounts (O9 Tier 3)', () => {
     await screen.findByText('Flat white');
 
     await userEvent.type(screen.getByLabelText(/discount on flat white/i), '50');
+    // URG-007 — cash must be recorded before the button is live at all. This
+    // test is about the override dialog, not the tender.
+    await userEvent.type(screen.getByLabelText(/^cash received$/i), '99.00');
     await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
 
     expect(await screen.findByText(/manager approval needed/i)).toBeInTheDocument();
@@ -494,6 +553,8 @@ describe('discounts (O9 Tier 3)', () => {
     await screen.findByText('Flat white');
 
     await userEvent.type(screen.getByLabelText(/discount on flat white/i), '50');
+    // URG-007 — see the note in the test above.
+    await userEvent.type(screen.getByLabelText(/^cash received$/i), '99.00');
     await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
 
     await userEvent.type(await screen.findByLabelText(/manager email/i), 'sara@example.test');
@@ -520,6 +581,8 @@ describe('discounts (O9 Tier 3)', () => {
     await screen.findByText('Flat white');
 
     await userEvent.type(screen.getByLabelText(/discount on flat white/i), '20');
+    // URG-007 — see the note in the override test above.
+    await userEvent.type(screen.getByLabelText(/^cash received$/i), '99.00');
     await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
 
     expect(await screen.findByText(/confirm sale/i)).toBeInTheDocument();
@@ -682,13 +745,22 @@ describe('split payment (O9 Tier 3)', () => {
     await userEvent.type(amountFields[0]!, '2.00');
     await userEvent.type(amountFields[1]!, '2.50');
 
+    // URG-007 — the first leg defaults to cash, and a cash leg now records
+    // what was handed over before the sale may proceed.
+    await userEvent.type(
+      screen.getByLabelText(/cash received for payment 1/i),
+      '2.00',
+    );
+
     await takePaymentThroughConfirm();
 
     await waitFor(() => {
       expect(checkout).toHaveBeenCalledWith(
         expect.objectContaining({
           splitPayments: [
-            { method: 'cash', amount: '2.00' },
+            // The cash leg carries what was handed over (URG-007); the card
+            // leg hands nothing over, so it sends no tender at all.
+            { method: 'cash', amount: '2.00', tendered: '2.00' },
             { method: 'card', amount: '2.50' },
           ],
         }),

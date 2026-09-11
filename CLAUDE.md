@@ -532,7 +532,17 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   2026-09-11 rather than switching to omission. Only the SCAN path was a real gap: it added
   zero-stock items silently, and now refuses. Before "fixing" something the queue describes as
   missing, check whether it was built and decided differently on purpose.
-- **Next step**: URG-007 (enforce cash received against the amount due), continuing the U1 queue.
+- **The URG-007 finding worth remembering**: a guard written as
+  `if (value !== null && value.lessThan(due))` does nothing at all when the field is simply omitted
+  — and the Zod schema marked it `.optional()`, so omitting it was legal. A cash sale sending no
+  `tendered` skipped the underpayment check entirely and completed with `tendered: null`.
+  **A null-guarded comparison is not a requirement; it is a comparison that opts out whenever the
+  value is absent.** If a field must be present, the absence has to be its own refusal. Also found:
+  the split-payment UI carried a `tendered` field in state and sent it, but never rendered an input
+  for it, so it was permanently empty — requiring it server-side alone would have made every split
+  sale with a cash leg impossible. **Check that the client can actually satisfy a contract before
+  tightening it.**
+- **Next step**: URG-008 (checkout dialog focus / `aria-hidden`), continuing the U1 queue.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.

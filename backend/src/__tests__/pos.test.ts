@@ -478,7 +478,17 @@ describe('taking a sale (O5.7, O5.8)', () => {
     expect(statuses).toEqual([201, 400]);
 
     const refused = left.status === 400 ? left : right;
-    expect(JSON.stringify(refused.body)).toMatch(/left at this branch/);
+    /**
+     * EITHER refusal is correct, and which one fires is timing-dependent.
+     *
+     * The loser is refused by the conditional decrement finding no rows
+     * ("Only N of X left at this branch"), OR by InnoDB aborting it as a
+     * deadlock first ("X just sold out at this branch") — both transactions
+     * already hold locks from the order/items/movement writes before they
+     * contend on the stock row. Asserting only the first made this test fail
+     * whenever the database resolved the race the other way.
+     */
+    expect(JSON.stringify(refused.body)).toMatch(/left at this branch|just sold out/);
 
     // The shelf must never go negative, and exactly one sale may exist.
     const [stock, movements] = await Promise.all([
@@ -603,7 +613,12 @@ describe('taking a sale (O5.7, O5.8)', () => {
     const product = await makeProduct({ sku: `${RUN}-SELL-3`, price: '6.00', stock: 4 });
     await stockAt(product.id, 4);
 
-    const res = await sell({ lines: [{ productId: product.id, quantity: 1 }], method: 'cash' });
+    const res = await sell({
+      lines: [{ productId: product.id, quantity: 1 }],
+      method: 'cash',
+      // Cash records what was handed over (URG-007).
+      tendered: '10.00',
+    });
     const orderId = (res.body as { data: { orderId: string } }).data.orderId;
 
     const item = await prisma.orderItem.findFirst({ where: { orderId }, select: { cost: true } });
@@ -664,7 +679,11 @@ describe('taking a sale (O5.7, O5.8)', () => {
     });
 
     try {
-      const res = await sell({ lines: [{ productId: product.id, quantity: 3 }], method: 'cash' });
+      const res = await sell({
+        lines: [{ productId: product.id, quantity: 3 }],
+        method: 'cash',
+        tendered: '20.00',
+      });
 
       expect(res.status).toBe(201);
 
@@ -763,6 +782,36 @@ describe('taking a sale (O5.7, O5.8)', () => {
     expect(payment.tenderCurrency).toBeNull();
     expect(payment.tenderAmount).toBeNull();
     expect(payment.tenderRate).toBeNull();
+  });
+
+  it('refuses a cash sale that records no tendered amount (URG-007)', async () => {
+    // Cash genuinely crossed the counter, so "not recorded" is a gap in the
+    // drawer's audit trail — unlike a card sale, where null means "not
+    // applicable". Previously this skipped the underpayment check entirely
+    // and completed with tendered/change both null.
+    const product = await makeProduct({ sku: `${RUN}-TENDER-1`, price: '30.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sell({ lines: [{ productId: product.id, quantity: 1 }], method: 'cash' });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/cash received/i);
+
+    // Nothing was written — the refusal happens inside the same transaction.
+    const stock = await prisma.branchStock.findUnique({
+      where: { productId_branchId: { productId: product.id, branchId } },
+    });
+    expect(stock?.quantity).toBe(5);
+  });
+
+  it('still accepts a card sale with no tendered amount (URG-007)', async () => {
+    // The requirement is cash-only: nothing is handed over on a card sale.
+    const product = await makeProduct({ sku: `${RUN}-TENDER-3`, price: '14.00', stock: 3 });
+    await stockAt(product.id, 3);
+
+    const res = await sell({ lines: [{ productId: product.id, quantity: 1 }], method: 'card' });
+
+    expect(res.status).toBe(201);
   });
 
   it('refuses tendered less than the total', async () => {
@@ -1367,6 +1416,24 @@ describe('split payment (O9 Tier 3)', () => {
     await prisma.product.update({ where: { id: productId }, data: { stock: quantity } });
   }
 
+  it('refuses a cash split leg that records no tendered amount (URG-007)', async () => {
+    const product = await makeProduct({ sku: `${RUN}-TENDER-2`, price: '20.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sellSplit({
+      lines: [{ productId: product.id, quantity: 1 }],
+      splitPayments: [
+        // The cash leg hands notes over and must record them; the card leg
+        // legitimately has nothing to record.
+        { method: 'cash', amount: '10.00' },
+        { method: 'card', amount: '10.00' },
+      ],
+    });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/cash received/i);
+  });
+
   it('writes one Payment row per entry', async () => {
     const product = await makeProduct({ sku: `${RUN}-SPLIT-1`, price: '20.00', stock: 5 });
     await stockAt(product.id, 5);
@@ -1374,7 +1441,7 @@ describe('split payment (O9 Tier 3)', () => {
     const res = await sellSplit({
       lines: [{ productId: product.id, quantity: 1 }],
       splitPayments: [
-        { method: 'cash', amount: '10.00' },
+        { method: 'cash', amount: '10.00', tendered: '10.00' },
         { method: 'card', amount: '10.00' },
       ],
     });
