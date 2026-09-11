@@ -378,6 +378,26 @@ export function SaleScreen() {
     try {
       const product = await scanProduct(trimmed);
 
+      /**
+       * URG-006 — a scan of something the branch has none of is refused, not
+       * silently added. The grid already blocks this by disabling the tile
+       * (product-grid.tsx); a scan had no equivalent guard, so the one path
+       * that could still put a zero-stock line in the cart was the scanner.
+       *
+       * Deliberately NOT the same rule as the cart's quantity warning, which
+       * still only warns: that is a correction to something already added,
+       * whereas this is the decision to add a line at all — the same
+       * distinction the grid tile draws.
+       *
+       * `branchStock === null` means no branch is in context, so stock is
+       * unknowable and nothing is refused.
+       */
+      if (product.branchStock !== null && product.branchStock <= 0) {
+        setError(t('scanOutOfStock', { name: product.name }));
+        // The code stays in the field, same as the not-found path above it.
+        return;
+      }
+
       addToCart(product);
       setCode('');
     } catch (caught) {

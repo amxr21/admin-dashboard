@@ -2838,6 +2838,7 @@
     "done": "عملية البيع {number}",
     "change": "الباقي {amount}",
     "overStock": "يتوفر {available} فقط هنا",
+    "scanOutOfStock": "{name} غير متوفر في هذا الفرع",
     "archived": "هذا المنتج مؤرشف",
     "increase": "زيادة {name}",
     "decrease": "إنقاص {name}",

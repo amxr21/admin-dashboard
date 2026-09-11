@@ -163,14 +163,45 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       **Deliberately unchanged:** the till still WARNS rather than blocks above stock
       (`sale-screen.tsx`), matching the documented "the server decides" split; URG-005 is a
       server-authority requirement and the server is now authoritative.
-      **Verification:** backend typecheck + targeted ESLint clean. Two new integration tests (a
-      two-cashier race on distinct idempotency keys, and an over-quantity refusal) CANNOT run
-      locally — `admin_dashboard_test` has 54 tables but an unbaselined `_prisma_migrations`, so
-      they get their first real run in CI.
-- [ ] **URG-006 — Hide out-of-stock items from till browsing.** Product browsing/search should omit
+      **Second defect, found by CI (PR #221):** the guard stopped the oversell, but the LOSING
+      cashier received a 500 rather than a refusal —
+      `AssertionError: expected [ 201, 500 ] to deeply equal [ 201, 400 ]`, caused by
+      `Transaction failed due to a write conflict or a deadlock`. Both transactions write an order,
+      its items and a stock movement BEFORE the decrement, so they hold locks and then contend on
+      the same `branch_stock` row; InnoDB aborts one with P2034, which escaped unmapped. That
+      violated URG-003's own principle that expected business refusals must return actionable 4xx.
+      P2034 now maps to the SAME 400 the pre-flight check returns, following the existing
+      `storefront.service.ts` precedent — which maps to 409 only because ITS pre-flight returns 409;
+      the rule being copied is "both paths look the same", not the status code. Not retried: the
+      transaction is already rolled back and retrying under a claimed idempotency key would re-run
+      the whole sale.
+      **Verification:** backend typecheck + targeted ESLint clean. CI run on PR #221 proved the fix
+      works — 1235/1236 passed, the oversell was prevented, stock stayed at 0, and the sibling
+      over-quantity refusal passed; the single failure was the unmapped 500 now corrected. The two
+      integration tests could not run locally (`admin_dashboard_test` has 54 tables but an
+      unbaselined `_prisma_migrations`), so CI is their real gate.
+- [x] **URG-006 — Hide out-of-stock items from till browsing.** Product browsing/search should omit
       variants with no sellable stock at the active branch. A direct barcode/SKU scan of an
       unavailable item must show an explicit “out of stock” result rather than silently doing
       nothing or adding it.
+      **Browse half — owner decided to KEEP the existing behavior rather than omit.** The grid
+      already blocks these items: `product-grid.tsx` disables the tile, renders an “out of stock”
+      badge, and carries a comment recording that the owner previously asked to check stock “before
+      listing the items” and it was decided as visible-but-disabled — because a tile that vanishes
+      leaves a cashier unable to tell “we just ran out of X” from “we never had X”. Asked again on
+      2026-09-11 with that context; the owner confirmed keeping disabled tiles. No browse query
+      change was made, deliberately. A settings toggle was offered and not taken.
+      **Scan half — a real gap, now fixed.** `sale-screen.tsx` called `addToCart(product)`
+      unconditionally, so scanning a sold-out item silently added it — the one remaining path that
+      could put a zero-stock line in the cart. It now refuses with a named message and keeps the
+      code in the field, matching the not-found path beside it. Deliberately NOT the cart's
+      warn-don't-block rule: that is a quantity correction on a line already added, whereas this is
+      the decision to add a line at all — the same distinction the grid tile draws.
+      `branchStock === null` (no branch in context) means stock is unknowable, so nothing is refused.
+      **Verification:** 30/30 POS frontend tests pass including three new ones (refuses a zero-stock
+      scan, still adds when no branch is in context, and the pre-existing quantity warning still only
+      warns); en/ar parity holds at 2273/2273 with the new key in both locales; i18n parity suite
+      19/19; frontend typecheck and targeted ESLint clean.
 - [ ] **URG-007 — Enforce cash received against the amount due.** For cash tenders, the accepted
       amount must be at least the total due in the tender currency; the UI must prevent submission
       and explain the shortage, while the backend independently refuses underpayment. Change must

@@ -2838,6 +2838,7 @@
     "done": "Sale {number}",
     "change": "Change {amount}",
     "overStock": "Only {available} in stock here",
+    "scanOutOfStock": "{name} is out of stock at this branch",
     "archived": "This product is archived",
     "increase": "One more {name}",
     "decrease": "One fewer {name}",
