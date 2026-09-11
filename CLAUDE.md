@@ -7,11 +7,10 @@
 - **Stack**: Next.js 15 (App Router) + TypeScript · Express 5 + TypeScript · both self-hosted on a
   Hostinger KVM VPS via Coolify (moved off Vercel/Render 2026-09-03) ·
   MySQL via Prisma (Aiven) · pnpm workspace · Node 22.
-- **Status**: active development. The 2026-09-10 review added report reliability, consistent
-  loading feedback, scroll containment, editable organization structure and missing Settings
-  destinations. UX-009 now makes POS checkout retries safe and passed the complete GitHub CI gate
-  in PR #195. Batch 2 delivery operations and automatic employee branch scoping are implemented;
-  the full local gate and stacked PR are next.
+- **Status**: active development. The full UX implementation stack through Batch 9 was merged into
+  `dev` at `acaff8f` (PR #204). The post-merge review reopened UX-034 and identified three focused
+  configuration/account-recovery corrections. Role simplification and the final point-4 project
+  gate remain deliberately unstarted pending owner approval.
 
 ## 2026-09-10 review stack
 
@@ -488,6 +487,34 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
+- **Active branch**: `docs/post-merge-workflows-and-issues`, based exactly on merged `dev` at
+  `acaff8f`. Two pre-existing untracked diagnostic artifacts (`frontend/branch-sheet-open.png` and
+  `frontend/scroll-check.mjs`) are intentionally untouched.
+- **In progress**: documentation-only synchronization after the implementation stack merge.
+  `docs/features.md` records the owner-reported issues, their shipped solutions, and the current
+  verified findings. `docs/ux.md` inventories the supported user journeys and explicitly separates
+  this repository's internal/courier UI from its API-only storefront contract. `TODO.md` now marks
+  merged batches accurately while reopening the overstated UX-034 item.
+- **Next step**: obtain owner approval for the four focused corrections: the real staff-detail
+  workspace, shared email-readiness truth, localized configuration impact codes, and
+  password-reset timing/abuse hardening. Then decide whether the future Admin role may see the
+  non-secret configuration reference. After those corrections, proceed to **point 4**: the final
+  combined unit/type/lint/build/E2E, motion, accessibility, responsive, and native-Arabic gate.
+- **Blockers**: the production-safe mapping from legacy Owner/Manager/Fulfillment/Support/Demo to
+  Admin/Developer/Cashier is not approved. Production Sentry remains on hold after the trial ended,
+  and pull-request E2E remains disabled until its retired Vercel/Render target is redesigned for
+  Coolify.
+- **Context to remember**: do not add prepared roles now; future templates must be configurable.
+  Keep all corrections reusable, scalable, and clean. Do not claim UX-034 complete merely because
+  Staff links to the Branch roster. Do not start or close point 4 on focused test evidence alone.
+  Four additional owner ideas are recorded in `TODO.md` for later discussion, not implementation:
+  settings-defaulted multi-currency till tender, reconsidering till customer search, a compact
+  horizontal loading-overlay redesign, and a conditional multi-branch dashboard summary.
+
+### Historical context retained below
+
+The dated entries below describe earlier branch states and investigation history. The snapshot
+above and `TODO.md` are authoritative for current work.
 - **2026-09-11 — Batch 8 catalogue governance is implemented locally on
   `feat/ux-catalogue-governance`, stacked on Batch 7.** Products now have additive Arabic content
   records behind one locale/fallback resolver used by admin reads/search/export, POS, global
@@ -674,6 +701,9 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-09-11** — Merged UX stack synchronized locally at `acaff8f`; post-merge documentation
+  records resolved owner issues, current verified gaps, and the complete supported scenario
+  catalogue. UX-034 was reopened because the delivered Staff link is not a staff-detail workspace.
 - **2026-09-11 (UX-030/031)** — Added reusable English-fallback/Arabic product content across
   catalogue consumers, immutable governed-product snapshots, permission-checked history, and a
   conflict-safe restore flow that preserves stock and appends a new version plus audit record.
