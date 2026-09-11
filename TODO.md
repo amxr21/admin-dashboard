@@ -138,10 +138,14 @@ earlier remote run to finish, but must retain the merge order.
   by `h2`, `force-ltr` on every identifier, `<bdi>` on actor email, no physical offsets, `min-w-0` +
   `truncate` on flex children). Live browser verification is deferred to the combined pass rather
   than restarting the owner's running dev server.
-- [ ] **Batch 13 — simplify customer handling at the till.** Remove the prominent customer-search
-  section from the primary sale flow. Keep anonymous checkout as the default and retain the shared
-  backend customer-association contract for future/secondary workflows unless the owner later asks
-  to remove the capability entirely.
+- [x] **Batch 13 — simplify customer handling at the till.** The customer-search section is gone
+  from the primary sale flow; the till now sells anonymously. Removed at the UI layer ONLY — the
+  shared backend contract is deliberately intact (`POST /pos/checkout` still accepts `customerId`,
+  `searchPosCustomers` still exists in `pos-api.ts`), so a future secondary workflow can attach a
+  customer without rebuilding the server side, and the decision stays reversible. The two tests
+  covering the removed lookup were replaced rather than deleted: one asserts no lookup renders, the
+  other that checkout never sends a `customerId`, so the new behaviour is pinned instead of merely
+  untested. Dead `pos.customer.*` keys removed from both locales.
 - [ ] **Batch 14 — loading-overlay visual redesign.** Replace the long vertical treatment with a
   compact horizontal flex-row component using the existing shared coordinator. Verify clear
   progress semantics, RTL ordering, reduced motion, focus continuity, and mobile/desktop fit.

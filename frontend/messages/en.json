@@ -2808,14 +2808,6 @@
     }
   },
   "pos": {
-    "customer": {
-      "label": "Customer",
-      "placeholder": "Search by name, email, or phone",
-      "hint": "Enter at least 2 characters",
-      "empty": "No matching customers",
-      "optional": "Optional — leave blank for a walk-in sale.",
-      "remove": "Remove"
-    },
     "title": "Till",
     "subtitle": "Scan items, take payment, print a receipt.",
     "scanLabel": "Scan or type a code",

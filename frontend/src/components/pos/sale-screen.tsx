@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   AlertTriangle,
@@ -10,9 +10,7 @@ import {
   Printer,
   RotateCcw,
   ScanLine,
-  Search,
   Trash2,
-  UserRound,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -48,11 +46,9 @@ import {
   parkSale,
   resumeParkedSale,
   scanProduct,
-  searchPosCustomers,
   voidSale,
   type ParkedSale,
   type CheckoutInput,
-  type PosCustomer,
 } from '@/lib/pos-api';
 import { requestIntentFor, type RequestIntent } from '@/lib/request-intent';
 import { addOrderNote } from '@/lib/orders-api';
@@ -188,12 +184,6 @@ export function SaleScreen() {
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [parkLabel, setParkLabel] = useState('');
   const [parkDialogOpen, setParkDialogOpen] = useState(false);
-  const [customerQuery, setCustomerQuery] = useState('');
-  const [customerResults, setCustomerResults] = useState<PosCustomer[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<PosCustomer | null>(null);
-  const [isSearchingCustomers, setIsSearchingCustomers] = useState(false);
-  const [activeCustomerIndex, setActiveCustomerIndex] = useState(-1);
-
   const scanField = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -206,60 +196,6 @@ export function SaleScreen() {
       });
   }, []);
 
-  useEffect(() => {
-    const query = customerQuery.trim();
-    if (selectedCustomer || query.length < 2) {
-      setCustomerResults([]);
-      setActiveCustomerIndex(-1);
-      setIsSearchingCustomers(false);
-      return;
-    }
-    let active = true;
-    const timer = setTimeout(() => {
-      setIsSearchingCustomers(true);
-      searchPosCustomers(query)
-        .then((customers) => {
-          if (active) {
-            setCustomerResults(customers);
-            setActiveCustomerIndex(customers.length ? 0 : -1);
-          }
-        })
-        .catch(() => {
-          if (active) {
-            setCustomerResults([]);
-            setActiveCustomerIndex(-1);
-          }
-        })
-        .finally(() => { if (active) setIsSearchingCustomers(false); });
-    }, 250);
-    return () => { active = false; clearTimeout(timer); };
-  }, [customerQuery, selectedCustomer]);
-
-  function selectCustomer(customer: PosCustomer) {
-    setSelectedCustomer(customer);
-    setCustomerQuery(customer.name);
-    setCustomerResults([]);
-    setActiveCustomerIndex(-1);
-  }
-
-  function handleCustomerSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (!customerResults.length) return;
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      setActiveCustomerIndex((current) => (current + 1) % customerResults.length);
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      setActiveCustomerIndex((current) => (current <= 0 ? customerResults.length - 1 : current - 1));
-    } else if (event.key === 'Enter' && activeCustomerIndex >= 0) {
-      event.preventDefault();
-      const customer = customerResults[activeCustomerIndex];
-      if (customer) selectCustomer(customer);
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      setCustomerResults([]);
-      setActiveCustomerIndex(-1);
-    }
-  }
 
   /** Display only — see the note at the top of this file. */
   const estimate = useMemo(
@@ -529,7 +465,6 @@ export function SaleScreen() {
                 : {}),
             }),
         ...(overrideToken ? { overrideToken } : {}),
-        ...(selectedCustomer ? { customerId: selectedCustomer.id } : {}),
         ...(pendingExchangeReturnId ? { exchangeReturnId: pendingExchangeReturnId } : {}),
       };
       const intent = requestIntentFor(checkoutInput, checkoutIntentRef.current);
@@ -576,8 +511,6 @@ export function SaleScreen() {
       // The exchange it was linked to is done — the next sale is ordinary
       // again, not another leg of the same exchange.
       setPendingExchangeReturnId(null);
-      setSelectedCustomer(null);
-      setCustomerQuery('');
       checkoutIntentRef.current = null;
       // The sale just decremented branch stock — the grid must reflect that
       // for the NEXT customer, or a just-sold-out item still shows as
@@ -656,65 +589,6 @@ export function SaleScreen() {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
       <div className="space-y-4">
-        <div className="space-y-2 rounded-lg border p-3">
-          <Label htmlFor="pos-customer-search">{t('customer.label')}</Label>
-          {selectedCustomer ? (
-            <div className="bg-muted/40 flex items-center justify-between gap-3 rounded-md px-3 py-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <UserRound className="text-muted-foreground size-4 shrink-0" aria-hidden />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium"><bdi dir="auto">{selectedCustomer.name}</bdi></p>
-                  <p className="text-muted-foreground force-ltr truncate text-xs">{selectedCustomer.phone ?? selectedCustomer.email}</p>
-                </div>
-              </div>
-              <Button type="button" variant="ghost" size="sm" onClick={() => { setSelectedCustomer(null); setCustomerQuery(''); }}>
-                {t('customer.remove')}
-              </Button>
-            </div>
-          ) : (
-            <div className="relative">
-              <Search className="text-muted-foreground pointer-events-none absolute start-3 top-3 size-4" aria-hidden />
-              <Input
-                id="pos-customer-search"
-                value={customerQuery}
-                onChange={(event) => { setCustomerQuery(event.target.value); setActiveCustomerIndex(-1); }}
-                onKeyDown={handleCustomerSearchKeyDown}
-                placeholder={t('customer.placeholder')}
-                className="ps-9"
-                autoComplete="off"
-                role="combobox"
-                aria-autocomplete="list"
-                aria-expanded={customerResults.length > 0}
-                aria-controls="pos-customer-results"
-                aria-activedescendant={activeCustomerIndex >= 0 ? `pos-customer-${customerResults[activeCustomerIndex]?.id}` : undefined}
-                aria-busy={isSearchingCustomers}
-              />
-              {customerQuery.trim().length > 0 && customerQuery.trim().length < 2 ? <p className="text-muted-foreground mt-1 text-xs">{t('customer.hint')}</p> : null}
-              {customerResults.length > 0 ? (
-                <ul id="pos-customer-results" role="listbox" className="bg-popover absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border p-1 shadow-md">
-                  {customerResults.map((customer, index) => (
-                    <li key={customer.id} role="none">
-                      <button
-                        id={`pos-customer-${customer.id}`}
-                        type="button"
-                        role="option"
-                        aria-selected={index === activeCustomerIndex}
-                        className="hover:bg-accent focus-visible:bg-accent aria-selected:bg-accent w-full rounded-sm px-3 py-2 text-start outline-none"
-                        onMouseEnter={() => setActiveCustomerIndex(index)}
-                        onClick={() => selectCustomer(customer)}
-                      >
-                        <span className="block text-sm font-medium"><bdi dir="auto">{customer.name}</bdi></span>
-                        <span className="text-muted-foreground force-ltr block truncate text-xs">{customer.phone ?? customer.email}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : customerQuery.trim().length >= 2 && !isSearchingCustomers ? <p className="text-muted-foreground mt-1 text-xs">{t('customer.empty')}</p> : null}
-            </div>
-          )}
-          <p className="text-muted-foreground text-xs">{t('customer.optional')}</p>
-        </div>
-
         <form onSubmit={(event) => void submitScan(event)} className="space-y-2">
           <Label htmlFor="pos-scan">{t('scanLabel')}</Label>
           <div className="flex gap-2">
