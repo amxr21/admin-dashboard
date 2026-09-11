@@ -80,6 +80,12 @@ pnpm db:deploy                                 # CI/prod: applies only
 
 Rules: never hand-edit a production database. Never `db push` against prod. Migration names describe the change (`add_user_email_index`, not `fix1`). Destructive migrations get a review **and** a backup snapshot before deploy.
 
+Production startup is also a migration gate: `npm start` runs
+`scripts/start-production.mjs`, which executes the guarded `prisma migrate deploy`
+path before importing `dist/server.js`. If migration deployment fails, that
+container exits without serving traffic. Keep `prisma` in runtime dependencies;
+do not rely on a host-dashboard pre-deploy command as the only schema safeguard.
+
 **If `migrate dev` says a migration is "applied but missing from the local migrations directory" and offers to reset:** do not accept it. That prompt cannot tell real drift (someone deleted a migration file) from harmless bookkeeping residue (a failed attempt that got rolled back, then retried under a new timestamp) — it raises the same alarm either way. Query `_prisma_migrations` directly first: a row with `rolled_back_at` set and `finished_at` null, immediately followed by a same-named migration that DID finish, is the harmless case — but `prisma migrate resolve --rolled-back <name>` will not clear it if the row is already marked rolled back (it's a no-op, and `migrate dev` will raise the same alarm again). Instead, avoid `migrate dev` for this migration entirely: confirm `prisma migrate deploy` reports no pending migrations (it doesn't run this reconciliation), generate the new migration's SQL with `prisma migrate diff --from-schema-datamodel <previous schema.prisma> --to-schema-datamodel <current schema.prisma> --script` (no DB connection needed), write it into a hand-created `prisma/migrations/<timestamp>_<name>/migration.sql`, then apply with `migrate deploy`. Never `migrate reset` against a shared database. Full incident: `.claude-workbook/errors-log.md`, 2026-07-31.
 
 ### 7. API versioning

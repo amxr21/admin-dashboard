@@ -1,5 +1,9 @@
 # TODO — the one list
 
+> Urgent production and UX findings reported on 2026-09-11 are inventoried one-by-one in
+> `URGENT_TODO.md`. The owner approved that queue on 2026-09-11; its production blockers now take
+> priority over the remaining enhancement batches.
+
 ## Technical UX delivery plan — owner direction, 2026-09-10
 
 ### Product and architecture rules

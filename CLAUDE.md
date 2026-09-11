@@ -486,27 +486,24 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **Active branch**: `fix/configuration-readiness-localization`, stacked after Batch 10 and the
-  documentation checkpoint. Two pre-existing untracked diagnostic artifacts
-  (`frontend/branch-sheet-open.png` and `frontend/scroll-check.mjs`) remain intentionally untouched.
-- **Completed in the correction stack**: Batch 10 hardened forgot-password privacy and abuse
-  controls. Batch 11 now derives diagnostics email readiness from the delivery service's exact
-  SMTP + enabled-setting + sender-address contract and returns stable codes localized by the
-  English/Arabic clients; no secret-bearing response fields were added.
-- **Next step**: publish Batch 11, then implement the real permission-aware staff-detail workspace
-  in Batch 12. Decide separately whether the future Admin role may view the non-secret
-  configuration reference. After the ordered correction/UX batches, proceed to **point 4**: the final
-  combined unit/type/lint/build/E2E, motion, accessibility, responsive, and native-Arabic gate.
-- **Blockers**: the production-safe mapping from legacy Owner/Manager/Fulfillment/Support/Demo to
-  Admin/Developer/Cashier is not approved. Production Sentry remains on hold after the trial ended,
-  and pull-request E2E remains disabled until its retired Vercel/Render target is redesigned for
-  Coolify.
-- **Context to remember**: do not add prepared roles now; future templates must be configurable.
-  Keep all corrections reusable, scalable, and clean. Do not claim UX-034 complete merely because
-  Staff links to the Branch roster. Do not start or close point 4 on focused test evidence alone.
-  Four additional owner ideas are recorded in `TODO.md` for later discussion, not implementation:
-  settings-defaulted multi-currency till tender, reconsidering till customer search, a compact
-  horizontal loading-overlay redesign, and a conditional multi-branch dashboard summary.
+- **Active branch**: `fix/urgent-organization-api-500`, based on merged `origin/dev`. Two
+  pre-existing untracked diagnostic artifacts (`frontend/branch-sheet-open.png` and
+  `frontend/scroll-check.mjs`) remain intentionally untouched.
+- **In progress**: URG-001 from `URGENT_TODO.md`. The healthy production DB connection plus three
+  failing features whose tables/columns arrived in consecutive migrations point to deployment
+  schema drift. Production startup now applies committed migrations before importing the HTTP
+  server and refuses to serve when migration deployment fails. This remains an evidence-backed
+  inference until the authenticated production Organization page can be checked after deployment.
+- **Next step**: finish the wider local gate, publish the URG-001 PR against `dev`, inspect its
+  GitHub checks, then stack URG-002 without waiting unnecessarily. Close URG-001 only after the
+  deployed authenticated page succeeds.
+- **Blockers**: final URG-001 production verification needs the branch merged/deployed and an
+  authenticated Owner/Developer session. The production-safe legacy-role migration mapping remains
+  unapproved; production Sentry remains on hold; pull-request E2E still targets retired hosting.
+- **Context to remember**: `URGENT_TODO.md` is owner-approved and now outranks enhancement work.
+  Preserve the one-task-at-a-time chat checklist and stack branches in that file's order. Keep the
+  role model headed toward Admin/Developer/Cashier without adding templates. Never claim a 500 is
+  fixed from local tests alone, and do not run point 4 until the urgent queue reaches its gate.
 
 ### Historical context retained below
 
