@@ -461,7 +461,7 @@ describe('approving a return', () => {
     const res = await request(app)
       .post(`/api/v1/returns/${id}/approve`)
       .set(auth(ownerToken))
-      .send({ resolution: 'REFUND', refundAmount: '999.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '999.00', restock: false });
 
     expect(res.status).toBe(400);
     expect((res.body as ErrorBody).error.details?.max).toBe('50.00');
@@ -478,7 +478,7 @@ describe('approving a return', () => {
     const res = await request(app)
       .post(`/api/v1/returns/${id}/approve`)
       .set(auth(ownerToken))
-      .send({ resolution: 'REFUND', refundAmount: '50.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '50.00', restock: false });
 
     expect(res.status).toBe(200);
     const body = res.body as ReturnBody;
@@ -650,14 +650,14 @@ describe('return window and restocking fee (B4.11)', () => {
     const overCap = await request(app)
       .post(`/api/v1/returns/${id}/approve`)
       .set(auth(ownerToken))
-      .send({ resolution: 'REFUND', refundAmount: '45.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '45.00', restock: false });
     expect(overCap.status).toBe(400);
     expect((overCap.body as ErrorBody).error.details?.max).toBe('40.00');
 
     const res = await request(app)
       .post(`/api/v1/returns/${id}/approve`)
       .set(auth(ownerToken))
-      .send({ resolution: 'REFUND', refundAmount: '40.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '40.00', restock: false });
     expect(res.status).toBe(200);
     expect((res.body as ReturnBody).data.return.restockingFeePercent).toBe('20.00');
   });
@@ -682,6 +682,7 @@ describe('return window and restocking fee (B4.11)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '50.00',
         restockingFeePercent: 0,
         restock: false,
@@ -704,6 +705,7 @@ describe('return window and restocking fee (B4.11)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '10.00',
         restockingFeePercent: 150,
         restock: false,
@@ -912,7 +914,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
     const res = await request(app)
       .post(`/api/v1/returns/${returnId}/approve`)
       .set(auth(ownerToken))
-      .send({ resolution: 'REFUND', refundAmount: '50.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '50.00', restock: false });
 
     expect(res.status).toBe(200);
 
@@ -938,6 +940,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         // 100.00 was the ceiling before the refusal; now only A's 2 count.
         refundAmount: '100.00',
         restock: false,
@@ -966,6 +969,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: true,
         // Three came back; only ONE was sellable.
@@ -1004,6 +1008,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: true,
         items: [
@@ -1037,6 +1042,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '0',
         restock: false,
         items: [{ returnItemId: rows[0]!.id, accepted: false }],
@@ -1058,6 +1064,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: false,
         items: [{ returnItemId: rows[0]!.id, accepted: true, acceptedQuantity: 5 }],
@@ -1080,6 +1087,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '0',
         restock: false,
         items: [{ returnItemId: rows[0]!.id, accepted: false, rejectionReason: 'All damaged' }],
@@ -1105,6 +1113,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: false,
         items: [{ returnItemId: 'not-a-line-on-this-return', accepted: true }],
@@ -1130,6 +1139,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: false,
         items: [
@@ -1168,7 +1178,7 @@ describe('a cashier cannot approve or reject alone (O9.7)', () => {
     const res = await request(app)
       .post(`/api/v1/returns/${id}/approve`)
       .set(auth(cashier.token))
-      .send({ resolution: 'REFUND', refundAmount: '25.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '25.00', restock: false });
 
     expect(res.status).toBe(403);
 
@@ -1216,6 +1226,7 @@ describe('a cashier cannot approve or reject alone (O9.7)', () => {
       .set(auth(cashier.token))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: false,
         overrideToken: approval.overrideToken,
@@ -1239,6 +1250,7 @@ describe('a cashier cannot approve or reject alone (O9.7)', () => {
       .set(auth(cashier.token))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: false,
         overrideToken: 'not-a-real-token',
@@ -1261,7 +1273,7 @@ describe('a cashier cannot approve or reject alone (O9.7)', () => {
     const res = await request(app)
       .post(`/api/v1/returns/${id}/approve`)
       .set(auth(manager.token))
-      .send({ resolution: 'REFUND', refundAmount: '25.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '25.00', restock: false });
 
     expect(res.status).toBe(200);
   });

@@ -611,8 +611,6 @@ export async function changeOrderStatus(id: string, input: ChangeStatusInput) {
     });
   }
 
-  assertCancellationReason(input);
-
   if (!canTransition(current.status, input.to)) {
     // Names the legal moves rather than just refusing — a bare "invalid
     // transition" leaves the caller guessing what would have worked.
@@ -621,6 +619,17 @@ export async function changeOrderStatus(id: string, input: ChangeStatusInput) {
       { field: 'to', allowed: nextStatuses(current.status) },
     );
   }
+
+  /**
+   * AFTER the transition check, deliberately.
+   *
+   * Running it first made a missing reason hijack every illegal-cancellation
+   * refusal: SHIPPED -> CANCELED reported `{ field: 'cancellationReason' }`
+   * instead of naming the legal moves, so the caller was told to supply a
+   * reason for a move that was never going to be allowed. Legality is decided
+   * first; only a move that COULD happen is then asked to justify itself.
+   */
+  assertCancellationReason(input);
 
   await prisma.$transaction(async (tx) => {
     await tx.order.update({

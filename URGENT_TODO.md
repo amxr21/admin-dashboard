@@ -305,16 +305,27 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       `bulkStatusBody` in `orders.route.ts`, `order-status-control.tsx`, `orders-table.tsx`,
       `orders-api.ts`. The reason travels in an options object rather than as more positional
       arguments — `(id, to, note, reason, reasonNote)` is unreadable at the call site.
-      **Verification for both:** frontend typecheck and targeted ESLint clean; en/ar parity
-      2302/2302 with 24 new keys per locale. **Backend typecheck could not run locally** — two
-      backend dev servers (PIDs 43392 and 14964) hold the Prisma Windows query-engine DLL, so
-      `prisma generate` fails with EPERM and the new enum types are absent from the local client.
-      Not resolved by killing them: they are the owner's. Backend lint passes (it needs no generated
-      client), and CI generates its own, so CI is the real gate for the backend half.
-- [ ] **URG-010 — Configurable order-cancellation reasons with Other.** Before cancelling, require a
-      reason from an approved catalogue; selecting `Other` reveals required free text. Persist and
-      audit the code/note and keep cancellation authorization and stock effects transactional.
-
+      **A real defect in the first attempt, caught by CI (PR #225) and then reproduced locally.**
+      `assertCancellationReason` ran BEFORE `canTransition`, so a missing reason hijacked every
+      illegal-cancellation refusal: `SHIPPED -> CANCELED` reported `{ field: 'cancellationReason' }`
+      instead of naming the legal moves, telling the caller to justify a move that was never going
+      to be allowed. 21 backend tests failed. The guard now runs AFTER the transition check —
+      legality is decided first, and only a move that COULD happen is then asked to justify itself.
+      **Test fallout, the URG-007 pattern repeating:** 19 existing REFUND sends and the transition
+      matrix's own `CANCELED` cases legitimately needed reasons (the matrix adds one ONLY for
+      `CANCELED`, since sending a reason on any other transition is itself refused). Five frontend
+      assertions also needed updating — `changeOrderStatus`/`bulkChangeOrderStatus` grew a fourth
+      argument, and both the bulk-cancel and refund-approve flows now require a reason before their
+      confirm button enables, which the tests now assert rather than route around.
+      **Verification:** after the owner allowed killing the two duplicate backend dev servers
+      (PIDs 43392/14964) that held the Prisma Windows query-engine DLL, `prisma generate` succeeded
+      and the previously blocked checks ran: backend typecheck and lint clean, frontend typecheck
+      and lint clean, en/ar parity 2302/2302 with 24 new keys per locale. The additive migration was
+      applied to `admin_dashboard_test` (loopback, name contains "test") and live parity then
+      reported "No difference detected". Backend returns 49/49, POS 75/75, orders 103/105 — the two
+      failures are `429`s in the unrelated goodwill-refund block (`POST /orders/:id/refund`), local
+      rate-limit noise from repeated runs, not this change. Frontend orders+returns 100/100 with 1
+      skipped. Full-suite runs were deliberately skipped per the owner's lighter-testing rule.
 ## U2 — shell sizing, scrolling, and dropdown reliability (P1)
 
 - [ ] **URG-011 — Reopen the double-scrollbar defect.** The supplied desktop screenshot proves the
