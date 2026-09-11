@@ -21,6 +21,7 @@ import {
   type SessionUser,
 } from '@/lib/auth-storage';
 import { ensureBranchScope } from '@/lib/branch-scope';
+import { resetSessionRecovery, SESSION_EXPIRED_EVENT } from '@/lib/session-recovery';
 
 /**
  * Session state for the app.
@@ -101,6 +102,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  useEffect(() => {
+    const expire = () => setUser(null);
+    window.addEventListener(SESSION_EXPIRED_EVENT, expire);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, expire);
+  }, []);
+
   // Hydrate from cache, then revalidate against the API.
   useEffect(() => {
     const cached = readUser();
@@ -158,6 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     writeSession(result.token, result.user);
+    resetSessionRecovery();
     await ensureBranchScope(result.user.role);
     setUser(result.user);
     return { status: 'SIGNED_IN', role: result.user.role };
@@ -170,6 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     writeSession(result.token, result.user);
+    resetSessionRecovery();
     await ensureBranchScope(result.user.role);
     setUser(result.user);
     // Returned for the same reason as `signIn`: a 2FA sign-in must land on

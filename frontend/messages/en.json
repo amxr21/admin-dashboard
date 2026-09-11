@@ -76,7 +76,8 @@
     "accountDeactivated": "This account has been deactivated.",
     "accessEnded": "This account's access period has ended.",
     "rateLimited": "Too many attempts from this address. Try again shortly.",
-    "haveResetCode": "Have a reset code?",
+    "sessionExpired": "Your session expired. Sign in again to continue where you left off.",
+    "forgotPassword": "Forgot your password?",
     "reset": {
       "title": "Set a new password",
       "subtitle": "Enter the code you were given, then choose a password.",
@@ -91,6 +92,19 @@
       "rateLimited": "Too many attempts from this address. Try again shortly.",
       "backToLogin": "Back to sign in",
       "done": "Password set. Sign in with your new password."
+    },
+    "forgot": {
+      "title": "Forgot your password?",
+      "subtitle": "Enter your email address and we'll send you a reset code.",
+      "email": "Email address",
+      "submit": "Send reset code",
+      "sending": "Sending…",
+      "invalidEmail": "Enter a valid email address.",
+      "rateLimited": "Too many attempts from this address. Try again shortly.",
+      "sentTitle": "Check your inbox",
+      "sentBody": "If that address has an account, a reset code is on its way. It expires shortly and can only be used once.",
+      "needCode": "Don't have a code?",
+      "requestOne": "Email me one"
     },
     "twoFactor": {
       "title": "Two-step verification",
@@ -139,6 +153,7 @@
     }
   },
   "nav": {
+    "configuration": "Configuration",
     "dashboard": "Dashboard",
     "orders": "Orders",
     "products": "Products",
@@ -148,6 +163,7 @@
     "discounts": "Discounts",
     "reviews": "Reviews",
     "delivery": "Delivery",
+    "customerCases": "Customer service",
     "returns": "Returns",
     "reports": "Reports",
     "settings": "Settings",
@@ -169,6 +185,8 @@
       "orders": "Orders",
       "customers": "Customers",
       "products": "Products",
+      "suppliers": "Suppliers",
+      "customerCases": "Customer cases",
       "noResults": "No matches"
     },
     "descriptions": {
@@ -210,6 +228,8 @@
       "default": "Default",
       "inactive": "Closed",
       "staffCount": "{count, plural, =0 {No staff} one {# person} other {# people}}",
+      "manageStaff": "Manage staff ({count})",
+      "manageStaffFor": "Manage staff for {name} ({count})",
       "noBranches": "This business has no branches yet. Add one before recording stock or taking orders.",
       "emptyTitle": "No businesses yet",
       "emptyDescription": "A business is the company that owns your shops — its name, address and tax id are what print on an invoice. Add one, then add the branches that trade under it.",
@@ -690,7 +710,9 @@
     "choose": "Choose…",
     "manageVariants": "Manage variants",
     "manageGallery": "Manage gallery",
-    "variantsAfterSave": "Save this product first — variants and gallery images attach to a real product record, which doesn't exist yet.",
+    "manageLocalizedContent": "Localized content",
+    "viewHistory": "Version history",
+    "variantsAfterSave": "Save this product first — localized content, variants and gallery images attach to a real product record, which doesn't exist yet.",
     "noOptions": "None available.",
     "errors": {
       "required": "This field is required.",
@@ -703,6 +725,7 @@
     },
     "discard": {
       "title": "Discard your unsaved changes?",
+      "description": "If you continue, the changes on this page will be lost.",
       "confirm": "Discard",
       "cancel": "Keep editing"
     },
@@ -1049,6 +1072,62 @@
     "altLabel": "Alt text",
     "altPlaceholder": "Describe this image for screen readers"
   },
+  "productContent": {
+    "title": "Localized content — {name}",
+    "subtitle": "Arabic catalogue copy. English remains the default content and fills any field left blank here.",
+    "fallbackHelp": "Blank fields automatically use the English value. Clearing every field removes this translation without affecting the product.",
+    "loading": "Loading localized content",
+    "retry": "Try again",
+    "save": "Save Arabic content",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "saved": "Arabic product content saved.",
+    "fields": {
+      "name": "Arabic name",
+      "description": "Arabic description",
+      "metaTitle": "Arabic meta title",
+      "metaDescription": "Arabic meta description"
+    },
+    "discard": {
+      "title": "Discard localized-content changes?",
+      "description": "The Arabic text you changed has not been saved.",
+      "keep": "Keep editing",
+      "confirm": "Discard"
+    }
+  },
+  "productHistory": {
+    "title": "Version history — {name}",
+    "subtitle": "Immutable snapshots of catalogue changes. Restoring creates another version; it never removes history.",
+    "loading": "Loading version history",
+    "empty": "No catalogue versions have been recorded yet.",
+    "retry": "Try again",
+    "version": "Version {version}",
+    "preview": "Preview restore",
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {page} of {total}",
+    "restoreTitle": "Restore version {version}?",
+    "restoreDescription": "Review the snapshot below. Current catalogue fields will be replaced, and this restore will be recorded as a new version.",
+    "stockUnaffected": "Stock quantities and movement history are not part of catalogue restore and will remain unchanged.",
+    "restore": "Restore this version",
+    "restoring": "Restoring…",
+    "cancel": "Cancel",
+    "restored": "Version {version} restored as a new catalogue version.",
+    "conflict": "This product changed after the preview loaded. Close this preview, review the newest version, and try again.",
+    "fallback": "Uses English fallback",
+    "sources": {
+      "CREATE": "Product created",
+      "UPDATE": "Product updated",
+      "TRANSLATION": "Localized content updated",
+      "RESTORE": "Earlier version restored"
+    },
+    "fields": {
+      "name": "Name",
+      "price": "Price",
+      "status": "Status",
+      "arabicName": "Arabic name"
+    }
+  },
   "notificationsBell": {
     "unread": "{count, plural, one {# unread notification} other {# unread notifications}}",
     "none": "Notifications",
@@ -1064,10 +1143,17 @@
       "placeholder": "Search notifications…"
     },
     "markAllRead": "Mark all as read",
+    "filters": {
+      "label": "Read status",
+      "all": "All notifications",
+      "unread": "Unread",
+      "read": "Read"
+    },
     "markedAllRead": "All notifications marked as read.",
     "loadFailed": "Couldn't load notifications.",
     "noResults": "No notifications match your search.",
     "empty": "No notifications yet.",
+    "open": "Read \"{title}\"",
     "dismiss": "Dismiss \"{title}\"",
     "dismissShort": "Dismiss",
     "confirmDismiss": "Dismiss this notification? This can't be undone.",
@@ -1619,7 +1705,21 @@
       "password": "Set a new password for {name}",
       "passwordShort": "Password",
       "resetToken": "Issue a reset token for {name}",
-      "invite": "Invite"
+      "invite": "Invite",
+      "manageBranchAssignments": "Manage branch assignments"
+    },
+    "bulk": {
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "confirmActivate": "Activate {count, plural, one {# account} other {# accounts}}?",
+      "confirmDeactivate": "Deactivate {count, plural, one {# account} other {# accounts}}?",
+      "description": "Each account is checked against the current access rules. Successful changes remain applied if another account is refused.",
+      "confirm": "Apply changes",
+      "cancel": "Cancel",
+      "applying": "Applying…",
+      "activated": "Activated {count, plural, one {# account} other {# accounts}}.",
+      "deactivated": "Deactivated {count, plural, one {# account} other {# accounts}}.",
+      "failed": "Could not update {count, plural, one {# account} other {# accounts}}. Those accounts remain selected."
     },
     "notice": {
       "created": "{name} can now sign in.",
@@ -1634,6 +1734,7 @@
       "save": "Save",
       "saving": "Saving…",
       "emailRequired": "Email is required.",
+      "emailInvalid": "Enter a valid email address.",
       "passwordHint": "At least {min} characters. You will need to give it to them directly.",
       "fields": {
         "email": "Email",
@@ -1690,14 +1791,6 @@
       "resetDone": "Returned to the default",
       "toggle": "{role} can open {area}"
     }
-  },
-  "staffRole": {
-    "DEVELOPER": "Developer",
-    "OWNER": "Owner",
-    "MANAGER": "Manager",
-    "FULFILLMENT": "Fulfillment",
-    "SUPPORT": "Support",
-    "DEMO": "Demo (read-only)"
   },
   "reports": {
     "title": "Reports",
@@ -2241,6 +2334,32 @@
     "dismiss": "Got it"
   },
   "diagnostics": {
+    "configuration": {
+      "title": "Configuration",
+      "subtitle": "What this deployment needs set up on the host, and what is set right now. Values are never shown — only whether each one is present.",
+      "environment": "Environment",
+      "appMode": "App mode",
+      "nodeEnv": "Node environment",
+      "corsOrigins": "Allowed origins",
+      "modeHint": "The mode selects which database and allowed-origin list the server uses. There is no fallback: a missing value stops the server from starting rather than pointing it somewhere unintended.",
+      "integrations": "Integrations",
+      "allConfigured": "Everything optional is configured.",
+      "someUnconfigured": "{count, plural, one {# integration is not configured.} other {# integrations are not configured.}}",
+      "stateConfigured": "Configured",
+      "statePartial": "Incomplete",
+      "stateMissing": "Not configured",
+      "openDashboard": "Open dashboard",
+      "secretsNote": "Required signing secrets are not listed: the server refuses to start without them, so this page loading at all confirms they are set.",
+      "refresh": "Refresh",
+      "retry": "Try again",
+      "keys": {
+        "email": "Outgoing email (SMTP)",
+        "uploads": "Image uploads",
+        "errorTracking": "Error tracking",
+        "logs": "Log aggregation",
+        "customerSignIn": "Customer Google sign-in"
+      }
+    },
     "label": "Developer diagnostics",
     "uptime": "Uptime",
     "databaseReachable": "Database reachable",
@@ -2567,7 +2686,66 @@
       "logins": "Sign-ins"
     }
   },
+  "customerCases": {
+    "title": "Customer service",
+    "subtitle": "Track customer questions and issues through a clear, owned workflow.",
+    "search": "Search cases",
+    "searchPlaceholder": "Case, customer, or order",
+    "all": "All",
+    "newCase": "New case",
+    "createDescription": "Record the issue, connect useful context, and assign an owner when known.",
+    "create": "Create case",
+    "created": "Customer case created",
+    "saving": "Saving…",
+    "emptyTitle": "No customer cases",
+    "emptyBody": "Create a case when a customer question or issue needs follow-up.",
+    "notLinked": "Not linked",
+    "unassigned": "Unassigned",
+    "noDescription": "No description recorded.",
+    "notes": "Case notes",
+    "noNotes": "No notes yet.",
+    "addNote": "Add note",
+    "saveNote": "Save note",
+    "unknownAuthor": "Former staff member",
+    "columns": {
+      "case": "Case",
+      "customer": "Customer",
+      "order": "Order",
+      "status": "Status",
+      "priority": "Priority",
+      "owner": "Owner",
+      "updated": "Updated"
+    },
+    "status": {
+      "OPEN": "Open",
+      "WAITING": "Waiting",
+      "RESOLVED": "Resolved",
+      "CLOSED": "Closed"
+    },
+    "priority": {
+      "NORMAL": "Normal",
+      "HIGH": "High",
+      "URGENT": "Urgent"
+    },
+    "form": {
+      "title": "Title",
+      "description": "Description",
+      "links": "Find related records or an owner",
+      "linksPlaceholder": "Search customers, orders, or staff",
+      "customers": "Customers",
+      "orders": "Orders",
+      "assignees": "Assignees"
+    }
+  },
   "pos": {
+    "customer": {
+      "label": "Customer",
+      "placeholder": "Search by name, email, or phone",
+      "hint": "Enter at least 2 characters",
+      "empty": "No matching customers",
+      "optional": "Optional — leave blank for a walk-in sale.",
+      "remove": "Remove"
+    },
     "title": "Till",
     "subtitle": "Scan items, take payment, print a receipt.",
     "scanLabel": "Scan or type a code",

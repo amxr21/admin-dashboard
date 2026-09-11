@@ -17,6 +17,8 @@ export interface SearchResults {
   orders: SearchHit[];
   customers: SearchHit[];
   products: SearchHit[];
+  suppliers: SearchHit[];
+  customerCases: SearchHit[];
 }
 
 export async function search(query: string): Promise<SearchResults> {

@@ -8,6 +8,8 @@ import {
   LockOpen,
   Pencil,
   Plus,
+  Power,
+  PowerOff,
   Search,
   Ticket,
   UserPlus,
@@ -22,6 +24,16 @@ import { StaffPasswordPanel } from '@/components/staff/staff-password-panel';
 import { ResetTokenPanel } from '@/components/staff/reset-token-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -45,6 +57,7 @@ import { useTableDensity } from '@/hooks/useTableDensity';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import {
   canModify,
+  bulkSetStaffActive,
   fetchStaff,
   issueStaffResetToken,
   unlockStaff,
@@ -91,7 +104,7 @@ function toRole(value: string): StaffRole | null {
 
 export function StaffTable() {
   const t = useTranslations('staff');
-  const tRole = useTranslations('staffRole');
+  const tRole = useTranslations('roles');
   const tTable = useTranslations('table');
   const tAudit = useTranslations('audit');
   const translateError = useTranslatedApiError();
@@ -122,6 +135,9 @@ export function StaffTable() {
   // Holds raw keystrokes; only the debounced value reaches the URL.
   const [searchInput, setSearchInput] = useState(search);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pendingLifecycle, setPendingLifecycle] = useState<boolean | null>(null);
+  const [isApplyingLifecycle, setIsApplyingLifecycle] = useState(false);
 
   const [editing, setEditing] = useState<StaffMember | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -221,6 +237,31 @@ export function StaffTable() {
       );
     } finally {
       setIssuingFor(null);
+    }
+  }
+
+  async function applyBulkLifecycle() {
+    if (pendingLifecycle === null || selectedIds.size === 0) return;
+
+    setIsApplyingLifecycle(true);
+    const target = pendingLifecycle;
+    try {
+      const outcome = await bulkSetStaffActive([...selectedIds], target);
+      if (outcome.succeeded.length > 0) {
+        toast.success(
+          t(target ? 'bulk.activated' : 'bulk.deactivated', { count: outcome.succeeded.length }),
+        );
+      }
+      if (outcome.failed.length > 0) {
+        toast.error(t('bulk.failed', { count: outcome.failed.length }));
+      }
+      setSelectedIds(new Set(outcome.failed.map((failure) => failure.id)));
+      await load();
+    } catch (caught) {
+      toast.error(translateError(caught));
+    } finally {
+      setIsApplyingLifecycle(false);
+      setPendingLifecycle(null);
     }
   }
 
@@ -509,6 +550,33 @@ export function StaffTable() {
         error={error}
         onRetry={() => void load()}
         density={densityOverride ?? undefined}
+        selectedIds={selectedIds}
+        onSelectionChange={setSelectedIds}
+        isRowSelectable={(member) =>
+          member.id !== user?.id && canModify(actorRole, member.role)
+        }
+        bulkActions={() => (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-11 sm:min-h-8"
+              onClick={() => setPendingLifecycle(true)}
+            >
+              <Power aria-hidden />
+              {t('bulk.activate')}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="min-h-11 sm:min-h-8"
+              onClick={() => setPendingLifecycle(false)}
+            >
+              <PowerOff aria-hidden />
+              {t('bulk.deactivate')}
+            </Button>
+          </div>
+        )}
         emptyMessage={
           // Filtered-empty and first-run-empty are different facts. Offering
           // "create the first staff member" to someone who simply filtered to
@@ -554,6 +622,34 @@ export function StaffTable() {
           void load();
         }}
       />
+
+      <AlertDialog
+        open={pendingLifecycle !== null}
+        onOpenChange={(open) => { if (!open) setPendingLifecycle(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingLifecycle
+                ? t('bulk.confirmActivate', { count: selectedIds.size })
+                : t('bulk.confirmDeactivate', { count: selectedIds.size })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{t('bulk.description')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isApplyingLifecycle}>{t('bulk.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isApplyingLifecycle}
+              onClick={(event) => {
+                event.preventDefault();
+                void applyBulkLifecycle();
+              }}
+            >
+              {isApplyingLifecycle ? t('bulk.applying') : t('bulk.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <InviteStaffSheet
         actorRole={actorRole}

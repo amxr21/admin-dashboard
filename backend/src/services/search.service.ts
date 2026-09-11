@@ -2,6 +2,10 @@ import type { StaffRole } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { canAccessArea, type Area } from '../config/roles.js';
+import {
+  localizeProductRows,
+  type ProductLocale,
+} from './product-content.service.js';
 
 /**
  * Cross-entity search — orders, customers, products by name/SKU — for the
@@ -44,24 +48,32 @@ export interface SearchResults {
   orders: SearchResult[];
   customers: SearchResult[];
   products: SearchResult[];
+  suppliers: SearchResult[];
+  customerCases: SearchResult[];
 }
 
 function money(value: { toFixed: (digits: number) => string }): string {
   return value.toFixed(2);
 }
 
-export async function search(role: StaffRole, query: string): Promise<SearchResults> {
+export async function search(
+  role: StaffRole,
+  query: string,
+  branchId: string | null,
+  locale: ProductLocale = 'en',
+): Promise<SearchResults> {
   const q = query.trim();
 
-  const empty: SearchResults = { orders: [], customers: [], products: [] };
+  const empty: SearchResults = { orders: [], customers: [], products: [], suppliers: [], customerCases: [] };
   if (q.length < MIN_QUERY_LENGTH) return empty;
 
   const canSee = (area: Area) => canAccessArea(role, area);
 
-  const [orders, customers, products] = await Promise.all([
+  const [orders, customers, products, suppliers, customerCases] = await Promise.all([
     canSee('orders')
       ? prisma.order.findMany({
           where: {
+            ...(branchId ? { branchId } : {}),
             OR: [
               { orderNumber: { contains: q } },
               { customer: { name: { contains: q } } },
@@ -86,14 +98,51 @@ export async function search(role: StaffRole, query: string): Promise<SearchResu
     canSee('products')
       ? prisma.product.findMany({
           where: {
-            OR: [{ name: { contains: q } }, { sku: { contains: q } }],
+            OR: [
+              { name: { contains: q } },
+              { sku: { contains: q } },
+              ...(locale === 'ar'
+                ? [{ translations: { some: { locale: 'ar', name: { contains: q } } } }]
+                : []),
+            ],
           },
           select: { id: true, name: true, sku: true },
           orderBy: { createdAt: 'desc' },
           take: MAX_RESULTS_PER_CATEGORY,
         })
       : Promise.resolve([]),
+    canSee('inventory')
+      ? prisma.supplier.findMany({
+          where: {
+            OR: [
+              { name: { contains: q } },
+              { email: { contains: q } },
+              { phone: { contains: q } },
+              { contactName: { contains: q } },
+            ],
+          },
+          select: { id: true, name: true, email: true, phone: true },
+          orderBy: { updatedAt: 'desc' },
+          take: MAX_RESULTS_PER_CATEGORY,
+        })
+      : Promise.resolve([]),
+    canSee('customers')
+      ? prisma.customerCase.findMany({
+          where: {
+            ...(branchId ? { branchId } : {}),
+            OR: [
+              { caseNumber: { contains: q } },
+              { title: { contains: q } },
+              { customer: { name: { contains: q } } },
+            ],
+          },
+          select: { id: true, caseNumber: true, title: true, customer: { select: { name: true } } },
+          orderBy: { updatedAt: 'desc' },
+          take: MAX_RESULTS_PER_CATEGORY,
+        })
+      : Promise.resolve([]),
   ]);
+  const localizedProducts = await localizeProductRows(products, locale);
 
   return {
     orders: orders.map((order) => ({
@@ -115,11 +164,25 @@ export async function search(role: StaffRole, query: string): Promise<SearchResu
       // single-record URL that doesn't exist anywhere in this app.
       href: `/admin/r/customers?search=${encodeURIComponent(customer.email)}`,
     })),
-    products: products.map((product) => ({
+    products: localizedProducts.map((product) => ({
       id: product.id,
-      title: product.name,
-      subtitle: product.sku,
-      href: `/admin/r/products?search=${encodeURIComponent(product.sku ?? product.name)}`,
+      title: String(product.name),
+      subtitle: typeof product.sku === 'string' ? product.sku : null,
+      href: `/admin/r/products?search=${encodeURIComponent(
+        typeof product.sku === 'string' ? product.sku : String(product.name)
+      )}`,
+    })),
+    suppliers: suppliers.map((supplier) => ({
+      id: supplier.id,
+      title: supplier.name,
+      subtitle: supplier.email ?? supplier.phone,
+      href: `/admin/inventory/suppliers?search=${encodeURIComponent(supplier.email ?? supplier.name)}`,
+    })),
+    customerCases: customerCases.map((customerCase) => ({
+      id: customerCase.id,
+      title: customerCase.caseNumber,
+      subtitle: customerCase.customer?.name ?? customerCase.title,
+      href: `/admin/customer-cases?search=${encodeURIComponent(customerCase.caseNumber)}`,
     })),
   };
 }

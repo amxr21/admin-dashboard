@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { ArrowLeft, ArrowRight, PackagePlus, RefreshCw } from 'lucide-react';
 
@@ -26,10 +26,15 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { useAuth } from '@/hooks/useAuth';
+import { useUrlState } from '@/hooks/useUrlState';
 import { canAccessArea, landingFor } from '@/config/areas';
+import {
+  DEFAULT_DASHBOARD_COMPARISON,
+  parseDashboardState,
+  rangeToDashboardParams,
+} from '@/lib/dashboard-state';
 import { fetchAudit, type AuditEntry } from '@/lib/audit-api';
 import {
-  defaultRange,
   deltaPercent,
   fetchFulfillmentHealth,
   fetchOrderValueDistribution,
@@ -43,7 +48,6 @@ import {
   profitCoverageOf,
   previousPeriod,
   samePeriodLastYear,
-  type DateRange,
   type FulfillmentHealth,
   type OrderValueDistribution,
   type Overview,
@@ -51,8 +55,6 @@ import {
   type StatusBreakdown,
   type TopProducts,
 } from '@/lib/reports-api';
-
-type Comparison = 'previous' | 'sameLastYear' | 'none';
 
 /**
  * The dashboard, on REAL data — now with a user-controlled range instead of a
@@ -90,9 +92,22 @@ export function DashboardOverview() {
   const canSeeReports = user ? canAccessArea(user.role, 'reports') : false;
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
+  const { values, setValues } = useUrlState({
+    from: '',
+    to: '',
+    comparison: DEFAULT_DASHBOARD_COMPARISON,
+  });
+  // Destructured so the memo depends on the three VALUES rather than the
+  // `values` object, which `useUrlState` rebuilds every render — depending on
+  // the object would recompute (and hand `load()` a new range identity) on
+  // every render, refetching the whole dashboard each time.
+  const { from: fromParam, to: toParam, comparison: comparisonParam } = values;
+  const dashboardState = useMemo(
+    () => parseDashboardState({ from: fromParam, to: toParam, comparison: comparisonParam }),
+    [fromParam, toParam, comparisonParam],
+  );
+  const { range, comparison } = dashboardState;
 
-  const [range, setRange] = useState<DateRange>(defaultRange);
-  const [comparison, setComparison] = useState<Comparison>('previous');
   const [overview, setOverview] = useState<Overview | null>(null);
   const [previousOverview, setPreviousOverview] = useState<Overview | null>(null);
   const [points, setPoints] = useState<RevenuePoint[]>([]);
@@ -201,6 +216,12 @@ export function DashboardOverview() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (dashboardState.needsNormalization) {
+      setValues({ from: null, to: null, comparison: null });
+    }
+  }, [dashboardState.needsNormalization, setValues]);
+
   // `previousOverview` is already null whenever comparison === 'none' (see
   // `load()`), so these fall through to `undefined` — no deltas rendered —
   // without needing to check `comparison` again here.
@@ -271,9 +292,23 @@ export function DashboardOverview() {
       <Reveal>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <DateRangePresetField range={range} onChange={setRange} idPrefix="dashboard" />
+            <DateRangePresetField
+              range={range}
+              onChange={(next) =>
+                setValues(rangeToDashboardParams(next), { history: 'push' })
+              }
+              idPrefix="dashboard"
+            />
 
-            <Select value={comparison} onValueChange={(value) => setComparison(value as Comparison)}>
+            <Select
+              value={comparison}
+              onValueChange={(value) =>
+                setValues(
+                  { comparison: value as typeof comparison },
+                  { history: 'push' },
+                )
+              }
+            >
               <SelectTrigger aria-label={t('comparison.label')} className="h-8 w-auto gap-1.5 text-sm">
                 <SelectValue />
               </SelectTrigger>

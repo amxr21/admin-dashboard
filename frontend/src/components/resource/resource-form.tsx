@@ -20,6 +20,8 @@ import { ImageUploadField } from '@/components/image-upload-field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ProductGalleryPanel } from '@/components/resource/product-gallery-panel';
+import { ProductContentPanel } from '@/components/resource/product-content-panel';
+import { ProductHistoryPanel } from '@/components/resource/product-history-panel';
 import { ProductVariantsPanel } from '@/components/resource/product-variants-panel';
 import {
   Select,
@@ -274,6 +276,8 @@ export function ResourceForm({
   // conditional `schema.resource === 'products'` check exists.
   const [variantsPanelOpen, setVariantsPanelOpen] = useState(false);
   const [galleryPanelOpen, setGalleryPanelOpen] = useState(false);
+  const [contentPanelOpen, setContentPanelOpen] = useState(false);
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
   const [isConfirmingDiscard, setIsConfirmingDiscard] = useState(false);
   const [relationOptions, setRelationOptions] = useState<
     Record<string, RelationOption[]>
@@ -600,7 +604,16 @@ export function ResourceForm({
 
             {schema.resource === 'products' ? (
               <div className="border-t pt-4">
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!isEdit}
+                    onClick={() => setContentPanelOpen(true)}
+                  >
+                    {t('manageLocalizedContent')}
+                  </Button>
                   <Button
                     type="button"
                     variant="outline"
@@ -618,6 +631,15 @@ export function ResourceForm({
                     onClick={() => setGalleryPanelOpen(true)}
                   >
                     {t('manageGallery')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!isEdit}
+                    onClick={() => setHistoryPanelOpen(true)}
+                  >
+                    {t('viewHistory')}
                   </Button>
                 </div>
                 {/* The dead end this replaces: these panels manage a
@@ -695,6 +717,23 @@ export function ResourceForm({
           productName={String(row.name ?? '')}
           open={galleryPanelOpen}
           onOpenChange={setGalleryPanelOpen}
+        />
+        <ProductContentPanel
+          productId={String(row.id)}
+          productName={String(row.name ?? '')}
+          open={contentPanelOpen}
+          onOpenChange={setContentPanelOpen}
+        />
+        <ProductHistoryPanel
+          productId={String(row.id)}
+          productName={String(row.name ?? '')}
+          open={historyPanelOpen}
+          onOpenChange={setHistoryPanelOpen}
+          onRestored={() => {
+            onSaved('updated', null);
+            setHistoryPanelOpen(false);
+            onOpenChange(false);
+          }}
         />
       </>
     ) : null}

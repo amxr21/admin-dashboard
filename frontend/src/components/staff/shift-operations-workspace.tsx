@@ -8,19 +8,25 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { useUrlState } from '@/hooks/useUrlState';
 
 type ShiftView = 'working' | 'approvals';
-const URL_DEFAULTS = { view: 'working' };
+const URL_DEFAULTS = { view: 'working', page: '1' };
 
 /** Operational presence and review are related, but remain distinct views. */
 export function ShiftOperationsWorkspace() {
   const t = useTranslations('shifts.workspace');
   const { values, setValues } = useUrlState(URL_DEFAULTS);
   const view: ShiftView = values.view === 'approvals' ? 'approvals' : 'working';
+  const page = Math.max(1, Number(values.page) || 1);
 
   return (
     <div className="space-y-5">
       <SegmentedControl
         value={view}
-        onChange={(next) => setValues({ view: next === 'working' ? null : next })}
+        onChange={(next) =>
+          setValues(
+            { view: next === 'working' ? null : next, page: null },
+            { history: 'push' },
+          )
+        }
         aria-label={t('label')}
         className="max-w-md"
         options={[
@@ -28,7 +34,18 @@ export function ShiftOperationsWorkspace() {
           { value: 'approvals', label: t('approvals') },
         ]}
       />
-      {view === 'working' ? <ShiftsTable openOnly /> : <ShiftApprovalQueue />}
+      {view === 'working' ? (
+        <ShiftsTable
+          openOnly
+          page={page}
+          onPageChange={(next) => setValues({ page: String(next) }, { history: 'push' })}
+        />
+      ) : (
+        <ShiftApprovalQueue
+          page={page}
+          onPageChange={(next) => setValues({ page: String(next) }, { history: 'push' })}
+        />
+      )}
     </div>
   );
 }

@@ -64,6 +64,24 @@ test('an empty business list offers a working creation action', async ({ page })
   await expect(page).toHaveURL(/\/admin\/branches\/new$/, { timeout: 15000 });
 });
 
+test('Staff links directly to branch assignments and identifies each branch action', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  await openPage(page, '/en/admin/staff');
+  await page.waitForTimeout(1_000);
+  expect(errors).toEqual([]);
+  await expect(page.getByRole('heading', { name: 'Staff' })).toBeVisible();
+  await page.getByRole('link', { name: 'Manage branch assignments' }).click();
+  await expect(page).toHaveURL(/\/admin\/branches$/);
+
+  await page.getByRole('button', { name: 'Manage staff for Marina (0)' }).click();
+  await expect(page.getByRole('dialog', { name: 'Who works at Marina' })).toBeVisible();
+  await expect(page.getByText('Role at this branch')).toBeVisible();
+});
+
 test('a branch drawer has one scrollable surface and keeps its actions reachable', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
   await page.route('**/api/v1/businesses', route => route.fulfill({ json: { data:

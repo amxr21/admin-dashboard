@@ -6,6 +6,7 @@ import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
 import { AppError } from '../errors/AppError.js';
 import { audit } from './audit.service.js';
+import { sendEmailToRecipients } from './email.service.js';
 
 /**
  * Admin-issued, single-use password reset tokens.
@@ -85,6 +86,72 @@ export async function createResetToken(userId: string, ttlMinutes: number = TOKE
   ]);
 
   return { token, expiresAt };
+}
+
+/**
+ * Self-service initiation: the locked-out person asks for their own token.
+ *
+ * ─── WHY THIS RETURNS NOTHING ────────────────────────────────────────
+ * The caller is unauthenticated and anonymous, so every observable —
+ * status code, body, and as far as practical timing — must be identical
+ * for a real address and an unknown one. Returning "sent" vs "no such
+ * account" would turn this endpoint into a staff-directory oracle: an
+ * attacker could enumerate who works here, then aim credential stuffing
+ * at addresses already known to be valid.
+ *
+ * ─── WHY AN INACTIVE ACCOUNT IS ALSO A SILENT NO-OP ──────────────────
+ * Same reasoning, one level deeper. A deactivated ex-employee's address
+ * must not be resettable, but refusing it DIFFERENTLY would leak that the
+ * account exists and is merely switched off.
+ *
+ * ─── WHY IT NEVER THROWS ON A MAIL FAILURE ───────────────────────────
+ * `sendEmailToRecipients` already returns false rather than throwing when
+ * SMTP is unconfigured or the send fails. Surfacing that to the caller
+ * would mean an install with no SMTP answers differently from one with
+ * it — the same leak again, in a quieter form. The failure is logged for
+ * an operator instead, which is who can actually act on it.
+ */
+export async function requestPasswordReset(req: Request, email: string): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true, name: true, isActive: true },
+  });
+
+  if (!user || !user.isActive) {
+    // Logged WITHOUT the address: this is an unauthenticated endpoint, so the
+    // log would otherwise accumulate a list of addresses probed by anyone.
+    req.log.info({ event: 'auth.password-reset.requested', delivered: false });
+    return;
+  }
+
+  const { token, expiresAt } = await createResetToken(user.id);
+
+  const minutes = Math.round((expiresAt.getTime() - Date.now()) / 60_000);
+  const delivered = await sendEmailToRecipients(
+    [user.email],
+    'Reset your password',
+    [
+      `Hello${user.name ? ` ${user.name}` : ''},`,
+      '',
+      'Use this one-time code to set a new password:',
+      '',
+      `    ${token}`,
+      '',
+      `The code expires in ${minutes} minutes and can only be used once.`,
+      'If you did not request this, you can ignore this message — your password has not changed.',
+    ].join('\n'),
+  );
+
+  req.log.info({ event: 'auth.password-reset.requested', delivered });
+
+  // The token itself is NEVER audited — `changes` records that a reset was
+  // asked for, not the credential that would let anyone act on it.
+  audit(req, {
+    action: 'user.password-reset.requested',
+    entity: 'user',
+    entityId: user.id,
+    changes: { delivered },
+  });
 }
 
 /**

@@ -10,6 +10,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { fetchRows, type ResourceRow } from '@/lib/resource-api';
 import { markAllNotificationsRead } from '@/lib/notifications-api';
+import {
+  announceNotificationsChanged,
+  subscribeToNotificationChanges,
+} from '@/lib/notification-events';
 
 /**
  * Unread notifications, in the top bar.
@@ -55,6 +59,18 @@ export function NotificationsBell() {
 
   useEffect(() => {
     refreshCount();
+    const unsubscribe = subscribeToNotificationChanges(refreshCount);
+    const interval = window.setInterval(refreshCount, 30_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshCount();
+    };
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      unsubscribe();
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, []);
 
   useEffect(() => {
@@ -85,6 +101,7 @@ export function NotificationsBell() {
       await markAllNotificationsRead();
       setUnread(0);
       setPreview([]);
+      announceNotificationsChanged();
     } catch {
       // Nothing to recover into here beyond leaving the count as-is — the
       // user can retry from the same dropdown.

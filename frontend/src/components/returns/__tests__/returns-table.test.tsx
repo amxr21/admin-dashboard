@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createElement, type ReactNode } from 'react';
+import { createElement, useEffect, useReducer, type ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 
 import { render, screen, waitFor, within } from '@/test/render';
@@ -20,12 +20,29 @@ import type { ReturnDetail, ReturnListRow } from '@/lib/returns-api';
 // Completes the module surface — the table's filters live in the URL, so it
 // calls `useRouter`/`usePathname` too. Inert stubs are enough here: nothing in
 // this file asserts on filtering, so the navigation never needs to round-trip.
+const urlState = vi.hoisted(() => {
+  let current = new URLSearchParams();
+  const listeners = new Set<() => void>();
+  return {
+    get: () => current,
+    reset: (query = '') => { current = new URLSearchParams(query); },
+    write: (href: string) => {
+      current = new URLSearchParams(href.split('?')[1] ?? '');
+      for (const listener of listeners) listener();
+    },
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+  };
+});
+
 vi.mock('@/i18n/navigation', () => ({
   Link: ({ href, children, ...props }: Record<string, unknown>) =>
     createElement('a', { href, ...props }, children as ReactNode),
   useRouter: () => ({
-    push: vi.fn(),
-    replace: vi.fn(),
+    push: urlState.write,
+    replace: urlState.write,
     back: vi.fn(),
     forward: vi.fn(),
     refresh: vi.fn(),
@@ -34,6 +51,14 @@ vi.mock('@/i18n/navigation', () => ({
   usePathname: () => '/admin/returns',
   redirect: vi.fn(),
   getPathname: ({ href }: { href: string }) => href,
+}));
+
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => {
+    const [, force] = useReducer((count: number) => count + 1, 0);
+    useEffect(() => urlState.subscribe(force), []);
+    return urlState.get();
+  },
 }));
 
 // ReturnDetailSheet reads the actor's role to decide whether to show the
@@ -117,6 +142,7 @@ function resolveList(rows: ReturnListRow[]) {
 }
 
 beforeEach(() => {
+  urlState.reset();
   fetchReturns.mockReset();
   fetchReturn.mockReset();
   approveReturn.mockReset();
@@ -131,6 +157,10 @@ describe('the queue', () => {
 
     expect(await screen.findByText('RMA-ABCD1234')).toBeInTheDocument();
     expect(screen.getByText('ORD-1024')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'ORD-1024' })).toHaveAttribute(
+      'href',
+      '/admin/orders/o1',
+    );
 
     // "Requested" is also a column header (when it was requested), so scope
     // to the row rather than the whole page.
@@ -154,6 +184,17 @@ describe('the queue', () => {
 
     const row = (await screen.findByText('RMA-ABCD1234')).closest('tr');
     expect(within(row as HTMLElement).queryByLabelText(/past the return window/i)).not.toBeInTheDocument();
+  });
+
+  it('opens a return directly from a durable detail URL', async () => {
+    urlState.reset('status=REQUESTED&detail=r1');
+    resolveList([makeRow()]);
+    fetchReturn.mockResolvedValue(makeDetail());
+
+    render(<ReturnsTable />);
+
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Arrived damaged');
+    expect(fetchReturn).toHaveBeenCalledWith('r1');
   });
 });
 

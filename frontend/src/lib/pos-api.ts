@@ -79,6 +79,20 @@ export async function browseCategories(): Promise<BrowseCategory[]> {
   return result.categories;
 }
 
+export interface PosCustomer {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+}
+
+export async function searchPosCustomers(query: string): Promise<PosCustomer[]> {
+  const result = await apiFetch<{ customers: PosCustomer[] }>(
+    `/pos/customers?q=${encodeURIComponent(query.trim())}`,
+  );
+  return result.customers;
+}
+
 export interface CheckoutLine {
   productId: string;
   quantity: number;

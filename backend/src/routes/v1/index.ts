@@ -26,6 +26,8 @@ import { branchesRouter } from './branches.route.js';
 import { shiftsRouter } from './shifts.route.js';
 import { posRouter } from './pos.route.js';
 import { organizationRouter } from './organization.route.js';
+import { customerCasesRouter } from './customer-cases.route.js';
+import { productContentRouter } from './product-content.route.js';
 
 /**
  * The v1 API surface. app.ts mounts this at '/api/v1'.
@@ -51,6 +53,7 @@ v1Router.use(staffRouter);
 v1Router.use(settingsRouter);
 v1Router.use(branchesRouter);
 v1Router.use(organizationRouter);
+v1Router.use(customerCasesRouter);
 v1Router.use(diagnosticsRouter);
 v1Router.use(reportsRouter);
 v1Router.use(demoDataRouter);
@@ -62,6 +65,7 @@ v1Router.use(notificationsRouter);
 v1Router.use(uploadRouter);
 v1Router.use(variantsRouter);
 v1Router.use(productImagesRouter);
+v1Router.use(productContentRouter);
 // The public storefront surface (/public/*). Unlike every router above it,
 // this one is NOT staff-authenticated — see public.route.ts for why that is
 // safe here and what replaces `authenticate` on the routes that need a shopper.

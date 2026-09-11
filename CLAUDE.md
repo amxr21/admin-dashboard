@@ -488,6 +488,50 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
+- **2026-09-11 — Batch 8 catalogue governance is implemented locally on
+  `feat/ux-catalogue-governance`, stacked on Batch 7.** Products now have additive Arabic content
+  records behind one locale/fallback resolver used by admin reads/search/export, POS, global
+  search and the public storefront. Governed product edits produce immutable snapshots with actor
+  metadata; history is permission checked and restore always creates a new version. Restore
+  previews use optimistic timestamps, preserve stock, and return safe conflicts for stale previews,
+  duplicate identities, or deleted category/tag references. Focused validation: 61 frontend tests
+  and 9 catalogue integration tests pass; both typechecks and targeted lint pass.
+- **2026-09-11 — Batch 7 operational navigation is implemented locally on
+  `feat/ux-operational-navigation`, stacked on Batch 6.** Return drawers have durable
+  `?detail=<id>` addresses while preserving list search/status/page context. Shift working and
+  approval views share URL-backed pagination. Staff tables provide selectable, confirmed bulk
+  activation/deactivation by sequentially reusing the existing rank/self/last-owner checked API;
+  partial successes remain applied and refusals remain selected. A central related-record helper
+  builds encoded destinations only when the current role can access them, and notification action
+  links now apply the same permission check. Focused validation: 53 frontend tests, frontend
+  typecheck, and targeted lint pass.
+- **2026-09-11 — Batch 6 notification center is implemented locally on
+  `feat/ux-notification-center`, stacked on Batch 5.** The page now reads the global unread total
+  from the server rather than counting only the current page, synchronizes mutations with the
+  shell bell, and refreshes the bell for newly arrived rows on visibility/interval boundaries.
+  Search, read status, and pagination are shareable URL state. Notification destinations accept
+  only internal authenticated admin paths. Rows expose separate native read/dismiss buttons rather
+  than invalid nested controls. Focused validation: 26 frontend tests and 8 backend tests pass;
+  both typechecks and targeted frontend lint pass.
+- **2026-09-11 — Batch 5 workflow resilience is implemented locally on
+  `feat/ux-workflow-resilience`.** Authenticated API 401s now use one reusable recovery contract:
+  clear invalid auth once, remember the locale-neutral admin destination, explain expiry at login,
+  and return there after password or 2FA authentication. A shared dirty-source registry protects
+  browser unload and ordinary in-app link navigation while existing form-specific discard dialogs
+  remain authoritative. Global search now includes independently permission-gated suppliers and
+  branch-scoped customer cases. Inventory search, low-stock mode, page and page size round-trip
+  through the URL for share/back/forward behavior. Focused validation: 51 frontend tests and 15
+  backend search tests pass; frontend/backend typechecks and targeted lint pass. Production build
+  remains intentionally deferred while the owner's Next dev server owns `.next`; GitHub PR/check
+  operations require refreshed `gh` authentication.
+- **2026-09-10 — Batch 4 customer service is under final verification.** A bespoke, branch-safe
+  customer-case workspace now provides reusable status, priority, ownership, related
+  customer/order records, and append-only notes through the existing `customers` permission
+  area—no Support-specific role or business-specific templates. The till can optionally link an
+  existing customer through a minimal lookup while anonymous sales remain the default. Order
+  search includes indexed normalized phone identity and payment references. Status changes write
+  a separate customer-delivery outcome and never roll back when SMTP is unavailable. Focused
+  backend tests pass 6/6; focused frontend tests pass 3/3. Full local and GitHub gates remain.
 - **`TODO.md` is the master task list — read it, not this file, for what's open.** This
   file describes what the system IS; that file says what is LEFT. **Every other task list has
   been folded into it** — `MASTER_TODO.md`, `O7-PLAN.md`, `.claude-workbook/NEXT-STEP.md` and
@@ -630,6 +674,23 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-09-11 (UX-030/031)** — Added reusable English-fallback/Arabic product content across
+  catalogue consumers, immutable governed-product snapshots, permission-checked history, and a
+  conflict-safe restore flow that preserves stock and appends a new version plus audit record.
+- **2026-09-11 (UX-026/027/028/029)** — Added durable return-detail URLs, URL-backed shift view
+  pagination, partial-failure-safe staff lifecycle bulk actions, selectable-row constraints, and
+  centralized permission-aware related-record destinations.
+- **2026-09-11 (UX-023/024/025)** — Corrected notification unread totals and shell/list
+  synchronization, added URL-backed read/search/page filters plus guarded internal destinations,
+  and replaced nested row controls with explicit accessible actions.
+- **2026-09-11 (UX-019/020/021/022)** — Added single-shot session-expiry recovery with return-to-
+  destination login, reusable unload/in-app dirty-form protection, supplier/customer-case global
+  search groups with permission and branch boundaries, and fully URL-backed inventory list state.
+- **2026-09-10 (UX-015/016/017/018)** — Added a reusable customer-case workspace, optional POS
+  customer association, indexed normalized-phone/payment-reference order discovery, and durable
+  customer-facing order-status email outcomes. Case access reuses the `customers` permission area
+  instead of introducing another role. Customer emails cannot make order transitions fail; only
+  recipient/channel/status/failure metadata is persisted, never the message body.
 - **2026-09-10 (UX-009)** — POS checkout is idempotent across lost responses and simultaneous
   submissions. A generic actor-scoped record stores a canonical request hash and response in the
   same transaction as order/payment/stock writes; mismatched reuse returns 409, successful replay

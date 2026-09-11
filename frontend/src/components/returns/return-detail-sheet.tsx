@@ -26,6 +26,7 @@ import { useAppSettings } from '@/components/providers/settings-provider';
 import { useAuth } from '@/hooks/useAuth';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { ApiError } from '@/lib/api';
+import { getRelatedRecordHref } from '@/lib/related-record-links';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
   approveReturn,
@@ -70,6 +71,9 @@ export function ReturnDetailSheet({
   const canViewHistory = canAccessArea((user?.role ?? 'DEMO') as StaffRole, 'staff');
 
   const [item, setItem] = useState<ReturnDetail | null>(null);
+  const orderHref = item
+    ? getRelatedRecordHref((user?.role ?? 'DEMO') as StaffRole, 'order', item.order.id)
+    : null;
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -117,7 +121,7 @@ export function ReturnDetailSheet({
     return () => {
       cancelled = true;
     };
-  }, [open, returnId, translateError]);
+  }, [open, returnId, translateError, defaultFeePercent]);
 
   if (!returnId) return null;
 
@@ -230,12 +234,16 @@ export function ReturnDetailSheet({
                 ) : null}
               </h2>
               <p className="text-muted-foreground mt-1 text-sm">
-                <Link
-                  href={`/admin/orders/${item.order.id}`}
-                  className="hover:text-primary underline-offset-4 hover:underline"
-                >
+                {orderHref ? (
+                  <Link
+                    href={orderHref}
+                    className="hover:text-primary underline-offset-4 hover:underline"
+                  >
+                    <span className="force-ltr">{item.order.orderNumber}</span>
+                  </Link>
+                ) : (
                   <span className="force-ltr">{item.order.orderNumber}</span>
-                </Link>
+                )}
                 {item.customer ? ` · ${item.customer.name}` : null}
               </p>
             </div>

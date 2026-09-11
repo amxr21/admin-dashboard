@@ -33,15 +33,18 @@ import { fetchShifts, type Shift, type ShiftListResult } from '@/lib/shifts-api'
 interface ShiftsTableProps {
   /** True for "who is on now", false for the full history. */
   openOnly?: boolean;
+  page?: number;
+  onPageChange?: (page: number) => void;
 }
 
-export function ShiftsTable({ openOnly = false }: ShiftsTableProps) {
+export function ShiftsTable({ openOnly = false, page: controlledPage, onPageChange }: ShiftsTableProps) {
   const t = useTranslations('shifts.table');
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
 
   const [result, setResult] = useState<ShiftListResult | null>(null);
-  const [page, setPage] = useState(1);
+  const [localPage, setLocalPage] = useState(1);
+  const page = controlledPage ?? localPage;
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [summaryFor, setSummaryFor] = useState<Shift | null>(null);
@@ -180,7 +183,7 @@ export function ShiftsTable({ openOnly = false }: ShiftsTableProps) {
           totalPages={result.totalPages}
           total={result.total}
           pageSize={result.pageSize}
-          onPageChange={setPage}
+          onPageChange={onPageChange ?? setLocalPage}
         />
       ) : null}
 

@@ -173,9 +173,17 @@ export function BranchesView() {
                   {branch.isDefault ? <Badge>{t('default')}</Badge> : null}
                   {!branch.isActive ? <Badge variant="outline">{t('inactive')}</Badge> : null}
 
-                  <Button variant="ghost" size="sm" onClick={() => setRoster(branch)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setRoster(branch)}
+                    aria-label={t('manageStaffFor', {
+                      name: branch.name,
+                      count: branch.staffCount,
+                    })}
+                  >
                     <Users className="size-4" aria-hidden />
-                    {t('staffCount', { count: branch.staffCount })}
+                    {t('manageStaff', { count: branch.staffCount })}
                   </Button>
 
                   <Button

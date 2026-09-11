@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ApiError } from '@/lib/api';
+import { isAccountEmailValid, normalizeAccountEmail } from '@/lib/identity-validation';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { ResetTokenPanel } from '@/components/staff/reset-token-panel';
@@ -58,7 +59,7 @@ export function InviteStaffSheet({
   onInvited,
 }: InviteStaffSheetProps) {
   const t = useTranslations('staff');
-  const tRole = useTranslations('staffRole');
+  const tRole = useTranslations('roles');
   const translateError = useTranslatedApiError();
   const { editPanelMode, defaultInviteRole } = useAppSettings();
 
@@ -104,13 +105,17 @@ export function InviteStaffSheet({
       setEmailError(t('form.emailRequired'));
       return;
     }
+    if (!isAccountEmailValid(email)) {
+      setEmailError(t('form.emailInvalid'));
+      return;
+    }
 
     setIsSaving(true);
     setError(null);
 
     try {
       const result = await inviteStaff({
-        email: email.trim(),
+        email: normalizeAccountEmail(email),
         ...(name.trim() ? { name: name.trim() } : {}),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
         role,
@@ -184,12 +189,16 @@ export function InviteStaffSheet({
               id="invite-email"
               type="email"
               value={email}
+              maxLength={255}
               onChange={(event) => {
                 setEmail(event.target.value);
                 setEmailError(null);
               }}
               aria-invalid={emailError ? true : undefined}
               aria-describedby={emailError ? 'invite-email-error' : undefined}
+              onBlur={() => {
+                if (email && !isAccountEmailValid(email)) setEmailError(t('form.emailInvalid'));
+              }}
             />
             {emailError ? (
               <p id="invite-email-error" role="alert" className="text-destructive text-sm">

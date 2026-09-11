@@ -12,6 +12,7 @@ import {
   RESOURCES_OUTSIDE_SIDEBAR,
   RESOURCE_ICONS,
   RESOURCE_ICON_FALLBACK,
+  CONFIGURATION_NAV_ITEM,
   SETTINGS_NAV_ITEM,
   type NavGroup,
   type NavItem,
@@ -129,6 +130,7 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
   }
 
   const canSeeSettings = canAccessArea(role, 'settings');
+  const isDeveloper = role === 'DEVELOPER';
 
   return (
     <nav className="flex flex-1 flex-col gap-2 overflow-y-auto" aria-label={t('dashboard')}>
@@ -180,16 +182,31 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
           always the last item regardless of what else gets added to the
           nav. See SETTINGS_NAV_ITEM's own comment for why this can't just be
           "declare it last in NAVIGATION". */}
-      {canSeeSettings ? (
+      {canSeeSettings || isDeveloper ? (
         <div className="mt-auto border-t pt-2">
           <ul className="space-y-0.5">
-            <NavLinkItem
-              item={SETTINGS_NAV_ITEM}
-              collapsed={collapsed}
-              isRtl={isRtl}
-              isActive={pathname.startsWith(SETTINGS_NAV_ITEM.href)}
-              onNavigate={onNavigate}
-            />
+            {canSeeSettings ? (
+              <NavLinkItem
+                item={SETTINGS_NAV_ITEM}
+                collapsed={collapsed}
+                isRtl={isRtl}
+                isActive={pathname.startsWith(SETTINGS_NAV_ITEM.href)}
+                onNavigate={onNavigate}
+              />
+            ) : null}
+
+            {/* Gated on the ROLE, not an area — see CONFIGURATION_NAV_ITEM.
+                Operating the deployment is not a business area, and every
+                area check would hand this to OWNER via `*`. */}
+            {isDeveloper ? (
+              <NavLinkItem
+                item={CONFIGURATION_NAV_ITEM}
+                collapsed={collapsed}
+                isRtl={isRtl}
+                isActive={pathname.startsWith(CONFIGURATION_NAV_ITEM.href)}
+                onNavigate={onNavigate}
+              />
+            ) : null}
           </ul>
         </div>
       ) : null}

@@ -64,6 +64,32 @@ export const passwordResetRateLimit = rateLimit({
 });
 
 /**
+ * Forgotten-password INITIATION (`POST /auth/forgot-password`).
+ *
+ * Deliberately not `passwordResetRateLimit`: that one sets
+ * `skipSuccessfulRequests`, which is right for redemption (only guesses are
+ * worth counting) and wrong here — initiation answers 200 whether or not the
+ * address exists, so skipping successes would count nothing at all and leave
+ * the endpoint unlimited.
+ *
+ * The limit protects two things the neutral response cannot: mailbox flooding
+ * of a real user, and using response TIME as the enumeration oracle that the
+ * identical body denies.
+ */
+export const passwordResetRequestRateLimit = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many attempts from this address. Try again shortly.',
+    },
+  },
+});
+
+/**
  * Self-service password change (`PATCH /auth/me/password`). Requires the
  * CURRENT password, verified via `bcrypt.compare` — that comparison is itself
  * a guessable-password oracle for whoever holds a valid session, so it needs

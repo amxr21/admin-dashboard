@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createElement, useEffect, useReducer, type ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 
-import { render, screen, waitFor } from '@/test/render';
+import { render, screen, waitFor, within } from '@/test/render';
 import { StaffTable } from '../staff-table';
 import type { StaffMember } from '@/lib/staff-api';
 
@@ -67,11 +67,14 @@ vi.mock('next/navigation', () => ({
   },
 }));
 
-const fetchStaff = vi.hoisted(() => vi.fn());
+const { fetchStaff, bulkSetStaffActive } = vi.hoisted(() => ({
+  fetchStaff: vi.fn(),
+  bulkSetStaffActive: vi.fn(),
+}));
 
 vi.mock('@/lib/staff-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/staff-api')>();
-  return { ...actual, fetchStaff };
+  return { ...actual, fetchStaff, bulkSetStaffActive };
 });
 
 vi.mock('@/hooks/useAuth', () => ({
@@ -111,6 +114,33 @@ function resolveWith(staff: StaffMember[], total = staff.length) {
 beforeEach(() => {
   urlState.reset();
   fetchStaff.mockReset();
+  bulkSetStaffActive.mockReset();
+});
+
+describe('StaffTable bulk lifecycle actions', () => {
+  it('confirms and deactivates only selectable staff accounts', async () => {
+    resolveWith([makeStaff({ id: 's1', name: 'Ali' })]);
+    bulkSetStaffActive.mockResolvedValue({ succeeded: ['s1'], failed: [] });
+    render(<StaffTable />);
+
+    await screen.findByText('Ali');
+    await userEvent.click(screen.getByRole('checkbox', { name: /select row/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^deactivate$/i }));
+
+    const dialog = await screen.findByRole('alertdialog');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /apply changes/i }),
+    );
+
+    await waitFor(() => expect(bulkSetStaffActive).toHaveBeenCalledWith(['s1'], false));
+  });
+
+  it('does not allow the signed-in account to be selected', async () => {
+    resolveWith([makeStaff({ id: 'me', name: 'Owner', role: 'OWNER' })]);
+    render(<StaffTable />);
+
+    expect(await screen.findByRole('checkbox', { name: /select row/i })).toBeDisabled();
+  });
 });
 
 describe('StaffTable filters', () => {

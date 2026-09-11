@@ -5,6 +5,7 @@ import { createElement, type ReactNode } from 'react';
 import { render, screen, waitFor } from '@/test/render';
 import { LoginForm } from '../login-form';
 import { ApiError } from '@/lib/api';
+import { resetSessionRecovery } from '@/lib/session-recovery';
 
 /**
  * Login is the one screen every user meets, and the one most likely to be
@@ -33,6 +34,8 @@ vi.mock('@/i18n/navigation', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.sessionStorage.clear();
+  resetSessionRecovery();
 });
 
 async function submit(email = 'a@b.com', password = 'secret123') {
@@ -64,6 +67,18 @@ describe('successful sign-in', () => {
     await submit('picker@example.com', 'correct-password');
 
     expect(replace).toHaveBeenCalledWith('/admin/orders');
+  });
+
+  it('returns to the saved internal destination after an expired session', async () => {
+    window.sessionStorage.setItem('admin-dashboard:session-return-path', '/admin/orders?status=PENDING');
+    signIn.mockResolvedValue({ status: 'SIGNED_IN', role: 'OWNER' });
+    render(<LoginForm />);
+
+    expect(await screen.findByText(/session expired/i)).toBeInTheDocument();
+    await submit('admin@example.com', 'correct-password');
+
+    expect(replace).toHaveBeenCalledWith('/admin/orders?status=PENDING');
+    expect(window.sessionStorage.getItem('admin-dashboard:session-return-path')).toBeNull();
   });
 
 });

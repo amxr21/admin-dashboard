@@ -12,12 +12,12 @@
 ### Approved implementation order
 
 - [x] **Batch 1 — UX-009: idempotent POS checkout.** Prevent retries after an uncertain response from creating duplicate orders, payments, or stock movements. Shipped on `fix/ux-009-idempotent-checkout`; the reusable backend primitive, client intent reuse, migration, concurrency coverage, and full GitHub CI gate are green in PR #195.
-- [ ] **Batch 2 — delivery operations:** implementation complete; full local gate and stacked PR publication pending. Keep permissions compatible with the three-role model rather than introducing a Manager role.
+- [x] **Batch 2 — delivery operations:** implemented on `feat/ux-delivery-operations`; the complete GitHub build/lint/typecheck/unit/integration/merge-integrity gate is green in PR #196. Permissions remain compatible with the three-role model without introducing another role.
   - [x] **UX-010:** branch-safe, URL-filtered delivery board with active/failed queues, responsive cards, bilingual UI, and explicit loading/error/empty states.
   - [x] **UX-011:** chronological assignment timeline merging assignment audits with delivery status history.
   - [x] **UX-012:** “Working now” is the default shift-operations view; approvals remain a separate shareable view.
   - [x] **Owner blocker:** automatically resolve the sole assigned branch for Cashiers and other branch-scoped employees while preserving “All branches” for Admin/Owner and Developer.
-  - [ ] Run the full local gate, publish `feat/ux-delivery-operations`, and verify the stacked GitHub checks.
+  - [x] Run the full local gate, publish `feat/ux-delivery-operations`, and verify the stacked GitHub checks.
 - [ ] **Batch 3 — purchasing and stock:** UX-013 supplier directory and UX-014 low-stock supplier outreach. Keep Supplier intentionally thin; do not expand this into purchase orders or add a procurement role.
   - [x] Inventory the existing Supplier model, API, receipt history, low-stock data, mail service, permissions, and audit paths.
   - [x] Add a reusable supplier directory API with create, edit, deactivate, search, and pagination contracts.
@@ -26,12 +26,51 @@
   - [x] Add a permission-checked, audited low-stock outreach endpoint that reuses the existing mail service.
   - [x] Add a prefilled but editable “email supplier” workflow with explicit loading, success, failure, and missing-email states.
   - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 2.
-- [ ] **Batch 4 — customer service:** UX-015 customer case workspace, UX-016 POS customer association, UX-017 payment/phone search, and UX-018 order-status notifications. Do not introduce a Support role.
-- [ ] **Batch 5 — workflow resilience:** UX-019 session-expiry recovery, UX-020 unsaved-change guards, UX-021 expanded global search, and UX-022 URL-backed inventory state.
-- [ ] **Batch 6 — notifications:** UX-023 unread-count correctness, UX-024 filters/action links, and UX-025 accessible row actions.
-- [ ] **Batch 7 — operational navigation:** UX-026 durable return-detail navigation, UX-027 URL-backed shift filters, UX-028 staff bulk lifecycle actions, and UX-029 related-record links.
-- [ ] **Batch 8 — catalogue governance:** UX-030 localized product content and UX-031 catalogue version history/restore.
-- [ ] **Batch 9 — remaining state and account workflows:** UX-032 URL-backed dashboard state, UX-033 normalized field validation, UX-034 staff detail workspace, and UX-035 forgotten-password initiation.
+- [ ] **Batch 4 — customer service:** UX-015 customer case workspace, UX-016 POS customer association, UX-017 payment/phone search, and UX-018 order-status notifications. Do not introduce a Support role; authorize through reusable permission areas.
+  - [x] Inventory existing customer, order, payment, POS, notification, email, branch, and audit contracts before choosing schema changes.
+  - [x] Define a reusable customer-case model and lifecycle with status, priority, ownership, notes, and related records; keep business-specific case templates out of scope.
+  - [x] Add branch-safe, validated, audited customer-case APIs and a bilingual responsive workspace with URL-backed filters and explicit states.
+  - [x] Add optional existing-customer association to POS checkout without duplicating customer identity snapshots or blocking anonymous sales.
+  - [x] Extend order search to normalized customer phone and payment reference through one server-side search contract.
+  - [x] Add customer-facing order-status notifications with explicit recipient/channel eligibility, delivery outcome, and privacy-safe auditing.
+  - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 3.
+- [ ] **Batch 5 — workflow resilience:** UX-019 session-expiry recovery, UX-020 unsaved-change guards, UX-021 expanded global search, and UX-022 URL-backed inventory state. Keep recovery and dirty-state handling reusable across business workflows; do not encode behavior around legacy role names.
+  - [x] Inventory the shared API/auth boundary, login redirect flow, dirty-form implementations, global-search contract, inventory filters, branch scope, and existing URL-state primitives.
+  - [x] Add one session-expiry recovery contract that clears invalid auth once, preserves the intended in-app destination, and avoids redirect loops or repeated expiry notices.
+  - [x] Add a reusable unsaved-change guard for browser unload and in-app navigation, then adopt it on the approved dirty forms without replacing their existing discard dialogs.
+  - [x] Expand global search through independently permission-gated, branch-safe result groups with lightweight result shapes and direct destinations.
+  - [x] Move inventory search/filter/pagination/view state into the URL with stable defaults, reset rules, and back/forward/share-link behavior.
+  - [ ] Add focused frontend/backend coverage, run the local gate, and publish a PR stacked on Batch 4.
+- [ ] **Batch 6 — notifications:** UX-023 unread-count correctness, UX-024 filters/action links, and UX-025 accessible row actions. Keep notification destinations and read-state reusable and permission-safe; do not specialize them around legacy roles.
+  - [x] Inventory the notification API, bell, list, permissions, read-state transitions, destinations, and existing coverage.
+  - [x] Make unread totals consistent after individual/bulk read actions, refreshes, and concurrent notification arrival.
+  - [x] Add stable URL-backed notification filters and permission-safe direct action destinations.
+  - [x] Give every notification row an explicit keyboard- and screen-reader-accessible action contract without turning the whole row into an ambiguous control.
+  - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 5.
+- [ ] **Batch 7 — operational navigation:** UX-026 durable return-detail navigation, UX-027 URL-backed shift filters, UX-028 staff bulk lifecycle actions, and UX-029 related-record links. Extend shared URL/action/link contracts and keep lifecycle authorization permission-based rather than tied to legacy role names.
+  - [x] Inventory return detail routing, shift filter state, staff lifecycle APIs/selections, related entities, permissions, and current coverage.
+  - [x] Give return details a durable address and preserve list context when entering and leaving a record.
+  - [x] Move approved shift filters/views into stable URL state with clean defaults and back/forward/share behavior.
+  - [x] Add validated, permission-checked staff bulk lifecycle actions with partial-failure-safe feedback.
+  - [x] Add contextual related-record links through reusable destination helpers, exposing only destinations the current user can access.
+  - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 6.
+- [ ] **Batch 8 — catalogue governance:** UX-030 localized product content and UX-031 catalogue version history/restore. Keep localization and versioning behind shared product contracts so future languages and catalogue fields do not require page-local schema forks.
+  - [x] Inventory the product schema, resource metadata/forms, import/export paths, audit records, permissions, and existing product coverage before choosing additive storage contracts.
+  - [x] Define one reusable localized-content contract with an explicit fallback locale and validation shared by create, edit, read, search, POS, and import/export paths.
+  - [x] Add bilingual product-content editing and rendering with clear fallback behavior, without duplicating the canonical product identity or stock/price fields.
+  - [x] Add immutable catalogue versions for governed product changes with actor, timestamp, change summary, and a permission-checked detail/history API.
+  - [x] Add an explicit restore preview and confirmation flow that creates a new version rather than deleting history, with conflict-safe validation and audit coverage.
+  - [ ] Add focused backend/frontend coverage, complete the accessibility/responsive review, run the local gate, and publish a PR stacked on Batch 7.
+- [ ] **Batch 9 — remaining state and account workflows:** UX-032 URL-backed dashboard state, UX-033 normalized field validation, UX-034 staff detail workspace, and UX-035 forgotten-password initiation. Keep state, validation, staff presentation, and account recovery behind reusable contracts; do not encode business-specific roles or expose whether an account exists.
+  - [x] Inventory dashboard state, shared form/API validators, staff routes/data/actions, authentication recovery primitives, permissions, and existing coverage.
+  - [x] Move approved dashboard filters and view state into stable URL parameters with clean defaults and back/forward/share behavior.
+  - [x] Centralize normalization and field-specific validation at request boundaries, then reuse matching constraints and messages in affected forms.
+  - [x] Add a permission-aware staff detail workspace that composes reusable identity, branch, activity, and account-action sections without introducing new role types.
+  - [x] Add forgotten-password initiation with one neutral response for known and unknown addresses, bounded token handling, audit-safe logging, and accessible bilingual UI states.
+  - [x] Add focused backend/frontend coverage, complete the accessibility/responsive review, and run the local gate. Full suites pass (backend 1178/1178 across 56 files; frontend 1204 passed/1 pre-existing skip across 151 files), both typechecks and `eslint src` are clean on both sides, and en/ar parity holds at 19/19. Live browser review of `/forgot-password` at 390 px and 1440 px in English and Arabic: correct `dir`, real translated copy, an LTR-forced email field inside the RTL page, an associated label, no horizontal overflow, a working keyboard path and no console errors. An unknown address still renders the neutral confirmation and removes the form.
+  - [x] Consolidate account recovery onto one address. `/forgot-password` was folded into `/reset-password`: requesting a code and redeeming one are the same task minutes-to-days apart, so a second page left the emailed code pointing somewhere other than where it was requested. The request step is a collapsed section above the redemption form, which stays the default because most arrivals already hold a code.
+  - [x] Add an owner-facing configuration reference at `/admin/configuration` (DEVELOPER-only). `GET /diagnostics/configuration` reports app mode, allowed-origin COUNT, and per-integration configured/partial/missing state with the impact of each gap. Booleans and links only — the response is asserted against live secret values in `diagnostics-configuration.test.ts`, so adding a value, host or prefix fails the suite. The three required signing secrets are deliberately absent: the server cannot boot without them, so the page loading proves they are set.
+  - [ ] Publish a PR stacked on Batch 8.
 - [ ] **Role simplification foundation:** replace the currently enabled role set with Admin, Developer, and Cashier after approving the production-safe legacy-role mapping and migration. Prepared role templates remain out of scope.
 
 For each batch: work on its own branch, run the relevant local gate, publish the remote branch, verify the GitHub checks, summarize the result, then begin the next batch.

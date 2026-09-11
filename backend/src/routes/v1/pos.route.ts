@@ -16,9 +16,11 @@ import {
   parkSale,
   resumeParkedSale,
   scanProduct,
+  searchPosCustomers,
   voidSale,
 } from '../../services/pos.service.js';
 import { getOpenShift } from '../../services/shifts.service.js';
+import { productLocaleFromHeader } from '../../services/product-content.service.js';
 
 /**
  * The till (O5).
@@ -60,7 +62,11 @@ posRouter.get('/pos/scan', ...guard, async (req, res) => {
   // Stock is reported for the branch the till is standing in — the number the
   // cashier can actually reach. `withBranchContext` resolves it from the
   // switcher's header.
-  const product = await scanProduct(parsed.data.code, req.branchId ?? null);
+  const product = await scanProduct(
+    parsed.data.code,
+    req.branchId ?? null,
+    productLocaleFromHeader(req.get('accept-language')),
+  );
 
   res.status(200).json({ data: { product } });
 });
@@ -96,6 +102,7 @@ posRouter.get('/pos/browse', ...guard, async (req, res) => {
     ids: parsed.data.ids
       ? parsed.data.ids.split(',').map((id) => id.trim()).filter(Boolean)
       : undefined,
+    locale: productLocaleFromHeader(req.get('accept-language')),
   });
 
   res.status(200).json({ data: { products } });
@@ -113,6 +120,18 @@ posRouter.get('/pos/browse/categories', ...guard, async (_req, res) => {
   const categories = await browseCategories();
 
   res.status(200).json({ data: { categories } });
+});
+
+const customerSearchQuery = z.object({
+  q: z.string().trim().min(2).max(120),
+});
+
+posRouter.get('/pos/customers', ...guard, async (req, res) => {
+  const parsed = customerSearchQuery.safeParse(req.query);
+  if (!parsed.success) {
+    throw AppError.badRequest('Enter at least two characters', parsed.error.flatten());
+  }
+  res.json({ data: { customers: await searchPosCustomers(parsed.data.q) } });
 });
 
 const checkoutSchema = z.object({

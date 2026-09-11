@@ -8,6 +8,7 @@ import { PageTitleProvider } from '@/components/shell/page-title';
 import { AuthGuard } from '@/components/auth/auth-guard';
 import { SchemaProvider } from '@/components/providers/schema-provider';
 import { SettingsProvider } from '@/components/providers/settings-provider';
+import { UnsavedChangesProvider } from '@/components/providers/unsaved-changes-provider';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from '@/i18n/navigation';
 import type { StaffRole } from '@/config/areas';
@@ -30,6 +31,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       {user ? (
         <SchemaProvider>
         <SettingsProvider>
+        <UnsavedChangesProvider>
         <PageTitleProvider>
         <BreadcrumbProvider>
         <AppShell
@@ -48,6 +50,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         </AppShell>
         </BreadcrumbProvider>
         </PageTitleProvider>
+        </UnsavedChangesProvider>
         </SettingsProvider>
         </SchemaProvider>
       ) : null}

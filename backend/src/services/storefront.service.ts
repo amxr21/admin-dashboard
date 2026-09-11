@@ -6,6 +6,7 @@ import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { SETTINGS } from '../config/settings.config.js';
 import { getSettingValue } from './settings.service.js';
+import type { ProductLocale } from './product-content.service.js';
 
 /**
  * The public storefront's business logic: catalogue, cart, wishlist, checkout.
@@ -38,6 +39,9 @@ const PUBLIC_PRODUCT_SELECT = {
   price: true,
   imageUrl: true,
   stock: true,
+  translations: {
+    select: { locale: true, name: true, description: true },
+  },
   category: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.ProductSelect;
 
@@ -78,14 +82,17 @@ export interface PublicProduct {
  * `stock` is published as a real count (see the field's own note) — clamped at
  * 0 so a negative figure from a manual correction never renders as "-2 left".
  */
-function toPublicProduct(product: PublicProductRow): PublicProduct {
+function toPublicProduct(product: PublicProductRow, locale: ProductLocale = 'en'): PublicProduct {
   const stock = Math.max(0, product.stock);
+  const translation = locale === 'en'
+    ? undefined
+    : product.translations.find((entry) => entry.locale === locale);
 
   return {
     id: product.id,
     slug: product.slug,
-    name: product.name,
-    description: product.description,
+    name: translation?.name ?? product.name,
+    description: translation?.description ?? product.description,
     price: product.price.toFixed(2),
     image: product.imageUrl,
     stock,
@@ -102,13 +109,13 @@ function toPublicProduct(product: PublicProductRow): PublicProduct {
  */
 const PUBLIC_PRODUCT_WHERE = { status: ProductStatus.ACTIVE } satisfies Prisma.ProductWhereInput;
 
-export async function listPublicProducts(): Promise<PublicProduct[]> {
+export async function listPublicProducts(locale: ProductLocale = 'en'): Promise<PublicProduct[]> {
   const products = await prisma.product.findMany({
     where: PUBLIC_PRODUCT_WHERE,
     select: PUBLIC_PRODUCT_SELECT,
     orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
   });
-  return products.map(toPublicProduct);
+  return products.map((product) => toPublicProduct(product, locale));
 }
 
 export interface PublicMenuCategory {
@@ -124,7 +131,7 @@ export interface PublicMenuCategory {
  * one definition. Empty categories are omitted — a heading with nothing under
  * it reads as a bug to a shopper.
  */
-export async function getPublicMenu(): Promise<PublicMenuCategory[]> {
+export async function getPublicMenu(locale: ProductLocale = 'en'): Promise<PublicMenuCategory[]> {
   const categories = await prisma.category.findMany({
     orderBy: { name: 'asc' },
     select: {
@@ -145,12 +152,15 @@ export async function getPublicMenu(): Promise<PublicMenuCategory[]> {
       id: category.id,
       title: category.name,
       slug: category.slug,
-      items: category.products.map(toPublicProduct),
+      items: category.products.map((product) => toPublicProduct(product, locale)),
     }));
 }
 
 /** One product by slug, for the storefront's product page. */
-export async function getPublicProductBySlug(slug: string): Promise<PublicProduct> {
+export async function getPublicProductBySlug(
+  slug: string,
+  locale: ProductLocale = 'en',
+): Promise<PublicProduct> {
   const product = await prisma.product.findFirst({
     where: { slug, ...PUBLIC_PRODUCT_WHERE },
     select: PUBLIC_PRODUCT_SELECT,
@@ -158,7 +168,7 @@ export async function getPublicProductBySlug(slug: string): Promise<PublicProduc
 
   if (!product) throw AppError.notFound('Product not found');
 
-  return toPublicProduct(product);
+  return toPublicProduct(product, locale);
 }
 
 // ─── Storefront configuration ───────────────────────────────────────

@@ -11,9 +11,11 @@ import {
   History,
   LayoutDashboard,
   LogIn,
+  MessagesSquare,
   Package,
   RotateCcw,
   ScanLine,
+  ServerCog,
   Settings,
   ShoppingCart,
   Star,
@@ -97,6 +99,7 @@ export const NAVIGATION: readonly NavGroup[] = [
     labelKey: 'people',
     items: [
       { href: '/admin/delivery', labelKey: 'delivery', icon: Truck, area: 'delivery' },
+      { href: '/admin/customer-cases', labelKey: 'customerCases', icon: MessagesSquare, area: 'customers' },
     ],
   },
   {
@@ -136,6 +139,22 @@ export const SETTINGS_NAV_ITEM: NavItem = {
   labelKey: 'settings',
   icon: Settings,
   area: 'settings',
+};
+
+/**
+ * Configuration reference — DEVELOPER-only, so it carries NO `area`.
+ *
+ * Areas describe the business (orders, products, staff) and OWNER holds `*`,
+ * which would hand this to an owner as well. Operating the deployment is not
+ * a business area, so the render site gates it on the ROLE instead — the same
+ * distinction `diagnostics.route.ts` draws for `requireRole` over
+ * `requireArea`. Hiding the link is presentation only; the API refuses
+ * everyone else regardless.
+ */
+export const CONFIGURATION_NAV_ITEM: NavItem = {
+  href: '/admin/configuration',
+  labelKey: 'configuration',
+  icon: ServerCog,
 };
 
 /**

@@ -5,6 +5,7 @@ import { AppError } from '../../errors/AppError.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { effectiveRole, withBranchContext } from '../../middleware/branch-context.js';
 import { search } from '../../services/search.service.js';
+import { productLocaleFromHeader } from '../../services/product-content.service.js';
 
 /**
  * Cross-entity search (C4.2) — orders, customers, products, backing the
@@ -34,6 +35,11 @@ searchRouter.get('/search', authenticate, withBranchContext, async (req, res) =>
   // every area the caller can reach, so searching with the global role would
   // hand back records from areas they cannot open at this branch — a read
   // path around the area guard, and one nobody would think to check.
-  const data = await search(effectiveRole(req), parsed.data.q);
+  const data = await search(
+    effectiveRole(req),
+    parsed.data.q,
+    req.branchId ?? null,
+    productLocaleFromHeader(req.get('accept-language')),
+  );
   res.status(200).json({ data });
 });

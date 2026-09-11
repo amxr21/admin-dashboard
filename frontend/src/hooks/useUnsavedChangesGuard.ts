@@ -1,6 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+
+import {
+  isUnsavedNavigationBypassed,
+  registerDirtySource,
+} from '@/lib/unsaved-changes';
 
 /**
  * Warns before the browser discards a dirty form — tab close, reload,
@@ -24,10 +29,18 @@ import { useEffect } from 'react';
  * always reflects the CURRENT dirty state, not the state at mount.
  */
 export function useUnsavedChangesGuard(isDirty: boolean): void {
+  const source = useRef(Symbol('dirty-form'));
+
+  useEffect(() => {
+    if (!isDirty) return;
+    return registerDirtySource(source.current);
+  }, [isDirty]);
+
   useEffect(() => {
     if (!isDirty) return;
 
     function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (isUnsavedNavigationBypassed()) return;
       // Chrome ignores a custom message and shows its own generic text;
       // other browsers vary. `preventDefault` (and the legacy
       // `returnValue` assignment) is what actually triggers the prompt —
