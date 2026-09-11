@@ -3,6 +3,27 @@ import { AppError } from '../errors/AppError.js';
 import { Sentry } from '../sentry.js';
 import { isProduction } from '../config/env.js';
 
+interface BodyParserError {
+  status?: unknown;
+  type?: unknown;
+}
+
+function normalizeRequestError(err: unknown): AppError | null {
+  if (typeof err !== 'object' || err === null) return null;
+
+  const parserError = err as BodyParserError;
+
+  if (parserError.status === 400 && parserError.type === 'entity.parse.failed') {
+    return AppError.badRequest('Request body must be valid JSON');
+  }
+
+  if (parserError.status === 413 && parserError.type === 'entity.too.large') {
+    return AppError.payloadTooLarge();
+  }
+
+  return null;
+}
+
 /**
  * The single place an error turns into an HTTP response.
  *
@@ -32,20 +53,22 @@ export function errorHandler(
   }
 
   // ─── Expected failure: safe to show the caller ──────────────────
-  if (err instanceof AppError) {
+  const expectedError = err instanceof AppError ? err : normalizeRequestError(err);
+
+  if (expectedError) {
     req.log.warn({
       event: 'http.request.rejected',
-      status: err.statusCode,
-      errorCode: err.code,
-      error: err.message,
+      status: expectedError.statusCode,
+      errorCode: expectedError.code,
+      error: expectedError.message,
     });
 
-    res.status(err.statusCode).json({
+    res.status(expectedError.statusCode).json({
       error: {
-        code: err.code,
-        message: err.message,
+        code: expectedError.code,
+        message: expectedError.message,
         requestId: req.requestId,
-        ...(err.details === undefined ? {} : { details: err.details }),
+        ...(expectedError.details === undefined ? {} : { details: expectedError.details }),
       },
     });
     return;

@@ -31,6 +31,35 @@ describe('GET /api/v1/health', () => {
   });
 });
 
+describe('JSON request boundary', () => {
+  it('returns a request-correlated 400 JSON envelope for malformed JSON', async () => {
+    const res = await request(createApp())
+      .post('/api/v1/pos/checkout')
+      .set('Content-Type', 'application/json')
+      .send('{"lines":');
+    const body = res.body as ErrorEnvelope;
+
+    expect(res.status).toBe(400);
+    expect(res.type).toBe('application/json');
+    expect(body.error.code).toBe('BAD_REQUEST');
+    expect(body.error.message).toBe('Request body must be valid JSON');
+    expect(body.error.requestId).toBe(res.headers['x-request-id']);
+  });
+
+  it('returns a request-correlated 413 JSON envelope for oversized JSON', async () => {
+    const res = await request(createApp())
+      .post('/api/v1/pos/checkout')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ note: 'x'.repeat(1_048_577) }));
+    const body = res.body as ErrorEnvelope;
+
+    expect(res.status).toBe(413);
+    expect(res.type).toBe('application/json');
+    expect(body.error.code).toBe('PAYLOAD_TOO_LARGE');
+    expect(body.error.requestId).toBe(res.headers['x-request-id']);
+  });
+});
+
 /**
  * Browser chrome requests these from every origin it loads. Left unhandled
  * they reach the 404 handler and emit a WARN per request — noise that trains

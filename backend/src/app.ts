@@ -17,8 +17,9 @@ import { v1Router } from './routes/v1/index.js';
  * Middleware ORDER is load-bearing — do not shuffle these:
  *   1. helmet        → security headers on everything, including errors
  *   2. cors          → reject disallowed origins before doing any work
- *   3. json parser   → body available to handlers
- *   4. requestContext→ req.log exists from here on; everything below can log
+ *   3. requestContext→ req.log exists before parsing, so malformed JSON still
+ *                      receives the shared error envelope and requestId
+ *   4. json parser   → body available to handlers
  *   5. browser noise → favicon/robots answered before they can become 404 WARNs
  *   6. rate limit    → AFTER requestContext so a 429 is still logged with a
  *                      requestId, but BEFORE routes so it costs no DB work
@@ -42,10 +43,13 @@ export function createApp(): Express {
     }),
   );
 
-  // 1mb is generous for a JSON admin API and caps trivial payload-flood abuse.
-  app.use(express.json({ limit: '1mb' }));
-
   app.use(requestContext);
+
+  // 1mb is generous for a JSON admin API and caps trivial payload-flood abuse.
+  // Request context must precede this parser: body-parser reports malformed or
+  // oversized JSON through the error chain, which needs req.log/requestId to
+  // produce the same safe JSON envelope as route-level failures.
+  app.use(express.json({ limit: '1mb' }));
 
   // Browser chrome requests these from EVERY origin it loads, unasked — open
   // the API in a tab and you get a 404 WARN per request forever. They are not

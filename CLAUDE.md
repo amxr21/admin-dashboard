@@ -486,16 +486,19 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **Active branch**: `fix/urgent-customer-cases-api-500`, stacked directly on URG-001 PR #217. Two
+- **Active branch**: `fix/urgent-pos-checkout-api-500`, stacked directly on URG-002 PR #218. Two
   pre-existing untracked diagnostic artifacts (`frontend/branch-sheet-open.png` and
   `frontend/scroll-check.mjs`) remain intentionally untouched.
-- **In progress**: URG-002. The exact deployed Customer Cases URL reaches the normal unauthenticated
-  401 boundary; its first authenticated list query touches the table added by migration
-  `20260910150000_add_customer_service_workspace`. Route, service, schema, and migration agree, and
-  the migrated integration database serves the same query. Evidence points to the same skipped
-  production migration class addressed by parent PR #217, not an independent endpoint-code bug.
-- **Next step**: finish Customer Cases list-state coverage and local gates, publish its PR against
-  the URG-001 branch, then start URG-003 on top without waiting unnecessarily.
+- **In progress**: URG-003 implementation and local verification are complete. A valid fake
+  unauthenticated production checkout reaches the normal JSON 401 boundary. The first authenticated
+  checkout query reads `idempotency_records`, added by migration
+  `20260910120000_add_idempotency_records`, so skipped production migrations remain the strongest
+  cause of the reported 500. The independent parser-boundary defect is fixed: request context now
+  exists before JSON parsing, malformed JSON returns the shared `400 BAD_REQUEST` envelope, and
+  oversized JSON returns `413 PAYLOAD_TOO_LARGE`, both with correlated request IDs. Focused tests pass
+  77/77; backend lint, type-check, build, and merge-integrity checks pass.
+- **Next step**: commit and publish URG-003 against the URG-002 branch, inspect GitHub checks, then
+  start URG-004 directly on top. Final checkout acceptance remains authenticated post-deploy.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.

@@ -39,10 +39,24 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       addressed by parent PR #217, not a second endpoint defect. Exact-query, empty, paginated,
       forbidden, and invalid-input regression coverage is being completed on this stacked branch;
       final closure awaits an authenticated post-deploy check.
-- [ ] **URG-003 — POS checkout returns 500.** Reproduce `POST /api/v1/pos/checkout` using the exact
+- [*] **URG-003 — POS checkout returns 500.** Reproduce `POST /api/v1/pos/checkout` using the exact
       failing request shape without exposing customer/payment data, correlate its request ID,
       identify whether the failure is validation, migration, stock, tender, or transaction related,
       and make expected business refusals return actionable 4xx reason codes instead of 500.
+      Active branch: `fix/urgent-pos-checkout-api-500`, stacked on URG-002 PR #218. A valid fake,
+      unauthenticated checkout payload reaches the deployed authentication guard and returns the
+      normal JSON 401 envelope. After authentication, checkout first reads `idempotency_records`,
+      introduced by migration `20260910120000_add_idempotency_records`; this precedes every sale
+      write and is the strongest direct explanation for the reported production 500 when migrations
+      were skipped. The migrated integration suite proves successful atomic checkout, retry-safe
+      replay, stock/tender refusals, and structured 4xx responses. Separately, a malformed JSON probe
+      exposed a real shared defect: `express.json()` ran before request context, so the final error
+      handler had no logger/request ID and Express fell back to an HTML 500. The branch now creates
+      request context before parsing and normalizes malformed JSON to `400 BAD_REQUEST` and bodies
+      over 1 MB to `413 PAYLOAD_TOO_LARGE`, both in the shared JSON envelope with a correlated request
+      ID and without logging request bodies. Focused health/POS tests pass 77/77; lint, type-check,
+      build, and merge-integrity checks pass. Remaining acceptance: publish the stacked PR, then run
+      an authenticated checkout after parent PR #217 deploys its migration gate.
 - [ ] **URG-004 — Production release/schema integrity check.** Verify that every migration required
       by the merged stack is deployed exactly once, the generated Prisma client matches the running
       schema, and Organization, Customer Cases, and Checkout share no hidden production-only
