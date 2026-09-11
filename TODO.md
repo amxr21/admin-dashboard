@@ -41,7 +41,12 @@
   - [x] Expand global search through independently permission-gated, branch-safe result groups with lightweight result shapes and direct destinations.
   - [x] Move inventory search/filter/pagination/view state into the URL with stable defaults, reset rules, and back/forward/share-link behavior.
   - [ ] Add focused frontend/backend coverage, run the local gate, and publish a PR stacked on Batch 4.
-- [ ] **Batch 6 — notifications:** UX-023 unread-count correctness, UX-024 filters/action links, and UX-025 accessible row actions.
+- [ ] **Batch 6 — notifications:** UX-023 unread-count correctness, UX-024 filters/action links, and UX-025 accessible row actions. Keep notification destinations and read-state reusable and permission-safe; do not specialize them around legacy roles.
+  - [x] Inventory the notification API, bell, list, permissions, read-state transitions, destinations, and existing coverage.
+  - [x] Make unread totals consistent after individual/bulk read actions, refreshes, and concurrent notification arrival.
+  - [x] Add stable URL-backed notification filters and permission-safe direct action destinations.
+  - [x] Give every notification row an explicit keyboard- and screen-reader-accessible action contract without turning the whole row into an ambiguous control.
+  - [ ] Add focused backend/frontend coverage, run the local gate, and publish a PR stacked on Batch 5.
 - [ ] **Batch 7 — operational navigation:** UX-026 durable return-detail navigation, UX-027 URL-backed shift filters, UX-028 staff bulk lifecycle actions, and UX-029 related-record links.
 - [ ] **Batch 8 — catalogue governance:** UX-030 localized product content and UX-031 catalogue version history/restore.
 - [ ] **Batch 9 — remaining state and account workflows:** UX-032 URL-backed dashboard state, UX-033 normalized field validation, UX-034 staff detail workspace, and UX-035 forgotten-password initiation.

@@ -1069,10 +1069,17 @@
       "placeholder": "Search notifications…"
     },
     "markAllRead": "Mark all as read",
+    "filters": {
+      "label": "Read status",
+      "all": "All notifications",
+      "unread": "Unread",
+      "read": "Read"
+    },
     "markedAllRead": "All notifications marked as read.",
     "loadFailed": "Couldn't load notifications.",
     "noResults": "No notifications match your search.",
     "empty": "No notifications yet.",
+    "open": "Read \"{title}\"",
     "dismiss": "Dismiss \"{title}\"",
     "dismissShort": "Dismiss",
     "confirmDismiss": "Dismiss this notification? This can't be undone.",

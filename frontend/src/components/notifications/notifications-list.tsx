@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { CheckCheck, Search, Trash2, X } from 'lucide-react';
+import { CheckCheck, ExternalLink, Search, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -19,12 +19,16 @@ import { ErrorSection } from '@/components/errors/error-section';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useUrlState } from '@/hooks/useUrlState';
+import { Link } from '@/i18n/navigation';
 import { deleteRow, fetchRows, type ResourceRow } from '@/lib/resource-api';
 import { markAllNotificationsRead, markNotificationRead } from '@/lib/notifications-api';
+import { announceNotificationsChanged, getSafeNotificationLink } from '@/lib/notification-events';
 
 /**
  * The full notifications list — a bespoke card-based view, not the generic
@@ -45,13 +49,16 @@ export function NotificationsList() {
   const formatter = useFormatter();
   const translateError = useTranslatedApiError();
   const { editPanelMode } = useAppSettings();
+  const { values, setValues } = useUrlState({ page: '1', search: '', status: 'all' });
 
   const [rows, setRows] = useState<ResourceRow[] | null>(null);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [page, setPage] = useState(1);
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
+  const page = Math.max(1, Number(values.page) || 1);
+  const search = values.search?.trim() ?? '';
+  const status = values.status === 'read' || values.status === 'unread' ? values.status : 'all';
+  const [searchInput, setSearchInput] = useState(search);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMarkingAll, setIsMarkingAll] = useState(false);
@@ -60,41 +67,57 @@ export function NotificationsList() {
 
   // Debounced, same 300ms as every other search box in the app.
   useEffect(() => {
-    const timer = setTimeout(() => setSearch(searchInput.trim()), 300);
+    const timer = setTimeout(() => {
+      const next = searchInput.trim();
+      if (next !== search) setValues({ search: next || null, page: null });
+    }, 300);
     return () => clearTimeout(timer);
-  }, [searchInput]);
+  }, [search, searchInput, setValues]);
+
+  useEffect(() => setSearchInput(search), [search]);
 
   const load = useCallback(() => {
     setIsLoading(true);
     setError(null);
 
-    fetchRows('notifications', {
-      page,
-      pageSize: PAGE_SIZE,
-      sort: 'createdAt',
-      dir: 'desc',
-      ...(search ? { search } : {}),
-    })
-      .then((result) => {
+    Promise.all([
+      fetchRows('notifications', {
+        page,
+        pageSize: PAGE_SIZE,
+        sort: 'createdAt',
+        dir: 'desc',
+        ...(search ? { search } : {}),
+        ...(status === 'all' ? {} : { filters: { isRead: String(status === 'read') } }),
+      }),
+      fetchRows('notifications', { pageSize: 1, filters: { isRead: 'false' } }),
+    ])
+      .then(([result, unreadResult]) => {
         setRows(result.rows);
         setTotal(result.total);
         setTotalPages(result.totalPages);
+        setUnreadCount(unreadResult.total);
       })
       .catch((caught: unknown) => setError(translateError(caught)))
       .finally(() => setIsLoading(false));
-  }, [page, search, translateError]);
+  }, [page, search, status, translateError]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const unreadCount = rows?.filter((row) => !row.isRead).length ?? 0;
-
   async function markAllRead() {
     setIsMarkingAll(true);
     try {
       await markAllNotificationsRead();
-      setRows((current) => current?.map((row) => ({ ...row, isRead: true })) ?? current);
+      if (status === 'unread') {
+        setRows([]);
+        setTotal(0);
+        setTotalPages(1);
+      } else {
+        setRows((current) => current?.map((row) => ({ ...row, isRead: true })) ?? current);
+      }
+      setUnreadCount(0);
+      announceNotificationsChanged();
       toast.success(t('markedAllRead'));
     } catch (caught) {
       toast.error(translateError(caught));
@@ -114,10 +137,19 @@ export function NotificationsList() {
       );
       try {
         await markNotificationRead(String(row.id));
+        if (status === 'unread') {
+          setRows((current) => current?.filter((item) => item.id !== row.id) ?? current);
+          setTotal((current) => Math.max(0, current - 1));
+        }
+        setUnreadCount((current) => Math.max(0, current - 1));
+        announceNotificationsChanged();
       } catch {
         // A failed read-marking must not block reading the content the user
         // already has open in front of them — it just stays unread for next
         // time, which is the safe direction to fail in.
+        setRows((current) =>
+          current?.map((item) => (item.id === row.id ? { ...item, isRead: false } : item)) ?? current,
+        );
       }
     }
   }
@@ -127,6 +159,10 @@ export function NotificationsList() {
       await deleteRow('notifications', id);
       setRows((current) => current?.filter((row) => row.id !== id) ?? current);
       setTotal((current) => Math.max(0, current - 1));
+      if (!rows?.find((row) => String(row.id) === id)?.isRead) {
+        setUnreadCount((current) => Math.max(0, current - 1));
+      }
+      announceNotificationsChanged();
       if (openRow?.id === id) setOpenRow(null);
     } catch (caught) {
       toast.error(translateError(caught));
@@ -150,12 +186,28 @@ export function NotificationsList() {
               value={searchInput}
               onChange={(event) => {
                 setSearchInput(event.target.value);
-                setPage(1);
               }}
               placeholder={t('search.placeholder')}
               className="ps-9"
             />
           </div>
+        </div>
+
+        <div className="min-w-44 space-y-2">
+          <Label htmlFor="notifications-status">{t('filters.label')}</Label>
+          <Select
+            value={status}
+            onValueChange={(value) => setValues({ status: value, page: null }, { history: 'push' })}
+          >
+            <SelectTrigger id="notifications-status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('filters.all')}</SelectItem>
+              <SelectItem value="unread">{t('filters.unread')}</SelectItem>
+              <SelectItem value="read">{t('filters.read')}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <Button
@@ -186,11 +238,12 @@ export function NotificationsList() {
             const createdAt = row.createdAt ? new Date(String(row.createdAt)) : null;
 
             return (
-              <li key={id}>
+              <li key={id} className="bg-card hover:bg-muted/50 flex items-start gap-2 rounded-lg border p-2 transition-colors">
                 <button
                   type="button"
                   onClick={() => void openNotification(row)}
-                  className="bg-card hover:bg-muted/50 flex w-full items-start gap-3 rounded-lg border p-4 text-start transition-colors"
+                  className="focus-visible:ring-ring flex min-w-0 flex-1 items-start gap-3 rounded-md p-2 text-start outline-none focus-visible:ring-2"
+                  aria-label={t('open', { title: String(row.title ?? '') })}
                 >
                   <span
                     aria-hidden
@@ -217,25 +270,17 @@ export function NotificationsList() {
                     ) : null}
                   </div>
 
-                  <span
-                    role="button"
-                    tabIndex={0}
+                </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
                     aria-label={t('dismiss', { title: String(row.title ?? '') })}
-                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 rounded-md p-1.5"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setPendingDeleteId(id);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return;
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setPendingDeleteId(id);
-                    }}
+                    className="text-muted-foreground hover:text-destructive shrink-0"
+                    onClick={() => setPendingDeleteId(id)}
                   >
                     <X className="size-4" aria-hidden />
-                  </span>
-                </button>
+                  </Button>
               </li>
             );
           })}
@@ -252,7 +297,7 @@ export function NotificationsList() {
               variant="outline"
               size="sm"
               disabled={page <= 1 || isLoading}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              onClick={() => setValues({ page: String(Math.max(1, page - 1)) }, { history: 'push' })}
             >
               {tCommon('previous')}
             </Button>
@@ -263,7 +308,7 @@ export function NotificationsList() {
               variant="outline"
               size="sm"
               disabled={page >= totalPages || isLoading}
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              onClick={() => setValues({ page: String(Math.min(totalPages, page + 1)) }, { history: 'push' })}
             >
               {tCommon('next')}
             </Button>
@@ -295,13 +340,13 @@ export function NotificationsList() {
                 <p className="text-sm text-pretty">{String(openRow.body)}</p>
               ) : null}
 
-              {openRow.link ? (
-                <a
-                  href={String(openRow.link)}
-                  className="text-primary text-sm underline"
-                >
-                  {t('openLink')}
-                </a>
+              {getSafeNotificationLink(openRow.link) ? (
+                <Button asChild>
+                  <Link href={getSafeNotificationLink(openRow.link)!}>
+                    <ExternalLink className="icon-directional" aria-hidden />
+                    {t('openLink')}
+                  </Link>
+                </Button>
               ) : null}
 
               <div className="flex justify-end border-t pt-4">

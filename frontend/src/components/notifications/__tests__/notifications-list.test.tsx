@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createElement, useEffect, useReducer, type ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 
 import { render, screen, waitFor, within } from '@/test/render';
@@ -23,6 +24,38 @@ const deleteRow = vi.hoisted(() => vi.fn());
 const markAllNotificationsRead = vi.hoisted(() => vi.fn());
 const markNotificationRead = vi.hoisted(() => vi.fn());
 
+const urlState = vi.hoisted(() => {
+  let current = new URLSearchParams();
+  const listeners = new Set<() => void>();
+  return {
+    get: () => current,
+    reset: () => { current = new URLSearchParams(); },
+    write: (href: string) => {
+      current = new URLSearchParams(href.split('?')[1] ?? '');
+      for (const listener of listeners) listener();
+    },
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+  };
+});
+
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ href, children, ...props }: Record<string, unknown>) =>
+    createElement('a', { href, ...props }, children as ReactNode),
+  useRouter: () => ({ push: urlState.write, replace: urlState.write }),
+  usePathname: () => '/admin/notifications',
+}));
+
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => {
+    const [, force] = useReducer((count: number) => count + 1, 0);
+    useEffect(() => urlState.subscribe(force), []);
+    return urlState.get();
+  },
+}));
+
 vi.mock('@/lib/resource-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/resource-api')>();
   return { ...actual, fetchRows, deleteRow };
@@ -46,16 +79,23 @@ function makeRow(overrides: Partial<ResourceRow> = {}): ResourceRow {
 }
 
 function resolveWith(rows: ResourceRow[]) {
-  fetchRows.mockResolvedValue({
-    rows,
-    total: rows.length,
-    page: 1,
-    pageSize: 20,
-    totalPages: 1,
+  fetchRows.mockImplementation((_resource: string, params: { pageSize?: number; filters?: { isRead?: string } }) => {
+    const unread = rows.filter((row) => !row.isRead);
+    if (params.pageSize === 1 && params.filters?.isRead === 'false') {
+      return Promise.resolve({ rows: [], total: unread.length, page: 1, pageSize: 1, totalPages: 1 });
+    }
+    return Promise.resolve({
+      rows,
+      total: rows.length,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    });
   });
 }
 
 beforeEach(() => {
+  urlState.reset();
   fetchRows.mockReset();
   deleteRow.mockReset();
   markAllNotificationsRead.mockReset();
@@ -129,6 +169,26 @@ describe('read state', () => {
     await userEvent.click(await screen.findByText('Low stock: Ceramic Planter'));
 
     expect(markNotificationRead).not.toHaveBeenCalled();
+  });
+
+  it('keeps read and dismiss as separate native buttons', async () => {
+    resolveWith([makeRow()]);
+    render(<NotificationsList />);
+
+    const open = await screen.findByRole('button', { name: /read "low stock/i });
+    const dismiss = screen.getByRole('button', { name: /dismiss "low stock/i });
+
+    expect(open).not.toContainElement(dismiss);
+  });
+
+  it('shows only safe internal admin destinations', async () => {
+    resolveWith([makeRow({ link: '/admin/inventory' })]);
+    render(<NotificationsList />);
+    await userEvent.click(await screen.findByRole('button', { name: /read "low stock/i }));
+    expect(await screen.findByRole('link', { name: /open the linked page/i })).toHaveAttribute(
+      'href',
+      '/admin/inventory',
+    );
   });
 });
 
@@ -234,6 +294,23 @@ describe('search', () => {
       },
       { timeout: 2000 },
     );
+  });
+
+  it('writes the read-status filter to the URL and sends it to the server', async () => {
+    resolveWith([makeRow()]);
+    render(<NotificationsList />);
+    await screen.findByText('Low stock: Ceramic Planter');
+    fetchRows.mockClear();
+
+    await userEvent.click(screen.getByRole('combobox', { name: /read status/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /^unread$/i }));
+
+    await waitFor(() => {
+      expect(fetchRows).toHaveBeenCalledWith(
+        'notifications',
+        expect.objectContaining({ filters: { isRead: 'false' } }),
+      );
+    });
   });
 });
 

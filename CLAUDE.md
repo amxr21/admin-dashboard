@@ -488,6 +488,14 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
+- **2026-09-11 — Batch 6 notification center is implemented locally on
+  `feat/ux-notification-center`, stacked on Batch 5.** The page now reads the global unread total
+  from the server rather than counting only the current page, synchronizes mutations with the
+  shell bell, and refreshes the bell for newly arrived rows on visibility/interval boundaries.
+  Search, read status, and pagination are shareable URL state. Notification destinations accept
+  only internal authenticated admin paths. Rows expose separate native read/dismiss buttons rather
+  than invalid nested controls. Focused validation: 26 frontend tests and 8 backend tests pass;
+  both typechecks and targeted frontend lint pass.
 - **2026-09-11 — Batch 5 workflow resilience is implemented locally on
   `feat/ux-workflow-resilience`.** Authenticated API 401s now use one reusable recovery contract:
   clear invalid auth once, remember the locale-neutral admin destination, explain expiry at login,
@@ -649,6 +657,9 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+- **2026-09-11 (UX-023/024/025)** — Corrected notification unread totals and shell/list
+  synchronization, added URL-backed read/search/page filters plus guarded internal destinations,
+  and replaced nested row controls with explicit accessible actions.
 - **2026-09-11 (UX-019/020/021/022)** — Added single-shot session-expiry recovery with return-to-
   destination login, reusable unload/in-app dirty-form protection, supplier/customer-case global
   search groups with permission and branch boundaries, and fully URL-backed inventory list state.
