@@ -152,6 +152,16 @@ export function SaleScreen() {
    *  the sidebar total was always visible, but tapping the button charged
    *  immediately with no chance to catch a wrong item or method first. */
   const [confirmOpen, setConfirmOpen] = useState(false);
+  /**
+   * URG-008 — the CURRENT open state, readable from inside `takePayment`.
+   *
+   * `takePayment` closes the dialog on success and leaves it open on failure,
+   * then decides in its `finally` whether refocusing the scan field is safe.
+   * Reading `confirmOpen` there would see the value captured when the charge
+   * started — always `true` — so the success path could never refocus. A ref
+   * tracks the live value across that await.
+   */
+  const confirmOpenRef = useRef(false);
   const [isScanning, setIsScanning] = useState(false);
   const [isSelling, setIsSelling] = useState(false);
   /** Bumped once per completed sale so the grid refetches stock (O9.10). */
@@ -220,6 +230,10 @@ export function SaleScreen() {
     () => lines.some((line) => (line.discountPercent ?? 0) > maxCashierDiscountPercent),
     [lines, maxCashierDiscountPercent],
   );
+
+  useEffect(() => {
+    confirmOpenRef.current = confirmOpen;
+  }, [confirmOpen]);
 
   function refocus() {
     scanField.current?.focus();
@@ -568,6 +582,11 @@ export function SaleScreen() {
         { method: 'card', amount: '', tendered: '' },
       ]);
       setConfirmOpen(false);
+      // Synchronously, not via the mirroring effect below: `setConfirmOpen`
+      // is batched, so the effect has not run by the time `finally` reads
+      // this — leaving it `true` and suppressing the refocus the success path
+      // is supposed to perform (URG-008).
+      confirmOpenRef.current = false;
       // The approval is for THIS sale only — the next customer's discount
       // (if any) needs its own manager, never inherited from the last one.
       setOverrideToken(null);
@@ -591,7 +610,23 @@ export function SaleScreen() {
       );
     } finally {
       setIsSelling(false);
-      refocus();
+      /**
+       * URG-008 — only refocus the scan field when the dialog is actually
+       * gone.
+       *
+       * This used to run unconditionally. On a FAILED charge the dialog stays
+       * open on purpose (the Action prevents its own default close, so the
+       * cashier can read the refusal), and Radix marks everything outside an
+       * open dialog `aria-hidden="true"`. Focusing `#pos-scan` from here
+       * therefore moved focus onto an element hidden from assistive
+       * technology — the warning this fixes — and silently took keyboard
+       * focus out of the dialog the cashier was still reading.
+       *
+       * On success the dialog has already been closed above, so the scan
+       * field is visible again and refocusing it is both safe and what the
+       * cashier expects: the next thing they do is scan the next item.
+       */
+      if (!confirmOpenRef.current) refocus();
     }
   }
 

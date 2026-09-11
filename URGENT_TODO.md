@@ -245,9 +245,29 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       targeted ESLint clean. The three new backend tender tests (cash with no tender refused, cash
       split leg with no tender refused, card with no tender still accepted) could not run locally —
       `admin_dashboard_test` has an unbaselined `_prisma_migrations` — so CI is their first gate.
-- [ ] **URG-008 — Fix checkout dialog focus/`aria-hidden` warning.** Move focus into the opened
+- [x] **URG-008 — Fix checkout dialog focus/`aria-hidden` warning.** Move focus into the opened
       dialog and restore it safely on close so the previously focused `#pos-scan` input is never
       hidden from assistive technology. Verify keyboard-only checkout and cancellation.
+      **Root cause:** `takePayment`'s `finally` called `refocus()` unconditionally. On a FAILED
+      charge the dialog deliberately stays open — the `AlertDialogAction` prevents its own default
+      close so the cashier can read the refusal — and Radix marks everything outside an open dialog
+      `aria-hidden="true"`. Focusing `#pos-scan` from there therefore moved focus onto an element
+      hidden from assistive technology (the reported warning) and silently pulled keyboard focus
+      out of the dialog the cashier was still reading. On success the dialog is already closed, so
+      refocusing is correct there.
+      **Fix:** refocus only when the dialog is actually gone.
+      **A bug in the first attempt, caught by its own test:** the open state was tracked with a
+      `useRef` mirrored by a `useEffect`. `setConfirmOpen(false)` is batched, so that effect had not
+      run when `finally` read the ref — it was still `true`, the success path never refocused, and
+      focus landed on `<body>`. The ref is now set synchronously beside `setConfirmOpen(false)`,
+      with the effect kept only as a safety net for external closes (Cancel/Escape).
+      **Audited, no change needed:** the other four `refocus()` call sites run with no dialog open,
+      and the other four `autoFocus` usages (park dialog, shift clock, till events, till return) are
+      all INSIDE their own dialog or sheet, which is correct — Radix focuses them within the trap.
+      `#pos-scan` was the only element focused from outside an open dialog.
+      **Verification:** 34/34 POS frontend tests including two new ones — focus stays inside the
+      dialog when a charge is refused, and returns to the scan field after a successful sale.
+      Frontend typecheck and targeted ESLint clean.
 - [ ] **URG-009 — Configurable refund reasons with Other.** Present an approved reason catalogue;
       selecting `Other` reveals a required free-text field. Persist a stable reason code plus the
       optional note, show it in refund/audit views, and validate both client and server.
