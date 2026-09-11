@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { landingFor } from '@/config/areas';
 import { Link, useRouter } from '@/i18n/navigation';
 import { ApiError } from '@/lib/api';
+import { normalizeAccountEmail } from '@/lib/identity-validation';
 import { hasPendingSessionRecovery, takeSessionReturnPath } from '@/lib/session-recovery';
 
 /**
@@ -137,7 +138,7 @@ export function LoginForm() {
     setIsSubmitting(true);
 
     try {
-      const result = await signIn(email, password);
+      const result = await signIn(normalizeAccountEmail(email), password);
 
       // The password checked out but no session exists yet — `signIn` wrote
       // nothing. Hand over to the code step rather than redirecting, which
@@ -338,9 +339,20 @@ export function LoginForm() {
         )}
       </Button>
 
-      {/* The ONLY discoverable route to the reset page. Without this, someone
-          locked out has to be sent the URL by hand — and the admin-issued
-          token they were given would have nowhere to go. */}
+      {/* The ONLY discoverable routes to account recovery. Without these,
+          someone locked out has to be sent the URL by hand — and the
+          admin-issued token they were given would have nowhere to go. Both
+          are offered because the two paths serve different people: one was
+          handed a code, the other has nobody to ask. */}
+      <p className="text-muted-foreground text-center text-sm">
+        <Link
+          href="/forgot-password"
+          className="hover:text-foreground underline underline-offset-4"
+        >
+          {t('forgotPassword')}
+        </Link>
+      </p>
+
       <p className="text-muted-foreground text-center text-sm">
         <Link
           href="/reset-password"

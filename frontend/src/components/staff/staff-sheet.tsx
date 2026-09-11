@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ApiError } from '@/lib/api';
+import { isAccountEmailValid, normalizeAccountEmail } from '@/lib/identity-validation';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
@@ -61,7 +62,7 @@ export function StaffSheet({
   onSaved,
 }: StaffSheetProps) {
   const t = useTranslations('staff');
-  const tRole = useTranslations('staffRole');
+  const tRole = useTranslations('roles');
   const translateError = useTranslatedApiError();
   // The LIVE `security.minPasswordLength`, not a hardcoded 12 — the server
   // enforces it and a local constant drifts as soon as an owner changes it.
@@ -103,9 +104,15 @@ export function StaffSheet({
   const assignable = STAFF_ROLES.filter((candidate) => canAssign(actorRole, candidate));
 
   async function submit() {
-    if (!isEdit && !email.trim()) {
-      setEmailError(t('form.emailRequired'));
-      return;
+    if (!isEdit) {
+      if (!email.trim()) {
+        setEmailError(t('form.emailRequired'));
+        return;
+      }
+      if (!isAccountEmailValid(email)) {
+        setEmailError(t('form.emailInvalid'));
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -133,7 +140,7 @@ export function StaffSheet({
         onSaved(t('notice.updated', { name: saved.name ?? saved.email }));
       } else {
         const saved = await createStaff({
-          email: email.trim(),
+          email: normalizeAccountEmail(email),
           ...(name.trim() ? { name: name.trim() } : {}),
           ...(phone.trim() ? { phone: phone.trim() } : {}),
           role,
@@ -197,6 +204,7 @@ export function StaffSheet({
               // A real type so globals.css forces LTR on the address.
               type="email"
               value={email}
+              maxLength={255}
               // The email IS the identity here; changing it would silently move
               // an account. Editing it is a separate concern from access.
               disabled={isEdit}
@@ -206,6 +214,9 @@ export function StaffSheet({
               }}
               aria-invalid={emailError ? true : undefined}
               aria-describedby={emailError ? 'staff-email-error' : undefined}
+              onBlur={() => {
+                if (email && !isAccountEmailValid(email)) setEmailError(t('form.emailInvalid'));
+              }}
             />
             {emailError ? (
               <p id="staff-email-error" role="alert" className="text-destructive text-sm">

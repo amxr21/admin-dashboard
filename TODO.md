@@ -61,7 +61,14 @@
   - [x] Add immutable catalogue versions for governed product changes with actor, timestamp, change summary, and a permission-checked detail/history API.
   - [x] Add an explicit restore preview and confirmation flow that creates a new version rather than deleting history, with conflict-safe validation and audit coverage.
   - [ ] Add focused backend/frontend coverage, complete the accessibility/responsive review, run the local gate, and publish a PR stacked on Batch 7.
-- [ ] **Batch 9 — remaining state and account workflows:** UX-032 URL-backed dashboard state, UX-033 normalized field validation, UX-034 staff detail workspace, and UX-035 forgotten-password initiation.
+- [ ] **Batch 9 — remaining state and account workflows:** UX-032 URL-backed dashboard state, UX-033 normalized field validation, UX-034 staff detail workspace, and UX-035 forgotten-password initiation. Keep state, validation, staff presentation, and account recovery behind reusable contracts; do not encode business-specific roles or expose whether an account exists.
+  - [x] Inventory dashboard state, shared form/API validators, staff routes/data/actions, authentication recovery primitives, permissions, and existing coverage.
+  - [x] Move approved dashboard filters and view state into stable URL parameters with clean defaults and back/forward/share behavior.
+  - [x] Centralize normalization and field-specific validation at request boundaries, then reuse matching constraints and messages in affected forms.
+  - [x] Add a permission-aware staff detail workspace that composes reusable identity, branch, activity, and account-action sections without introducing new role types.
+  - [x] Add forgotten-password initiation with one neutral response for known and unknown addresses, bounded token handling, audit-safe logging, and accessible bilingual UI states.
+  - [x] Add focused backend/frontend coverage, complete the accessibility/responsive review, and run the local gate. Full suites pass (backend 1178/1178 across 56 files; frontend 1204 passed/1 pre-existing skip across 151 files), both typechecks and `eslint src` are clean on both sides, and en/ar parity holds at 19/19. Live browser review of `/forgot-password` at 390 px and 1440 px in English and Arabic: correct `dir`, real translated copy, an LTR-forced email field inside the RTL page, an associated label, no horizontal overflow, a working keyboard path and no console errors. An unknown address still renders the neutral confirmation and removes the form.
+  - [ ] Publish a PR stacked on Batch 8.
 - [ ] **Role simplification foundation:** replace the currently enabled role set with Admin, Developer, and Cashier after approving the production-safe legacy-role mapping and migration. Prepared role templates remain out of scope.
 
 For each batch: work on its own branch, run the relevant local gate, publish the remote branch, verify the GitHub checks, summarize the result, then begin the next batch.

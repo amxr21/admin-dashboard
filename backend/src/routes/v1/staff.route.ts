@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { AppError } from '../../errors/AppError.js';
+import { accountEmailSchema } from '../../lib/identity-validation.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
@@ -70,7 +71,7 @@ const listQuery = z.object({
 
 const createBody = z
   .object({
-    email: z.string().trim().email('Enter a valid email address').max(255),
+    email: accountEmailSchema,
     name: z.string().trim().max(255).optional(),
     phone: z.string().trim().max(48).optional(),
     role: z.nativeEnum(StaffRole, { message: 'Choose a role' }),
@@ -81,7 +82,7 @@ const createBody = z
 
 const inviteBody = z
   .object({
-    email: z.string().trim().email('Enter a valid email address').max(255),
+    email: accountEmailSchema,
     name: z.string().trim().max(255).optional(),
     phone: z.string().trim().max(48).optional(),
     role: z.nativeEnum(StaffRole, { message: 'Choose a role' }),

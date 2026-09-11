@@ -2,6 +2,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { NavLabelHeading } from '@/components/shell/nav-label-heading';
 import { PermissionsMatrix } from '@/components/staff/permissions-matrix';
+import { StaffBranchAssignmentsLink } from '@/components/staff/staff-branch-assignments-link';
 import { StaffTable } from '@/components/staff/staff-table';
 
 /**
@@ -23,9 +24,13 @@ export default async function StaffPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <NavLabelHeading labelKey="staff" defaultTitle={t('title')} />
-        <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <NavLabelHeading labelKey="staff" defaultTitle={t('title')} />
+          <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
+        </div>
+
+        <StaffBranchAssignmentsLink />
       </div>
 
       <StaffTable />

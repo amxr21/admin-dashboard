@@ -6,6 +6,8 @@ import { StaffRole } from '@prisma/client';
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { signToken } from '../services/auth.service.js';
+import { accountEmailSchema } from '../lib/identity-validation.js';
+import { requestPasswordReset } from '../services/password-reset.service.js';
 
 /**
  * Redeeming an admin-issued one-time password reset token.
@@ -213,5 +215,112 @@ describe('rate limiting', () => {
     );
 
     expect(attempts.some((res) => res.status === 429)).toBe(true);
+  });
+});
+
+/**
+ * Self-service initiation (UX-035). The admin-issued path above assumes
+ * someone to ask; this one exists for when there is nobody.
+ *
+ * Every assertion here is about what the response does NOT reveal. An
+ * unauthenticated caller must not be able to tell a real staff address from
+ * an invented one, because that turns the endpoint into a directory of who
+ * works here — and a confirmed-valid address is what makes credential
+ * stuffing worth attempting.
+ *
+ * These run before the shared rate-limit window is exhausted by the suite
+ * above; the initiation limiter is a separate instance, so the two do not
+ * interfere.
+ */
+describe('POST /api/v1/auth/forgot-password', () => {
+  function forgot(email: string) {
+    return request(app).post('/api/v1/auth/forgot-password').send({ email });
+  }
+
+  // First, deliberately: the initiation limiter allows 5 requests per window
+  // and counts SUCCESSES too (unlike redemption, where only guesses matter —
+  // see the limiter's own comment). Later tests in this block exhaust it, so
+  // the one assertion that needs a non-429 rejection runs before they do.
+  it('rejects a malformed address, which describes the request and not the account', async () => {
+    const res = await forgot('not-an-email');
+
+    expect(res.status).toBe(400);
+  });
+
+  it('answers identically for a real address and an unknown one', async () => {
+    const subject = await makeUser('forgot-known');
+    const known = await prisma.user.findUniqueOrThrow({
+      where: { id: subject.id },
+      select: { email: true },
+    });
+
+    const hit = await forgot(known.email);
+    const miss = await forgot(`${RUN}-nobody-at-all@example.test`);
+
+    expect(hit.status).toBe(200);
+    expect(miss.status).toBe(200);
+    // Byte-identical, not merely both-2xx: a differing body is the same leak
+    // in a quieter form.
+    expect(hit.body).toEqual(miss.body);
+  });
+
+  it('issues a redeemable token for a real address', async () => {
+    const subject = await makeUser('forgot-issues');
+    const { email } = await prisma.user.findUniqueOrThrow({
+      where: { id: subject.id },
+      select: { email: true },
+    });
+
+    await forgot(email);
+
+    const record = await prisma.passwordResetToken.findFirst({
+      where: { userId: subject.id, usedAt: null },
+    });
+
+    expect(record).not.toBeNull();
+    // Only ever the HMAC — a readable token in this column would make the
+    // database a list of live credentials.
+    expect(record?.tokenHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('issues nothing for a deactivated account, without saying so', async () => {
+    const subject = await makeUser('forgot-inactive');
+    await prisma.user.update({ where: { id: subject.id }, data: { isActive: false } });
+    const { email } = await prisma.user.findUniqueOrThrow({
+      where: { id: subject.id },
+      select: { email: true },
+    });
+
+    const res = await forgot(email);
+
+    expect(res.status).toBe(200);
+    // A deactivated ex-employee must not be able to reset their way back in,
+    // but refusing DIFFERENTLY would confirm the account exists.
+    const record = await prisma.passwordResetToken.findFirst({
+      where: { userId: subject.id, usedAt: null },
+    });
+    expect(record).toBeNull();
+  });
+
+  // Calls the service directly rather than the route: the block above has
+  // already spent the 5-request initiation window, and this property is about
+  // normalization, not transport. Asserting it through HTTP would only be
+  // re-testing the limiter.
+  it('normalizes the address, so case cannot hide an account from its owner', async () => {
+    const subject = await makeUser('forgot-case');
+    const { email } = await prisma.user.findUniqueOrThrow({
+      where: { id: subject.id },
+      select: { email: true },
+    });
+
+    await requestPasswordReset(
+      { log: { info: () => {} } } as unknown as Parameters<typeof requestPasswordReset>[0],
+      accountEmailSchema.parse(email.toUpperCase()),
+    );
+
+    const record = await prisma.passwordResetToken.findFirst({
+      where: { userId: subject.id, usedAt: null },
+    });
+    expect(record).not.toBeNull();
   });
 });

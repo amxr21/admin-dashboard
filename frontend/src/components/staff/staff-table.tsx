@@ -104,7 +104,7 @@ function toRole(value: string): StaffRole | null {
 
 export function StaffTable() {
   const t = useTranslations('staff');
-  const tRole = useTranslations('staffRole');
+  const tRole = useTranslations('roles');
   const tTable = useTranslations('table');
   const tAudit = useTranslations('audit');
   const translateError = useTranslatedApiError();

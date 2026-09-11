@@ -4,12 +4,14 @@ import { AuditOutcome } from '@prisma/client';
 import QRCode from 'qrcode';
 
 import { AppError } from '../../errors/AppError.js';
+import { accountEmailSchema } from '../../lib/identity-validation.js';
 import { audit } from '../../services/audit.service.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { createApiKey, listApiKeys, revokeApiKey } from '../../services/api-key.service.js';
 import {
   loginRateLimit,
   passwordResetRateLimit,
+  passwordResetRequestRateLimit,
   selfPasswordChangeRateLimit,
 } from '../../middleware/rateLimit.js';
 import {
@@ -18,7 +20,10 @@ import {
   verifyLoginCode,
   verifyManagerOverride,
 } from '../../services/auth.service.js';
-import { redeemResetToken } from '../../services/password-reset.service.js';
+import {
+  redeemResetToken,
+  requestPasswordReset,
+} from '../../services/password-reset.service.js';
 import { createSession, listSessions, revokeSession } from '../../services/session.service.js';
 import { assertPasswordMeetsPolicy } from '../../services/settings.service.js';
 import { changeOwnPassword, updateOwnProfile } from '../../services/staff.service.js';
@@ -41,7 +46,7 @@ export const authRouter = Router();
 
 const loginSchema = z
   .object({
-    email: z.string().email('Enter a valid email address'),
+    email: accountEmailSchema,
     // No max length or complexity rule on LOGIN — those belong on registration
     // and password change. Rejecting a long password here only tells an
     // attacker about the policy, and breaks anyone using a password manager.
@@ -190,7 +195,7 @@ authRouter.post('/auth/login/verify-2fa', loginRateLimit, async (req, res) => {
 
 const managerOverrideSchema = z
   .object({
-    email: z.string().email('Enter a valid email address'),
+    email: accountEmailSchema,
     password: z.string().min(1, 'Password is required'),
   })
   .strict();
@@ -264,6 +269,27 @@ authRouter.post(
     }
   },
 );
+
+const forgotPasswordSchema = z.object({ email: accountEmailSchema }).strict();
+
+/**
+ * POST /api/v1/auth/forgot-password
+ *
+ * Always 200, always the same body. The ONE case that answers differently is
+ * a malformed request (400) — that describes the submission, not whether the
+ * address belongs to anyone, so it leaks nothing.
+ */
+authRouter.post('/auth/forgot-password', passwordResetRequestRateLimit, async (req, res) => {
+  const parsed = forgotPasswordSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    throw AppError.badRequest('Invalid request', parsed.error.flatten());
+  }
+
+  await requestPasswordReset(req, parsed.data.email);
+
+  res.status(200).json({ data: { ok: true } });
+});
 
 const resetPasswordSchema = z
   .object({

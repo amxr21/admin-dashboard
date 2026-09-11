@@ -12,6 +12,23 @@
 import { apiFetch } from '@/lib/api';
 
 /**
+ * Ask for a reset code to be emailed.
+ *
+ * Resolves for a known AND an unknown address — the backend answers 200 with
+ * the same body either way, so this function has nothing to report back and
+ * returns void deliberately. Callers must render one neutral "check your
+ * inbox" message and must NOT imply the address was found; doing so would
+ * rebuild client-side the account-enumeration oracle the server refuses to
+ * expose.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  await apiFetch<{ ok: boolean }>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+/**
  * Redeem a one-time reset token issued by an admin.
  *
  * The backend answers unknown, used, and expired tokens with the SAME generic

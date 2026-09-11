@@ -77,6 +77,7 @@
     "accessEnded": "This account's access period has ended.",
     "rateLimited": "Too many attempts from this address. Try again shortly.",
     "sessionExpired": "Your session expired. Sign in again to continue where you left off.",
+    "forgotPassword": "Forgot your password?",
     "haveResetCode": "Have a reset code?",
     "reset": {
       "title": "Set a new password",
@@ -92,6 +93,19 @@
       "rateLimited": "Too many attempts from this address. Try again shortly.",
       "backToLogin": "Back to sign in",
       "done": "Password set. Sign in with your new password."
+    },
+    "forgot": {
+      "title": "Forgot your password?",
+      "subtitle": "Enter your email address and we'll send you a reset code.",
+      "email": "Email address",
+      "submit": "Send reset code",
+      "sending": "Sending…",
+      "invalidEmail": "Enter a valid email address.",
+      "rateLimited": "Too many attempts from this address. Try again shortly.",
+      "sentTitle": "Check your inbox",
+      "sentBody": "If that address has an account, a reset code is on its way. It expires shortly and can only be used once.",
+      "haveCode": "Already have a code?",
+      "backToLogin": "Back to sign in"
     },
     "twoFactor": {
       "title": "Two-step verification",
@@ -214,6 +228,8 @@
       "default": "Default",
       "inactive": "Closed",
       "staffCount": "{count, plural, =0 {No staff} one {# person} other {# people}}",
+      "manageStaff": "Manage staff ({count})",
+      "manageStaffFor": "Manage staff for {name} ({count})",
       "noBranches": "This business has no branches yet. Add one before recording stock or taking orders.",
       "emptyTitle": "No businesses yet",
       "emptyDescription": "A business is the company that owns your shops — its name, address and tax id are what print on an invoice. Add one, then add the branches that trade under it.",
@@ -1689,7 +1705,8 @@
       "password": "Set a new password for {name}",
       "passwordShort": "Password",
       "resetToken": "Issue a reset token for {name}",
-      "invite": "Invite"
+      "invite": "Invite",
+      "manageBranchAssignments": "Manage branch assignments"
     },
     "bulk": {
       "activate": "Activate",
@@ -1717,6 +1734,7 @@
       "save": "Save",
       "saving": "Saving…",
       "emailRequired": "Email is required.",
+      "emailInvalid": "Enter a valid email address.",
       "passwordHint": "At least {min} characters. You will need to give it to them directly.",
       "fields": {
         "email": "Email",
@@ -1773,14 +1791,6 @@
       "resetDone": "Returned to the default",
       "toggle": "{role} can open {area}"
     }
-  },
-  "staffRole": {
-    "DEVELOPER": "Developer",
-    "OWNER": "Owner",
-    "MANAGER": "Manager",
-    "FULFILLMENT": "Fulfillment",
-    "SUPPORT": "Support",
-    "DEMO": "Demo (read-only)"
   },
   "reports": {
     "title": "Reports",
