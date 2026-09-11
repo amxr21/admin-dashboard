@@ -130,7 +130,11 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
   }
 
   const canSeeSettings = canAccessArea(role, 'settings');
-  const isDeveloper = role === 'DEVELOPER';
+  // Mirrors `requireRole(OWNER, DEVELOPER)` on GET /diagnostics/configuration.
+  // An explicit pair, not "any elevated role": MANAGER holds `settings` and
+  // must not reach it. Hiding the link is presentation only — the API refuses
+  // regardless of what the nav renders.
+  const canSeeConfiguration = role === 'DEVELOPER' || role === 'OWNER';
 
   return (
     <nav className="flex flex-1 flex-col gap-2 overflow-y-auto" aria-label={t('dashboard')}>
@@ -182,7 +186,7 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
           always the last item regardless of what else gets added to the
           nav. See SETTINGS_NAV_ITEM's own comment for why this can't just be
           "declare it last in NAVIGATION". */}
-      {canSeeSettings || isDeveloper ? (
+      {canSeeSettings || canSeeConfiguration ? (
         <div className="mt-auto border-t pt-2">
           <ul className="space-y-0.5">
             {canSeeSettings ? (
@@ -196,9 +200,9 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
             ) : null}
 
             {/* Gated on the ROLE, not an area — see CONFIGURATION_NAV_ITEM.
-                Operating the deployment is not a business area, and every
-                area check would hand this to OWNER via `*`. */}
-            {isDeveloper ? (
+                Operating the deployment is not a business area, so an area
+                check would hand this to anyone granted `*` later. */}
+            {canSeeConfiguration ? (
               <NavLinkItem
                 item={CONFIGURATION_NAV_ITEM}
                 collapsed={collapsed}

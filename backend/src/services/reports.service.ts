@@ -224,6 +224,102 @@ function money(value: Prisma.Decimal | null | undefined): string {
  * read. If it ever matters, the fix is `$queryRaw` inside an interactive
  * transaction, not reordering these.
  */
+/**
+ * One comparable row per branch, for the multi-branch dashboard summary.
+ *
+ * ─── WHY THIS IS NOT `getOverview` CALLED IN A LOOP ──────────────────
+ * That would be N round-trips of eight queries each, growing with the number
+ * of branches — and every one of them would have to be handed an explicit
+ * `branchId`, which is exactly the per-call-site scoping `scoped()` exists to
+ * prevent. Two grouped aggregates answer the whole question instead.
+ *
+ * ─── WHY IT DELIBERATELY REPORTS LESS THAN THE OVERVIEW ──────────────
+ * Revenue, orders and units only. New-customer count is not branch-scoped at
+ * all (a customer belongs to the business, not a shop) and low stock is a
+ * point-in-time product count rather than something that happened in a date
+ * range — putting either in a per-branch row would invite adding them up
+ * across branches, which would be wrong in both cases.
+ *
+ * ─── AN UNSOLD BRANCH STILL GETS A ROW ───────────────────────────────
+ * Branches come from the branch table, not from the orders: a branch that
+ * sold nothing in the range is a real and interesting answer ("why is Marina
+ * at zero?"), and grouping over orders alone would silently omit it.
+ */
+export async function getBranchComparison(params: RangeParams) {
+  const { start, end } = resolveRange(params);
+
+  const inRange = { placedAt: { gte: start, lt: end } };
+  const revenueWhere = { ...inRange, status: { notIn: EXCLUDED_FROM_REVENUE } };
+
+  const [branches, revenueRows, orderRows, unitRows] = await Promise.all([
+    prisma.branch.findMany({
+      where: { isActive: true },
+      orderBy: [{ business: { name: 'asc' } }, { name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        isSellingPoint: true,
+        business: { select: { id: true, name: true } },
+      },
+    }),
+    prisma.order.groupBy({
+      by: ['branchId'],
+      where: revenueWhere,
+      _sum: { total: true },
+    }),
+    prisma.order.groupBy({
+      by: ['branchId'],
+      where: inRange,
+      _count: { _all: true },
+    }),
+    // Same revenue exclusion, reached through the order relation — a canceled
+    // order's items were never sold, so counting them here would disagree with
+    // the revenue on the same row.
+    prisma.orderItem.groupBy({
+      by: ['orderId'],
+      where: { order: revenueWhere },
+      _sum: { quantity: true },
+    }),
+  ]);
+
+  // Units are grouped by order (OrderItem has no branchId of its own — the
+  // order already records the branch, and a second copy could drift from it),
+  // so they are folded back onto branches through the orders in range.
+  const orderBranches = await prisma.order.findMany({
+    where: revenueWhere,
+    select: { id: true, branchId: true },
+  });
+  const branchByOrder = new Map(orderBranches.map((order) => [order.id, order.branchId]));
+
+  const unitsByBranch = new Map<string, number>();
+  for (const row of unitRows) {
+    const branchId = branchByOrder.get(row.orderId);
+    if (!branchId) continue;
+    unitsByBranch.set(branchId, (unitsByBranch.get(branchId) ?? 0) + (row._sum.quantity ?? 0));
+  }
+
+  const revenueByBranch = new Map(
+    revenueRows.map((row) => [row.branchId ?? '', row._sum.total?.toString() ?? '0']),
+  );
+  const ordersByBranch = new Map(orderRows.map((row) => [row.branchId ?? '', row._count._all]));
+
+  return {
+    range: { from: params.from, to: params.to },
+    branches: branches.map((branch) => ({
+      id: branch.id,
+      name: branch.name,
+      code: branch.code,
+      isSellingPoint: branch.isSellingPoint,
+      businessId: branch.business.id,
+      businessName: branch.business.name,
+      revenue: revenueByBranch.get(branch.id) ?? '0',
+      orderCount: ordersByBranch.get(branch.id) ?? 0,
+      unitsSold: unitsByBranch.get(branch.id) ?? 0,
+    })),
+  };
+}
+
 export async function getOverview(params: RangeParams) {
   const { start, end } = resolveRange(params);
 

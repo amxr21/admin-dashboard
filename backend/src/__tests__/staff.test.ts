@@ -175,6 +175,139 @@ describe('the staff list answers "who is actually using this"', () => {
   });
 });
 
+describe('the durable staff detail workspace', () => {
+  it('composes safe identity, organization, branch, session, and activity data', async () => {
+    const field = await prisma.organizationField.create({
+      data: { entityType: 'staff', label: `${RUN} Employee number`, type: 'text' },
+    });
+    const business = await prisma.business.create({ data: { name: `${RUN} Business` } });
+    const branch = await prisma.branch.create({
+      data: { businessId: business.id, name: `${RUN} Branch`, code: 'DETAIL' },
+    });
+    await Promise.all([
+      prisma.organizationProfile.create({
+        data: {
+          entityType: 'staff',
+          entityId: supportId,
+          values: { [field.id]: 'EMP-42' },
+          jobTitle: 'Cashier',
+          department: 'Retail',
+          managerId: ownerId,
+        },
+      }),
+      prisma.userBranch.create({
+        data: { userId: supportId, branchId: branch.id, role: StaffRole.CASHIER },
+      }),
+      prisma.session.create({
+        data: { userId: supportId, userAgent: 'Detail test browser', ip: '192.0.2.10' },
+      }),
+      prisma.auditLog.create({
+        data: {
+          action: 'test.staff-detail.activity',
+          entity: 'test',
+          entityId: supportId,
+          actorId: supportId,
+          actorEmail: `${RUN}-support@example.test`,
+          actorRole: StaffRole.SUPPORT,
+        },
+      }),
+    ]);
+
+    try {
+      const res = await request(app)
+        .get(`/api/v1/staff/${supportId}`)
+        .set(auth(ownerToken));
+
+      expect(res.status).toBe(200);
+      const data = (res.body as { data: Record<string, unknown> }).data;
+      expect(data).toMatchObject({
+        staff: { id: supportId, role: StaffRole.SUPPORT },
+        profile: {
+          jobTitle: 'Cashier',
+          department: 'Retail',
+          manager: { id: ownerId },
+        },
+        branches: [
+          {
+            role: StaffRole.CASHIER,
+            branch: { id: branch.id, business: { id: business.id } },
+          },
+        ],
+        capabilities: {
+          edit: true,
+          changeRole: true,
+          changeLifecycle: true,
+          manageCredentials: true,
+          manageSessions: true,
+        },
+      });
+      expect(data.fields).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: field.id, label: field.label })]),
+      );
+      expect(data.sessions).toEqual(
+        expect.arrayContaining([expect.objectContaining({ userAgent: 'Detail test browser' })]),
+      );
+      expect(data.recentActivity).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ action: 'test.staff-detail.activity' }),
+        ]),
+      );
+      expect(JSON.stringify(data)).not.toMatch(/passwordHash|twoFactorSecret|tokenVersion/);
+    } finally {
+      await prisma.auditLog.deleteMany({ where: { action: 'test.staff-detail.activity' } });
+      await prisma.organizationProfile.deleteMany({
+        where: { entityType: 'staff', entityId: supportId },
+      });
+      await prisma.organizationField.delete({ where: { id: field.id } });
+      await prisma.business.delete({ where: { id: business.id } });
+    }
+  });
+
+  it('refuses a role without the staff area before rank is ever considered', async () => {
+    // MANAGER does not hold `staff` at all, so this never reaches the rank
+    // check — the area guard answers first. Asserted explicitly because it is
+    // easy to mistake this for a rank refusal and "fix" the wrong layer.
+    const res = await request(app)
+      .get(`/api/v1/staff/${ownerId}`)
+      .set(auth(managerToken));
+
+    expect(res.status).toBe(403);
+    expect((res.body as ErrorBody).error.message).toContain('area');
+  });
+
+  it('applies the rank boundary, in READ wording rather than the write path’s "cannot modify"', async () => {
+    // OWNER reading a DEVELOPER is the ONLY reachable rank refusal on this
+    // endpoint: `staff` is granted to OWNER and DEVELOPER alone, and DEVELOPER
+    // is the single rank above OWNER. Every other role is stopped by the area
+    // guard above, never by rank.
+    //
+    // The rank rule is deliberately identical to the write guard; the message
+    // is not. Someone who only opened a page never attempted to modify
+    // anything, and saying otherwise describes an action they did not take.
+    // Sharing `loadSubject` makes it easy to re-inherit the write copy by
+    // accident, so the distinction is pinned here.
+    const developer = await makeUser(StaffRole.DEVELOPER, 'dev-detail-read');
+
+    const res = await request(app)
+      .get(`/api/v1/staff/${developer.id}`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(403);
+
+    const body = res.body as ErrorBody;
+    expect(body.error.message).toContain('view');
+    expect(body.error.message).not.toContain('modify');
+  });
+
+  it('returns a real not-found response for a missing staff record', async () => {
+    const res = await request(app)
+      .get('/api/v1/staff/does-not-exist')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('who can reach the staff area at all', () => {
   it('rejects an unauthenticated request', async () => {
     expect((await request(app).get('/api/v1/staff')).status).toBe(401);

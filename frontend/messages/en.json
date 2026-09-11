@@ -432,6 +432,15 @@
     }
   },
   "dashboard": {
+    "branchSummary": {
+      "title": "By branch",
+      "subtitle": "Every branch for the selected period. Choose one to switch your workspace to it.",
+      "branch": "Branch",
+      "revenue": "Revenue",
+      "orders": "Orders",
+      "units": "Units sold",
+      "retry": "Try again"
+    },
     "title": "Dashboard",
     "subtitle": "A snapshot of revenue, orders and stock for the selected period.",
     "revenue": "Revenue",
@@ -1779,6 +1788,60 @@
       "description": "Creates the account and gives you a one-time activation code to hand over — you never see or set their password.",
       "send": "Send invite"
     },
+    "detail": {
+      "back": "Back to staff",
+      "loading": "Loading staff details",
+      "loadFailed": "Staff details could not be loaded",
+      "notFound": "That staff account no longer exists.",
+      "noExpiry": "No expiry",
+      "yes": "Yes",
+      "no": "No",
+      "cancel": "Cancel",
+      "actions": {
+        "edit": "Edit account",
+        "resetToken": "Issue reset token"
+      },
+      "identity": {
+        "title": "Account & access",
+        "role": "Security role",
+        "phone": "Phone",
+        "lastLogin": "Last sign-in",
+        "lastSeen": "Last activity",
+        "created": "Created",
+        "failedLogins": "Failed sign-ins (24h)",
+        "accessExpiry": "Access expiry"
+      },
+      "profile": {
+        "title": "Job profile",
+        "jobTitle": "Job title",
+        "department": "Department",
+        "manager": "Reports to"
+      },
+      "branches": {
+        "title": "Branch assignments",
+        "inactive": "Inactive branch",
+        "empty": "No branch assignments. Business-wide roles can work without one; branch-scoped staff need an assignment before starting the till."
+      },
+      "sessions": {
+        "title": "Sessions & devices",
+        "unknownDevice": "Unknown device",
+        "empty": "No active sessions.",
+        "signOut": "Sign out",
+        "signOutAll": "Sign out everywhere",
+        "confirmTitle": "Sign out this account?",
+        "confirmOne": "This device will need to sign in again. Other sessions stay active.",
+        "confirmAll": "Every device for this account will need to sign in again.",
+        "confirm": "Sign out",
+        "signedOutOne": "That device was signed out.",
+        "signedOutAll": "The account was signed out everywhere."
+      },
+      "activity": {
+        "title": "Recent activity",
+        "empty": "No recorded activity yet.",
+        "byPerson": "View actions by this person",
+        "aboutPerson": "View changes to this account"
+      }
+    },
     "permissions": {
       "title": "Permissions",
       "description": "Which areas each role can reach. Enforced by the server — this is a read-only view of that model.",
@@ -2348,6 +2411,22 @@
       "stateConfigured": "Configured",
       "statePartial": "Incomplete",
       "stateMissing": "Not configured",
+      "readiness": {
+        "ready": "Ready",
+        "partial": "Incomplete",
+        "missing": "Not configured",
+        "disabled": "Disabled in settings",
+        "missingSender": "Sender address is missing",
+        "smtpPartial": "SMTP settings are incomplete",
+        "smtpMissing": "SMTP settings are missing"
+      },
+      "impacts": {
+        "emailDeliveryUnavailable": "Password reset codes, low-stock supplier outreach, scheduled reports, and customer order-status emails are not delivered.",
+        "uploadsUnavailable": "Product and brand image uploads fail; existing images are unaffected.",
+        "errorTrackingUnavailable": "Crashes remain only in server logs, without grouping, alerts, or release tracking.",
+        "logAggregationUnavailable": "Aggregated log search is unavailable; logs can only be read on the host.",
+        "customerGoogleSignInUnavailable": "Storefront customers cannot sign in with Google; staff sign-in is unaffected."
+      },
       "openDashboard": "Open dashboard",
       "secretsNote": "Required signing secrets are not listed: the server refuses to start without them, so this page loading at all confirms they are set.",
       "refresh": "Refresh",
@@ -2738,14 +2817,6 @@
     }
   },
   "pos": {
-    "customer": {
-      "label": "Customer",
-      "placeholder": "Search by name, email, or phone",
-      "hint": "Enter at least 2 characters",
-      "empty": "No matching customers",
-      "optional": "Optional — leave blank for a walk-in sale.",
-      "remove": "Remove"
-    },
     "title": "Till",
     "subtitle": "Scan items, take payment, print a receipt.",
     "scanLabel": "Scan or type a code",

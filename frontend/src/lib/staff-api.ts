@@ -1,4 +1,5 @@
 import { apiFetch } from '@/lib/api';
+import type { CustomValue } from '@/lib/organization-api';
 
 /**
  * Client for `/api/v1/staff`.
@@ -91,6 +92,57 @@ export interface StaffListResult {
   page: number;
   pageSize: number;
   totalPages: number;
+}
+
+export interface StaffDetail {
+  staff: StaffMember;
+  profile: {
+    values: Record<string, CustomValue>;
+    jobTitle: string | null;
+    department: string | null;
+    manager: { id: string; name: string | null; email: string } | null;
+  };
+  fields: {
+    id: string;
+    label: string;
+    type: 'text' | 'number' | 'date' | 'boolean';
+    required: boolean;
+  }[];
+  branches: {
+    role: StaffRole;
+    assignedAt: string;
+    branch: {
+      id: string;
+      name: string;
+      code: string | null;
+      isActive: boolean;
+      business: { id: string; name: string };
+    };
+  }[];
+  sessions: StaffSession[];
+  recentActivity: {
+    id: string;
+    action: string;
+    entity: string;
+    entityId: string | null;
+    actorId: string | null;
+    actorEmail: string | null;
+    actorRole: string | null;
+    outcome: 'SUCCESS' | 'DENIED';
+    changes: Record<string, unknown> | null;
+    createdAt: string;
+  }[];
+  capabilities: {
+    edit: boolean;
+    changeRole: boolean;
+    changeLifecycle: boolean;
+    manageCredentials: boolean;
+    manageSessions: boolean;
+  };
+}
+
+export async function fetchStaffDetail(id: string): Promise<StaffDetail> {
+  return apiFetch<StaffDetail>(`/staff/${encodeURIComponent(id)}`);
 }
 
 export interface StaffListParams {

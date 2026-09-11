@@ -7,7 +7,11 @@ import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { signToken } from '../services/auth.service.js';
 import { accountEmailSchema } from '../lib/identity-validation.js';
-import { requestPasswordReset } from '../services/password-reset.service.js';
+import { passwordResetIdentifierKey } from '../middleware/rateLimit.js';
+import {
+  preparePasswordReset,
+  schedulePasswordResetDispatch,
+} from '../services/password-reset.service.js';
 
 /**
  * Redeeming an admin-issued one-time password reset token.
@@ -56,6 +60,20 @@ async function issueToken(userId: string): Promise<string> {
 
 function redeem(token: string, password = 'a-brand-new-sufficiently-long-password') {
   return request(app).post('/api/v1/auth/reset-password').send({ token, password });
+}
+
+async function waitForResetToken(userId: string) {
+  const deadline = Date.now() + 2_000;
+
+  while (Date.now() < deadline) {
+    const record = await prisma.passwordResetToken.findFirst({
+      where: { userId, usedAt: null },
+    });
+    if (record) return record;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error('Timed out waiting for deferred password-reset delivery');
 }
 
 beforeAll(async () => {
@@ -233,8 +251,11 @@ describe('rate limiting', () => {
  * interfere.
  */
 describe('POST /api/v1/auth/forgot-password', () => {
-  function forgot(email: string) {
-    return request(app).post('/api/v1/auth/forgot-password').send({ email });
+  function forgot(email: string, ip = '198.51.100.10') {
+    return request(app)
+      .post('/api/v1/auth/forgot-password')
+      .set('X-Forwarded-For', ip)
+      .send({ email });
   }
 
   // First, deliberately: the initiation limiter allows 5 requests per window
@@ -273,14 +294,15 @@ describe('POST /api/v1/auth/forgot-password', () => {
 
     await forgot(email);
 
-    const record = await prisma.passwordResetToken.findFirst({
-      where: { userId: subject.id, usedAt: null },
-    });
+    // Polled, not read once: the token is written AFTER the response, so the
+    // request deliberately returns before this row exists (see
+    // `preparePasswordReset` on why SMTP and token generation stay off the
+    // timed path). Reading immediately would race the dispatch.
+    const record = await waitForResetToken(subject.id);
 
-    expect(record).not.toBeNull();
     // Only ever the HMAC — a readable token in this column would make the
     // database a list of live credentials.
-    expect(record?.tokenHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(record.tokenHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('issues nothing for a deactivated account, without saying so', async () => {
@@ -294,11 +316,27 @@ describe('POST /api/v1/auth/forgot-password', () => {
     const res = await forgot(email);
 
     expect(res.status).toBe(200);
-    // A deactivated ex-employee must not be able to reset their way back in,
-    // but refusing DIFFERENTLY would confirm the account exists.
+
+    // Run the dispatch directly as well, so "no token" is a real outcome
+    // rather than a row that simply had not been written yet. Awaiting the
+    // deferred half is the only way to distinguish the two — a bare read
+    // after the response would pass even if the guard were removed.
+    const dispatch = await preparePasswordReset(
+      { log: { info: () => {} } } as unknown as Parameters<typeof preparePasswordReset>[0],
+      email,
+    );
+    await dispatch();
+
+    // A plain read, NOT waitForResetToken: that helper throws when no token
+    // appears, so it can only ever express "a token arrived" — using it here
+    // would make this assertion unreachable and the test permanently red. The
+    // awaited dispatch above is what proves the work ran.
     const record = await prisma.passwordResetToken.findFirst({
       where: { userId: subject.id, usedAt: null },
     });
+
+    // A deactivated ex-employee must not be able to reset their way back in,
+    // but refusing DIFFERENTLY would confirm the account exists.
     expect(record).toBeNull();
   });
 
@@ -313,14 +351,101 @@ describe('POST /api/v1/auth/forgot-password', () => {
       select: { email: true },
     });
 
-    await requestPasswordReset(
-      { log: { info: () => {} } } as unknown as Parameters<typeof requestPasswordReset>[0],
+    // Awaiting the dispatch directly, rather than letting the route schedule
+    // it: the token is written by the deferred half, so a test that only
+    // called `prepare` would assert against work that had not run yet.
+    const dispatch = await preparePasswordReset(
+      { log: { info: () => {} } } as unknown as Parameters<typeof preparePasswordReset>[0],
       accountEmailSchema.parse(email.toUpperCase()),
     );
+    await dispatch();
 
     const record = await prisma.passwordResetToken.findFirst({
       where: { userId: subject.id, usedAt: null },
     });
     expect(record).not.toBeNull();
+  });
+
+  it('uses a normalized HMAC identifier instead of the raw address as a limiter key', () => {
+    const email = `${RUN}-Rate-Key@Example.Test`;
+    const key = passwordResetIdentifierKey(email);
+
+    expect(key).toMatch(/^[0-9a-f]{64}$/);
+    expect(key).not.toContain(email.toLowerCase());
+    expect(key).toBe(passwordResetIdentifierKey(email.toLowerCase()));
+  });
+
+  it('rate-limits one address even when requests rotate through different IPs', async () => {
+    const email = `${RUN}-distributed@example.test`;
+    const attempts = [];
+
+    for (let index = 0; index < 6; index += 1) {
+      attempts.push(await forgot(email, `198.51.100.${50 + index}`));
+    }
+
+    expect(attempts.slice(0, 5).every((res) => res.status === 200)).toBe(true);
+    expect(attempts[5]?.status).toBe(429);
+  });
+
+  it('keeps an independent per-IP ceiling when one source sprays addresses', async () => {
+    const attempts = [];
+
+    for (let index = 0; index < 6; index += 1) {
+      attempts.push(await forgot(`${RUN}-spray-${index}@example.test`, '198.51.100.90'));
+    }
+
+    expect(attempts.slice(0, 5).every((res) => res.status === 200)).toBe(true);
+    expect(attempts[5]?.status).toBe(429);
+  });
+});
+
+describe('forgot-password response timing architecture', () => {
+  it('does not create a token until the deferred dispatch runs', async () => {
+    const subject = await makeUser('forgot-deferred');
+    const { email } = await prisma.user.findUniqueOrThrow({
+      where: { id: subject.id },
+      select: { email: true },
+    });
+    const req = {
+      log: { info: () => {}, error: () => {} },
+    } as unknown as Parameters<typeof preparePasswordReset>[0];
+
+    const dispatch = await preparePasswordReset(req, email);
+    expect(
+      await prisma.passwordResetToken.findFirst({ where: { userId: subject.id, usedAt: null } }),
+    ).toBeNull();
+
+    await dispatch();
+    expect(
+      await prisma.passwordResetToken.findFirst({ where: { userId: subject.id, usedAt: null } }),
+    ).not.toBeNull();
+  });
+
+  it('schedules on a later event-loop turn and catches background failures', async () => {
+    const errors: unknown[] = [];
+    let started = false;
+    const req = {
+      log: { error: (entry: unknown) => errors.push(entry) },
+    } as unknown as Parameters<typeof schedulePasswordResetDispatch>[0];
+
+    // Returns a rejected promise rather than being an `async` body that only
+    // throws: the dispatch type is `() => Promise<void>`, and there is nothing
+    // here to await, so `async` would be syntax for its own sake.
+    schedulePasswordResetDispatch(req, () => {
+      started = true;
+      return Promise.reject(new Error('controlled delivery failure'));
+    });
+
+    expect(started).toBe(false);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(started).toBe(true);
+    expect(errors).toEqual([
+      {
+        event: 'auth.password-reset.dispatch-failed',
+        error: 'controlled delivery failure',
+      },
+    ]);
   });
 });

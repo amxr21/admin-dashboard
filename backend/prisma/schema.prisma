@@ -314,13 +314,13 @@ model Branch {
   /// refusing to record stock.
   isDefault Boolean @default(false) @map("is_default")
 
-  stock BranchStock[]
+  stock       BranchStock[]
   /// Who works here, and in what capacity (F8.4).
-  staff UserBranch[]
+  staff       UserBranch[]
   /// Which couriers serve this branch (O2).
-  couriers DeliveryStaffBranch[]
+  couriers    DeliveryStaffBranch[]
   /// Work periods recorded here (F6.1).
-  shifts   Shift[]
+  shifts      Shift[]
   /// Carts parked at this branch's till (O9.12b).
   parkedSales ParkedSale[]
 
@@ -401,7 +401,7 @@ model User {
   shiftsEdited         Shift[]               @relation("ShiftEditor")
   shiftsApproved       Shift[]               @relation("ShiftApprover")
   parkedSales          ParkedSale[]
-  customerCases        CustomerCase[]         @relation("CustomerCaseAssignee")
+  customerCases        CustomerCase[]        @relation("CustomerCaseAssignee")
 
   @@index([role])
   @@index([createdAt])
@@ -693,19 +693,19 @@ model Tag {
 }
 
 model Product {
-  id          String        @id @default(cuid())
-  name        String        @db.VarChar(200)
-  sku         String?       @unique @db.VarChar(64)
-  description String?       @db.Text
-  price       Decimal       @default(0) @db.Decimal(10, 2)
+  id               String        @id @default(cuid())
+  name             String        @db.VarChar(200)
+  sku              String?       @unique @db.VarChar(64)
+  description      String?       @db.Text
+  price            Decimal       @default(0) @db.Decimal(10, 2)
   /// What this unit costs the business to acquire — NULL means "not tracked
   /// yet", never 0. Margin/contribution-margin reporting must skip a product
   /// with no cost recorded rather than silently treat it as free.
-  cost        Decimal?      @db.Decimal(10, 2)
-  imageUrl    String?       @map("image_url") @db.VarChar(512)
-  status      ProductStatus @default(ACTIVE)
-  stock       Int           @default(0)
-  catalogueVersion Int      @default(0) @map("catalogue_version")
+  cost             Decimal?      @db.Decimal(10, 2)
+  imageUrl         String?       @map("image_url") @db.VarChar(512)
+  status           ProductStatus @default(ACTIVE)
+  stock            Int           @default(0)
+  catalogueVersion Int           @default(0) @map("catalogue_version")
 
   /// Per-product low-stock threshold, overriding `inventory.lowStockThreshold`
   /// (the store-wide setting) for THIS product.
@@ -765,16 +765,16 @@ model Product {
   /// SetNull, not Cascade — deleting a category must never delete products.
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
-  orderItems    OrderItem[]
-  reviews       Review[]
-  variants      ProductVariant[]
-  images        ProductImage[]
-  discounts     Discount[]
-  redirects     ProductRedirect[]
-  cartItems     CartItem[]
-  wishlistItems WishlistItem[]
-  tags          Tag[]
-  translations  ProductTranslation[]
+  orderItems        OrderItem[]
+  reviews           Review[]
+  variants          ProductVariant[]
+  images            ProductImage[]
+  discounts         Discount[]
+  redirects         ProductRedirect[]
+  cartItems         CartItem[]
+  wishlistItems     WishlistItem[]
+  tags              Tag[]
+  translations      ProductTranslation[]
   catalogueVersions ProductCatalogueVersion[]
 
   createdAt      DateTime        @default(now()) @map("created_at")
@@ -817,10 +817,10 @@ model ProductTranslation {
 /// rewrite the physical inventory ledger. Actor details are denormalised so
 /// history remains intelligible after a staff account is removed.
 model ProductCatalogueVersion {
-  id         String @id @default(cuid())
+  id         String  @id @default(cuid())
   version    Int
-  source     String @db.VarChar(24)
-  summary    String @db.VarChar(255)
+  source     String  @db.VarChar(24)
+  summary    String  @db.VarChar(255)
   snapshot   Json
   actorId    String? @map("actor_id") @db.VarChar(191)
   actorEmail String? @map("actor_email") @db.VarChar(320)
@@ -926,17 +926,17 @@ model ProductImage {
 /// rule someone has to remember. The token side of the same separation lives
 /// in `customer-auth.service.ts`.
 model Customer {
-  id            String  @id @default(cuid())
-  name          String  @db.VarChar(200)
-  email         String  @unique @db.VarChar(255)
-  phone         String? @db.VarChar(48)
+  id              String  @id @default(cuid())
+  name            String  @db.VarChar(200)
+  email           String  @unique @db.VarChar(255)
+  phone           String? @db.VarChar(48)
   /// Digits-only indexed search key. Never returned through the resource API.
   phoneNormalized String? @map("phone_normalized") @db.VarChar(32)
-  city          String? @db.VarChar(96)
-  country       String? @db.VarChar(96)
+  city            String? @db.VarChar(96)
+  country         String? @db.VarChar(96)
   /// Staff-only, never surfaced to the customer. Plain free text — no tag
   /// vocabulary, deliberately (see the design note on Order.internalNotes).
-  internalNotes String? @map("internal_notes") @db.Text
+  internalNotes   String? @map("internal_notes") @db.Text
 
   /// ─── Storefront sign-in (Google) ──────────────────────────────────
   /// Google's stable subject id (`sub`). NULL for a customer created by staff
@@ -955,13 +955,13 @@ model Customer {
   /// same revocation mechanism `User.tokenVersion` gives staff.
   tokenVersion Int       @default(0) @map("token_version")
 
-  orders        Order[]
-  reviews       Review[]
-  returns       Return[]
-  discounts     Discount[]
-  cartItems     CartItem[]
-  wishlistItems WishlistItem[]
-  cases         CustomerCase[]
+  orders             Order[]
+  reviews            Review[]
+  returns            Return[]
+  discounts          Discount[]
+  cartItems          CartItem[]
+  wishlistItems      WishlistItem[]
+  cases              CustomerCase[]
   orderNotifications CustomerOrderNotification[]
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -1014,21 +1014,21 @@ model Order {
   /// SetNull so deleting a customer preserves order history for accounting.
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
-  items         OrderItem[]
+  items                 OrderItem[]
   /// How it was actually paid for (O5.2). Several rows when a sale is split
   /// across methods, or when a refund is issued against it.
-  payments      Payment[]
+  payments              Payment[]
   /// Staff-only, never surfaced to the customer — a THREAD (C5.7), not the
   /// single overwritable field this used to be. See `OrderNote`'s own doc
   /// comment for why.
-  notes         OrderNote[]
-  statusHistory OrderStatusHistory[]
-  assignment    DeliveryAssignment?
-  returns       Return[] @relation("ReturnedOrder")
+  notes                 OrderNote[]
+  statusHistory         OrderStatusHistory[]
+  assignment            DeliveryAssignment?
+  returns               Return[]                    @relation("ReturnedOrder")
   /// Set on the return this order exists to replace (O9.8) — a plain sale
   /// never has one. See `Return.exchangeOrderId`'s own comment.
-  exchangeFor   Return?  @relation("ExchangeReplacement")
-  customerCases CustomerCase[]
+  exchangeFor           Return?                     @relation("ExchangeReplacement")
+  customerCases         CustomerCase[]
   customerNotifications CustomerOrderNotification[]
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -1076,14 +1076,14 @@ model CustomerCase {
   orderId    String?   @map("order_id")
   order      Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
-  assignedToId String? @map("assigned_to_id")
-  assignedTo   User?   @relation("CustomerCaseAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  createdById  String  @map("created_by_id") @db.VarChar(64)
+  assignedToId String?   @map("assigned_to_id")
+  assignedTo   User?     @relation("CustomerCaseAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdById  String    @map("created_by_id") @db.VarChar(64)
   resolvedAt   DateTime? @map("resolved_at")
 
   notes     CustomerCaseNote[]
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
 
   @@index([branchId, status, updatedAt])
   @@index([customerId])
@@ -1094,12 +1094,12 @@ model CustomerCase {
 
 /// Append-only collaboration history for a customer case.
 model CustomerCaseNote {
-  id       String       @id @default(cuid())
-  caseId   String       @map("case_id")
-  case     CustomerCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  body     String       @db.Text
-  authorId String       @map("author_id") @db.VarChar(64)
-  createdAt DateTime    @default(now()) @map("created_at")
+  id        String       @id @default(cuid())
+  caseId    String       @map("case_id")
+  case      CustomerCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  body      String       @db.Text
+  authorId  String       @map("author_id") @db.VarChar(64)
+  createdAt DateTime     @default(now()) @map("created_at")
 
   @@index([caseId, createdAt])
   @@map("customer_case_notes")
@@ -1310,19 +1310,19 @@ model OrderStatusHistory {
 /// can legally move to RETURNED, optionally restocks, records a resolution),
 /// the same reason orders and delivery are bespoke rather than config.
 model Return {
-  id              String           @id @default(cuid())
+  id                   String           @id @default(cuid())
   /// Human-facing reference, e.g. "RMA-7F3K9QZR". Never the row id.
-  rmaNumber       String           @unique @map("rma_number")
-  reason          String           @db.VarChar(500)
+  rmaNumber            String           @unique @map("rma_number")
+  reason               String           @db.VarChar(500)
   /// NULL on any return requested before this was tracked — a real "never
   /// classified" gap, not a silent OTHER. Existing rows are left alone
   /// rather than guessed at from their free-text `reason`.
-  category        ReturnCategory?
-  status          ReturnStatus     @default(REQUESTED)
-  resolution      ReturnResolution @default(NONE)
+  category             ReturnCategory?
+  status               ReturnStatus     @default(REQUESTED)
+  resolution           ReturnResolution @default(NONE)
   /// Set only when resolution = REFUND. Capped at approval time to the sum of
   /// the RETURNED line items' recorded price — never the order's live total.
-  refundAmount    Decimal?         @map("refund_amount") @db.Decimal(10, 2)
+  refundAmount         Decimal?         @map("refund_amount") @db.Decimal(10, 2)
   /// The restocking fee ACTUALLY applied at approval (B4.11), 0-100. NULL
   /// means none was ever applied — never "unset defaulting to 0", since a
   /// genuine 0% fee (waived on purpose) and "not resolved as a refund yet"
@@ -1331,15 +1331,15 @@ model Return {
   /// approving person may raise or waive per return, so a later change to
   /// the store setting must not silently rewrite what a past return actually
   /// charged.
-  restockingFeePercent Decimal?    @map("restocking_fee_percent") @db.Decimal(5, 2)
+  restockingFeePercent Decimal?         @map("restocking_fee_percent") @db.Decimal(5, 2)
   /// Whether approving created a matching StockMovement per item. Recorded
   /// here so the return's own history says whether stock was ever adjusted,
   /// without re-deriving it from the movement log.
-  restocked       Boolean          @default(false)
+  restocked            Boolean          @default(false)
   /// Staff's own words for why a return was refused. Set only on REJECTED —
   /// same free-text, snapshot-once discipline as `reason` itself. NULL on
   /// anything not (yet) rejected, not an empty string.
-  rejectionReason String?          @map("rejection_reason") @db.VarChar(500)
+  rejectionReason      String?          @map("rejection_reason") @db.VarChar(500)
 
   orderId String @map("order_id")
   order   Order  @relation("ReturnedOrder", fields: [orderId], references: [id], onDelete: Cascade)
@@ -2138,13 +2138,13 @@ model Shift {
 /// here" become columns that must be explained later. This holds exactly what
 /// receiving stock and emailing a reorder need.
 model Supplier {
-  id   String  @id @default(cuid())
-  name String  @db.VarChar(160)
+  id          String  @id @default(cuid())
+  name        String  @db.VarChar(160)
   /// Where a reorder request is sent (F7.6). Optional: an owner may record a
   /// supplier they only ever phone, and forcing a fake address to save the
   /// row is how bad data gets in.
-  email String? @db.VarChar(255)
-  phone String? @db.VarChar(40)
+  email       String? @db.VarChar(255)
+  phone       String? @db.VarChar(40)
   /// Free text — a name, an extension, whatever the owner actually uses.
   contactName String? @map("contact_name") @db.VarChar(160)
   note        String? @db.VarChar(255)
@@ -2211,8 +2211,32 @@ model Payment {
 
   /// What the customer handed over, and what came back. Cash only — see the
   /// note above on why these are stored rather than derived.
+  ///
+  /// Both are in `tenderCurrency` when one is set, NOT in the base currency:
+  /// the owner's rule is that change is given in whatever was tendered, so a
+  /// drawer holding two currencies is counted separately per currency at shift
+  /// close. Converting either one here would make that count impossible.
   tendered Decimal? @db.Decimal(10, 2)
   change   Decimal? @db.Decimal(10, 2)
+
+  /// Multi-currency tender. All three are NULL for a payment in the store's
+  /// own currency, which is the overwhelming majority and needs no extra row
+  /// data to say so.
+  ///
+  /// `tenderCurrency` is the ISO code the customer actually paid in.
+  /// `tenderAmount` is what they paid IN THAT CURRENCY — `amount` above stays
+  /// in the base currency, so every existing revenue, shift and report query
+  /// keeps summing one comparable unit and needed no change.
+  ///
+  /// `tenderRate` is a SNAPSHOT of the rate applied at the moment of sale, the
+  /// same discipline `OrderItem.cost` and `Order.total` follow. The receipt
+  /// prints this rate, so re-deriving it from today's configured rate would
+  /// make a reprinted receipt disagree with the one the customer is holding.
+  /// 8 decimal places because a weak-unit rate needs them and rounding the
+  /// rate itself would not reproduce the printed arithmetic.
+  tenderCurrency String?  @map("tender_currency") @db.VarChar(3)
+  tenderAmount   Decimal? @map("tender_amount") @db.Decimal(10, 2)
+  tenderRate     Decimal? @map("tender_rate") @db.Decimal(18, 8)
 
   /// When the money moved, which is NOT `createdAt`: a payment recorded the
   /// next morning after a card terminal outage has both, and reconciling a

@@ -10,6 +10,7 @@ import { RecentActivityWidget } from '@/components/dashboard/recent-activity-wid
 import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-chart';
 import { ReturnsSummaryWidget } from '@/components/dashboard/returns-summary-widget';
 import { StatTile } from '@/components/dashboard/stat-tile';
+import { BranchSummary } from '@/components/dashboard/branch-summary';
 import { StatusBreakdownWidget } from '@/components/dashboard/status-breakdown-widget';
 import { TopProductsWidget } from '@/components/dashboard/top-products-widget';
 import { Link } from '@/i18n/navigation';
@@ -502,6 +503,13 @@ export function DashboardOverview() {
             </>
           )}
         </section>
+
+        {/* Directly under the KPI strip: the strip is the aggregate (or the
+            active branch), this is every branch beside it, so the two belong
+            together. Renders nothing at all for a single-branch business. */}
+        <Reveal className="col-span-12">
+          <BranchSummary range={range} />
+        </Reveal>
 
         <Reveal className="col-span-12">
           <RevenueChart

@@ -7,6 +7,8 @@ import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
 import { signToken } from '../services/auth.service.js';
+import { deriveEmailDeliveryReadiness } from '../services/email.service.js';
+import { getSettingValue } from '../services/settings.service.js';
 
 /**
  * `GET /diagnostics/configuration` — the owner's configuration reference.
@@ -104,29 +106,83 @@ describe('GET /api/v1/diagnostics/configuration', () => {
     }
   });
 
-  it('describes what breaks for anything unconfigured, so a name alone is never the whole row', async () => {
+  it('returns stable localization codes instead of backend English prose', async () => {
     const res = await request(app)
       .get('/api/v1/diagnostics/configuration')
       .set(auth(developerToken));
 
     const body = res.body as {
-      data: { integrations: { key: string; configured: boolean; impact: string }[] };
+      data: {
+        integrations: {
+          key: string;
+          configured: boolean;
+          readinessCode: string;
+          impactCode: string;
+        }[];
+      };
     };
 
     expect(body.data.integrations.length).toBeGreaterThan(0);
 
     for (const integration of body.data.integrations) {
-      expect(integration.impact.length).toBeGreaterThan(0);
+      expect(integration.readinessCode).toMatch(/^[a-z][A-Za-z]+$/);
+      expect(integration.impactCode).toMatch(/^[a-z][A-Za-z]+$/);
       expect(typeof integration.configured).toBe('boolean');
     }
+
+    expect(JSON.stringify(body.data.integrations)).not.toContain('not delivered');
   });
 
-  it('refuses an OWNER — operating the deployment is not a business area', async () => {
-    // OWNER holds `*` over every AREA, which is exactly why this endpoint is
-    // role-gated instead: an area check would hand it to them.
+  it('uses the same complete email-readiness contract as the delivery service', async () => {
+    const res = await request(app)
+      .get('/api/v1/diagnostics/configuration')
+      .set(auth(developerToken));
+    const body = res.body as {
+      data: {
+        integrations: {
+          key: string;
+          configured: boolean;
+          partial: boolean;
+          readinessCode: string;
+          impactCode: string;
+        }[];
+      };
+    };
+    const expected = deriveEmailDeliveryReadiness(
+      [env.SMTP_HOST, env.SMTP_PORT, env.SMTP_USER, env.SMTP_PASSWORD],
+      await getSettingValue('email.enabled'),
+      await getSettingValue('email.fromAddress'),
+    );
+
+    expect(body.data.integrations.find((integration) => integration.key === 'email')).toEqual({
+      key: 'email',
+      ...expected,
+      impactCode: 'emailDeliveryUnavailable',
+    });
+  });
+
+  it('admits an OWNER — readiness is the owner’s question about their own deployment', async () => {
+    // Widened deliberately (owner decision, 2026-09-11). "Is email actually
+    // working, and what breaks while it is not" is not developer tooling, and
+    // making an owner ask a developer to read a page of booleans helps nobody.
+    // Safe only because the response carries no values — the leak test below
+    // is what keeps that true.
     const res = await request(app)
       .get('/api/v1/diagnostics/configuration')
       .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+  });
+
+  it('still refuses a role below OWNER, so widening did not become ungated', async () => {
+    // The guard is an explicit two-role list, NOT "any elevated role". A
+    // MANAGER holds `settings` and would pass an area check — which is the
+    // whole reason this endpoint is role-gated rather than area-gated.
+    const managerToken = await makeUser('manager-config', StaffRole.MANAGER);
+
+    const res = await request(app)
+      .get('/api/v1/diagnostics/configuration')
+      .set(auth(managerToken));
 
     expect(res.status).toBe(403);
   });
@@ -135,5 +191,61 @@ describe('GET /api/v1/diagnostics/configuration', () => {
     const res = await request(app).get('/api/v1/diagnostics/configuration');
 
     expect(res.status).toBe(401);
+  });
+
+  it.each([
+    '/api/v1/diagnostics',
+    '/api/v1/diagnostics/db/migrations',
+    '/api/v1/diagnostics/db/tables',
+  ])('keeps %s DEVELOPER-only, so widening did not spread across the file', async (path) => {
+    // Only /configuration was widened. These report row counts, table sizes
+    // and migration drift — developer tooling that means nothing to the person
+    // running the shop. Pinned because the obvious way to extend this file is
+    // to copy the guard from the route above.
+    const res = await request(app).get(path).set(auth(ownerToken));
+
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('email delivery readiness', () => {
+  it.each([
+    {
+      name: 'ready only when SMTP, the sender, and the enabled switch are all present',
+      smtp: ['host', 587, 'user', 'secret'],
+      enabled: true,
+      sender: 'sender@example.test',
+      expected: { configured: true, partial: false, readinessCode: 'ready' },
+    },
+    {
+      name: 'disabled when complete credentials are intentionally switched off',
+      smtp: ['host', 587, 'user', 'secret'],
+      enabled: false,
+      sender: 'sender@example.test',
+      expected: { configured: false, partial: false, readinessCode: 'disabled' },
+    },
+    {
+      name: 'missing its sender even when SMTP is complete',
+      smtp: ['host', 587, 'user', 'secret'],
+      enabled: true,
+      sender: '',
+      expected: { configured: false, partial: true, readinessCode: 'missingSender' },
+    },
+    {
+      name: 'reports partially supplied SMTP credentials',
+      smtp: ['host', 587, undefined, undefined],
+      enabled: true,
+      sender: 'sender@example.test',
+      expected: { configured: false, partial: true, readinessCode: 'smtpPartial' },
+    },
+    {
+      name: 'reports wholly absent SMTP credentials',
+      smtp: [undefined, undefined, undefined, undefined],
+      enabled: false,
+      sender: '',
+      expected: { configured: false, partial: false, readinessCode: 'smtpMissing' },
+    },
+  ])('$name', ({ smtp, enabled, sender, expected }) => {
+    expect(deriveEmailDeliveryReadiness(smtp, enabled, sender)).toEqual(expected);
   });
 });

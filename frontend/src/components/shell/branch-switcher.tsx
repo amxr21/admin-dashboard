@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { useTranslations } from 'next-intl';
-import { Store, Warehouse } from 'lucide-react';
+import { Loader2, Store, Warehouse } from 'lucide-react';
 
 import {
   Select,
@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/select';
 import { fetchBranches, type BranchSummary } from '@/lib/branches-api';
 import { readBranchId, writeBranchId } from '@/lib/auth-storage';
-import { LoadingState } from '@/components/ui/loading-state';
 
 /**
  * Which shop am I standing in (F8.5).
@@ -83,8 +82,28 @@ export function BranchSwitcher() {
   return (
     <>
     {isSwitching ? createPortal(
-      <div className="bg-background/90 fixed inset-0 z-[100] flex items-center justify-center backdrop-blur-sm">
-        <LoadingState label={t('switching')} />
+      <div className="bg-background/90 fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+        {/*
+          Same compact row as the global overlay, for one consistent "something
+          is happening" shape across the shell — not the shared `LoadingState`,
+          whose `min-h-48` column is built for a panel filling a page.
+
+          Unlike the global overlay this label is a full sentence explaining
+          that the workspace is being rebuilt, so it WRAPS rather than
+          truncating: the explanation is the entire reason this overlay exists
+          (a branch switch reloads the document), and a clipped sentence would
+          defeat it.
+        */}
+        <div
+          role="status"
+          className="bg-card flex max-w-sm items-center gap-3 rounded-2xl border px-5 py-4 shadow-lg"
+        >
+          <Loader2
+            aria-hidden
+            className="text-primary size-4 shrink-0 animate-spin motion-reduce:animate-none"
+          />
+          <span className="text-sm font-medium">{t('switching')}</span>
+        </div>
       </div>, document.body,
     ) : null}
     <Select value={active ?? 'all'} onValueChange={choose} disabled={isSwitching}>

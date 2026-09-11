@@ -5,7 +5,11 @@ import { Prisma, StaffRole } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { canAssignRole, outranks } from '../config/roles.js';
-import { countRecentFailuresByEmail, lastSeenFor } from './login-history.service.js';
+import {
+  countRecentFailuresByEmail,
+  lastSeenFor,
+  listSessionsFor,
+} from './login-history.service.js';
 import { createResetToken } from './password-reset.service.js';
 
 /**
@@ -142,6 +146,110 @@ export async function listStaff(params: StaffListParams) {
   };
 }
 
+/**
+ * One bounded read model for the durable staff workspace.
+ *
+ * This deliberately composes existing sources instead of adding profile,
+ * branch, session, and activity columns to `User`. Security identity remains
+ * on User/UserBranch; business-defined job data remains in OrganizationProfile.
+ */
+export async function getStaffDetail(actor: Actor, id: string) {
+  await assertCanViewStaff(actor, id);
+  const user = await prisma.user.findUniqueOrThrow({ where: { id }, select: STAFF_FIELDS });
+
+  const [profile, fields, branches, sessions, recentActivity, lastSeen, failureCounts] =
+    await Promise.all([
+      prisma.organizationProfile.findUnique({
+        where: { entityType_entityId: { entityType: 'staff', entityId: id } },
+        select: { values: true, jobTitle: true, department: true, managerId: true },
+      }),
+      prisma.organizationField.findMany({
+        where: { entityType: 'staff', isActive: true },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, label: true, type: true, required: true },
+      }),
+      prisma.userBranch.findMany({
+        where: { userId: id },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          role: true,
+          createdAt: true,
+          branch: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              isActive: true,
+              business: { select: { id: true, name: true } },
+            },
+          },
+        },
+      }),
+      listSessionsFor(id),
+      prisma.auditLog.findMany({
+        where: { OR: [{ actorId: id }, { entity: 'staff', entityId: id }] },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 10,
+        select: {
+          id: true,
+          action: true,
+          entity: true,
+          entityId: true,
+          actorId: true,
+          actorEmail: true,
+          actorRole: true,
+          outcome: true,
+          changes: true,
+          createdAt: true,
+        },
+      }),
+      lastSeenFor([id]),
+      countRecentFailuresByEmail([user.email]),
+    ]);
+
+  const manager = profile?.managerId
+    ? await prisma.user.findUnique({
+        where: { id: profile.managerId },
+        select: { id: true, name: true, email: true },
+      })
+    : null;
+
+  return {
+    staff: {
+      ...serialise(user),
+      lastSeenAt: lastSeen.get(id) ?? null,
+      recentFailedLogins: failureCounts.get(user.email.toLowerCase()) ?? 0,
+    },
+    profile: {
+      values:
+        profile?.values && typeof profile.values === 'object' && !Array.isArray(profile.values)
+          ? profile.values
+          : {},
+      jobTitle: profile?.jobTitle ?? null,
+      department: profile?.department ?? null,
+      manager,
+    },
+    fields,
+    branches: branches.map((assignment) => ({
+      role: assignment.role,
+      assignedAt: assignment.createdAt.toISOString(),
+      branch: assignment.branch,
+    })),
+    sessions,
+    recentActivity: recentActivity.map((entry) => ({
+      ...entry,
+      createdAt: entry.createdAt.toISOString(),
+    })),
+    capabilities: {
+      edit: true,
+      changeRole: actor.id !== id,
+      changeLifecycle: actor.id !== id,
+      manageCredentials: actor.id !== id,
+      manageSessions: actor.id !== id,
+    },
+  };
+}
+
 /** How many owners could still sign in. Guards rule 4. */
 async function activeOwnerCount(): Promise<number> {
   return prisma.user.count({
@@ -162,8 +270,27 @@ export async function assertCanActOn(actor: Actor, id: string) {
   return loadSubject(actor, id);
 }
 
-/** Loads the subject and applies rules 2 and 3 before anything is written. */
-async function loadSubject(actor: Actor, id: string) {
+/**
+ * Rule 3 for a READ, with wording that describes a read.
+ *
+ * The rule itself is deliberately identical to `assertCanActOn` — nobody
+ * reaches upward, whether to change someone or to look at them — so this
+ * shares `loadSubject` rather than restating the comparison. Only the refusal
+ * differs: telling someone they "cannot modify" a page they merely tried to
+ * open describes an action they never attempted, and reads like a bug.
+ */
+export async function assertCanViewStaff(actor: Actor, id: string) {
+  return loadSubject(actor, id, 'read');
+}
+
+/**
+ * Loads the subject and applies rules 2 and 3.
+ *
+ * `intent` selects the refusal wording only. It must never widen or narrow
+ * who passes: a read that admitted more people than a write would make the
+ * detail page a way to see what the roster refuses to show.
+ */
+async function loadSubject(actor: Actor, id: string, intent: 'write' | 'read' = 'write') {
   const subject = await prisma.user.findUnique({
     where: { id },
     select: { id: true, role: true, isActive: true, email: true },
@@ -174,7 +301,11 @@ async function loadSubject(actor: Actor, id: string) {
   // Rule 3. Equal rank is allowed — peers manage each other — but nobody
   // reaches upward.
   if (outranks(subject.role, actor.role)) {
-    throw AppError.forbidden('You cannot modify someone with more access than you');
+    throw AppError.forbidden(
+      intent === 'read'
+        ? 'You cannot view someone with more access than you'
+        : 'You cannot modify someone with more access than you',
+    );
   }
 
   return subject;

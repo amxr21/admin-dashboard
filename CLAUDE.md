@@ -291,25 +291,24 @@ the remaining local gates. No deployment has been performed.
   REQUESTED/APPROVED/REJECTED only; the spec's fuller ~8-state lifecycle (label sent → in transit
   → received → inspected → resolved) is a separate, larger, not-yet-started piece of work.
 
-### Password reset (admin-issued)
-- **Status**: 🔴 **BACKEND ONLY on this branch — the redemption page is MISSING.** Verified
-  2026-09-05: `find frontend/src/app -ipath "*reset*"` returns nothing, and the only copy of
-  `/[locale]/reset-password/` lives in unmerged checkpoint `a9c350b`. `POST /auth/reset-password`
-  and `frontend/src/lib/auth-api.ts`'s caller both exist — only the page is gone.
-  **This also breaks the staff INVITE flow**, which hands a new manager a 24h token pointing at
-  a 404, so an invited person cannot sign in at all. Tracked as `TODO.md` **F5.1**.
-  The 2026-08-07 note below is kept because it explains the intended design, but its "shipped
-  end-to-end" claim is FALSE for this branch — this is the second time this entry has
-  overstated the frontend's existence, so verify with `find` before trusting it again.
-- **What**: An admin issues a single-use, 30-minute token (`POST /staff/:id/reset-token`); the
-  locked-out user redeems it themselves (`POST /auth/reset-password`) to set a new password without
-  the admin ever learning it.
+### Password reset (self-service and admin-issued)
+- **Status**: shipped end to end. The localized `/[locale]/reset-password/` redemption page serves
+  both emailed self-service links and one-time tokens issued by an authorized admin.
+- **What**: a user may request a reset through `POST /auth/forgot-password`, or an admin may issue a
+  single-use token through `POST /staff/:id/reset-token`. The holder redeems it through
+  `POST /auth/reset-password` and chooses a password without an administrator learning it.
 - **Where**: `backend/src/services/password-reset.service.ts`, `backend/src/routes/v1/auth.route.ts`,
   `frontend/src/lib/auth-api.ts`, `frontend/src/components/auth/reset-password-form.tsx`,
   `frontend/src/app/[locale]/reset-password/`, `frontend/src/components/staff/reset-token-panel.tsx`.
 - **Notes**: HMAC-SHA256 at rest (same shape as courier access codes), atomic claim via
   `updateMany` in the WHERE clause — closes a TOCTOU double-redeem race found during security
-  review. Revokes all sessions (`tokenVersion` bump) on redemption.
+  review. Revokes all sessions (`tokenVersion` bump) on redemption. Forgot-password requests use
+  both per-IP and HMAC-keyed per-address limits, never put a raw address in limiter storage/logs,
+  perform the same indexed lookup for known/unknown/inactive addresses, and send the neutral HTTP
+  response before deferred token/email work. Deferred work rechecks that the account is active and
+  has an explicit logged failure path. The current in-memory limits and scheduler fit one API
+  process; replicas require shared rate-limit storage, and guaranteed delivery requires a durable
+  outbox/queue.
 - **2026-08-07 correction**: this entry previously read "shipped", but the feature was
   **backend-only** — a full-repo grep for `reset-password|resetPassword|reset-token|forgot` in
   `frontend/src` returned zero real matches. There was no button to issue a token and no page to
@@ -487,18 +486,16 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **Active branch**: `docs/post-merge-workflows-and-issues`, based exactly on merged `dev` at
-  `acaff8f`. Two pre-existing untracked diagnostic artifacts (`frontend/branch-sheet-open.png` and
-  `frontend/scroll-check.mjs`) are intentionally untouched.
-- **In progress**: documentation-only synchronization after the implementation stack merge.
-  `docs/features.md` records the owner-reported issues, their shipped solutions, and the current
-  verified findings. `docs/ux.md` inventories the supported user journeys and explicitly separates
-  this repository's internal/courier UI from its API-only storefront contract. `TODO.md` now marks
-  merged batches accurately while reopening the overstated UX-034 item.
-- **Next step**: obtain owner approval for the four focused corrections: the real staff-detail
-  workspace, shared email-readiness truth, localized configuration impact codes, and
-  password-reset timing/abuse hardening. Then decide whether the future Admin role may see the
-  non-secret configuration reference. After those corrections, proceed to **point 4**: the final
+- **Active branch**: `fix/configuration-readiness-localization`, stacked after Batch 10 and the
+  documentation checkpoint. Two pre-existing untracked diagnostic artifacts
+  (`frontend/branch-sheet-open.png` and `frontend/scroll-check.mjs`) remain intentionally untouched.
+- **Completed in the correction stack**: Batch 10 hardened forgot-password privacy and abuse
+  controls. Batch 11 now derives diagnostics email readiness from the delivery service's exact
+  SMTP + enabled-setting + sender-address contract and returns stable codes localized by the
+  English/Arabic clients; no secret-bearing response fields were added.
+- **Next step**: publish Batch 11, then implement the real permission-aware staff-detail workspace
+  in Batch 12. Decide separately whether the future Admin role may view the non-secret
+  configuration reference. After the ordered correction/UX batches, proceed to **point 4**: the final
   combined unit/type/lint/build/E2E, motion, accessibility, responsive, and native-Arabic gate.
 - **Blockers**: the production-safe mapping from legacy Owner/Manager/Fulfillment/Support/Demo to
   Admin/Developer/Cashier is not approved. Production Sentry remains on hold after the trial ended,

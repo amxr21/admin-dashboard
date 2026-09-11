@@ -10,6 +10,7 @@ import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { createApiKey, listApiKeys, revokeApiKey } from '../../services/api-key.service.js';
 import {
   loginRateLimit,
+  passwordResetRequestIdentifierRateLimit,
   passwordResetRateLimit,
   passwordResetRequestRateLimit,
   selfPasswordChangeRateLimit,
@@ -22,7 +23,8 @@ import {
 } from '../../services/auth.service.js';
 import {
   redeemResetToken,
-  requestPasswordReset,
+  preparePasswordReset,
+  schedulePasswordResetDispatch,
 } from '../../services/password-reset.service.js';
 import { createSession, listSessions, revokeSession } from '../../services/session.service.js';
 import { assertPasswordMeetsPolicy } from '../../services/settings.service.js';
@@ -279,17 +281,26 @@ const forgotPasswordSchema = z.object({ email: accountEmailSchema }).strict();
  * a malformed request (400) — that describes the submission, not whether the
  * address belongs to anyone, so it leaks nothing.
  */
-authRouter.post('/auth/forgot-password', passwordResetRequestRateLimit, async (req, res) => {
-  const parsed = forgotPasswordSchema.safeParse(req.body);
+authRouter.post(
+  '/auth/forgot-password',
+  passwordResetRequestRateLimit,
+  passwordResetRequestIdentifierRateLimit,
+  async (req, res) => {
+    const parsed = forgotPasswordSchema.safeParse(req.body);
 
-  if (!parsed.success) {
-    throw AppError.badRequest('Invalid request', parsed.error.flatten());
-  }
+    if (!parsed.success) {
+      throw AppError.badRequest('Invalid request', parsed.error.flatten());
+    }
 
-  await requestPasswordReset(req, parsed.data.email);
+    // Every valid address pays for the same indexed lookup. Token generation
+    // and SMTP start only after the neutral response, so their latency cannot
+    // reveal whether an active account exists.
+    const dispatch = await preparePasswordReset(req, parsed.data.email);
 
-  res.status(200).json({ data: { ok: true } });
-});
+    res.status(200).json({ data: { ok: true } });
+    schedulePasswordResetDispatch(req, dispatch);
+  },
+);
 
 const resetPasswordSchema = z
   .object({

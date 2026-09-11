@@ -27,6 +27,80 @@ import { getSettingValue } from './settings.service.js';
 
 let transporter: Transporter | null = null;
 
+export type EmailReadinessCode =
+  | 'ready'
+  | 'disabled'
+  | 'missingSender'
+  | 'smtpPartial'
+  | 'smtpMissing';
+
+export interface EmailDeliveryReadiness {
+  configured: boolean;
+  partial: boolean;
+  readinessCode: EmailReadinessCode;
+}
+
+interface ResolvedEmailDeliveryConfiguration extends EmailDeliveryReadiness {
+  fromAddress: string;
+}
+
+export function deriveEmailDeliveryReadiness(
+  smtpVars: readonly unknown[],
+  enabled: boolean,
+  fromAddress: string,
+): EmailDeliveryReadiness {
+  const smtpConfigured = smtpVars.every(Boolean);
+  const smtpPartiallyConfigured = smtpVars.some(Boolean) && !smtpConfigured;
+
+  if (smtpPartiallyConfigured) {
+    return { configured: false, partial: true, readinessCode: 'smtpPartial' };
+  }
+  if (!smtpConfigured) {
+    return {
+      configured: false,
+      partial: Boolean(enabled || fromAddress),
+      readinessCode: 'smtpMissing',
+    };
+  }
+  if (!fromAddress) {
+    return { configured: false, partial: true, readinessCode: 'missingSender' };
+  }
+  if (!enabled) {
+    return { configured: false, partial: false, readinessCode: 'disabled' };
+  }
+
+  return { configured: true, partial: false, readinessCode: 'ready' };
+}
+
+async function resolveEmailDeliveryConfiguration(): Promise<ResolvedEmailDeliveryConfiguration> {
+  const smtpVars = [env.SMTP_HOST, env.SMTP_PORT, env.SMTP_USER, env.SMTP_PASSWORD];
+  const [enabled, fromAddress] = await Promise.all([
+    getSettingValue('email.enabled'),
+    getSettingValue('email.fromAddress'),
+  ]);
+
+  return {
+    ...deriveEmailDeliveryReadiness(smtpVars, enabled, fromAddress),
+    fromAddress,
+  };
+}
+
+/**
+ * Single readiness contract shared by delivery and diagnostics.
+ *
+ * Keeping this beside the sender prevents the configuration page from
+ * declaring email ready using a weaker subset of the conditions that the
+ * actual delivery path enforces.
+ */
+export async function getEmailDeliveryReadiness(): Promise<EmailDeliveryReadiness> {
+  const configuration = await resolveEmailDeliveryConfiguration();
+  return {
+    configured: configuration.configured,
+    partial: configuration.partial,
+    readinessCode: configuration.readinessCode,
+  };
+}
+
 function getTransporter(): Transporter | null {
   if (transporter) return transporter;
   if (!env.SMTP_HOST || !env.SMTP_PORT || !env.SMTP_USER || !env.SMTP_PASSWORD) return null;
@@ -52,27 +126,23 @@ function getTransporter(): Transporter | null {
  * (a real problem worth noticing, same distinction `audit.service.ts` draws).
  */
 export async function sendAlertEmail(subject: string, body: string): Promise<void> {
-  const client = getTransporter();
-
-  if (!client) {
-    logger.debug({ event: 'email.alert.skipped', reason: 'smtp_not_configured' });
-    return;
-  }
-
-  const [enabled, fromAddress, toAddress] = await Promise.all([
-    getSettingValue('email.enabled'),
-    getSettingValue('email.fromAddress'),
+  const [configuration, toAddress] = await Promise.all([
+    resolveEmailDeliveryConfiguration(),
     getSettingValue('store.supportEmail'),
   ]);
+  const client = configuration.configured ? getTransporter() : null;
 
-  if (!enabled || !fromAddress || !toAddress) {
-    logger.debug({ event: 'email.alert.skipped', reason: 'not_enabled_or_incomplete' });
+  if (!client || !configuration.fromAddress || !toAddress) {
+    logger.debug({
+      event: 'email.alert.skipped',
+      reason: !configuration.configured ? configuration.readinessCode : 'missing_recipient',
+    });
     return;
   }
 
   try {
     await client.sendMail({
-      from: fromAddress,
+      from: configuration.fromAddress,
       to: toAddress,
       subject,
       text: body,
@@ -121,26 +191,20 @@ export async function sendEmailToRecipients(
     return false;
   }
 
-  const client = getTransporter();
+  const configuration = await resolveEmailDeliveryConfiguration();
+  const client = configuration.configured ? getTransporter() : null;
 
-  if (!client) {
-    logger.debug({ event: 'email.recipients.skipped', reason: 'smtp_not_configured' });
-    return false;
-  }
-
-  const [enabled, fromAddress] = await Promise.all([
-    getSettingValue('email.enabled'),
-    getSettingValue('email.fromAddress'),
-  ]);
-
-  if (!enabled || !fromAddress) {
-    logger.debug({ event: 'email.recipients.skipped', reason: 'not_enabled_or_incomplete' });
+  if (!client || !configuration.fromAddress) {
+    logger.debug({
+      event: 'email.recipients.skipped',
+      reason: configuration.readinessCode,
+    });
     return false;
   }
 
   try {
     await client.sendMail({
-      from: fromAddress,
+      from: configuration.fromAddress,
       to: recipients.join(', '),
       subject,
       text: body,

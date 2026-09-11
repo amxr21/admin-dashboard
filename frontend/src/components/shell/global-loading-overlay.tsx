@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'next-intl';
+import { Loader2 } from 'lucide-react';
 
 import { usePathname } from '@/i18n/navigation';
 import { getLoadingActivitySnapshot, subscribeToLoadingActivity } from '@/lib/loading-activity';
-import { LoadingState } from '@/components/ui/loading-state';
 
 const OVERLAY_DELAY_MS = 120;
 const NAVIGATION_TIMEOUT_MS = 15_000;
@@ -74,8 +74,26 @@ export function GlobalLoadingOverlay() {
       className="bg-background/70 fixed inset-0 z-[90] grid animate-in place-items-center fade-in-0 duration-200 backdrop-blur-sm"
       aria-label={t('loading')}
     >
-      <div className="bg-card animate-in rounded-xl border px-8 py-6 shadow-lg fade-in-0 duration-200 motion-safe:zoom-in-95">
-        <LoadingState label={t('loading')} />
+      {/*
+        A compact horizontal row, deliberately NOT the shared `LoadingState`.
+        That component carries `min-h-48` and stacks its spinner above its
+        label, which is right for a panel waiting to fill a page — and wrong
+        here, where the same treatment becomes a tall card floating in the
+        middle of the screen saying one short word. It is used by 32 other
+        surfaces, so this is the caller changing, not the primitive.
+
+        `role="status"` lives here rather than being inherited, since the
+        element it was attached to is gone.
+      */}
+      <div
+        role="status"
+        className="bg-card animate-in flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full border py-3 ps-4 pe-5 shadow-lg fade-in-0 duration-200 motion-safe:zoom-in-95"
+      >
+        <Loader2
+          aria-hidden
+          className="text-primary size-4 shrink-0 animate-spin motion-reduce:animate-none"
+        />
+        <span className="truncate text-sm font-medium">{t('loading')}</span>
       </div>
     </div>
   );

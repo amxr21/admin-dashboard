@@ -109,34 +109,95 @@ Work through this queue in order. Each implementation batch gets its own branch,
 commit, remote branch, and GitHub check review. Later branches may stack without waiting for an
 earlier remote run to finish, but must retain the merge order.
 
-- [*] **Batch 10 — account-recovery privacy and abuse hardening (P1, in progress).** Equalize the observable
+- [x] **Batch 10 — account-recovery privacy and abuse hardening (P1).** Equalize the observable
   forgot-password path for known, unknown, and inactive accounts; add identifier-aware throttling
   without storing/logging raw addresses; preserve the neutral response; add timing-shape,
-  enumeration, expiry, replay, rate-limit, and email-failure coverage.
-- [ ] **Batch 11 — configuration correctness and localization (P1/P2).** Derive email readiness
+  enumeration, expiry, replay, rate-limit, and email-failure coverage. Implemented on
+  `fix/account-recovery-hardening`; focused verification: 69/69 reset/auth tests pass sequentially,
+  targeted ESLint and backend typecheck pass. (The two integration files share destructive database
+  fixtures and therefore must not run in parallel with each other.)
+- [x] **Batch 11 — configuration correctness and localization (P1/P2).** Derive email readiness
   from the same SMTP + `email.enabled` + `email.fromAddress` contract used by delivery; replace
   backend English impact prose with stable codes localized in English/Arabic; preserve the
-  non-secret response contract and add regression coverage.
-- [ ] **Batch 12 — staff detail workspace (UX-034, reopened P1).** Add a durable, permission-aware
+  non-secret response contract and add regression coverage. Implemented on
+  `fix/configuration-readiness-localization`; focused verification: backend diagnostics/email tests
+  12/12, frontend configuration/message tests 22/22, both typechecks and targeted ESLint pass.
+- [x] **Batch 12 — staff detail workspace (UX-034, reopened P1).** Adds a durable, permission-aware
   staff route composing reusable identity, branch membership, activity, sessions, and permitted
-  account actions. Keep job/profile data separate from security roles and preserve all rank,
-  self-change, last-admin/owner, and branch-scope guards.
-- [ ] **Batch 13 — simplify customer handling at the till.** Remove the prominent customer-search
-  section from the primary sale flow. Keep anonymous checkout as the default and retain the shared
-  backend customer-association contract for future/secondary workflows unless the owner later asks
-  to remove the capability entirely.
-- [ ] **Batch 14 — loading-overlay visual redesign.** Replace the long vertical treatment with a
-  compact horizontal flex-row component using the existing shared coordinator. Verify clear
-  progress semantics, RTL ordering, reduced motion, focus continuity, and mobile/desktop fit.
-- [ ] **Batch 15 — multi-branch dashboard summary.** When more than one branch is available, show
-  concise comparable branch summaries plus a clear aggregate/branch distinction and direct branch
-  navigation; preserve the simple current experience for single-branch businesses and URL-backed
-  dashboard state.
-- [ ] **Batch 16 — multi-currency till foundation (financial design gate).** Use the Settings
-  currency as the till default, then add configured tender currencies only after defining rate
-  source/versioning, rounding, tender and change currency, receipt representation, shift
-  reconciliation, refunds, and report semantics. Historical base/tender amounts must be snapshots,
-  never recalculated from current rates.
+  account actions. Job/profile data stays separate from security roles and every rank,
+  self-change, last-admin/owner, and branch-scope guard is preserved.
+  The read path now refuses in READ wording via `assertCanViewStaff`, which shares `loadSubject`
+  with the write guard so the rank rule cannot drift; the six write call sites in
+  `branch-roles.service.ts` and `shifts.service.ts` are unchanged. Coverage corrected while doing
+  so: the existing rank test passed through the AREA guard, never rank — `staff` is granted only to
+  OWNER and DEVELOPER, and DEVELOPER is the one rank above OWNER, so an OWNER reading a DEVELOPER is
+  the single reachable rank refusal. Both layers are now asserted separately and the wording
+  assertion was watched failing against the reverted code.
+  Verification: backend staff 56/56, frontend staff 50/50 across 8 files, both typechecks and
+  `eslint src` clean, en/ar parity 19/19. Static a11y/RTL review passed (one `h1`, sections labelled
+  by `h2`, `force-ltr` on every identifier, `<bdi>` on actor email, no physical offsets, `min-w-0` +
+  `truncate` on flex children). Live browser verification is deferred to the combined pass rather
+  than restarting the owner's running dev server.
+- [x] **Batch 13 — simplify customer handling at the till.** The customer-search section is gone
+  from the primary sale flow; the till now sells anonymously. Removed at the UI layer ONLY — the
+  shared backend contract is deliberately intact (`POST /pos/checkout` still accepts `customerId`,
+  `searchPosCustomers` still exists in `pos-api.ts`), so a future secondary workflow can attach a
+  customer without rebuilding the server side, and the decision stays reversible. The two tests
+  covering the removed lookup were replaced rather than deleted: one asserts no lookup renders, the
+  other that checkout never sends a `customerId`, so the new behaviour is pinned instead of merely
+  untested. Dead `pos.customer.*` keys removed from both locales.
+- [x] **Batch 14 — loading-overlay visual redesign.** The global overlay and the branch-switch
+  overlay are now one compact horizontal row (spinner + label in a rounded card) instead of a tall
+  card. The cause was the shared `LoadingState`, whose `min-h-48` column is correct for a panel
+  filling a page and wrong for a floating overlay saying one short word — so the CALLERS changed,
+  not the primitive, which 32 other surfaces still use as intended. The shared loading coordinator,
+  its 120 ms anti-flicker delay and the concurrent-request counting are untouched; this is
+  presentation only. `role="status"` moved onto the new row so the announcement survives, logical
+  properties (`ps`/`pe`) keep RTL padding correct, `motion-reduce:animate-none` is preserved, and
+  `max-w` + `truncate` stop a long label overflowing on a phone. The branch-switch label WRAPS
+  rather than truncating, because that explanation is the reason that overlay exists.
+  Verification: shell suites 131/131 across 15 files, frontend typecheck and eslint clean.
+  **Coverage gap found and closed afterwards:** the single pre-existing overlay test asserted only
+  anti-flicker timing and `role="status"`, and `branch-switcher.tsx` had NO test file at all — the
+  spinner could have been deleted outright with every suite still green. Added four structural
+  assertions to the global overlay (row not column, no `min-h-48`, width constrained, logical
+  `ps`/`pe` padding) and a first `branch-switcher` suite covering the single-branch no-render, the
+  failed-load no-render, and the explained overlay painted before reload. Both were watched failing:
+  deleting the branch spinner fails the overlay test, and reverting the row to the tall
+  `LoadingState` treatment fails three of the four new assertions.
+- [x] **Batch 15 — multi-branch dashboard summary.** A "By branch" table sits under the KPI strip
+  showing revenue, orders and units for every active branch, with a row click switching the
+  workspace to it. A single-branch business renders NOTHING — a comparison of one repeats the strip
+  above it, and having one branch is not a problem needing an empty state.
+  New `GET /reports/branch-comparison` backed by two grouped aggregates rather than `getOverview`
+  in a loop (which would be N round-trips of eight queries, each needing an explicit `branchId` —
+  the per-call-site scoping `scoped()` exists to prevent). It is the one report deliberately NOT
+  wrapped in `scoped()`: applying the active branch would reduce a comparison to a single row.
+  Aggregate-vs-branch is explicit — the strip is the aggregate (or the active branch), the table is
+  always every branch. Deliberately fewer columns than the overview: new customers are not
+  branch-scoped and low stock is a point-in-time count, so neither belongs in a row a reader would
+  add up. Branches come from the branch table, not from orders, so a branch that sold nothing still
+  gets a row. URL-backed dashboard state (UX-032) is untouched; the table reads the same `range`.
+  Verification: dashboard 36/36, backend reports 75/75, both typechecks and eslint clean.
+- [*] **Batch 16 — multi-currency till foundation.** Policy settled with the owner 2026-09-11:
+  manual rates configured in Settings (same opt-in shape as Cloudinary/SMTP — no external feed, so
+  a till never depends on a network call to finish a sale), change given in the TENDERED currency,
+  receipt showing both currencies plus the rate used, and shift close counting each currency
+  SEPARATELY.
+  **Backend foundation done.** Additive nullable `tender_currency`/`tender_amount`/`tender_rate` on
+  `payments` (migration `20260911140000`, applied to both local and test databases after printing
+  the target). `Payment.amount` deliberately stays in the STORE currency, so every existing revenue,
+  shift and report query kept summing one comparable unit and needed no change at all. The rate is
+  SNAPSHOTTED per sale — the receipt prints it, so re-deriving it later would make a reprint
+  disagree with the customer's copy; same rule as `OrderItem.cost` and `Order.total`. A rate of 0
+  means "not accepted", so shipping this enabled nothing on any existing install, and an unaccepted
+  code is REFUSED rather than falling back to the base (a fallback would record a sale in the wrong
+  money undetectably). `getShiftTakings` gained a per-currency breakdown from `tenderAmount`, leaving
+  the existing base-currency reconciliation untouched.
+  Verification: full backend 1213/1213 across 58 files, typecheck and eslint clean.
+  - [ ] **Remaining: the till UI.** A currency control on the sale screen reading `GET /pos/tenders`,
+    the receipt showing both currencies and the rate, and the per-currency count at shift close.
+    The contract and every guard are in place and tested; this is the presentation layer only.
 - [ ] **Role simplification migration (approval gate).** Migrate enabled roles to Admin,
   Developer, and Cashier only after the owner approves how every legacy
   Owner/Manager/Fulfillment/Support/Demo account and branch assignment maps. Prepared roles remain
@@ -150,8 +211,14 @@ earlier remote run to finish, but must retain the merge order.
 
 #### Decisions required when their batch is reached
 
-- Configuration access: recommended default is read-only non-secret readiness for Admin and
-  Developer; approve before changing authorization.
+- [x] Configuration access — **APPROVED AND DONE 2026-09-11: OWNER and DEVELOPER, read-only.**
+  `GET /diagnostics/configuration` is now `requireRole(OWNER, DEVELOPER)` and the sidebar link
+  matches. Only that route widened: `/diagnostics`, `/db/migrations` and `/db/tables` stay
+  DEVELOPER-only because row counts, table sizes and migration drift are developer tooling, and a
+  test pins each of them at 403 for an OWNER so the widening cannot spread by copy-paste. Still
+  `requireRole`, never `requireArea` — MANAGER holds `settings` and must not reach this, which an
+  area check could not express. The response contract is unchanged (booleans and links, no value
+  ever), which is what makes a wider audience safe.
 - Multi-currency: approve configured currencies and the rate/change/reconciliation policy before
   schema or checkout work.
 - Role migration: approve the complete legacy-account and branch-assignment mapping before any
