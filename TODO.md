@@ -156,8 +156,15 @@ earlier remote run to finish, but must retain the merge order.
   properties (`ps`/`pe`) keep RTL padding correct, `motion-reduce:animate-none` is preserved, and
   `max-w` + `truncate` stop a long label overflowing on a phone. The branch-switch label WRAPS
   rather than truncating, because that explanation is the reason that overlay exists.
-  Verification: shell suites 122/122 across 14 files (including the existing `role="status"`
-  assertion), frontend typecheck and eslint clean.
+  Verification: shell suites 131/131 across 15 files, frontend typecheck and eslint clean.
+  **Coverage gap found and closed afterwards:** the single pre-existing overlay test asserted only
+  anti-flicker timing and `role="status"`, and `branch-switcher.tsx` had NO test file at all — the
+  spinner could have been deleted outright with every suite still green. Added four structural
+  assertions to the global overlay (row not column, no `min-h-48`, width constrained, logical
+  `ps`/`pe` padding) and a first `branch-switcher` suite covering the single-branch no-render, the
+  failed-load no-render, and the explained overlay painted before reload. Both were watched failing:
+  deleting the branch spinner fails the overlay test, and reverting the row to the tall
+  `LoadingState` treatment fails three of the four new assertions.
 - [x] **Batch 15 — multi-branch dashboard summary.** A "By branch" table sits under the KPI strip
   showing revenue, orders and units for every active branch, with a row click switching the
   workspace to it. A single-branch business renders NOTHING — a comparison of one repeats the strip
