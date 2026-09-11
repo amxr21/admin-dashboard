@@ -27,11 +27,18 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       A versioned production-start gate now applies all committed Prisma migrations before the HTTP
       server imports; a failed migration prevents the new container from serving. Local startup,
       Organization API, type, lint, and build checks pass. Final closure awaits the authenticated
-      production page after this branch is merged and deployed.
-- [ ] **URG-002 — Customer Service API returns 500.** Independently reproduce
+      production page after PR #217 is merged and deployed.
+- [*] **URG-002 — Customer Service API returns 500.** Independently reproduce
       `GET /api/v1/customer-cases?page=1&pageSize=20`, inspect logs and schema/runtime dependencies,
       fix the cause, and verify populated, empty, forbidden, and failed states. Do not treat the
       browser’s repeated React stack frames as separate API failures.
+      The deployed unauthenticated boundary returns the normal 401 envelope and request ID. The
+      first authenticated query depends on `customer_cases`, introduced with migration
+      `20260910150000_add_customer_service_workspace`; code and schema match, and the endpoint works
+      on the migrated test database. Current evidence therefore points to the same deployment drift
+      addressed by parent PR #217, not a second endpoint defect. Exact-query, empty, paginated,
+      forbidden, and invalid-input regression coverage is being completed on this stacked branch;
+      final closure awaits an authenticated post-deploy check.
 - [ ] **URG-003 — POS checkout returns 500.** Reproduce `POST /api/v1/pos/checkout` using the exact
       failing request shape without exposing customer/payment data, correlate its request ID,
       identify whether the failure is validation, migration, stock, tender, or transaction related,

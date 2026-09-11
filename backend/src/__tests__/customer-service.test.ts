@@ -27,7 +27,16 @@ let cashierToken = '';
 let ownerId = '';
 
 interface CaseBody { data: { case: { id: string; status: string; priority: string; resolvedAt: string | null; notes: { body: string }[] } } }
-interface CaseListBody { data: { cases: { id: string }[] } }
+interface CaseListBody {
+  data: {
+    cases: { id: string }[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
+}
+interface ErrorBody { error: { code: string; requestId?: string } }
 interface CustomerLookupBody { data: { customers: { id: string; internalNotes?: string }[] } }
 interface OrderListBody { data: { orders: { id: string }[] } }
 
@@ -87,6 +96,65 @@ describe('customer case workspace', () => {
   it('enforces the customers permission area and branch scope', async () => {
     expect((await request(app).get('/api/v1/customer-cases')).status).toBe(401);
     expect((await request(app).get('/api/v1/customer-cases').set(auth(cashierToken)).set('X-Branch-Id', branchA)).status).toBe(403);
+  });
+
+  it('serves the reported paginated list query and a stable empty state', async () => {
+    const listed = await request(app)
+      .get('/api/v1/customer-cases?page=1&pageSize=20')
+      .set(auth());
+    expect(listed.status).toBe(200);
+    const listedBody = listed.body as CaseListBody;
+    expect(Array.isArray(listedBody.data.cases)).toBe(true);
+    expect(Number.isInteger(listedBody.data.total)).toBe(true);
+    expect(listedBody.data.page).toBe(1);
+    expect(listedBody.data.pageSize).toBe(20);
+    expect(listedBody.data.totalPages).toBeGreaterThanOrEqual(1);
+
+    const empty = await request(app)
+      .get(`/api/v1/customer-cases?page=1&pageSize=20&search=${RUN}-no-match`)
+      .set(auth());
+    expect(empty.status).toBe(200);
+    expect(empty.body).toEqual({
+      data: { cases: [], total: 0, page: 1, pageSize: 20, totalPages: 1 },
+    });
+  });
+
+  it('paginates matching cases and rejects invalid paging input', async () => {
+    const search = `${RUN}-pagination`;
+    for (let index = 0; index < 3; index += 1) {
+      const item = await prisma.customerCase.create({
+        data: {
+          caseNumber: `CASE-${RUN.slice(-12).toUpperCase()}-${index}`,
+          title: `${search} ${index}`,
+          branchId: branchA,
+          createdById: ownerId,
+        },
+      });
+      caseIds.push(item.id);
+    }
+
+    const pageTwo = await request(app)
+      .get(`/api/v1/customer-cases?page=2&pageSize=2&search=${encodeURIComponent(search)}`)
+      .set(auth())
+      .set('X-Branch-Id', branchA);
+    expect(pageTwo.status).toBe(200);
+    const pageTwoBody = pageTwo.body as CaseListBody;
+    expect(pageTwoBody.data.cases).toHaveLength(1);
+    expect(pageTwoBody.data.cases[0]?.id).toEqual(expect.any(String));
+    expect(pageTwoBody.data).toEqual(expect.objectContaining({
+      total: 3,
+      page: 2,
+      pageSize: 2,
+      totalPages: 2,
+    }));
+
+    const invalid = await request(app)
+      .get('/api/v1/customer-cases?page=0&pageSize=20')
+      .set(auth());
+    expect(invalid.status).toBe(400);
+    const invalidBody = invalid.body as ErrorBody;
+    expect(invalidBody.error.code).toBe('BAD_REQUEST');
+    expect(invalidBody.error.requestId).toEqual(expect.any(String));
   });
 
   it('creates a linked case, isolates it by branch, updates status, and appends notes', async () => {

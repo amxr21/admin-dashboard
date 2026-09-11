@@ -486,20 +486,19 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **Active branch**: `fix/urgent-organization-api-500`, based on merged `origin/dev`. Two
+- **Active branch**: `fix/urgent-customer-cases-api-500`, stacked directly on URG-001 PR #217. Two
   pre-existing untracked diagnostic artifacts (`frontend/branch-sheet-open.png` and
   `frontend/scroll-check.mjs`) remain intentionally untouched.
-- **In progress**: URG-001 from `URGENT_TODO.md`. The healthy production DB connection plus three
-  failing features whose tables/columns arrived in consecutive migrations point to deployment
-  schema drift. Production startup now applies committed migrations before importing the HTTP
-  server and refuses to serve when migration deployment fails. This remains an evidence-backed
-  inference until the authenticated production Organization page can be checked after deployment.
-- **Next step**: finish the wider local gate, publish the URG-001 PR against `dev`, inspect its
-  GitHub checks, then stack URG-002 without waiting unnecessarily. Close URG-001 only after the
-  deployed authenticated page succeeds.
-- **Blockers**: final URG-001 production verification needs the branch merged/deployed and an
-  authenticated Owner/Developer session. The production-safe legacy-role migration mapping remains
-  unapproved; production Sentry remains on hold; pull-request E2E still targets retired hosting.
+- **In progress**: URG-002. The exact deployed Customer Cases URL reaches the normal unauthenticated
+  401 boundary; its first authenticated list query touches the table added by migration
+  `20260910150000_add_customer_service_workspace`. Route, service, schema, and migration agree, and
+  the migrated integration database serves the same query. Evidence points to the same skipped
+  production migration class addressed by parent PR #217, not an independent endpoint-code bug.
+- **Next step**: finish Customer Cases list-state coverage and local gates, publish its PR against
+  the URG-001 branch, then start URG-003 on top without waiting unnecessarily.
+- **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
+  Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
+  production Sentry remains on hold; pull-request E2E still targets retired hosting.
 - **Context to remember**: `URGENT_TODO.md` is owner-approved and now outranks enhancement work.
   Preserve the one-task-at-a-time chat checklist and stack branches in that file's order. Keep the
   role model headed toward Admin/Developer/Cashier without adding templates. Never claim a 500 is
