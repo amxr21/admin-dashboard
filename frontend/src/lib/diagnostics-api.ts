@@ -59,12 +59,31 @@ export async function fetchTableStats(): Promise<TableStat[]> {
  * some but not all of a group's variables are set, which is a typo to fix,
  * while neither means a deliberate decision not to use that integration.
  */
+export type IntegrationKey = 'email' | 'uploads' | 'errorTracking' | 'logs' | 'customerSignIn';
+
+export type IntegrationReadinessCode =
+  | 'ready'
+  | 'partial'
+  | 'missing'
+  | 'disabled'
+  | 'missingSender'
+  | 'smtpPartial'
+  | 'smtpMissing';
+
+export type IntegrationImpactCode =
+  | 'emailDeliveryUnavailable'
+  | 'uploadsUnavailable'
+  | 'errorTrackingUnavailable'
+  | 'logAggregationUnavailable'
+  | 'customerGoogleSignInUnavailable';
+
 export interface IntegrationStatus {
-  key: string;
+  key: IntegrationKey;
   configured: boolean;
   partial: boolean;
-  /** What stops working while this is unconfigured. */
-  impact: string;
+  /** Stable API codes; human-facing copy belongs to the active locale. */
+  readinessCode: IntegrationReadinessCode;
+  impactCode: IntegrationImpactCode;
   dashboard?: string | null;
 }
 

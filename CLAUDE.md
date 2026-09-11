@@ -486,18 +486,16 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **Active branch**: `docs/post-merge-workflows-and-issues`, based exactly on merged `dev` at
-  `acaff8f`. Two pre-existing untracked diagnostic artifacts (`frontend/branch-sheet-open.png` and
-  `frontend/scroll-check.mjs`) are intentionally untouched.
-- **In progress**: documentation-only synchronization after the implementation stack merge.
-  `docs/features.md` records the owner-reported issues, their shipped solutions, and the current
-  verified findings. `docs/ux.md` inventories the supported user journeys and explicitly separates
-  this repository's internal/courier UI from its API-only storefront contract. `TODO.md` now marks
-  merged batches accurately while reopening the overstated UX-034 item.
-- **Next step**: obtain owner approval for the four focused corrections: the real staff-detail
-  workspace, shared email-readiness truth, localized configuration impact codes, and
-  password-reset timing/abuse hardening. Then decide whether the future Admin role may see the
-  non-secret configuration reference. After those corrections, proceed to **point 4**: the final
+- **Active branch**: `fix/configuration-readiness-localization`, stacked after Batch 10 and the
+  documentation checkpoint. Two pre-existing untracked diagnostic artifacts
+  (`frontend/branch-sheet-open.png` and `frontend/scroll-check.mjs`) remain intentionally untouched.
+- **Completed in the correction stack**: Batch 10 hardened forgot-password privacy and abuse
+  controls. Batch 11 now derives diagnostics email readiness from the delivery service's exact
+  SMTP + enabled-setting + sender-address contract and returns stable codes localized by the
+  English/Arabic clients; no secret-bearing response fields were added.
+- **Next step**: publish Batch 11, then implement the real permission-aware staff-detail workspace
+  in Batch 12. Decide separately whether the future Admin role may view the non-secret
+  configuration reference. After the ordered correction/UX batches, proceed to **point 4**: the final
   combined unit/type/lint/build/E2E, motion, accessibility, responsive, and native-Arabic gate.
 - **Blockers**: the production-safe mapping from legacy Owner/Manager/Fulfillment/Support/Demo to
   Admin/Developer/Cashier is not approved. Production Sentry remains on hold after the trial ended,

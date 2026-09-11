@@ -2348,6 +2348,22 @@
       "stateConfigured": "Configured",
       "statePartial": "Incomplete",
       "stateMissing": "Not configured",
+      "readiness": {
+        "ready": "Ready",
+        "partial": "Incomplete",
+        "missing": "Not configured",
+        "disabled": "Disabled in settings",
+        "missingSender": "Sender address is missing",
+        "smtpPartial": "SMTP settings are incomplete",
+        "smtpMissing": "SMTP settings are missing"
+      },
+      "impacts": {
+        "emailDeliveryUnavailable": "Password reset codes, low-stock supplier outreach, scheduled reports, and customer order-status emails are not delivered.",
+        "uploadsUnavailable": "Product and brand image uploads fail; existing images are unaffected.",
+        "errorTrackingUnavailable": "Crashes remain only in server logs, without grouping, alerts, or release tracking.",
+        "logAggregationUnavailable": "Aggregated log search is unavailable; logs can only be read on the host.",
+        "customerGoogleSignInUnavailable": "Storefront customers cannot sign in with Google; staff sign-in is unaffected."
+      },
       "openDashboard": "Open dashboard",
       "secretsNote": "Required signing secrets are not listed: the server refuses to start without them, so this page loading at all confirms they are set.",
       "refresh": "Refresh",

@@ -9,6 +9,7 @@ import { prisma } from '../../db/prisma.js';
 import { env, isProduction } from '../../config/env.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requireRole } from '../../middleware/authorize.js';
+import { getEmailDeliveryReadiness } from '../../services/email.service.js';
 
 /**
  * Developer diagnostics — "is the deployed thing healthy, and where do I look".
@@ -231,13 +232,14 @@ diagnosticsRouter.get(
  * this request is itself the proof they are set. Reporting `true` always
  * would be a row that can never say anything else.
  *
- * `impact` exists so this reads as a checklist rather than a dump — an
+ * `impactCode` exists so this reads as a checklist rather than a dump — an
  * unconfigured integration is only worth acting on if you know what stops
- * working, and that sentence is the thing an owner cannot derive from a
- * variable name.
+ * working. The API returns a stable code rather than English prose so the
+ * client can localize it without coupling cacheable operational data to one
+ * display language.
  */
-function configurationStatus() {
-  const smtpVars = [env.SMTP_HOST, env.SMTP_PORT, env.SMTP_USER, env.SMTP_PASSWORD];
+async function configurationStatus() {
+  const email = await getEmailDeliveryReadiness();
   const cloudinaryVars = [
     env.CLOUDINARY_CLOUD_NAME,
     env.CLOUDINARY_API_KEY,
@@ -258,40 +260,42 @@ function configurationStatus() {
     integrations: [
       {
         key: 'email',
-        // Partial is its own state, not a variant of missing: three of four
-        // SMTP vars set is a typo to fix, while none set is a decision not to
-        // send mail. Collapsing them would hide the difference.
-        configured: smtpVars.every(Boolean),
-        partial: smtpVars.some(Boolean) && !smtpVars.every(Boolean),
-        impact:
-          'Password reset codes, low-stock supplier outreach, scheduled reports and customer order-status emails are not delivered.',
+        ...email,
+        impactCode: 'emailDeliveryUnavailable',
       },
       {
         key: 'uploads',
         configured: cloudinaryVars.every(Boolean),
         partial: cloudinaryVars.some(Boolean) && !cloudinaryVars.every(Boolean),
-        impact: 'Product and brand image uploads fail; existing images are unaffected.',
+        readinessCode: cloudinaryVars.every(Boolean)
+          ? 'ready'
+          : cloudinaryVars.some(Boolean)
+            ? 'partial'
+            : 'missing',
+        impactCode: 'uploadsUnavailable',
       },
       {
         key: 'errorTracking',
         configured: Boolean(env.SENTRY_DSN),
         partial: false,
-        impact:
-          'Crashes are only in the server logs — nothing is grouped, alerted on, or tied to a release.',
+        readinessCode: env.SENTRY_DSN ? 'ready' : 'missing',
+        impactCode: 'errorTrackingUnavailable',
         dashboard: env.SENTRY_DASHBOARD_URL ?? null,
       },
       {
         key: 'logs',
         configured: Boolean(env.LOGS_DASHBOARD_URL),
         partial: false,
-        impact: 'No aggregated log search; logs are readable only on the host.',
+        readinessCode: env.LOGS_DASHBOARD_URL ? 'ready' : 'missing',
+        impactCode: 'logAggregationUnavailable',
         dashboard: env.LOGS_DASHBOARD_URL ?? null,
       },
       {
         key: 'customerSignIn',
         configured: Boolean(env.GOOGLE_CLIENT_ID),
         partial: false,
-        impact: 'Storefront customers cannot sign in with Google; staff sign-in is unaffected.',
+        readinessCode: env.GOOGLE_CLIENT_ID ? 'ready' : 'missing',
+        impactCode: 'customerGoogleSignInUnavailable',
       },
     ],
   };
@@ -301,8 +305,8 @@ diagnosticsRouter.get(
   '/diagnostics/configuration',
   authenticate,
   requireRole(StaffRole.DEVELOPER),
-  (req, res) => {
-    res.json({ data: configurationStatus() });
+  async (req, res) => {
+    res.json({ data: await configurationStatus() });
     req.log.info({ event: 'diagnostics.configuration.viewed', userId: req.user?.id });
   },
 );

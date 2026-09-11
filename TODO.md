@@ -116,10 +116,12 @@ earlier remote run to finish, but must retain the merge order.
   `fix/account-recovery-hardening`; focused verification: 69/69 reset/auth tests pass sequentially,
   targeted ESLint and backend typecheck pass. (The two integration files share destructive database
   fixtures and therefore must not run in parallel with each other.)
-- [ ] **Batch 11 — configuration correctness and localization (P1/P2).** Derive email readiness
+- [x] **Batch 11 — configuration correctness and localization (P1/P2).** Derive email readiness
   from the same SMTP + `email.enabled` + `email.fromAddress` contract used by delivery; replace
   backend English impact prose with stable codes localized in English/Arabic; preserve the
-  non-secret response contract and add regression coverage.
+  non-secret response contract and add regression coverage. Implemented on
+  `fix/configuration-readiness-localization`; focused verification: backend diagnostics/email tests
+  12/12, frontend configuration/message tests 22/22, both typechecks and targeted ESLint pass.
 - [ ] **Batch 12 — staff detail workspace (UX-034, reopened P1).** Add a durable, permission-aware
   staff route composing reusable identity, branch membership, activity, sessions, and permitted
   account actions. Keep job/profile data separate from security roles and preserve all rank,

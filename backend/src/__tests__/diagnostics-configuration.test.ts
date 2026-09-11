@@ -7,6 +7,8 @@ import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
 import { signToken } from '../services/auth.service.js';
+import { deriveEmailDeliveryReadiness } from '../services/email.service.js';
+import { getSettingValue } from '../services/settings.service.js';
 
 /**
  * `GET /diagnostics/configuration` — the owner's configuration reference.
@@ -104,21 +106,59 @@ describe('GET /api/v1/diagnostics/configuration', () => {
     }
   });
 
-  it('describes what breaks for anything unconfigured, so a name alone is never the whole row', async () => {
+  it('returns stable localization codes instead of backend English prose', async () => {
     const res = await request(app)
       .get('/api/v1/diagnostics/configuration')
       .set(auth(developerToken));
 
     const body = res.body as {
-      data: { integrations: { key: string; configured: boolean; impact: string }[] };
+      data: {
+        integrations: {
+          key: string;
+          configured: boolean;
+          readinessCode: string;
+          impactCode: string;
+        }[];
+      };
     };
 
     expect(body.data.integrations.length).toBeGreaterThan(0);
 
     for (const integration of body.data.integrations) {
-      expect(integration.impact.length).toBeGreaterThan(0);
+      expect(integration.readinessCode).toMatch(/^[a-z][A-Za-z]+$/);
+      expect(integration.impactCode).toMatch(/^[a-z][A-Za-z]+$/);
       expect(typeof integration.configured).toBe('boolean');
     }
+
+    expect(JSON.stringify(body.data.integrations)).not.toContain('not delivered');
+  });
+
+  it('uses the same complete email-readiness contract as the delivery service', async () => {
+    const res = await request(app)
+      .get('/api/v1/diagnostics/configuration')
+      .set(auth(developerToken));
+    const body = res.body as {
+      data: {
+        integrations: {
+          key: string;
+          configured: boolean;
+          partial: boolean;
+          readinessCode: string;
+          impactCode: string;
+        }[];
+      };
+    };
+    const expected = deriveEmailDeliveryReadiness(
+      [env.SMTP_HOST, env.SMTP_PORT, env.SMTP_USER, env.SMTP_PASSWORD],
+      await getSettingValue('email.enabled'),
+      await getSettingValue('email.fromAddress'),
+    );
+
+    expect(body.data.integrations.find((integration) => integration.key === 'email')).toEqual({
+      key: 'email',
+      ...expected,
+      impactCode: 'emailDeliveryUnavailable',
+    });
   });
 
   it('refuses an OWNER — operating the deployment is not a business area', async () => {
@@ -135,5 +175,47 @@ describe('GET /api/v1/diagnostics/configuration', () => {
     const res = await request(app).get('/api/v1/diagnostics/configuration');
 
     expect(res.status).toBe(401);
+  });
+});
+
+describe('email delivery readiness', () => {
+  it.each([
+    {
+      name: 'ready only when SMTP, the sender, and the enabled switch are all present',
+      smtp: ['host', 587, 'user', 'secret'],
+      enabled: true,
+      sender: 'sender@example.test',
+      expected: { configured: true, partial: false, readinessCode: 'ready' },
+    },
+    {
+      name: 'disabled when complete credentials are intentionally switched off',
+      smtp: ['host', 587, 'user', 'secret'],
+      enabled: false,
+      sender: 'sender@example.test',
+      expected: { configured: false, partial: false, readinessCode: 'disabled' },
+    },
+    {
+      name: 'missing its sender even when SMTP is complete',
+      smtp: ['host', 587, 'user', 'secret'],
+      enabled: true,
+      sender: '',
+      expected: { configured: false, partial: true, readinessCode: 'missingSender' },
+    },
+    {
+      name: 'reports partially supplied SMTP credentials',
+      smtp: ['host', 587, undefined, undefined],
+      enabled: true,
+      sender: 'sender@example.test',
+      expected: { configured: false, partial: true, readinessCode: 'smtpPartial' },
+    },
+    {
+      name: 'reports wholly absent SMTP credentials',
+      smtp: [undefined, undefined, undefined, undefined],
+      enabled: false,
+      sender: '',
+      expected: { configured: false, partial: false, readinessCode: 'smtpMissing' },
+    },
+  ])('$name', ({ smtp, enabled, sender, expected }) => {
+    expect(deriveEmailDeliveryReadiness(smtp, enabled, sender)).toEqual(expected);
   });
 });
