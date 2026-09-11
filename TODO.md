@@ -158,10 +158,20 @@ earlier remote run to finish, but must retain the merge order.
   rather than truncating, because that explanation is the reason that overlay exists.
   Verification: shell suites 122/122 across 14 files (including the existing `role="status"`
   assertion), frontend typecheck and eslint clean.
-- [ ] **Batch 15 — multi-branch dashboard summary.** When more than one branch is available, show
-  concise comparable branch summaries plus a clear aggregate/branch distinction and direct branch
-  navigation; preserve the simple current experience for single-branch businesses and URL-backed
-  dashboard state.
+- [x] **Batch 15 — multi-branch dashboard summary.** A "By branch" table sits under the KPI strip
+  showing revenue, orders and units for every active branch, with a row click switching the
+  workspace to it. A single-branch business renders NOTHING — a comparison of one repeats the strip
+  above it, and having one branch is not a problem needing an empty state.
+  New `GET /reports/branch-comparison` backed by two grouped aggregates rather than `getOverview`
+  in a loop (which would be N round-trips of eight queries, each needing an explicit `branchId` —
+  the per-call-site scoping `scoped()` exists to prevent). It is the one report deliberately NOT
+  wrapped in `scoped()`: applying the active branch would reduce a comparison to a single row.
+  Aggregate-vs-branch is explicit — the strip is the aggregate (or the active branch), the table is
+  always every branch. Deliberately fewer columns than the overview: new customers are not
+  branch-scoped and low stock is a point-in-time count, so neither belongs in a row a reader would
+  add up. Branches come from the branch table, not from orders, so a branch that sold nothing still
+  gets a row. URL-backed dashboard state (UX-032) is untouched; the table reads the same `range`.
+  Verification: dashboard 36/36, backend reports 75/75, both typechecks and eslint clean.
 - [ ] **Batch 16 — multi-currency till foundation (financial design gate).** Use the Settings
   currency as the till default, then add configured tender currencies only after defining rate
   source/versioning, rounding, tender and change currency, receipt representation, shift

@@ -213,6 +213,29 @@ export async function fetchOverview(range: DateRange): Promise<Overview> {
   return apiFetch<Overview>(`/reports/overview?${query({ ...range })}`);
 }
 
+/** One comparable row per active branch — see the route's own note on why
+ *  this endpoint is deliberately NOT scoped to the active branch. */
+export interface BranchComparisonRow {
+  id: string;
+  name: string;
+  code: string | null;
+  isSellingPoint: boolean;
+  businessId: string;
+  businessName: string;
+  revenue: string;
+  orderCount: number;
+  unitsSold: number;
+}
+
+export interface BranchComparison {
+  range: DateRange;
+  branches: BranchComparisonRow[];
+}
+
+export async function fetchBranchComparison(range: DateRange): Promise<BranchComparison> {
+  return apiFetch<BranchComparison>(`/reports/branch-comparison?${query({ ...range })}`);
+}
+
 export async function fetchRevenue(
   range: DateRange,
   granularity: Granularity = 'day',

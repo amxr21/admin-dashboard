@@ -432,6 +432,15 @@
     }
   },
   "dashboard": {
+    "branchSummary": {
+      "title": "By branch",
+      "subtitle": "Every branch for the selected period. Choose one to switch your workspace to it.",
+      "branch": "Branch",
+      "revenue": "Revenue",
+      "orders": "Orders",
+      "units": "Units sold",
+      "retry": "Try again"
+    },
     "title": "Dashboard",
     "subtitle": "A snapshot of revenue, orders and stock for the selected period.",
     "revenue": "Revenue",
