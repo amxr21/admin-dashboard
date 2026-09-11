@@ -497,8 +497,9 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   exists before JSON parsing, malformed JSON returns the shared `400 BAD_REQUEST` envelope, and
   oversized JSON returns `413 PAYLOAD_TOO_LARGE`, both with correlated request IDs. Focused tests pass
   77/77; backend lint, type-check, build, and merge-integrity checks pass.
-- **Next step**: commit and publish URG-003 against the URG-002 branch, inspect GitHub checks, then
-  start URG-004 directly on top. Final checkout acceptance remains authenticated post-deploy.
+- **Next step**: PR #219 is open against URG-002 PR #218 and mergeable; GitHub CI is running while
+  work proceeds. Start URG-004 directly on top. Final checkout acceptance remains authenticated
+  post-deploy.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.
