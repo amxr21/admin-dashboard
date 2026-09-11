@@ -1,4 +1,4 @@
-import { OrderStatus } from '@prisma/client';
+import { CancellationReason, OrderStatus } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -63,6 +63,13 @@ const statusBody = z
     // Matches the column width, so a long note is a 400 rather than a
     // truncation the user never sees.
     note: z.string().trim().max(255).optional(),
+    // URG-010. Whether these are REQUIRED depends on `to`, which the service
+    // decides — it is the single choke point the bulk path also goes through,
+    // so the rule cannot be bypassed by posting a set of ids instead of one.
+    cancellationReason: z
+      .nativeEnum(CancellationReason, { message: 'Unknown cancellation reason' })
+      .optional(),
+    cancellationReasonNote: z.string().trim().max(500).optional(),
   })
   .strict();
 
@@ -80,6 +87,13 @@ const bulkStatusBody = z
     ids: z.array(z.string().min(1)).min(1).max(200),
     to: z.nativeEnum(OrderStatus, { message: 'Unknown order status' }),
     note: z.string().trim().max(255).optional(),
+    // URG-010 — one reason for the whole batch. Cancelling 50 orders is one
+    // decision ("supplier failed"), not 50 separate ones; the service applies
+    // it per order so each row carries its own copy.
+    cancellationReason: z
+      .nativeEnum(CancellationReason, { message: 'Unknown cancellation reason' })
+      .optional(),
+    cancellationReasonNote: z.string().trim().max(500).optional(),
   })
   .strict();
 
@@ -190,6 +204,8 @@ ordersRouter.patch('/orders/:id/status', ...guard, async (req, res) => {
     to: parsed.data.to,
     note: parsed.data.note,
     actorId: user.id,
+    cancellationReason: parsed.data.cancellationReason,
+    cancellationReasonNote: parsed.data.cancellationReasonNote,
   });
 
   req.log.info({
@@ -235,6 +251,8 @@ ordersRouter.post('/orders/bulk-status', ...guard, async (req, res) => {
     to: parsed.data.to,
     note: parsed.data.note,
     actorId: user.id,
+    cancellationReason: parsed.data.cancellationReason,
+    cancellationReasonNote: parsed.data.cancellationReasonNote,
   });
 
   req.log.info({

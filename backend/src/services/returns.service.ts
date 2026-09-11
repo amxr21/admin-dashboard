@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 import {
   Prisma,
+  RefundReason,
   ReturnCategory,
   ReturnItemStatus,
   ReturnResolution,
@@ -375,6 +376,14 @@ export interface ApproveReturnInput {
   resolution: Exclude<ReturnResolution, 'NONE'>;
   /** Decimal string. Required when resolution is REFUND, ignored otherwise. */
   refundAmount?: string | undefined;
+  /**
+   * Why the refund is being given (URG-009). Required when resolution is
+   * REFUND, refused otherwise — a refund reason on a REPLACEMENT would be a
+   * stored fact that never happened.
+   */
+  refundReason?: RefundReason | undefined;
+  /** Required free text when the reason is OTHER, and only then. */
+  refundReasonNote?: string | undefined;
   restock: boolean;
   /**
    * Per-line decisions (B4.7). Omit to accept everything in full — the
@@ -395,10 +404,48 @@ export interface ApproveReturnInput {
   restockingFeePercent?: number | undefined;
 }
 
+/**
+ * URG-009 — a refund records WHY it was given, from a fixed catalogue.
+ *
+ * Deliberately separate from the requester's own `category`: the customer says
+ * why they are sending it back, this says why staff chose to refund. They can
+ * legitimately disagree, and that disagreement is worth keeping.
+ */
+function assertRefundReason(input: ApproveReturnInput) {
+  if (input.resolution !== ReturnResolution.REFUND) {
+    if (input.refundReason !== undefined) {
+      throw AppError.badRequest('A refund reason only applies to a refund', {
+        field: 'refundReason',
+      });
+    }
+    return;
+  }
+
+  if (!input.refundReason) {
+    throw AppError.badRequest('Choose why this refund is being given', {
+      field: 'refundReason',
+    });
+  }
+
+  // The code is what reports group by; the note is what a human reads. OTHER
+  // without it would record "something else" and nothing more.
+  if (input.refundReason === RefundReason.OTHER) {
+    if (!input.refundReasonNote?.trim()) {
+      throw AppError.badRequest('Describe the refund reason', { field: 'refundReasonNote' });
+    }
+  } else if (input.refundReasonNote?.trim()) {
+    throw AppError.badRequest('A reason note only applies to "Other"', {
+      field: 'refundReasonNote',
+    });
+  }
+}
+
 export async function approveReturn(id: string, input: ApproveReturnInput, req: Request) {
   if (input.resolution === ReturnResolution.REFUND && !input.refundAmount) {
     throw AppError.badRequest('Enter a refund amount', { field: 'refundAmount' });
   }
+
+  assertRefundReason(input);
 
   // Declared outside the transaction so the audit call below can read what
   // was actually applied — the transaction only WRITES it.
@@ -660,6 +707,12 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
         status: ReturnStatus.APPROVED,
         resolution: input.resolution,
         refundAmount,
+        // URG-009 — written in the same transaction as the refund itself, so
+        // a rolled-back approval cannot leave a reason for a refund that was
+        // never given. Only meaningful on a REFUND; `assertRefundReason` has
+        // already refused one on any other resolution.
+        refundReason: input.refundReason ?? null,
+        refundReasonNote: input.refundReasonNote?.trim() || null,
         restockingFeePercent,
         restocked: input.restock,
       },

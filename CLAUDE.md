@@ -551,9 +551,18 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   React batches the update, the effect has not run, and code in the same `finally` reads the stale
   value. When a ref must be accurate across an await in the same function, set it synchronously at
   the point of change and keep the effect only for changes made elsewhere.
-- **Next step**: URG-009 (configurable refund reasons with Other), continuing the U1 queue. **It and
-  URG-010 both need owner decisions first** — the open questions are already listed at the bottom of
-  `URGENT_TODO.md`: one reason or several, and whether the catalogues are fixed or admin-configurable.
+- **The URG-009/010 lesson worth remembering**: validation for a rule that applies to a *state
+  change* belongs in the service, not the route — `bulkChangeOrderStatus` loops the same
+  `changeOrderStatus` a single PATCH uses, so a required-reason check written at the route would
+  have left the bulk endpoint able to cancel 200 orders with no reason at all. **Find every caller
+  of the choke point before deciding where a guard lives.** Also: a new reason enum was kept
+  SEPARATE from the existing `ReturnCategory` rather than reused, because that one records why the
+  customer returned an item and the new one records why staff chose to refund — they can
+  legitimately disagree, and merging them would destroy that signal. Same reasoning kept refund and
+  cancellation catalogues apart.
+- **Owner decisions 2026-09-12**: reason catalogues are exactly one value plus an `Other` note,
+  fixed enums in code (not admin-configurable), values chosen without waiting for approval.
+- **Next step**: URG-011 (reopen the double-scrollbar defect), starting section U2.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.

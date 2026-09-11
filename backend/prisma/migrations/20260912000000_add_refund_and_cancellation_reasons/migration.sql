@@ -1,0 +1,8 @@
+-- AlterTable
+ALTER TABLE `orders` ADD COLUMN `cancellation_reason` ENUM('OUT_OF_STOCK', 'CUSTOMER_REQUEST', 'DUPLICATE_ORDER', 'PAYMENT_FAILED', 'UNABLE_TO_FULFILL', 'OTHER') NULL,
+    ADD COLUMN `cancellation_reason_note` VARCHAR(500) NULL;
+
+-- AlterTable
+ALTER TABLE `returns` ADD COLUMN `refund_reason` ENUM('DAMAGED', 'WRONG_ITEM', 'NOT_AS_DESCRIBED', 'FAULTY', 'CHANGED_MIND', 'OTHER') NULL,
+    ADD COLUMN `refund_reason_note` VARCHAR(500) NULL;
+

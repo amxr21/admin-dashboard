@@ -227,14 +227,57 @@ export async function fetchOrderNeighbors(
   return apiFetch<OrderNeighbors>(`/orders/${id}/neighbors?${toOrderQuery(filters)}`);
 }
 
+/**
+ * Why an order is being canceled (URG-010) — mirrors the backend enum.
+ * Declared here rather than imported so the client keeps no Prisma dependency.
+ */
+export type CancellationReason =
+  | 'OUT_OF_STOCK'
+  | 'CUSTOMER_REQUEST'
+  | 'DUPLICATE_ORDER'
+  | 'PAYMENT_FAILED'
+  | 'UNABLE_TO_FULFILL'
+  | 'OTHER';
+
+export const CANCELLATION_REASONS: CancellationReason[] = [
+  'OUT_OF_STOCK',
+  'CUSTOMER_REQUEST',
+  'DUPLICATE_ORDER',
+  'PAYMENT_FAILED',
+  'UNABLE_TO_FULFILL',
+  'OTHER',
+];
+
+/**
+ * The reason travels in an options object rather than as more positional
+ * arguments: `(id, to, note, reason, reasonNote)` is a call nobody can read at
+ * the call site, and the two reason fields only ever apply together.
+ */
+export interface CancellationDetails {
+  cancellationReason?: CancellationReason | undefined;
+  cancellationReasonNote?: string | undefined;
+}
+
 export async function changeOrderStatus(
   id: string,
   to: OrderStatus,
   note?: string,
+  cancellation?: CancellationDetails,
 ): Promise<OrderDetail> {
   const body = await apiFetch<{ order: OrderDetail }>(`/orders/${id}/status`, {
     method: 'PATCH',
-    body: JSON.stringify(note ? { to, note } : { to }),
+    body: JSON.stringify({
+      to,
+      ...(note ? { note } : {}),
+      // Omitted entirely when absent — the route is `.strict()` and the
+      // service refuses a reason on a non-cancelling transition.
+      ...(cancellation?.cancellationReason
+        ? { cancellationReason: cancellation.cancellationReason }
+        : {}),
+      ...(cancellation?.cancellationReasonNote
+        ? { cancellationReasonNote: cancellation.cancellationReasonNote }
+        : {}),
+    }),
   });
   return body.order;
 }
@@ -259,10 +302,23 @@ export async function bulkChangeOrderStatus(
   ids: string[],
   to: OrderStatus,
   note?: string,
+  cancellation?: CancellationDetails,
 ): Promise<BulkStatusResult> {
   const body = await apiFetch<BulkStatusResult>('/orders/bulk-status', {
     method: 'POST',
-    body: JSON.stringify(note ? { ids, to, note } : { ids, to }),
+    body: JSON.stringify({
+      ids,
+      to,
+      ...(note ? { note } : {}),
+      // One reason for the whole batch — cancelling 50 orders is one
+      // decision, and the server writes a copy onto each row.
+      ...(cancellation?.cancellationReason
+        ? { cancellationReason: cancellation.cancellationReason }
+        : {}),
+      ...(cancellation?.cancellationReasonNote
+        ? { cancellationReasonNote: cancellation.cancellationReasonNote }
+        : {}),
+    }),
   });
   return body;
 }
