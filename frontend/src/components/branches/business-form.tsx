@@ -82,6 +82,9 @@ function initial(business: BusinessSummary | null): Values {
 
 export function BusinessForm({ businessId }: BusinessFormProps) {
   const t = useTranslations('branches.business');
+  // URG-013 — shared format-example placeholders, same strings every
+  // email/phone input in the app uses (see resource-form.tsx's placeholderFor).
+  const tCommon = useTranslations('common');
   const translateError = useTranslatedApiError();
   const router = useRouter();
 
@@ -227,6 +230,13 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
                 <Input
                   id={`business-${field}`}
                   type={field === 'email' ? 'email' : field === 'phone' ? 'tel' : 'text'}
+                  placeholder={
+                    field === 'email'
+                      ? tCommon('placeholders.email')
+                      : field === 'phone'
+                        ? tCommon('placeholders.phone')
+                        : undefined
+                  }
                   value={values[field] ?? ''}
                   onChange={(event) => set(field, event.target.value)}
                   aria-invalid={field === 'name' && nameError ? true : undefined}
