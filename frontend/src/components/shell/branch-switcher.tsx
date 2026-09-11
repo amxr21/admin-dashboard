@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { fetchBranches, type BranchSummary } from '@/lib/branches-api';
 import { readBranchId, writeBranchId } from '@/lib/auth-storage';
 
@@ -106,22 +107,39 @@ export function BranchSwitcher() {
         </div>
       </div>, document.body,
     ) : null}
+    {/*
+      URG-014 — was a flat `max-w-56` (224px) regardless of content, so a
+      longer branch name (a business prefix, a real name, a disambiguating
+      code) cropped well before it needed to. `max-w-56` -> `max-w-80`
+      (320px) gives real names room; `w-full` still lets it shrink on a
+      narrow topbar rather than force one. The Tooltip is the ticket's own
+      required fallback for whatever still doesn't fit — shown only for a
+      genuinely selected branch, never for the always-short "All branches".
+    */}
     <Select value={active ?? 'all'} onValueChange={choose} disabled={isSwitching}>
-      <SelectTrigger
-        className="h-8 w-full max-w-56 text-sm"
-        aria-label={t('switcherLabel')}
-      >
-        <SelectValue>
-          <span className="flex items-center gap-2 truncate">
-            {activeBranch && !activeBranch.isSellingPoint ? (
-              <Warehouse className="size-4 shrink-0" aria-hidden />
-            ) : (
-              <Store className="size-4 shrink-0" aria-hidden />
-            )}
-            <span className="truncate">{activeBranch?.name ?? t('allBranches')}</span>
-          </span>
-        </SelectValue>
-      </SelectTrigger>
+      {/* TooltipTrigger asChild clones its child and forwards a ref, which
+          needs a real DOM-rendering element — SelectTrigger, not the
+          context-provider Select.Root wrapping it. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <SelectTrigger
+            className="h-8 w-full max-w-80 text-sm"
+            aria-label={t('switcherLabel')}
+          >
+            <SelectValue>
+              <span className="flex items-center gap-2 truncate">
+                {activeBranch && !activeBranch.isSellingPoint ? (
+                  <Warehouse className="size-4 shrink-0" aria-hidden />
+                ) : (
+                  <Store className="size-4 shrink-0" aria-hidden />
+                )}
+                <span className="truncate">{activeBranch?.name ?? t('allBranches')}</span>
+              </span>
+            </SelectValue>
+          </SelectTrigger>
+        </TooltipTrigger>
+        {activeBranch ? <TooltipContent side="bottom">{activeBranch.name}</TooltipContent> : null}
+      </Tooltip>
 
       <SelectContent>
         <SelectItem value="all">{t('allBranches')}</SelectItem>
