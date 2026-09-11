@@ -519,7 +519,20 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   isolation was rejected as it would serialize every non-contending sale. **Generalise**: any
   check-then-write on a shared counter is a race unless the check is part of the write statement.
   The `inventory.allowNegativeStock` escape hatch (O5.8) deliberately keeps the unconditional path.
-- **Next step**: URG-006 (hide out-of-stock items from till browsing), continuing the U1 queue.
+- **The URG-005 follow-on worth remembering**: closing the oversell race ADDED a contention point,
+  and its expected losing path was unmapped — the cashier who lost got a 500 (`P2034`, write
+  conflict/deadlock) instead of a refusal. **A concurrency guard is only half-finished until the
+  loser's outcome is mapped**; ask what the loser sees. P2034 now maps to the same 400 the
+  pre-flight check returns. The `storefront.service.ts` precedent maps it to 409 — copy its RULE
+  ("both paths look the same"), not its status code, which differs because that surface's
+  pre-flight differs.
+- **URG-006 outcome**: the browse half was already satisfied by an earlier deliberate decision —
+  `product-grid.tsx` shows sold-out items as disabled tiles with a badge rather than hiding them,
+  so a cashier can tell "we just ran out" from "we never had it". The owner reconfirmed that on
+  2026-09-11 rather than switching to omission. Only the SCAN path was a real gap: it added
+  zero-stock items silently, and now refuses. Before "fixing" something the queue describes as
+  missing, check whether it was built and decided differently on purpose.
+- **Next step**: URG-007 (enforce cash received against the amount due), continuing the U1 queue.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.
