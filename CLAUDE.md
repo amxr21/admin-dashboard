@@ -486,11 +486,12 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **Active branch**: `fix/urgent-refund-cancel-reasons`, currently six local commits ahead of its
-  recorded upstream at the 2026-09-12 review. PR #225 is the latest named stacked PR. Two
+- **Active branch**: `fix/urgent-migration-data-integrity`, created on published R0 commit
+  `4eb5abc` (`fix/urgent-refund-cancel-reasons`). That parent push passed merge-integrity and
+  frontend/backend typechecks. PR #225 is the latest named stacked PR. Two
   pre-existing untracked diagnostic artifacts (`frontend/branch-sheet-open.png` and
   `frontend/scroll-check.mjs`) remain intentionally untouched.
-- **In progress**: R0 handoff reconciliation in `URGENT_TODO.md`; URG-004, URG-009, URG-011,
+- **In progress**: R1 migration/data-integrity audit in `URGENT_TODO.md`; URG-004, URG-009, URG-011,
   URG-013 and URG-014 were reopened after review of implementation against the owner's full
   acceptance request. `gh` returned HTTP 401, so current PR checks/merge state cannot be asserted
   from the earlier green reports. Do not infer production deployment from local commits.
@@ -565,11 +566,11 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   cancellation catalogues apart.
 - **Owner decisions 2026-09-12**: reason catalogues are exactly one value plus an `Other` note,
   fixed enums in code (not admin-configurable), values chosen without waiting for approval.
-- **Next step**: finish and commit R0 tracked handoff on the current branch without staging either
-  diagnostic artifact; publish the local stack after checks/credentials permit. Then create a
-  stackable URG-004 migration-data-integrity branch and inventory data-only migrations before a
-  production policy change. Subsequent R2/R3/R4/R5 tasks and merge order are explicit in
-  `URGENT_TODO.md`.
+- **Next step**: classify every data mutation in committed migrations and reproduce an omitted
+  backfill with matching schema on a disposable database. Design a safe release/repair policy before
+  changing admission logic. Baseline focused Vitest is 17/17; current GitHub checks cannot be
+  queried because `gh pr checks 225` returns HTTP 401. R2/R3/R4/R5 stack order is in
+  `URGENT_TODO.md`. Do not stage the two untracked diagnostic artifacts.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.

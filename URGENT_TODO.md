@@ -38,15 +38,51 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
 
 ### Correction and delivery batches, in stack order
 
-- [*] **R0 — restore the durable handoff.** Track this file again; synchronize `CLAUDE.md` and
-      `TODO.md` to the actual active branch, local-only commits, PR uncertainty, reopened items,
-      owner decisions and the next exact task. Commit/push only the handoff on the current stack
-      after verifying its base; do not stage either untracked frontend diagnostic artifact.
-- [ ] **R1 — release/data migration safety (URG-004).** Inspect every data-only/backfill migration;
+- [x] **R0 — restore the durable handoff.** `4eb5abc` tracks this file again and synchronizes
+      `CLAUDE.md`/`TODO.md`; pushed on `fix/urgent-refund-cancel-reasons`. Push hooks passed
+      merge-integrity and both typechecks. Neither untracked frontend diagnostic artifact was staged.
+- [*] **R1 — release/data migration safety (URG-004).** Inspect every data-only/backfill migration;
       reproduce missing `_prisma_migrations` on a disposable database only; specify when shape
       parity is insufficient; make migration deploy/status outcomes actionable without converting a
       bookkeeping failure into a blanket outage; test missing backfill, real drift, and healthy
       startup. One branch stacked on R0; full backend/CI gate and release runbook before merge.
+      Branch: `fix/urgent-migration-data-integrity` from `4eb5abc` (not a parallel base).
+      Initial read-only audit finds material data mutations in business/default-branch creation,
+      branch stock/movement attribution, default-branch designation, order attribution, historical
+      shift approval, normalized customer phone, and catalogue baseline snapshots. Some invariants
+      cannot be reconstructed from today's shape or values alone (e.g. whether a historical order
+      was intentionally unattributed later). Do not replay migrations or mark all historical rows
+      resolved on a live database without evidence and a backup/review procedure.
+      R1 live checklist:
+      - [x] Confirm branch is stacked on the published R0 commit and inspect the production gate.
+      - [x] Locate data-mutating migrations; `20260911100000_backfill_catalogue_version_baselines`
+            is data-only, so schema parity would remain green even if it never ran.
+      - [x] Run baseline production-start/schema-integrity tests (Vitest: 17/17).
+      - [*] Classify each historical mutation by a verifiable invariant versus an irreversible
+            historical fact; inspect all SQL and app assumptions before deciding a startup gate.
+            - Default business/branch seed (`20260906020000`) and default flag (`06040000`):
+              current references/one default can be checked; an intentionally retired seed may
+              make a simple fixed-ID assertion invalid.
+            - Branch movement and stock backfill (`06030000`): inspect branch references and
+              aggregate stock, but later legitimate transfers/corrections defeat a naive
+              `branch_stock = products.stock at migration time` assertion.
+            - Order branch backfill (`06050000`): later intentionally unattributed orders may be
+              null; do not mass-assign them now.
+            - Shift approval (`09110000`): later pending/rejected shifts are legitimate; no
+              global `all APPROVED` check can reconstruct the historical cutoff.
+            - Customer phone normalization (`10151000`): current non-null phone/normalized
+              pairs are checkable, but later edits and normalization policy require review.
+            - Catalogue baseline (`11100000`): missing version rows and zero version are
+              checkable; the original snapshot values cannot be recreated accurately if the
+              product changed later. This migration contains only UPDATE/INSERT, no DDL.
+      - [ ] Reproduce missing migration history and missing backfill on disposable databases;
+            never run migration repair against the live DB during development.
+      - [ ] Implement a read-only diagnostic and safe release policy that differentiates healthy,
+            missing bookkeeping with verified data, absent backfill, and real schema drift.
+      - [ ] Add startup, database-backed, and negative-path tests; run backend lint/type/build,
+            merge-integrity and GitHub checks before PR/merge.
+      - [ ] Write a recovery procedure requiring backup, review of applied SQL/data, and explicit
+            operator action; never infer all migrations applied from table count alone.
 - [ ] **R2 — complete refund reasons (URG-009).** Extend the same fixed catalogue + Other contract to
       goodwill refunds; preserve the reason on its payment/audit record without inventing an RMA;
       validate API and UI, migrate additively if storage changes, test both refund paths and older
@@ -173,7 +209,7 @@ These are recurring gates for each new branch, not one-time unfinished tickets.
       - [x] Test exact startup order: deploy -> status -> live schema parity -> server import.
       - [x] Test deploy/status non-zero are non-fatal when live schema matches, and that process
             rejection still blocks server import.
-      - [ ] Inventory all data-only/backfill migrations and establish their application without
+      - [*] Inventory all data-only/backfill migrations and establish their application without
             guessing from live table shape when migration bookkeeping is missing.
       - [ ] Test a non-destructive repair/quarantine policy for missing history, unapplied data
             backfill, genuine drift, and healthy startup on disposable test databases.
