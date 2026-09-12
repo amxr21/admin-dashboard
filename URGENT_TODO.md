@@ -58,11 +58,9 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
       - [x] Locate data-mutating migrations; `20260911100000_backfill_catalogue_version_baselines`
             is data-only, so schema parity would remain green even if it never ran.
       - [x] Run baseline production-start/schema-integrity tests (Vitest: 17/17).
-      - [x] Add a non-blocking `MIGRATION_DATA_REVIEW_REQUIRED` startup diagnostic whenever
-            deploy/status fails but live shape matches. It explicitly warns that data-only
-            backfills are unverified and forbids blind replay. Focused Vitest 17/17 and targeted
-            ESLint passed; this is visibility, not closure of the integrity gap.
-      - [*] Classify each historical mutation by a verifiable invariant versus an irreversible
+      - [x] Add `MIGRATION_DATA_REVIEW_REQUIRED` when deploy/status fails but live shape matches
+            and the known data invariant passes. It warns other backfills are still unverified.
+      - [x] Classify each historical mutation by a verifiable invariant versus an irreversible
             historical fact; inspect all SQL and app assumptions before deciding a startup gate.
             - Default business/branch seed (`20260906020000`) and default flag (`06040000`):
               current references/one default can be checked; an intentionally retired seed may
@@ -81,12 +79,33 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
               product changed later. This migration contains only UPDATE/INSERT, no DDL.
       - [ ] Reproduce missing migration history and missing backfill on disposable databases;
             never run migration repair against the live DB during development.
-      - [ ] Implement a read-only diagnostic and safe release policy that differentiates healthy,
-            missing bookkeeping with verified data, absent backfill, and real schema drift.
-      - [ ] Add startup, database-backed, and negative-path tests; run backend lint/type/build,
-            merge-integrity and GitHub checks before PR/merge.
-      - [ ] Write a recovery procedure requiring backup, review of applied SQL/data, and explicit
-            operator action; never infer all migrations applied from table count alone.
+      - [x] Implement a targeted read-only `db:check-data` command for the catalogue baseline:
+            count products at version zero and products missing a version-1 snapshot; print counts
+            only, no product/customer data. On the guarded local DB it checked 30 products and
+            found 0/0 violations. This does not authenticate production or prove snapshot content.
+      - [x] Run that check automatically only when deploy/status is non-zero after a successful
+            live-schema comparison. A confirmed missing baseline (exit 2) or failed query (exit 1)
+            blocks the *new* container; a matching schema and passing known invariant allows it
+            to start with an explicit unresolved-history warning. Healthy history skips this extra
+            check, and schema drift blocks before it. No automatic migration resolve/replay.
+      - [*] Add startup, database-backed, and negative-path tests; focused Vitest 26/26 plus
+            backend typecheck and lint pass. The read-only CLI passed locally on 30 products.
+            A disposable-DB omitted-backfill reproduction, backend build, merge-integrity, and
+            GitHub checks remain. Local merge-integrity launcher failed twice before project code
+            with Windows `uv_os_get_passwd` ENOMEM; do not label it a code failure or green.
+      - [*] Recovery procedure for an operator (no action authorized or performed here):
+            1. Take and verify a restorable backup; record deployed commit, target DB identity,
+               migration folders/checksums and the exact deploy/status/live-diff outputs.
+            2. Run read-only `pnpm --filter ./backend db:check-data` with the correctly guarded
+               APP_MODE/URL. Zero violations only clears the catalogue invariant, not all history.
+            3. Review branch stock/movements, historical order attribution, shift approval,
+               normalized phone and catalogue snapshots against contemporaneous records/backups;
+               flag anything unknowable instead of guessing or mass-updating current rows.
+            4. Only after each migration's schema *and data effects* are independently evidenced,
+               approve a one-by-one `prisma migrate resolve --applied` plan for missing bookkeeping.
+               Do not run `migrate reset`, blindly replay SQL, or write `_prisma_migrations` by hand.
+            5. Re-run deploy/status, live diff, data check and authenticated endpoint flows after
+               the reviewed repair. Production verification belongs to R4/URG-001–004.
 - [ ] **R2 — complete refund reasons (URG-009).** Extend the same fixed catalogue + Other contract to
       goodwill refunds; preserve the reason on its payment/audit record without inventing an RMA;
       validate API and UI, migrate additively if storage changes, test both refund paths and older

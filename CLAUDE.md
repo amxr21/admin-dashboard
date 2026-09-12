@@ -566,13 +566,16 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   cancellation catalogues apart.
 - **Owner decisions 2026-09-12**: reason catalogues are exactly one value plus an `Other` note,
   fixed enums in code (not admin-configurable), values chosen without waiting for approval.
-- **Next step**: classify every data mutation in committed migrations and reproduce an omitted
-  backfill with matching schema on a disposable database. Design a safe release/repair policy before
-  changing admission logic. R1 added a diagnostic-only `MIGRATION_DATA_REVIEW_REQUIRED` warning
-  for failed migration history with matching schema; focused Vitest is 17/17 and targeted ESLint
-  clean. This warning is not a backfill verification. Current GitHub checks cannot be
-  queried because `gh pr checks 225` returns HTTP 401. R2/R3/R4/R5 stack order is in
-  `URGENT_TODO.md`. Do not stage the two untracked diagnostic artifacts.
+- **Next step**: reproduce an omitted catalogue backfill with matching schema on a disposable
+  database, then finish R1 gates before publishing. R1 now has a read-only `db:check-data` command
+  and exceptional-startup guard: failed migration history plus matching schema checks the known
+  catalogue invariant; confirmed missing data or an unavailable check refuses the new container,
+  while passing it still warns that other historical backfills are unproven. It never auto-baselines.
+  Local guarded check saw 30 products, 0 zero versions, 0 missing version-1 snapshots. Focused
+  Vitest 26/26, backend typecheck and lint pass. Merge-integrity launch failed twice with Windows
+  `uv_os_get_passwd` ENOMEM before project code, so build/merge checks remain pending. Current
+  GitHub checks cannot be queried because `gh pr checks 225` returns HTTP 401. R2/R3/R4/R5 stack
+  order is in `URGENT_TODO.md`. Do not stage the two untracked diagnostic artifacts.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.
