@@ -234,6 +234,13 @@ describe('approving', () => {
 
     await user.type(within(dialog).getByLabelText(/refund amount/i), '50');
 
+    // URG-009 — an amount alone is no longer enough: a refund must also say
+    // WHY it is being given, so Approve stays disabled until both are set.
+    expect(within(dialog).getByRole('button', { name: /^approve$/i })).toBeDisabled();
+
+    await user.click(within(dialog).getByLabelText(/why is this refund being given/i));
+    await user.click(await screen.findByRole('option', { name: 'Arrived damaged' }));
+
     expect(within(dialog).getByRole('button', { name: /^approve$/i })).not.toBeDisabled();
   });
 
@@ -266,6 +273,11 @@ describe('approving', () => {
     expect(within(dialog).getByText(/40\.00/)).toBeInTheDocument();
 
     await user.type(within(dialog).getByLabelText(/refund amount/i), '40');
+
+    // URG-009 — the reason travels with the approval.
+    await user.click(within(dialog).getByLabelText(/why is this refund being given/i));
+    await user.click(await screen.findByRole('option', { name: 'Faulty or defective' }));
+
     await user.click(within(dialog).getByRole('button', { name: /^approve$/i }));
 
     await waitFor(() => {
@@ -273,6 +285,7 @@ describe('approving', () => {
         resolution: 'REFUND',
         refundAmount: '40',
         restockingFeePercent: 20,
+        refundReason: 'FAULTY',
         restock: true,
       });
     });

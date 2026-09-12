@@ -190,7 +190,10 @@ describe('the transition matrix, walked exhaustively', () => {
         const res = await request(app)
           .patch(`/api/v1/orders/${id}/status`)
           .set(auth(ownerToken))
-          .send({ to });
+          // URG-010 — a cancellation must say why, and ONLY a cancellation may:
+          // sending a reason on any other transition is itself refused, so this
+          // cannot be applied unconditionally.
+          .send(to === OrderStatus.CANCELED ? { to, cancellationReason: 'OUT_OF_STOCK' } : { to });
 
         if (legal) {
           expect(res.status).toBe(200);
@@ -209,6 +212,100 @@ describe('the transition matrix, walked exhaustively', () => {
       });
     }
   }
+
+  it('requires a reason when canceling (URG-010)', async () => {
+    const id = await makeOrder(OrderStatus.PENDING);
+
+    const res = await request(app)
+      .patch(`/api/v1/orders/${id}/status`)
+      .set(auth(ownerToken))
+      .send({ to: OrderStatus.CANCELED });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/why this order is being canceled/i);
+
+    // Nothing moved — the refusal happens before the transaction.
+    const after = await prisma.order.findUnique({ where: { id } });
+    expect(after?.status).toBe(OrderStatus.PENDING);
+  });
+
+  it('requires a note when the cancellation reason is OTHER (URG-010)', async () => {
+    const id = await makeOrder(OrderStatus.PENDING);
+
+    const res = await request(app)
+      .patch(`/api/v1/orders/${id}/status`)
+      .set(auth(ownerToken))
+      .send({ to: OrderStatus.CANCELED, cancellationReason: 'OTHER' });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/describe the cancellation reason/i);
+  });
+
+  it('refuses a cancellation reason on a non-cancelling move (URG-010)', async () => {
+    const id = await makeOrder(OrderStatus.PENDING);
+
+    const res = await request(app)
+      .patch(`/api/v1/orders/${id}/status`)
+      .set(auth(ownerToken))
+      .send({ to: OrderStatus.CONFIRMED, cancellationReason: 'OUT_OF_STOCK' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('records the cancellation reason on the order (URG-010)', async () => {
+    const id = await makeOrder(OrderStatus.PENDING);
+
+    const res = await request(app)
+      .patch(`/api/v1/orders/${id}/status`)
+      .set(auth(ownerToken))
+      .send({ to: OrderStatus.CANCELED, cancellationReason: 'OUT_OF_STOCK' });
+
+    expect(res.status).toBe(200);
+
+    const after = await prisma.order.findUnique({
+      where: { id },
+      select: { status: true, cancellationReason: true, cancellationReasonNote: true },
+    });
+    expect(after?.status).toBe(OrderStatus.CANCELED);
+    expect(after?.cancellationReason).toBe('OUT_OF_STOCK');
+    expect(after?.cancellationReasonNote).toBeNull();
+  });
+
+  it('applies one reason to every order in a bulk cancel (URG-010)', async () => {
+    // The bulk path routes through the same changeOrderStatus, so the rule
+    // cannot be bypassed by posting a set of ids instead of one.
+    const first = await makeOrder(OrderStatus.PENDING);
+    const second = await makeOrder(OrderStatus.PENDING);
+
+    const refused = await request(app)
+      .post('/api/v1/orders/bulk-status')
+      .set(auth(ownerToken))
+      .send({ ids: [first, second], to: OrderStatus.CANCELED });
+
+    // Every id is skipped rather than silently canceled with no reason.
+    expect((refused.body as { data: { succeeded: string[] } }).data.succeeded).toHaveLength(0);
+
+    const res = await request(app)
+      .post('/api/v1/orders/bulk-status')
+      .set(auth(ownerToken))
+      .send({
+        ids: [first, second],
+        to: OrderStatus.CANCELED,
+        cancellationReason: 'UNABLE_TO_FULFILL',
+      });
+
+    expect(res.status).toBe(200);
+    expect((res.body as { data: { succeeded: string[] } }).data.succeeded).toHaveLength(2);
+
+    const rows = await prisma.order.findMany({
+      where: { id: { in: [first, second] } },
+      select: { cancellationReason: true },
+    });
+    expect(rows.map((row) => row.cancellationReason)).toEqual([
+      'UNABLE_TO_FULFILL',
+      'UNABLE_TO_FULFILL',
+    ]);
+  });
 
   it('refuses a move to the status it already has', async () => {
     const id = await makeOrder(OrderStatus.PENDING);

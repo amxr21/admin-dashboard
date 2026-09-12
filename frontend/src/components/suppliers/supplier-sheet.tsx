@@ -16,6 +16,9 @@ export function SupplierSheet({ supplier, open, onOpenChange, onSaved }: {
   supplier: Supplier | null; open: boolean; onOpenChange: (open: boolean) => void; onSaved: () => void;
 }) {
   const t = useTranslations('suppliers.form');
+  // URG-013 — shared format-example placeholders (see resource-form.tsx's
+  // placeholderFor).
+  const tCommon = useTranslations('common');
   const translateError = useTranslatedApiError();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -54,8 +57,8 @@ export function SupplierSheet({ supplier, open, onOpenChange, onSaved }: {
         {error ? <ErrorSection title={t('saveFailed')} description={error} /> : null}
         <form className="space-y-4" onSubmit={submit}>
           <Field id="supplier-name" label={t('name')}><Input id="supplier-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={160} required /></Field>
-          <Field id="supplier-email" label={t('email')}><Input id="supplier-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={255} /></Field>
-          <Field id="supplier-phone" label={t('phone')}><Input id="supplier-phone" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={40} className="force-ltr" /></Field>
+          <Field id="supplier-email" label={t('email')}><Input id="supplier-email" type="email" placeholder={tCommon('placeholders.email')} value={email} onChange={(e) => setEmail(e.target.value)} maxLength={255} /></Field>
+          <Field id="supplier-phone" label={t('phone')}><Input id="supplier-phone" placeholder={tCommon('placeholders.phone')} value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={40} className="force-ltr" /></Field>
           <Field id="supplier-contact" label={t('contactName')}><Input id="supplier-contact" value={contactName} onChange={(e) => setContactName(e.target.value)} maxLength={160} /></Field>
           <Field id="supplier-note" label={t('note')}><Textarea id="supplier-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={255} /></Field>
           <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('cancel')}</Button><Button type="submit" disabled={saving}>{saving ? t('saving') : t('save')}</Button></div>

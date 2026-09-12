@@ -199,7 +199,9 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
         className={cn(
           'bg-card hidden shrink-0 flex-col p-2 lg:flex',
           'transition-[width] duration-200 ease-in-out motion-reduce:transition-none',
-          collapsed ? 'w-16' : 'w-64',
+          // URG-012 — w-56 (was w-64): one step more compact. Still clears
+          // every nav label at both font sizes (en/ar) with room to spare.
+          collapsed ? 'w-16' : 'w-56',
           sidebarMode === 'floating'
             ? 'm-3 h-[calc(100%-1.5rem)] rounded-xl border shadow-lg'
             : 'h-full border-e',
@@ -341,7 +343,8 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
             fixed-size flex tracks now, not viewport-pinned overlays, so a
             long page scrolls in here alone — no document-level scrollbar,
             no competing scroll containers. */}
-        <main className="min-w-0 flex-1 overflow-y-auto p-4 lg:p-6">
+        {/* URG-012 — p-3/lg:p-5 (was p-4/lg:p-6): one step more compact. */}
+        <main className="min-w-0 flex-1 overflow-y-auto p-3 lg:p-5">
           {blockedByPreview && previewedRole ? (
             <ViewAsBlocked role={previewedRole} />
           ) : blockedByRealRole && currentArea ? (

@@ -20,7 +20,12 @@
     "savedNotice": "Saved.",
     "saving": "Saving…",
     "unsavedChangesPlain": "Unsaved changes",
-    "unsavedChanges": "{count, plural, one {# unsaved change} other {# unsaved changes}}"
+    "unsavedChanges": "{count, plural, one {# unsaved change} other {# unsaved changes}}",
+    "placeholders": {
+      "email": "name@example.com",
+      "phone": "+1 555 123 4567",
+      "url": "https://example.com"
+    }
   },
   "language": {
     "label": "Language",
@@ -868,7 +873,21 @@
       "saving": "Saving…",
       "note": "Note (optional)",
       "notePlaceholder": "Why is this changing?",
-      "terminal": "This order is {status} and cannot move further."
+      "terminal": "This order is {status} and cannot move further.",
+      "cancellationReasonLabel": "Cancellation reason",
+      "cancellationReasonPlaceholder": "Choose a reason",
+      "cancellationReasonNoteLabel": "Describe the reason",
+      "cancellationReasonNotePlaceholder": "What happened?",
+      "cancellationReasonRequired": "Choose why this order is being canceled",
+      "cancellationReasonNoteRequired": "Describe the cancellation reason",
+      "cancellationReasons": {
+        "OUT_OF_STOCK": "Out of stock",
+        "CUSTOMER_REQUEST": "Customer asked to cancel",
+        "DUPLICATE_ORDER": "Duplicate order",
+        "PAYMENT_FAILED": "Payment failed",
+        "UNABLE_TO_FULFILL": "Cannot fulfil",
+        "OTHER": "Other"
+      }
     },
     "bulkStatus": {
       "selected": "{count, plural, one {# selected} other {# selected}}",
@@ -2520,6 +2539,20 @@
       "restockingFeeApplied": "Restocking fee",
       "pastWindowBody": "This order was placed {days, plural, one {# day} other {# days}} ago, past the store's return window. It can still be approved.",
       "refundAmountLabel": "Refund amount (up to {max})",
+      "refundReasonLabel": "Why is this refund being given?",
+      "refundReasonPlaceholder": "Choose a reason",
+      "refundReasonNoteLabel": "Describe the reason",
+      "refundReasonNotePlaceholder": "What was the problem?",
+      "refundReasonRequired": "Choose why this refund is being given",
+      "refundReasonNoteRequired": "Describe the refund reason",
+      "refundReasons": {
+        "DAMAGED": "Arrived damaged",
+        "WRONG_ITEM": "Wrong item sent",
+        "NOT_AS_DESCRIBED": "Not as described",
+        "FAULTY": "Faulty or defective",
+        "CHANGED_MIND": "Customer changed their mind",
+        "OTHER": "Other"
+      },
       "restock": "Put the returned items back in stock",
       "reject": "Reject",
       "confirmReject": "Confirm rejection",

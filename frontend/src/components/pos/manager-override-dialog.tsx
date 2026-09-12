@@ -52,6 +52,9 @@ export function ManagerOverrideDialog({
   onApproved,
 }: ManagerOverrideDialogProps) {
   const t = useTranslations('pos.managerOverride');
+  // URG-013 — shared format-example placeholder (see resource-form.tsx's
+  // placeholderFor).
+  const tCommon = useTranslations('common');
   const translateError = useTranslatedApiError();
 
   const [email, setEmail] = useState('');
@@ -113,6 +116,7 @@ export function ManagerOverrideDialog({
                 <Input
                   id="override-email"
                   type="email"
+                  placeholder={tCommon('placeholders.email')}
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   autoComplete="off"

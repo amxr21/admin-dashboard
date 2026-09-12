@@ -19,8 +19,11 @@ function Input({ className, type, ...props }: ComponentProps<'input'>) {
       type={type}
       data-slot="input"
       className={cn(
+        // URG-012 — h-8 (was h-9): one step more compact, matching Button's
+        // default size so a form row's inputs and buttons stay the same
+        // height. Still above WCAG 2.2's 24px target-size minimum.
         'border-input bg-card text-foreground placeholder:text-muted-foreground',
-        'flex h-9 w-full min-w-0 rounded-md border ps-3 pe-3 py-1 text-sm text-start',
+        'flex h-8 w-full min-w-0 rounded-md border ps-3 pe-3 py-1 text-sm text-start',
         'transition-[color,box-shadow] outline-none',
         'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
         // aria-invalid, not a `error` prop: the attribute is what assistive

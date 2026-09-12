@@ -486,12 +486,14 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **Active branch**: `fix/urgent-production-schema-integrity`, stacked directly on URG-003 PR #219. Two
+- **Active branch**: `fix/urgent-refund-cancel-reasons`, currently six local commits ahead of its
+  recorded upstream at the 2026-09-12 review. PR #225 is the latest named stacked PR. Two
   pre-existing untracked diagnostic artifacts (`frontend/branch-sheet-open.png` and
   `frontend/scroll-check.mjs`) remain intentionally untouched.
-- **In progress**: URG-004 release/schema integrity. The audit is complete and its fix is implemented
-  locally. URG-003 PR #219 is open against URG-002 PR #218 and mergeable; its CI continues while work
-  proceeds.
+- **In progress**: R0 handoff reconciliation in `URGENT_TODO.md`; URG-004, URG-009, URG-011,
+  URG-013 and URG-014 were reopened after review of implementation against the owner's full
+  acceptance request. `gh` returned HTTP 401, so current PR checks/merge state cannot be asserted
+  from the earlier green reports. Do not infer production deployment from local commits.
 - **The URG-004 finding worth remembering**: the startup gate as first written blocked the HTTP
   server on any non-zero `prisma migrate deploy` *or* `prisma migrate status`. That conflates
   migration BOOKKEEPING with schema CORRECTNESS, and the two diverge exactly when
@@ -504,9 +506,10 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   on the condition that actually breaks requests, never on a proxy for it** — and the failure a gate
   can itself cause has to be weighed against the failure it prevents. The running-database vs
   `schema.prisma` comparison (`migrate diff`, read-only: it cannot write, and the argument list is
-  asserted to contain no `deploy`/`dev`/`push`) is now the sole authority; deploy/status failures are
-  logged loudly and non-fatal; a *thrown* runner error still aborts, since a crashed process is no
-  evidence the schema is healthy.
+  asserted to contain no `deploy`/`dev`/`push`) currently controls admission; deploy/status failures
+  are logged loudly and non-fatal; a *thrown* runner error still aborts. **Correction:** shape parity
+  cannot prove a data-only/backfill migration ran. URG-004 remains open for a safe
+  repair/quarantine policy and tests, without turning missing bookkeeping into a blanket outage.
 - **The URG-005 finding worth remembering**: POS checkout could oversell under concurrency. The
   transaction runs at MySQL's default REPEATABLE READ (`executeIdempotently` sets no
   `isolationLevel`), and `checkoutOnce` read stock into a map, checked it, then decremented
@@ -551,9 +554,22 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   React batches the update, the effect has not run, and code in the same `finally` reads the stale
   value. When a ref must be accurate across an await in the same function, set it synchronously at
   the point of change and keep the effect only for changes made elsewhere.
-- **Next step**: URG-009 (configurable refund reasons with Other), continuing the U1 queue. **It and
-  URG-010 both need owner decisions first** — the open questions are already listed at the bottom of
-  `URGENT_TODO.md`: one reason or several, and whether the catalogues are fixed or admin-configurable.
+- **The URG-009/010 lesson worth remembering**: validation for a rule that applies to a *state
+  change* belongs in the service, not the route — `bulkChangeOrderStatus` loops the same
+  `changeOrderStatus` a single PATCH uses, so a required-reason check written at the route would
+  have left the bulk endpoint able to cancel 200 orders with no reason at all. **Find every caller
+  of the choke point before deciding where a guard lives.** Also: a new reason enum was kept
+  SEPARATE from the existing `ReturnCategory` rather than reused, because that one records why the
+  customer returned an item and the new one records why staff chose to refund — they can
+  legitimately disagree, and merging them would destroy that signal. Same reasoning kept refund and
+  cancellation catalogues apart.
+- **Owner decisions 2026-09-12**: reason catalogues are exactly one value plus an `Other` note,
+  fixed enums in code (not admin-configurable), values chosen without waiting for approval.
+- **Next step**: finish and commit R0 tracked handoff on the current branch without staging either
+  diagnostic artifact; publish the local stack after checks/credentials permit. Then create a
+  stackable URG-004 migration-data-integrity branch and inventory data-only migrations before a
+  production policy change. Subsequent R2/R3/R4/R5 tasks and merge order are explicit in
+  `URGENT_TODO.md`.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.

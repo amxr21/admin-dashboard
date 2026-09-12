@@ -4,7 +4,71 @@ Created from the owner’s production and UX review on 2026-09-11. This file is 
 authoritative queue for these notes. The owner approved starting this queue on 2026-09-11; work
 proceeds in the order below unless a newly confirmed dependency requires a documented reorder.
 
+## Reconciled status — 2026-09-12
+
+`[x]` means the scoped implementation exists locally, not that production has been verified or a
+PR merged. `[*]` means actively incomplete/reopened. `[ ]` means not started; a blocked item names
+the missing evidence or decision. The local branch is `fix/urgent-refund-cancel-reasons`, with
+unpublished local commits at this review; GitHub PR checks could not be refreshed because `gh`
+returned HTTP 401. Never promote a historical CI result to a current green claim.
+
+| Item | State | Evidence and exact remaining acceptance |
+| --- | --- | --- |
+| URG-001 | `[*]` | Versioned startup/migration work in PR #217; authenticated Organization read in the deployed app and request-ID/log correlation still required. |
+| URG-002 | `[*]` | Customer Cases tests in PR #218; authenticated list, empty, error and branch-permission checks after deploy still required. |
+| URG-003 | `[*]` | Parser envelope fix in PR #219; authenticated real checkout/receipt/stock verification after deploy still required. |
+| URG-004 | `[*]` | PR #220 has schema-history and live-shape checks, but non-zero deploy/status can be bypassed by shape parity, which does not verify data-only migrations. Decide and test a safe repair/quarantine procedure for missing bookkeeping before closing. |
+| URG-005 | `[x]` | Atomic conditional branch-stock decrement and loser refusal implemented; verify current PR CI and deployed concurrent sale before production sign-off. |
+| URG-006 | `[x]` | Owner chose visible-disabled sold-out tiles; direct scan now refuses zero stock. Preserve that explicit exception to the original hide request. |
+| URG-007 | `[x]` | Cash received required for single and split cash tender; confirm local/current CI and deployed currency/rounding behavior. |
+| URG-008 | `[x]` | Failed charge keeps focus inside dialog; successful close restores scan focus. Browser keyboard/assistive-tech acceptance still valuable. |
+| URG-009 | `[*]` | Return-based refund uses enum + Other; Order Details goodwill refund still uses unrestricted free text and lacks the code. Cover both workflows before closing. |
+| URG-010 | `[x]` | Single and bulk cancellation reasons implemented; current CI and deployed audit display need confirmation. |
+| URG-011 | `[*]` | Sidebar rows became shorter and its scrollbar thinner; two independently scrollable regions can still coexist on short viewports. Recheck owner's screenshot dimensions and both open/closed sheet states before claiming resolved. |
+| URG-012 | `[x]` | Shared Button/Input/Select, sidebar and shell spacing compacted one step; no global font shrink. Verify keyboard/touch/Arabic/phone layouts in acceptance. |
+| URG-013 | `[*]` | Email/phone/URL examples were added, but ordinary text/number/password fields remain without placeholders (e.g. staff name, branch name). Audit by field; do not use a misleading generic value or replace labels. |
+| URG-014 | `[*]` | Trigger cap rose to 320px plus a tooltip, but it remains a fixed `max-w-80` with truncated selected text, not auto-sized as requested. Check long options and narrow widths in both locales. |
+| URG-015 | Blocked | Current seeded routes did not reproduce fading/clipping. Need one exact page, dropdown and action/viewport before changing shared portal/overflow behavior. |
+| URG-016–024 | `[ ]` | Currency, zone, country/city/dialing code, business type, phone, tax/TRN and identity controls still need canonical data and country-aware validation. |
+| URG-025–032 | `[ ]` | Product progressive disclosure, relevant physical fields, slug/code types, optional variants/colors and category creation remain. |
+| URG-033 | `[ ]` | Order detail sections still need accessible collapsible groups. |
+| URG-034 | `[ ]` | Finish multi-currency selector/receipt/per-currency shift count against store default. |
+| URG-035 | `[ ]` | Every form and field still needs the named inventory, control/validation review and sign-off; this includes the URG-013 remainder. |
+| URG-036 | `[ ]` | Reverify singly assigned cashier starts a shift without admin branch switching, including ambiguous assignments. |
+
+### Correction and delivery batches, in stack order
+
+- [*] **R0 — restore the durable handoff.** Track this file again; synchronize `CLAUDE.md` and
+      `TODO.md` to the actual active branch, local-only commits, PR uncertainty, reopened items,
+      owner decisions and the next exact task. Commit/push only the handoff on the current stack
+      after verifying its base; do not stage either untracked frontend diagnostic artifact.
+- [ ] **R1 — release/data migration safety (URG-004).** Inspect every data-only/backfill migration;
+      reproduce missing `_prisma_migrations` on a disposable database only; specify when shape
+      parity is insufficient; make migration deploy/status outcomes actionable without converting a
+      bookkeeping failure into a blanket outage; test missing backfill, real drift, and healthy
+      startup. One branch stacked on R0; full backend/CI gate and release runbook before merge.
+- [ ] **R2 — complete refund reasons (URG-009).** Extend the same fixed catalogue + Other contract to
+      goodwill refunds; preserve the reason on its payment/audit record without inventing an RMA;
+      validate API and UI, migrate additively if storage changes, test both refund paths and older
+      records. One branch stacked on R1; do not regress cancellation reasons (URG-010).
+- [ ] **R3 — finish shell/field corrections (URG-011/013/014).** Reproduce short-screen two-scrollbar
+      state; resolve it without trapping navigation; inventory missing placeholders field-by-field;
+      implement selected-branch/content width with narrow-screen fallback; test keyboard, mobile,
+      Arabic/RTL and both ordinary/long names. Split into separate stacked PRs per concern.
+- [ ] **R4 — verify published stack and production blockers (URG-001–010, 012).** Publish the local
+      commits through their intended stacked PR, refresh all GitHub checks, merge only in base order
+      after passing gates, then verify authenticated Organization, Customer Cases, checkout, stock,
+      cash, refund/cancel and focus in production. Do not mark an endpoint 500 fixed solely from a
+      401 probe or a migrated test database.
+- [ ] **R5 — remaining approved queue.** URG-035 field inventory first, then URG-016–024 structured
+      organization/identity inputs; URG-025–032 product/category simplification; URG-033 order
+      details; URG-034 till currencies; URG-036 cashier branch regression. URG-015 waits for a
+      reproducible exact surface. One reviewable stackable branch per logical batch with chat and
+      file checklists kept current.
+
 ## Rules for every urgent batch
+
+These are recurring gates for each new branch, not one-time unfinished tickets.
 
 - [ ] Keep each batch on its own stackable branch and preserve the documented merge order.
 - [ ] At batch start, post every task as a checklist and mark the active task with `[*]`.
@@ -24,10 +88,11 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       logs, check deployment migration/schema parity and runtime configuration, fix the root cause,
       and return the normal structured error envelope for any recoverable failure. Verify
       `/admin/settings/organization` in both locales and at mobile/desktop widths.
-      A versioned production-start gate now applies all committed Prisma migrations before the HTTP
-      server imports; a failed migration prevents the new container from serving. Local startup,
-      Organization API, type, lint, and build checks pass. Final closure awaits the authenticated
-      production page after PR #217 is merged and deployed.
+      A versioned production-start gate attempts committed Prisma migrations before the HTTP
+      server imports. It blocks live-schema drift but currently permits non-zero deploy/status
+      when shape matches; URG-004 tracks the data-only migration caveat. Earlier local startup,
+      Organization API, type, lint, and build checks passed. Final closure awaits the authenticated
+      production page after the required stack is merged and deployed.
 - [*] **URG-002 — Customer Service API returns 500.** Independently reproduce
       `GET /api/v1/customer-cases?page=1&pageSize=20`, inspect logs and schema/runtime dependencies,
       fix the cause, and verify populated, empty, forbidden, and failed states. Do not treat the
@@ -37,13 +102,13 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       `20260910150000_add_customer_service_workspace`; code and schema match, and the endpoint works
       on the migrated test database. Current evidence therefore points to the same deployment drift
       addressed by parent PR #217, not a second endpoint defect. Exact-query, empty, paginated,
-      forbidden, and invalid-input regression coverage is being completed on this stacked branch;
+      forbidden, and invalid-input regression coverage was added on PR #218;
       final closure awaits an authenticated post-deploy check.
 - [*] **URG-003 — POS checkout returns 500.** Reproduce `POST /api/v1/pos/checkout` using the exact
       failing request shape without exposing customer/payment data, correlate its request ID,
       identify whether the failure is validation, migration, stock, tender, or transaction related,
       and make expected business refusals return actionable 4xx reason codes instead of 500.
-      Active branch: `fix/urgent-pos-checkout-api-500`, stacked on URG-002 PR #218. A valid fake,
+      Historical implementation branch: `fix/urgent-pos-checkout-api-500`, stacked on URG-002 PR #218. A valid fake,
       unauthenticated checkout payload reaches the deployed authentication guard and returns the
       normal JSON 401 envelope. After authentication, checkout first reads `idempotency_records`,
       introduced by migration `20260910120000_add_idempotency_records`; this precedes every sale
@@ -55,16 +120,20 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       request context before parsing and normalizes malformed JSON to `400 BAD_REQUEST` and bodies
       over 1 MB to `413 PAYLOAD_TOO_LARGE`, both in the shared JSON envelope with a correlated request
       ID and without logging request bodies. Focused health/POS tests pass 77/77; lint, type-check,
-      build, and merge-integrity checks pass. PR #219 is open against URG-002 PR #218, is mergeable,
-      and its GitHub CI is running (GitGuardian passed). Remaining acceptance: CI, then an
+      build, and merge-integrity checks passed at that review. PR #219 targeted URG-002 PR #218;
+      current checks/merge state require an authenticated refresh. Remaining acceptance: CI, then an
       authenticated checkout after parent PR #217 deploys its migration gate.
 - [*] **URG-004 — Production release/schema integrity check.** Verify that every migration required
       by the merged stack is deployed exactly once, the generated Prisma client matches the running
       schema, and Organization, Customer Cases, and Checkout share no hidden production-only
       dependency. Add a deployment check that catches the confirmed class of mismatch before the
       application is promoted. Active branch: `fix/urgent-production-schema-integrity`, stacked
-      directly on URG-003 PR #219. Audit in progress across the production start command, Prisma
-      migration/client lifecycle, container/hosting configuration, and CI promotion boundary.
+      directly on URG-003 PR #219. PR #220 passed its checks at the time recorded below; current
+      GitHub checks have not been refreshed. Engineering remains incomplete: the present startup
+      gate permits non-zero deploy/status when live schema shape matches, but a shape comparison
+      cannot establish whether data-only migrations/backfills were applied. This is a potential
+      integrity gap, not evidence that production data is currently wrong. Authenticated
+      post-deploy verification of URG-001–004 also remains.
       Atomic handoff checklist:
       - [x] Confirm the branch starts from URG-003 PR #219 rather than `dev`.
       - [x] Inspect root/backend package scripts for every build, start, and database command.
@@ -82,8 +151,10 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       - [x] Add schema-history parity before CI migration application/integration tests.
       - [x] Give schema drift an actionable missing-migration failure distinct from process failure.
       - [x] Run `prisma migrate status` after production `migrate deploy`.
-      - [x] Block server import when migration deployment fails.
-      - [x] Block server import when migration history/status is unhealthy.
+      - [*] Define when migration deployment failure blocks server import; current code allows
+            non-zero deploy if shape matches, so data-only migration outcomes need a safe policy.
+      - [*] Define how missing/unhealthy migration history is repaired or quarantined; current
+            status failure is diagnostic only when shape matches.
       - [x] Add a read-only running-database versus `schema.prisma` parity check after status.
       - [x] Block server import when the live database shape differs from application schema.
       - [x] Verify the live parity command cannot mutate the database. `migrate diff` only
@@ -102,11 +173,15 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       - [x] Test exact startup order: deploy -> status -> live schema parity -> server import.
       - [x] Test deploy/status non-zero are non-fatal when live schema matches, and that process
             rejection still blocks server import.
+      - [ ] Inventory all data-only/backfill migrations and establish their application without
+            guessing from live table shape when migration bookkeeping is missing.
+      - [ ] Test a non-destructive repair/quarantine policy for missing history, unapplied data
+            backfill, genuine drift, and healthy startup on disposable test databases.
       - [x] Test the live schema check still runs after both migration commands fail.
       - [x] Test live-schema drift blocks server import.
       - [x] Test schema-history success, missing-migration drift, and process failure.
       - [x] Test unsafe shadow URL refusals and prove the comparison never starts.
-      - [ ] Resolve/document Windows MySQL case-insensitive join-table false positives without
+      - [x] Resolve/document Windows MySQL case-insensitive join-table false positives without
             renaming production tables or changing existing relation data. Not reproduced: the live
             parity diff returned "No difference detected" against the migrated local database.
       - [x] Run focused startup/schema-integrity tests. 17/17 pass; targeted ESLint clean.
@@ -121,17 +196,19 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
             `admin_dashboard_shadow_test` database, created in the step because the service block
             only auto-creates the test one and Prisma resets a shadow database without creating it.
             The name still satisfies the script's loopback + contains-"test" guard.
-      - [ ] Run backend lint, type-check, build, merge-integrity, and full relevant tests. Owner
-            directed skipping database/server-dependent suites and the production build this
-            session; focused startup/schema tests and targeted lint pass locally.
-      - [ ] Update `URGENT_TODO.md`, `TODO.md`, `CLAUDE.md`, foundations, diagnostics comments, the
+      - [*] Run backend lint, type-check, build, merge-integrity, and full relevant tests for the
+            completed correction. The earlier session deliberately skipped database/server suites
+            and production build; focused startup/schema tests and targeted lint passed then.
+      - [x] Update `URGENT_TODO.md`, `TODO.md`, `CLAUDE.md`, foundations, diagnostics comments, the
             error log, and private workbook with exact evidence and remaining acceptance.
-      - [ ] Commit only URG-004 files; never stage the two user diagnostic artifacts.
-      - [ ] Push and open the PR against `fix/urgent-pos-checkout-api-500`.
-      - [ ] Inspect every GitHub check and record failures/pending/success precisely.
+      - [x] Commit only URG-004 files; never stage the two user diagnostic artifacts. The two
+            artifacts remain untracked through every branch in the stack.
+      - [x] Push and open the PR against `fix/urgent-pos-checkout-api-500`. PR #220.
+      - [x] Inspect every GitHub check and record failures/pending/success precisely. #220 is green
+            after the shadow-database repair; its first run failed and the check itself was the cause.
       - [ ] Keep URG-001–004 active until authenticated post-deploy Organization, Customer Cases,
             and Checkout verification passes.
-      - [ ] Start URG-005 directly from URG-004's final commit.
+      - [x] Start URG-005 directly from URG-004's final commit.
 
 ## U1 — till correctness and cashier safety (P0/P1)
 
@@ -268,34 +345,173 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
       **Verification:** 34/34 POS frontend tests including two new ones — focus stays inside the
       dialog when a charge is refused, and returns to the scan field after a successful sale.
       Frontend typecheck and targeted ESLint clean.
-- [ ] **URG-009 — Configurable refund reasons with Other.** Present an approved reason catalogue;
+- [*] **URG-009 — Configurable refund reasons with Other.** Present an approved reason catalogue;
       selecting `Other` reveals a required free-text field. Persist a stable reason code plus the
       optional note, show it in refund/audit views, and validate both client and server.
-- [ ] **URG-010 — Configurable order-cancellation reasons with Other.** Before cancelling, require a
+      **Owner decisions (2026-09-12):** exactly one reason plus an `Other` note; a fixed enum in
+      code rather than an admin-managed catalogue; values chosen without waiting for approval.
+      **Catalogue:** DAMAGED, WRONG_ITEM, NOT_AS_DESCRIBED, FAULTY, CHANGED_MIND, OTHER.
+      **Deliberately separate from the existing `ReturnCategory`.** That enum records why the
+      CUSTOMER says they are returning an item; this records why STAFF chose to refund. The two can
+      legitimately disagree — a customer claiming NOT_AS_DESCRIBED may be refunded as CHANGED_MIND
+      once staff inspect it — and collapsing them into one column would lose exactly that
+      disagreement.
+      **Contract:** required when `resolution = REFUND`, refused on any other resolution (a refund
+      reason on a REPLACEMENT is a stored fact that never happened); the note is required for OTHER
+      and refused for a catalogued reason, so the code stays the thing reports group by. Both
+      columns are written in the SAME transaction as the refund itself.
+      **Where:** `RefundReason` enum + `Return.refundReason`/`refundReasonNote`
+      (`20260912000000_add_refund_and_cancellation_reasons`, additive and nullable — existing
+      refunds are a real "never recorded" gap, never backfilled with a guess),
+      `assertRefundReason` in `returns.service.ts`, `approveBody` in `returns.route.ts`,
+      `return-detail-sheet.tsx`, `returns-api.ts`.
+      **Remaining:** the separate goodwill refund in Order Details still accepts unrestricted
+      free-text reason and stores no catalogue code. Extend the same reason + Other contract to
+      `refund-order-dialog.tsx`, the order refund route/service, payment/audit display, and tests;
+      preserve pre-existing records without inventing a reason or an RMA.
+- [x] **URG-010 — Configurable order-cancellation reasons with Other.** Before cancelling, require a
       reason from an approved catalogue; selecting `Other` reveals required free text. Persist and
       audit the code/note and keep cancellation authorization and stock effects transactional.
-
+      **Catalogue:** OUT_OF_STOCK, CUSTOMER_REQUEST, DUPLICATE_ORDER, PAYMENT_FAILED,
+      UNABLE_TO_FULFILL, OTHER. Kept as its OWN enum rather than shared with refunds: a cancellation
+      happens before fulfilment and has different causes, so one shared list would force both to
+      carry values that are nonsense for the other.
+      **The bulk hole this avoids:** validation lives in `changeOrderStatus`, not the route, because
+      `bulkChangeOrderStatus` calls that same function. A check in the route alone would have left
+      the bulk path able to cancel up to 200 orders with no reason at all. The bulk dialog asks once
+      — cancelling fifty orders is one decision, not fifty — and the server writes a copy onto each
+      row.
+      **Where:** `CancellationReason` enum + `Order.cancellationReason`/`cancellationReasonNote`
+      (same migration), `assertCancellationReason` in `orders.service.ts`, `statusBody` and
+      `bulkStatusBody` in `orders.route.ts`, `order-status-control.tsx`, `orders-table.tsx`,
+      `orders-api.ts`. The reason travels in an options object rather than as more positional
+      arguments — `(id, to, note, reason, reasonNote)` is unreadable at the call site.
+      **A real defect in the first attempt, caught by CI (PR #225) and then reproduced locally.**
+      `assertCancellationReason` ran BEFORE `canTransition`, so a missing reason hijacked every
+      illegal-cancellation refusal: `SHIPPED -> CANCELED` reported `{ field: 'cancellationReason' }`
+      instead of naming the legal moves, telling the caller to justify a move that was never going
+      to be allowed. 21 backend tests failed. The guard now runs AFTER the transition check —
+      legality is decided first, and only a move that COULD happen is then asked to justify itself.
+      **Test fallout, the URG-007 pattern repeating:** 19 existing REFUND sends and the transition
+      matrix's own `CANCELED` cases legitimately needed reasons (the matrix adds one ONLY for
+      `CANCELED`, since sending a reason on any other transition is itself refused). Five frontend
+      assertions also needed updating — `changeOrderStatus`/`bulkChangeOrderStatus` grew a fourth
+      argument, and both the bulk-cancel and refund-approve flows now require a reason before their
+      confirm button enables, which the tests now assert rather than route around.
+      **Verification:** after the owner allowed killing the two duplicate backend dev servers
+      (PIDs 43392/14964) that held the Prisma Windows query-engine DLL, `prisma generate` succeeded
+      and the previously blocked checks ran: backend typecheck and lint clean, frontend typecheck
+      and lint clean, en/ar parity 2302/2302 with 24 new keys per locale. The additive migration was
+      applied to `admin_dashboard_test` (loopback, name contains "test") and live parity then
+      reported "No difference detected". Backend returns 49/49, POS 75/75, orders 103/105 — the two
+      failures are `429`s in the unrelated goodwill-refund block (`POST /orders/:id/refund`), local
+      rate-limit noise from repeated runs, not this change. Frontend orders+returns 100/100 with 1
+      skipped. Full-suite runs were deliberately skipped per the owner's lighter-testing rule.
 ## U2 — shell sizing, scrolling, and dropdown reliability (P1)
 
-- [ ] **URG-011 — Reopen the double-scrollbar defect.** The supplied desktop screenshot proves the
-      prior shell/drawer fix does not cover this path. Reproduce the exact branch/business form,
-      identify both scrolling owners, and leave exactly one intended vertical scroller while
-      preserving sticky navigation/actions, mobile drawers, dialogs, and RTL.
-- [ ] **URG-012 — Reduce global interface density by one to two steps.** Audit root font size,
-      control heights, spacing, sidebar width, tables, sheets, dialogs, and charts; define one shared
-      compact density scale rather than page-local shrinking. Preserve WCAG target sizes and offer
-      no browser-zoom workaround.
-- [ ] **URG-013 — Add useful placeholders to every text-entry control.** Inventory text, email,
-      telephone, numeric, search, URL, code, and textarea inputs; add localized examples/format hints
-      wherever useful while retaining persistent labels. Do not add misleading placeholders to
-      controls whose expected value cannot be expressed safely as an example.
-- [ ] **URG-014 — Make branch selectors fit their content.** Shared branch triggers/popovers should
-      grow to the available title width up to a responsive maximum, avoid premature cropping, and
-      fall back to an accessible tooltip/wrapped option when space is genuinely constrained.
-- [ ] **URG-015 — Fix dropdown/table content fading or disappearing.** Reproduce the affected table
-      row menu/dropdown, then correct stacking context, overflow clipping, portal placement, and any
-      mask/gradient overlap in shared primitives. Test first/middle/last rows, short and long tables,
-      scrolling containers, dialogs/sheets, and RTL.
+- [*] **URG-011 — Reopen the double-scrollbar defect.** Live-reproduced with a real seeded login
+      (Playwright against the running dev servers), not read from code alone.
+      **Root cause was NOT the branch/business Sheet or Dialog scroll-lock** — both are correctly
+      single scrollers, and the existing `body[data-scroll-locked] ... main, nav { overflow:
+      hidden }` rule in `globals.css` works as designed whenever a real dialog is open. The actual
+      second scroller is the **sidebar `<nav>`** (`sidebar-nav.tsx`): with 19+ items (grows with
+      schema resources per this repo's own design) it overflows and scrolls independently of
+      `<main>` on common laptop viewport heights — confirmed at 1440x700/730, not contrived. Two
+      live, independently scrollable regions on screen at once, on ANY page, not specific to the
+      branch/business form; the owner's screenshot happened to be taken on that page.
+      **Fix:** tightened nav row height (`py-2` → `py-1.5`) and heading/list spacing
+      (`gap-2`→`gap-1`, `pb-1`→`pb-0.5`, `space-y-0.5`→`space-y-px`) to raise the overflow
+      threshold, and gave `nav`'s own scrollbar a thin/low-contrast treatment
+      (`scrollbar-width: thin` + `::-webkit-scrollbar` rules, both using the existing `--border`
+      token) so on the shortest screens where it still needs one, it no longer reads as a second
+      scrollbar competing with `main`'s. `<main>` remains the shell's one intended CONTENT
+      scroller; nav scrolling on a very short screen is now a quiet fallback for its own fixed
+      track, not a competing second one. No change to sticky navigation/actions, mobile drawer,
+      dialogs, or RTL — none of those were the actual defect.
+      **Verification:** frontend typecheck and targeted ESLint clean. Visual re-check at 1440x730
+      confirmed materially more items fit before nav needs to scroll at all. Full suite/build
+      deferred per the owner's lighter-testing rule for this pass.
+      **Remaining:** shorter rows and a thinner nav scrollbar do not eliminate two independent
+      scroll regions at short heights. Recheck the owner's viewport and open/closed sheet states,
+      then resolve the interaction without making sidebar destinations unreachable.
+- [x] **URG-012 — Reduce global interface density by one to two steps.** Owner decision: one shared
+      compact density for everyone, no per-user toggle — kept separate from the existing
+      `ui.density` table-row setting (untouched, still owner-configurable per table).
+      **One step, at the shared primitives so it's consistent app-wide rather than page-local:**
+      Button/Input/Select heights (`h-9`→`h-8` default, `h-8`→`h-7` sm, `h-10`→`h-9` lg, icon
+      `size-9`→`size-8` — every size still clears WCAG 2.2's 24px target-size minimum with room to
+      spare), sidebar `w-64`→`w-56`, `<main>`'s padding `p-4/p-6`→`p-3/p-5`, and the table-cell-py
+      COMFORTABLE-baseline default `0.5rem`→`0.375rem` (the owner-toggleable compact override stays
+      at `0.25rem`, still meaningfully denser than the new default).
+      **Left alone, deliberately:** root font-size/`--text-*` scale (this file's own Arabic-typeface
+      comment already documents why scaling the root is risky — inflates layout, not just glyphs;
+      shrinking further also risked hurting readability more than density), charts (no real-browser
+      visual check performed on Recharts internals this pass), and Sheet/Dialog padding (`p-4` was
+      not an outlier next to the shrunk primitives).
+      **Verification:** frontend typecheck and targeted ESLint clean. Visually confirmed live
+      (seeded login, dashboard + branches list at 1440x900): full sidebar nav now fits with room to
+      spare, no overlap/truncation beyond a pre-existing `truncate` on an unusually long placeholder
+      store name, which degrades gracefully. Full suite/build deferred per the owner's
+      lighter-testing rule.
+- [*] **URG-013 — Add useful placeholders to every text-entry control.** Initial inventory (41
+      files with `<Input>`) before touching anything.
+      **Search/filter/code inputs already had placeholders everywhere** — every table search box
+      (orders/staff/returns/inventory/suppliers/couriers/audit/notifications), the topbar global
+      search, the resource-engine list search, and the courier login access-code field. No gap.
+      **The real gap was email/phone/url TYPED fields** — `resource-form.tsx`'s `placeholderFor`
+      only handled `money`; every bespoke form with a real `type="email"/"tel"/"url"` input had none
+      (branch/business, staff, invite-staff, supplier, forgot-password, manager-override — the
+      generic resource engine already covers products/notifications/categories/customers/
+      discounts/reviews). Fixed with one shared `common.placeholders.{email,phone,url}` translation,
+      reused by `placeholderFor` and by every bespoke caller — one source of truth, not seven
+      copies that could drift.
+      **Deliberately NOT touched:** `text`/`longtext`/`number` fields. Per this ticket's own
+      caution — their real content varies per FIELD (a product name vs. a SKU vs. a quantity vs.
+      someone's age), so a single generic placeholder would be a guess at best, actively misleading
+      at worst. A per-field placeholder for those belongs in `admin.config.ts`, not a type-level
+      default. Organization's owner-configurable custom fields only support
+      `text | number | date | boolean` — no email/tel/url variant exists there to extend.
+      **Verification:** en/ar parity 2305/2305 (3 new keys/locale); the translated-Arabic guard
+      test (`messages.test.ts`) required — and got — an explicit allowlist entry for the new keys,
+      same reasoning already documented there for `auth.emailPlaceholder`/`imageUpload.urlPlaceholder`
+      (a format example is the same shape in every language). Frontend typecheck and targeted
+      ESLint clean; full suite deferred per the owner's lighter-testing rule.
+      **Remaining:** staff and branch names, among other ordinary text/number/password fields,
+      still have no placeholder. Inventory each form field and add meaningful field-specific
+      examples or format hints where appropriate; retain visible labels and avoid generic guesses.
+- [*] **URG-014 — Make branch selectors fit their content.** One shared component
+      (`branch-switcher.tsx`) — no other branch trigger/popover exists in the app.
+      **Root cause:** a flat `max-w-56` (224px) on the trigger regardless of content, so a real
+      branch name (business prefix, name, disambiguating code — e.g. `_demo__ Corniche  CRN`)
+      cropped well before it needed to.
+      **Fix:** `max-w-56`→`max-w-80` (320px; stayed `w-full` so it still shrinks on a narrow
+      topbar rather than forcing one), plus a `Tooltip` fallback showing the full name for
+      whatever still doesn't fit — shown only for a genuinely selected branch, never the
+      always-short "All branches" default. Wired the Tooltip onto `SelectTrigger` itself, not the
+      `Select` root — `TooltipTrigger asChild` clones its child and forwards a ref, which needs a
+      real DOM-rendering element, not the context-provider root wrapping it.
+      **Verification:** frontend typecheck clean, targeted ESLint clean, all 5
+      `branch-switcher.test.tsx` cases pass. Visually confirmed live (seeded login, dashboard):
+      the open dropdown renders every demo branch name and code fully, no cropping.
+      **Remaining:** the selected trigger still has a fixed `max-w-80` and `truncate`, so a long
+      name remains cropped until hover. Implement content-aware width with a viewport-safe fallback;
+      test long names, both locales, keyboard focus, and narrow topbars.
+- [ ] **BLOCKED — URG-015 — Fix dropdown/table content fading or disappearing.** Live-reproduction
+      attempted (seeded login against the real dev servers) before writing any fix, per this file's
+      own rule. Tested and found CORRECT in every case: the shared `RowActions` overflow menu (used
+      by every generic-resource table) on the first row, the last row (correctly auto-flips upward
+      near the viewport edge), a `Select` opened inside a `Sheet` panel (branch roster — nested
+      portal case), and the products/orders/staff table search+list surfaces generally. Every case
+      showed full opacity, correct `z-index`, no clipping, and normal Radix Portal-to-`body`
+      behavior. One case initially looked wrong on screenshot (an open Person `Select` visually
+      overlapping the Role `Select` beneath it in a tight stacked form) but is ordinary floating-
+      listbox-over-content behavior, not a stacking/clipping defect — every dropdown in every app
+      does this by design.
+      **Matches this file's own anticipated outcome** — see "Decisions needed", which already asks
+      for "at least one exact table/dropdown route where content fades or disappears if it is not
+      reproducible from the current data." It was not reproducible from current data. Owner
+      decision: skip for now rather than fix a defect that can't be confirmed to exist; needs an
+      exact page/action from the owner before further work.
 
 ## U3 — structured organization and identity inputs (P1)
 
@@ -391,19 +607,18 @@ proceeds in the order below unless a newly confirmed dependency requires a docum
 
 ## Decisions needed before the affected batches
 
-- [ ] Confirm whether a refund/cancellation permits exactly one catalogue reason or multiple
-      simultaneous selected reasons. This file currently assumes one required reason selected from
-      multiple available choices, plus an `Other` note.
-- [ ] Approve the initial refund-reason catalogue and order-cancellation-reason catalogue, or approve
-      making both catalogues administrator-configurable.
+- [x] Refund/cancellation uses exactly one required reason from multiple available choices;
+      `Other` requires a note. Owner confirmed 2026-09-12.
+- [x] Owner chose fixed code catalogues for now and allowed the initial values to be selected
+      without another approval; the implemented refund and cancellation values are recorded in
+      URG-009/010. Future admin-managed templates are out of this batch.
 - [ ] Clarify which field(s) “IDs” refers to: business registration/license numbers, national IDs,
       product identifiers, or another record.
 - [ ] Approve the initial business-type options and whether an `Other` value is allowed.
 - [ ] Approve the supported country/city dataset and the fallback behavior for an unlisted city.
-- [ ] Confirm whether “one to two degrees smaller” means one global compact density or a user-facing
-      density preference. Recommended default: one shared compact density, reviewed at 100% zoom.
-- [ ] Identify at least one exact table/dropdown route where content fades or disappears if it is not
-      reproducible from the current data.
+- [x] Owner chose one shared compact density, not a user-facing toggle (URG-012).
+- [ ] URG-015 was not reproduced from seeded data and owner chose to defer it. Resume when an
+      exact table/dropdown route, action, and viewport where content fades is available.
 
 ## Inventory reconciliation
 

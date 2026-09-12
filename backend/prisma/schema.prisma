@@ -126,6 +126,40 @@ enum ReturnResolution {
 /// (the previous shape) cannot be grouped for a reason-analytics report
 /// (TODO_SPEC.md's stated ask). OTHER is the deliberate escape hatch — this
 /// list is not, and does not try to be, exhaustive.
+/// Why a refund was GIVEN, recorded on the approval (URG-009).
+///
+/// Distinct from `ReturnCategory`, which is why the CUSTOMER says they are
+/// returning the item. The two can legitimately disagree — a customer claiming
+/// NOT_AS_DESCRIBED may be refunded as CHANGED_MIND once staff inspect it — and
+/// collapsing them would lose exactly that disagreement.
+///
+/// OTHER is the deliberate escape hatch and requires a free-text note; this
+/// list is not, and does not try to be, exhaustive.
+enum RefundReason {
+  DAMAGED
+  WRONG_ITEM
+  NOT_AS_DESCRIBED
+  FAULTY
+  CHANGED_MIND
+  OTHER
+}
+
+/// Why an order was CANCELED (URG-010).
+///
+/// Kept separate from `RefundReason` on purpose: a cancellation happens before
+/// fulfilment and has different causes and different stock effects, so one
+/// shared list would force both to carry values that are nonsense for the other.
+///
+/// OTHER is the deliberate escape hatch and requires a free-text note.
+enum CancellationReason {
+  OUT_OF_STOCK
+  CUSTOMER_REQUEST
+  DUPLICATE_ORDER
+  PAYMENT_FAILED
+  UNABLE_TO_FULFILL
+  OTHER
+}
+
 enum ReturnCategory {
   DAMAGED
   WRONG_ITEM
@@ -988,27 +1022,35 @@ model Order {
   branchId String? @map("branch_id") @db.VarChar(64)
 
   /// Human-facing reference shown to customers and couriers, e.g. "ORD-1024".
-  orderNumber   String      @unique @map("order_number") @db.VarChar(40)
+  orderNumber            String              @unique @map("order_number") @db.VarChar(40)
   /// Denormalised on purpose: the order total must not change if a product's
   /// price is edited after the order was placed. Grand total — what the
   /// customer actually paid, tax included. Every existing reader (Reports,
   /// Dashboard KPIs) already treats this as the order's money figure; that
   /// meaning does NOT change with `subtotal`/`taxAmount` below.
-  total         Decimal     @default(0) @db.Decimal(10, 2)
+  total                  Decimal             @default(0) @db.Decimal(10, 2)
   /// Sum of line items before tax. NULL, not 0, on orders that predate this
   /// column or were never run through a tax-aware creation path — 0 would
   /// falsely claim "confirmed, no tax," which is a different fact from
   /// "never recorded." Set once at creation, same snapshot discipline as
   /// `total` and `OrderItem.price`.
-  subtotal      Decimal?    @db.Decimal(10, 2)
+  subtotal               Decimal?            @db.Decimal(10, 2)
   /// `subtotal * store.taxRate` at the time of the order, snapshotted for the
   /// same reason `OrderItem.price` is: a later change to `store.taxRate`
   /// must not rewrite what an old invoice already showed. NULL has the same
   /// "never recorded" meaning as `subtotal`'s.
-  taxAmount     Decimal?    @map("tax_amount") @db.Decimal(10, 2)
-  status        OrderStatus @default(PENDING)
-  paymentMethod String?     @map("payment_method") @db.VarChar(48)
-  placedAt      DateTime    @default(now()) @map("placed_at")
+  taxAmount              Decimal?            @map("tax_amount") @db.Decimal(10, 2)
+  status                 OrderStatus         @default(PENDING)
+  /// Why this order was canceled (URG-010), from a fixed catalogue. Lives on
+  /// the ORDER rather than only in `OrderStatusHistory.note` because it is a
+  /// durable fact about the order that reports group by — history's free-text
+  /// note stays as the human sentence, and the two are written together.
+  /// NULL for any order not canceled, and for cancellations predating this.
+  cancellationReason     CancellationReason? @map("cancellation_reason")
+  /// Required free text when `cancellationReason` is OTHER, and only then.
+  cancellationReasonNote String?             @map("cancellation_reason_note") @db.VarChar(500)
+  paymentMethod          String?             @map("payment_method") @db.VarChar(48)
+  placedAt               DateTime            @default(now()) @map("placed_at")
 
   customerId String?   @map("customer_id")
   /// SetNull so deleting a customer preserves order history for accounting.
@@ -1340,6 +1382,15 @@ model Return {
   /// same free-text, snapshot-once discipline as `reason` itself. NULL on
   /// anything not (yet) rejected, not an empty string.
   rejectionReason      String?          @map("rejection_reason") @db.VarChar(500)
+  /// Why the refund was GIVEN (URG-009), chosen by the approver from a fixed
+  /// catalogue. Set only when resolution = REFUND; NULL means either "not a
+  /// refund" or "refunded before this was tracked" — a real gap, never guessed
+  /// at from the customer's own `category`, which answers a different question.
+  refundReason         RefundReason?    @map("refund_reason")
+  /// Required free text when `refundReason` is OTHER, and only then. A stable
+  /// code plus the operator's own words: the code is what reports group by, the
+  /// note is what a human reads. NULL for every catalogued reason.
+  refundReasonNote     String?          @map("refund_reason_note") @db.VarChar(500)
 
   orderId String @map("order_id")
   order   Order  @relation("ReturnedOrder", fields: [orderId], references: [id], onDelete: Cascade)

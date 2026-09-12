@@ -29,9 +29,11 @@ import { ApiError } from '@/lib/api';
 import { getRelatedRecordHref } from '@/lib/related-record-links';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
+  REFUND_REASONS,
   approveReturn,
   fetchReturn,
   rejectReturn,
+  type RefundReason,
   type ReturnDetail,
   type ReturnResolution,
 } from '@/lib/returns-api';
@@ -79,6 +81,15 @@ export function ReturnDetailSheet({
 
   const [resolution, setResolution] = useState<Exclude<ReturnResolution, 'NONE'> | ''>('');
   const [refundAmount, setRefundAmount] = useState('');
+  /**
+   * URG-009 — why the refund is being GIVEN, from a fixed catalogue.
+   *
+   * Distinct from the requester's own `category`: that says why the customer
+   * sent it back, this says why staff chose to refund. They can legitimately
+   * disagree, and keeping both is the point.
+   */
+  const [refundReason, setRefundReason] = useState<RefundReason | ''>('');
+  const [refundReasonNote, setRefundReasonNote] = useState('');
   const [restock, setRestock] = useState(true);
   /** A default the approving person may raise or waive for THIS return
    *  (B4.11) — pre-filled from the store setting, never re-read after the
@@ -146,7 +157,14 @@ export function ReturnDetailSheet({
       const updated = await approveReturn(item.id, {
         resolution,
         ...(resolution === 'REFUND'
-          ? { refundAmount, restockingFeePercent: parsedFeePercent }
+          ? {
+              refundAmount,
+              restockingFeePercent: parsedFeePercent,
+              // URG-009 — the server refuses a refund with no reason, and
+              // refuses a reason on any other resolution.
+              ...(refundReason ? { refundReason } : {}),
+              ...(refundReasonNote.trim() ? { refundReasonNote: refundReasonNote.trim() } : {}),
+            }
           : {}),
         restock,
       });
@@ -192,6 +210,15 @@ export function ReturnDetailSheet({
       Number.isFinite(refundValue) &&
       refundValue >= 0 &&
       refundValue <= maxRefund);
+
+  /**
+   * URG-009 — mirrors the server's own rule rather than replacing it. The
+   * server still refuses a refund with no reason; this only avoids an
+   * avoidable round trip, the same way `isValidRefund` above does.
+   */
+  const isValidRefundReason =
+    resolution !== 'REFUND' ||
+    (refundReason !== '' && (refundReason !== 'OTHER' || refundReasonNote.trim() !== ''));
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -379,6 +406,44 @@ export function ReturnDetailSheet({
                         aria-invalid={!isValidRefund ? true : undefined}
                       />
                     </div>
+
+                    {/* URG-009 — why the refund is being GIVEN. Separate from
+                        the requester's own category, which says why they sent
+                        it back; the two can legitimately disagree. */}
+                    <div className="space-y-2">
+                      <Label htmlFor="return-refund-reason">{t('refundReasonLabel')}</Label>
+                      <Select
+                        value={refundReason}
+                        onValueChange={(value) => setRefundReason(value as RefundReason)}
+                      >
+                        <SelectTrigger id="return-refund-reason">
+                          <SelectValue placeholder={t('refundReasonPlaceholder')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {REFUND_REASONS.map((reason) => (
+                            <SelectItem key={reason} value={reason}>
+                              {t(`refundReasons.${reason}`)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {refundReason === 'OTHER' ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="return-refund-reason-note">
+                          {t('refundReasonNoteLabel')}
+                        </Label>
+                        <Textarea
+                          id="return-refund-reason-note"
+                          value={refundReasonNote}
+                          onChange={(event) => setRefundReasonNote(event.target.value)}
+                          rows={2}
+                          maxLength={500}
+                          placeholder={t('refundReasonNotePlaceholder')}
+                        />
+                      </div>
+                    ) : null}
                   </>
                 ) : null}
 
@@ -435,7 +500,7 @@ export function ReturnDetailSheet({
                         {t('reject')}
                       </Button>
                       <Button
-                        disabled={!resolution || !isValidRefund || isSaving}
+                        disabled={!resolution || !isValidRefund || !isValidRefundReason || isSaving}
                         onClick={() => void submitApprove()}
                       >
                         {isSaving ? t('saving') : t('approve')}

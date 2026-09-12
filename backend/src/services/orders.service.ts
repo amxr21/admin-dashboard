@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import { OrderStatus, Prisma } from '@prisma/client';
+import { CancellationReason, OrderStatus, Prisma } from '@prisma/client';
 import { resolveBranchLabels } from './branches.service.js';
 
 import { prisma } from '../db/prisma.js';
@@ -535,6 +535,56 @@ export interface ChangeStatusInput {
   to: OrderStatus;
   note?: string | undefined;
   actorId: string;
+  /**
+   * Why the order is being canceled (URG-010). Required when `to` is
+   * CANCELED, refused otherwise — a cancellation reason on a SHIPPED
+   * transition would be a stored fact that never happened.
+   */
+  cancellationReason?: CancellationReason | undefined;
+  /** Required free text when the reason is OTHER, and only then. */
+  cancellationReasonNote?: string | undefined;
+}
+
+/**
+ * URG-010 — a cancellation records WHY, from a fixed catalogue.
+ *
+ * Validated here rather than only at the route because
+ * `bulkChangeOrderStatus` calls this same function: a check that lived in the
+ * route would leave the bulk path able to cancel hundreds of orders with no
+ * reason at all.
+ */
+function assertCancellationReason(input: ChangeStatusInput) {
+  if (input.to !== OrderStatus.CANCELED) {
+    if (input.cancellationReason !== undefined) {
+      throw AppError.badRequest('A cancellation reason only applies when canceling an order', {
+        field: 'cancellationReason',
+      });
+    }
+    return;
+  }
+
+  if (!input.cancellationReason) {
+    throw AppError.badRequest('Choose why this order is being canceled', {
+      field: 'cancellationReason',
+    });
+  }
+
+  // The note is what a human reads; the code is what reports group by. OTHER
+  // without it would record "something else" and nothing more.
+  if (input.cancellationReason === CancellationReason.OTHER) {
+    if (!input.cancellationReasonNote?.trim()) {
+      throw AppError.badRequest('Describe the cancellation reason', {
+        field: 'cancellationReasonNote',
+      });
+    }
+  } else if (input.cancellationReasonNote?.trim()) {
+    // A note attached to a catalogued reason would be a second, unqueryable
+    // explanation competing with the code — the free-text `note` field is
+    // where an extra sentence belongs.
+    throw AppError.badRequest('A reason note only applies to "Other"', {
+      field: 'cancellationReasonNote',
+    });
+  }
 }
 
 /**
@@ -570,8 +620,34 @@ export async function changeOrderStatus(id: string, input: ChangeStatusInput) {
     );
   }
 
+  /**
+   * AFTER the transition check, deliberately.
+   *
+   * Running it first made a missing reason hijack every illegal-cancellation
+   * refusal: SHIPPED -> CANCELED reported `{ field: 'cancellationReason' }`
+   * instead of naming the legal moves, so the caller was told to supply a
+   * reason for a move that was never going to be allowed. Legality is decided
+   * first; only a move that COULD happen is then asked to justify itself.
+   */
+  assertCancellationReason(input);
+
   await prisma.$transaction(async (tx) => {
-    await tx.order.update({ where: { id }, data: { status: input.to } });
+    await tx.order.update({
+      where: { id },
+      data: {
+        status: input.to,
+        // URG-010 — written in the SAME transaction as the status move and its
+        // history row. A reason recorded separately could survive a rolled-back
+        // cancellation, leaving an order that says why it was canceled while
+        // not being canceled at all.
+        ...(input.to === OrderStatus.CANCELED
+          ? {
+              cancellationReason: input.cancellationReason ?? null,
+              cancellationReasonNote: input.cancellationReasonNote?.trim() || null,
+            }
+          : {}),
+      },
+    });
 
     await tx.orderStatusHistory.create({
       data: {

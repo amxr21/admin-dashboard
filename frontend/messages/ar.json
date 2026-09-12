@@ -20,7 +20,12 @@
     "savedNotice": "تم الحفظ.",
     "saving": "جارٍ الحفظ…",
     "unsavedChangesPlain": "تغييرات غير محفوظة",
-    "unsavedChanges": "{count, plural, zero {لا تغييرات غير محفوظة} one {تغيير واحد غير محفوظ} two {تغييران غير محفوظين} few {# تغييرات غير محفوظة} many {# تغييراً غير محفوظ} other {# تغيير غير محفوظ}}"
+    "unsavedChanges": "{count, plural, zero {لا تغييرات غير محفوظة} one {تغيير واحد غير محفوظ} two {تغييران غير محفوظين} few {# تغييرات غير محفوظة} many {# تغييراً غير محفوظ} other {# تغيير غير محفوظ}}",
+    "placeholders": {
+      "email": "name@example.com",
+      "phone": "+1 555 123 4567",
+      "url": "https://example.com"
+    }
   },
   "language": {
     "label": "اللغة",
@@ -868,7 +873,21 @@
       "saving": "جارٍ الحفظ…",
       "note": "ملاحظة (اختياري)",
       "notePlaceholder": "ما سبب هذا التغيير؟",
-      "terminal": "هذا الطلب {status} ولا يمكن نقله أبعد من ذلك."
+      "terminal": "هذا الطلب {status} ولا يمكن نقله أبعد من ذلك.",
+      "cancellationReasonLabel": "سبب الإلغاء",
+      "cancellationReasonPlaceholder": "اختر سببًا",
+      "cancellationReasonNoteLabel": "اشرح السبب",
+      "cancellationReasonNotePlaceholder": "ماذا حدث؟",
+      "cancellationReasonRequired": "اختر سبب إلغاء هذا الطلب",
+      "cancellationReasonNoteRequired": "اشرح سبب الإلغاء",
+      "cancellationReasons": {
+        "OUT_OF_STOCK": "غير متوفر في المخزون",
+        "CUSTOMER_REQUEST": "طلب العميل الإلغاء",
+        "DUPLICATE_ORDER": "طلب مكرر",
+        "PAYMENT_FAILED": "فشل الدفع",
+        "UNABLE_TO_FULFILL": "يتعذر التنفيذ",
+        "OTHER": "أخرى"
+      }
     },
     "bulkStatus": {
       "selected": "{count, plural, one {# محدد} two {محددان} few {# محددة} many {# محددًا} other {# محدد}}",
@@ -2520,6 +2539,20 @@
       "restockingFeeApplied": "رسوم إعادة التخزين",
       "pastWindowBody": "تم تقديم هذا الطلب منذ {days, plural, zero {أقل من يوم} one {يوم واحد} two {يومين} few {# أيام} many {# يومًا} other {# يوم}}، بعد مهلة الإرجاع الخاصة بالمتجر. لا يزال يمكن قبوله.",
       "refundAmountLabel": "مبلغ الاسترداد (حتى {max})",
+      "refundReasonLabel": "لماذا يُمنح هذا الاسترداد؟",
+      "refundReasonPlaceholder": "اختر سببًا",
+      "refundReasonNoteLabel": "اشرح السبب",
+      "refundReasonNotePlaceholder": "ما المشكلة التي حدثت؟",
+      "refundReasonRequired": "اختر سبب منح هذا الاسترداد",
+      "refundReasonNoteRequired": "اشرح سبب الاسترداد",
+      "refundReasons": {
+        "DAMAGED": "وصل تالفًا",
+        "WRONG_ITEM": "تم إرسال عنصر خاطئ",
+        "NOT_AS_DESCRIBED": "لا يطابق الوصف",
+        "FAULTY": "معيب أو لا يعمل",
+        "CHANGED_MIND": "غيّر العميل رأيه",
+        "OTHER": "أخرى"
+      },
       "restock": "إعادة العناصر المرتجعة إلى المخزون",
       "reject": "رفض",
       "confirmReject": "تأكيد الرفض",

@@ -9,6 +9,33 @@ body[data-scroll-locked] [data-slot='app-shell'] nav {
   overflow: hidden;
 }
 
+/* URG-011: the sidebar nav (19+ items, grows with schema resources — see
+   sidebar-nav.tsx) can still legitimately need its own scrollbar on a short
+   viewport even after tightening its row spacing. <main> is the shell's one
+   INTENDED content scroller (app-shell.tsx); nav scrolling is a structural
+   fallback for its own fixed-size track, not a second content area. Styled
+   thin/low-contrast so the two never read as two competing scrollbars on
+   screen at once — main's stays the one obvious scroller. Firefox uses the
+   two-property fallback; everything else gets the ::-webkit- rules. Both are
+   pure styling and inert where unsupported. */
+[data-slot='app-shell'] nav {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+[data-slot='app-shell'] nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+[data-slot='app-shell'] nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-slot='app-shell'] nav::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 9999px;
+}
+
 /*
  * ─── admin-dashboard design tokens ──────────────────────────────────────────
  *
@@ -60,11 +87,15 @@ body[data-scroll-locked] [data-slot='app-shell'] nav {
   --radius: 0.625rem; /* 10px — matches the template's --ui-radius */
 
   /* ─── Table density ──────────────────────────────────────────── */
-  /* `ui.density`, applied via `[data-density]` on <html> below. Scoped to
-     table cells specifically — "denser UI" as a global spacing multiplier
-     would touch every button, input and card for a setting whose whole
-     point is fitting more ROWS on screen. See table.tsx for the consumer. */
-  --table-cell-py: 0.5rem;
+  /* `ui.density`, applied via `[data-density]` on <html> below, still
+     shrinks this further for an owner who explicitly wants MORE rows on
+     screen — see the override just below. This default value itself was
+     lowered one step (URG-012, was 0.5rem) as part of the app-wide compact
+     pass; that pass is scoped to control heights and spacing generally
+     (Button, Input, Select, the sidebar, <main>'s padding — see their own
+     call sites), and table cells follow the same one-step reduction via
+     this one shared property rather than their own separate edit. */
+  --table-cell-py: 0.375rem;
 
   /* ─── Surfaces ───────────────────────────────────────────────── */
   --background: #f6f7f9; /* app canvas — deliberately not pure white */
