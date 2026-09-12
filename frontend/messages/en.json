@@ -1189,6 +1189,7 @@
     "subtitle": "Own price, stock and SKU per variant. Inventory only — not yet part of any checkout.",
     "empty": "No variants yet.",
     "name": "Name",
+    "colourHint": "Common colour names are suggested. Type any other colour if none fit.",
     "sku": "SKU",
     "price": "Price",
     "stock": "{count, plural, one {# in stock} other {# in stock}}",

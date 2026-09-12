@@ -884,6 +884,11 @@ export function ResourceForm({
           productName={String(row.name ?? '')}
           open={variantsPanelOpen}
           onOpenChange={setVariantsPanelOpen}
+          /* URG-030 — colour is a variant NAME, not a new dimension, so
+             opting in changes nothing structural: it only suggests the
+             curated spellings while naming one. Read from live form state so
+             ticking the box offers them immediately, without a save. */
+          suggestColours={values.hasColors === true}
         />
         <ProductGalleryPanel
           productId={String(row.id)}

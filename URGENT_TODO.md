@@ -113,10 +113,30 @@ already-approved merge.
       on a product already opted out. Both source comments
       (`schema.prisma`, `admin.config.ts`) previously claimed the toggle hides
       "the builder and NOTHING else" and now record the warning.
-- [ ] **URG-030 — finish optional colours.** `hasColors` is stored and
-      exposed, but no colour dimension or choices consume it. Define controlled
-      choices and custom values, their relation to variants, legacy behavior
-      and safe disable/re-enable handling; then implement and verify.
+- [*] **URG-030 — optional colours: suggestion half implemented locally.**
+      Owner decisions 2026-09-12: a colour **is** a variant (not a new column,
+      not a size×colour matrix), values are a curated list with typing still
+      allowed, and disabling follows URG-029's warn-but-allow contract.
+      Built: `frontend/src/lib/product-colours.ts` (16 curated names, ordered
+      neutrals-first), a native `<datalist>` on the variant-name input gated on
+      `hasColors`, threaded through `ProductVariantsPanel` → `VariantForm`, and
+      one en/ar hint string. Deliberately a `datalist` rather than a Select or
+      Combobox: a picker would imply the list is exhaustive, and the server
+      accepts any variant name. No `OTHER` member and no type guard — typing an
+      unlisted colour IS the escape hatch, so a guard would imply a validation
+      rule that does not exist (contrast `business-types.ts`, where `kind` is a
+      single stored code the server checks for membership).
+      Three tests pin the properties that matter: no `list`/datalist/hint when
+      not opted in, all 16 options plus the hint when opted in, and an unlisted
+      colour ("Burnt Orange") still saving with no `pattern` on the input.
+      Verification: frontend typecheck 0, targeted lint 0, resource+i18n suites
+      190/190 (was 187).
+      **Still open:** `hasColors` remains otherwise inert — nothing reads it
+      outside this suggestion, so there is no colour reporting, no POS colour
+      filter and no per-colour stock view. No browser pass has run, and the
+      warn-on-disable contract is NOT yet wired for colours (URG-029's warning
+      covers `hasVariants` only). Decide whether colour needs its own warning
+      at all, given that disabling only withdraws suggestions and hides no data.
 
 ## R4 — publish, merge and verify the urgent stack (P0/P1)
 
