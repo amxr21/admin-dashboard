@@ -31,7 +31,7 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
 | URG-015 | Blocked | Current seeded routes did not reproduce fading/clipping. Need one exact page, dropdown and action/viewport before changing shared portal/overflow behavior. |
 | URG-016–024 | `[ ]` | Currency, zone, country/city/dialing code, business type, phone, tax/TRN and identity controls still need canonical data and country-aware validation. |
 | URG-025–032 | `[ ]` | Product progressive disclosure, relevant physical fields, slug/code types, optional variants/colors and category creation remain. |
-| URG-033 | `[ ]` | Order detail sections still need accessible collapsible groups. |
+| URG-033 | `[x]` | **Done and verified in a browser, both locales.** All five order-detail sections (items, timeline, customer, delivery, payment) use a new `CollapsibleSection` primitive built on the in-repo `diagnostics-bar` disclosure pattern rather than adding a Radix accordion — one independent toggle per section needs a `useState` and two ARIA attributes, not a dependency and a second idiom. Acceptance: every section renders a real `<h2>` wrapping the button (document outline preserved), `aria-controls` resolves, keyboard focus reaches the button and Enter toggles it, the collapsed region carries `hidden` and `offsetParent === null` so it genuinely leaves the a11y tree, re-opening restores it, and the chevron mirrors (−90° LTR / +90° RTL). Zero console errors; 44/45 order-detail tests (1 pre-existing documented skip). Sections default to OPEN — collapsing is for taming a long page, not for hiding content a reader expects. Items takes `bodyClassName=""` because its table is full-bleed. **Probe lesson worth keeping:** Tailwind v4 compiles `-rotate-90` to the standalone `rotate` property, NOT the `transform` shorthand, so asserting on `transform` reports "none" on a perfectly working rotation — I briefly recorded that as a defect before checking the right property. |
 | URG-034 | `[ ]` | Finish multi-currency selector/receipt/per-currency shift count against store default. |
 | URG-035 | `[ ]` | Every form and field still needs the named inventory, control/validation review and sign-off; this includes the URG-013 remainder. |
 | URG-036 | `[x]` | **Reverified 2026-09-12, no code change needed.** `resolveShiftBranchId` already does exactly what the ticket asks, and `shifts.test.ts` already asserts all three cases by name — 52/52 pass. A branch-scoped role with exactly ONE active assignment starts a shift with no `X-Branch-Id` header (test: "assigned to exactly one branch defaults to it, no header needed"); more than one assignment fails safely with `BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS` rather than guessing; no roster row at all falls through to the single-business shortcut so a one-branch install keeps working. Genuine multi-branch/multi-business ambiguity still refuses, which is the half that must not regress. |
@@ -946,6 +946,23 @@ These are recurring gates for each new branch, not one-time unfinished tickets.
 
 ## U4 — simpler, conditional product creation (P1/P2)
 
+      **Owner decisions taken 2026-09-12 for the URG-025–032 batch — record them here so they
+      survive a context loss and are not re-litigated:**
+      - **URG-029 variants**: disabling variants KEEPS the existing variant rows untouched and
+        merely hides the builder; re-enabling shows them exactly as they were. A UI toggle must
+        never destroy stock or sales history. (Rejected: blocking the toggle, and archiving.)
+      - **URG-027 slugs**: auto-generate from the name ON CREATE ONLY, with collisions resolved
+        server-side. Editing an existing product never silently rewrites its slug. This was a
+        genuine conflict — `admin.config.ts` carries a deliberate note that slug is NEVER
+        auto-derived, because changing it records a redirect and should be a conscious act — and
+        the owner resolved it this way rather than overriding the recorded rule outright.
+      - **URG-028 code types**: SKU is always on; the barcode field is opt-in per product, which
+        matches the toggleable-optional-group pattern URG-029/030/031 ask for. Existing stored
+        values that no longer map are KEPT and shown for review, never rewritten — the same rule
+        the business-type catalogue and the legacy tax ids already follow in this branch.
+      - **URG-025 basic fields**: name, price, stock, category, image, status stay visible by
+        default. Cost, SKU, barcode, dimensions, shipping, SEO, tags and storage move behind
+        named optional groups.
 - [ ] **URG-025 — Make the default product form basic.** Show only the fields required for a normal
       product first; group advanced merchandising, dimensions, shipping, localized content, and
       other specialist details behind clearly named optional sections.

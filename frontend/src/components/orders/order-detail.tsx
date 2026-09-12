@@ -18,6 +18,7 @@ import { RefundOrderDialog } from '@/components/orders/refund-order-dialog';
 import { RequestReturnSheet } from '@/components/orders/request-return-sheet';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
+import { CollapsibleSection } from '@/components/ui/collapsible-section';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -336,8 +337,9 @@ export function OrderDetail({ id }: { id: string }) {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <section className="bg-card rounded-lg border">
-            <h2 className="border-b px-4 py-3 font-medium">{t('items.title')}</h2>
+          {/* bodyClassName="": the table is full-bleed and the total row below
+              carries its own padding, so the default p-4 would inset both. */}
+          <CollapsibleSection title={t('items.title')} bodyClassName="">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -389,17 +391,15 @@ export function OrderDetail({ id }: { id: string }) {
                 {money(order.total)}
               </span>
             </div>
-          </section>
+          </CollapsibleSection>
 
-          <section className="bg-card rounded-lg border p-4">
-            <h2 className="mb-3 font-medium">{t('timeline.title')}</h2>
+          <CollapsibleSection title={t('timeline.title')}>
             <OrderStatusTimeline orderId={order.id} placedAt={order.placedAt} />
-          </section>
+          </CollapsibleSection>
         </div>
 
         <div className="space-y-6">
-          <section className="bg-card rounded-lg border p-4">
-            <h2 className="mb-3 font-medium">{t('customer.title')}</h2>
+          <CollapsibleSection title={t('customer.title')}>
             {order.customer ? (
               <dl className="space-y-2 text-sm">
                 <Field label={t('customer.name')} value={order.customer.name} />
@@ -416,10 +416,9 @@ export function OrderDetail({ id }: { id: string }) {
               // SetNull on delete, so an order can outlive its customer.
               <p className="text-muted-foreground text-sm">{t('customer.removed')}</p>
             )}
-          </section>
+          </CollapsibleSection>
 
-          <section className="bg-card rounded-lg border p-4">
-            <h2 className="mb-3 font-medium">{t('delivery.title')}</h2>
+          <CollapsibleSection title={t('delivery.title')}>
             {order.assignment ? (
               <dl className="space-y-2 text-sm">
                 <Field
@@ -472,10 +471,9 @@ export function OrderDetail({ id }: { id: string }) {
                 setOrder((current) => (current ? { ...current, assignment } : current))
               }
             />
-          </section>
+          </CollapsibleSection>
 
-          <section className="bg-card rounded-lg border p-4">
-            <h2 className="mb-3 font-medium">{t('payment.title')}</h2>
+          <CollapsibleSection title={t('payment.title')}>
             <p className="text-sm">{order.paymentMethod ?? t('payment.unknown')}</p>
             {(order.goodwillRefunds ?? []).map((refund) => (
               <div key={refund.id} className="border-border mt-3 border-t pt-3 text-sm">
@@ -497,7 +495,7 @@ export function OrderDetail({ id }: { id: string }) {
                 ) : null}
               </div>
             ))}
-          </section>
+          </CollapsibleSection>
 
           <OrderNotesSection order={order} onChanged={setOrder} />
         </div>
