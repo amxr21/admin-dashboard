@@ -1,4 +1,5 @@
 import { apiDownload, apiFetch } from '@/lib/api';
+import type { RefundReason } from '@/lib/refund-reasons';
 
 /**
  * Client for the bespoke orders routes (`/api/v1/orders`).
@@ -94,6 +95,16 @@ export interface OrderDetail {
   taxAmount: string | null;
   paymentMethod: string | null;
   placedAt: string;
+  /** Negative payment rows represented as positive refund amounts for display. */
+  goodwillRefunds?: Array<{
+    id: string;
+    amount: string;
+    paidAt: string;
+    refundReason: RefundReason | null;
+    refundReasonNote: string | null;
+    /** Existing unstructured note, never relabeled with a guessed code. */
+    legacyReason: string | null;
+  }>;
   /** Staff-only, never surfaced to the customer — a THREAD (C5.7), oldest first. */
   notes: OrderNote[];
   customer: OrderCustomer | null;
@@ -371,7 +382,7 @@ export async function addOrderNote(id: string, body: string): Promise<OrderDetai
  */
 export async function refundOrder(
   id: string,
-  input: { amount: string; reason: string },
+  input: { amount: string; refundReason: RefundReason; refundReasonNote?: string },
 ): Promise<OrderDetail> {
   const result = await apiFetch<{ order: OrderDetail }>(`/orders/${id}/refund`, {
     method: 'POST',

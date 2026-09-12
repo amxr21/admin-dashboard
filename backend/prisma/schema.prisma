@@ -2310,6 +2310,11 @@ model Payment {
   reference String? @db.VarChar(120)
   note      String? @db.VarChar(255)
 
+  /// Staff's fixed reason for a goodwill refund. Nullable for historical
+  /// payments and refunds created before reason codes were introduced.
+  refundReason     RefundReason? @map("refund_reason")
+  refundReasonNote String?       @map("refund_reason_note") @db.VarChar(500)
+
   createdAt DateTime @default(now()) @map("created_at")
 
   /// "What did this order collect" and "what did this shift take" are the two

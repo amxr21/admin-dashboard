@@ -486,12 +486,14 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **Active branch**: `fix/urgent-migration-data-integrity`, created on published R0 commit
-  `4eb5abc` (`fix/urgent-refund-cancel-reasons`). That parent push passed merge-integrity and
-  frontend/backend typechecks. PR #225 is the latest named stacked PR. Two
+- **Active branch**: `fix/urgent-goodwill-refund-reasons`, stacked on local R1 commit `e9d766b`
+  (`fix/urgent-migration-data-integrity`), itself stacked on published R0 `4eb5abc`.
+  R1 and R2 are not pushed/merged. PR #225 is the latest named stacked PR. Two
   pre-existing untracked diagnostic artifacts (`frontend/branch-sheet-open.png` and
   `frontend/scroll-check.mjs`) remain intentionally untouched.
-- **In progress**: R1 migration/data-integrity audit in `URGENT_TODO.md`; URG-004, URG-009, URG-011,
+- **In progress**: R2 goodwill refund reasons, English-first implementation, with additional tests
+  deferred by the owner to a later stage. R1 remains open for disposable-DB reproduction and
+  environment/CI gates; both are itemized in `URGENT_TODO.md`. URG-004, URG-009, URG-011,
   URG-013 and URG-014 were reopened after review of implementation against the owner's full
   acceptance request. `gh` returned HTTP 401, so current PR checks/merge state cannot be asserted
   from the earlier green reports. Do not infer production deployment from local commits.
@@ -566,16 +568,23 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   cancellation catalogues apart.
 - **Owner decisions 2026-09-12**: reason catalogues are exactly one value plus an `Other` note,
   fixed enums in code (not admin-configurable), values chosen without waiting for approval.
-- **Next step**: reproduce an omitted catalogue backfill with matching schema on a disposable
-  database, then finish R1 gates before publishing. R1 now has a read-only `db:check-data` command
+- **R1 checkpoint**: reproduce an omitted catalogue backfill with matching schema on a disposable
+  database, then finish its gates before publishing. R1 has a read-only `db:check-data` command
   and exceptional-startup guard: failed migration history plus matching schema checks the known
   catalogue invariant; confirmed missing data or an unavailable check refuses the new container,
   while passing it still warns that other historical backfills are unproven. It never auto-baselines.
   Local guarded check saw 30 products, 0 zero versions, 0 missing version-1 snapshots. Focused
   Vitest 26/26, backend typecheck and lint pass. Merge-integrity launch failed twice with Windows
   `uv_os_get_passwd` ENOMEM before project code, so build/merge checks remain pending. Current
-  GitHub checks cannot be queried because `gh pr checks 225` returns HTTP 401. R2/R3/R4/R5 stack
-  order is in `URGENT_TODO.md`. Do not stage the two untracked diagnostic artifacts.
+  GitHub checks cannot be queried because `gh pr checks 225` returns HTTP 401.
+- **Next step**: R2 edited nullable Payment refund code/note, a shared server validator, strict
+  goodwill API, shared reason picker, and Order Detail legacy-aware display. Review the exact R2
+  checklist in `URGENT_TODO.md`. Prisma schema validates via the guarded local command and frontend
+  typecheck/targeted backend ESLint pass; `prisma generate` is blocked by Windows `EPERM` renaming
+  the query-engine DLL, probably held by a running dev server. Identify its exact PID with the
+  owner before stopping it; do not kill arbitrary Node processes. The migration is not applied,
+  backend typecheck and browser verification remain, and the branch is NOT deployable. The owner
+  clarified “now focus on English” and deferred new tests. Do not stage the two diagnostic artifacts.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.

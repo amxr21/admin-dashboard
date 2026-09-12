@@ -22,7 +22,7 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
 | URG-006 | `[x]` | Owner chose visible-disabled sold-out tiles; direct scan now refuses zero stock. Preserve that explicit exception to the original hide request. |
 | URG-007 | `[x]` | Cash received required for single and split cash tender; confirm local/current CI and deployed currency/rounding behavior. |
 | URG-008 | `[x]` | Failed charge keeps focus inside dialog; successful close restores scan focus. Browser keyboard/assistive-tech acceptance still valuable. |
-| URG-009 | `[*]` | Return-based refund uses enum + Other; Order Details goodwill refund still uses unrestricted free text and lacks the code. Cover both workflows before closing. |
+| URG-009 | `[*]` | Return-based refund uses enum + Other; R2 now edits the goodwill path with nullable Payment code/note, but Prisma generation, migration, UI acceptance and deferred tests remain. Cover both workflows before closing. |
 | URG-010 | `[x]` | Single and bulk cancellation reasons implemented; current CI and deployed audit display need confirmation. |
 | URG-011 | `[*]` | Sidebar rows became shorter and its scrollbar thinner; two independently scrollable regions can still coexist on short viewports. Recheck owner's screenshot dimensions and both open/closed sheet states before claiming resolved. |
 | URG-012 | `[x]` | Shared Button/Input/Select, sidebar and shell spacing compacted one step; no global font shrink. Verify keyboard/touch/Arabic/phone layouts in acceptance. |
@@ -106,10 +106,49 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
                Do not run `migrate reset`, blindly replay SQL, or write `_prisma_migrations` by hand.
             5. Re-run deploy/status, live diff, data check and authenticated endpoint flows after
                the reviewed repair. Production verification belongs to R4/URG-001–004.
-- [ ] **R2 — complete refund reasons (URG-009).** Extend the same fixed catalogue + Other contract to
+- [*] **R2 — complete refund reasons (URG-009).** Extend the same fixed catalogue + Other contract to
       goodwill refunds; preserve the reason on its payment/audit record without inventing an RMA;
       validate API and UI, migrate additively if storage changes, test both refund paths and older
       records. One branch stacked on R1; do not regress cancellation reasons (URG-010).
+      Active local branch: `fix/urgent-goodwill-refund-reasons` from R1 `e9d766b`. Owner asked on
+      2026-09-12 to defer additional tests and focus implementing the English version; the owner
+      explicitly corrected “not” to “now”. Reuse existing Arabic reason labels to avoid breaking
+      that route, but a separate Arabic polish/visual pass can follow implementation.
+      R2 handoff checklist (2026-09-12; this branch is NOT ready to deploy):
+      - [x] Trace the two workflows. Return approval stores `Return.refundReason/Note`; goodwill
+            refund creates a negative `Payment` with a free-text `note` and no Return. The latter
+            was the actual URG-009 gap. `GET /orders/:id` previously omitted payment rows.
+      - [x] Add nullable `Payment.refundReason/Note` and additive migration
+            `20260912120000_add_goodwill_refund_reasons`. Never guess a code for older rows; their
+            existing note remains available as `legacyReason`. Migration has NOT been applied.
+      - [x] Extract server reason/Other validation to `services/refund-reason.ts`; use it from
+            return approval and goodwill refund. Goodwill route now accepts strict
+            `{ amount, refundReason, refundReasonNote? }`, persists code/note in the same payment
+            transaction, and writes both into audit changes. A selected branch must match the
+            order's branch before a financial write; missing/mismatch returns not-found.
+      - [x] Put frontend codes in `lib/refund-reasons.ts`, re-export from `returns-api.ts` for
+            existing callers, update `orders-api.ts`, and change `refund-order-dialog.tsx` to the
+            shared shadcn Select + Other-only Textarea. It reuses `returns.detail` translated
+            reason labels; amount input has a format placeholder. `getOrder` returns positive
+            display amounts for goodwill refunds with nullable code/note/legacy text; Order Detail
+            payment panel shows reason and older notes without inventing an RMA.
+      - [*] Review static types and running schema: frontend typecheck and targeted backend ESLint
+            passed; guarded `prisma validate` passed. Direct unguarded Prisma validation initially
+            failed only because `DATABASE_URL` was unset. `prisma generate` then failed `EPERM`
+            renaming the Windows query-engine DLL, likely held by a running backend. Do NOT kill
+            broad Node processes or run a build over someone else's dev session. Identify the
+            exact owning PID with the owner before stopping it, then regenerate and typecheck.
+      - [ ] Apply migration to a disposable/test DB through the APP_MODE guard; verify live schema
+            parity and existing legacy refund rows. Do NOT apply it to production from this task.
+      - [ ] Review/refine the new Order Detail payment panel at mobile/tablet/desktop and keyboard
+            focus with its nested Select; confirm English copy and no Arabic regression. The
+            current code was not browser-tested, and the browser console was not inspected.
+      - [ ] Owner explicitly deferred new tests to a later stage. Record coverage debt: missing,
+            invalid and Other reasons; non-Other note rejection; amount cap; cross-branch refusal;
+            atomic payment/audit; legacy records; both refund flows and UI keyboard/RTL.
+      - [ ] Only after generation/typecheck, migration and UI review, commit the completed batch,
+            publish the stack in base order, and inspect GitHub checks. `gh` still returned 401
+            last checked; never claim green from historical reports.
 - [ ] **R3 — finish shell/field corrections (URG-011/013/014).** Reproduce short-screen two-scrollbar
       state; resolve it without trapping navigation; inventory missing placeholders field-by-field;
       implement selected-branch/content width with narrow-screen fallback; test keyboard, mobile,
@@ -422,12 +461,12 @@ These are recurring gates for each new branch, not one-time unfinished tickets.
       **Where:** `RefundReason` enum + `Return.refundReason`/`refundReasonNote`
       (`20260912000000_add_refund_and_cancellation_reasons`, additive and nullable — existing
       refunds are a real "never recorded" gap, never backfilled with a guess),
-      `assertRefundReason` in `returns.service.ts`, `approveBody` in `returns.route.ts`,
+      shared `assertRefundReason` in `refund-reason.ts`, `approveBody` in `returns.route.ts`,
       `return-detail-sheet.tsx`, `returns-api.ts`.
-      **Remaining:** the separate goodwill refund in Order Details still accepts unrestricted
-      free-text reason and stores no catalogue code. Extend the same reason + Other contract to
-      `refund-order-dialog.tsx`, the order refund route/service, payment/audit display, and tests;
-      preserve pre-existing records without inventing a reason or an RMA.
+      **Goodwill path in progress locally:** the new nullable Payment columns, strict API/service
+      validation, shared Select + Other note, order payment display and legacy-note fallback are
+      edited on R2. They are not yet generated/migrated/browser-reviewed, tested or deployable;
+      see the detailed R2 handoff above. Do not mark URG-009 complete yet.
 - [x] **URG-010 — Configurable order-cancellation reasons with Other.** Before cancelling, require a
       reason from an approved catalogue; selecting `Other` reveals required free text. Persist and
       audit the code/note and keep cancellation authorization and stock effects transactional.

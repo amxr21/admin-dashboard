@@ -1,4 +1,4 @@
-import { CancellationReason, OrderStatus } from '@prisma/client';
+import { CancellationReason, OrderStatus, RefundReason } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -287,7 +287,8 @@ ordersRouter.post('/orders/:id/notes', ...guard, async (req, res) => {
 const refundBody = z
   .object({
     amount: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Enter an amount like 25.00'),
-    reason: z.string().trim().min(1, 'Enter a reason for this refund').max(500),
+    refundReason: z.nativeEnum(RefundReason, { message: 'Unknown refund reason' }),
+    refundReasonNote: z.string().trim().max(500).optional(),
   })
   .strict();
 

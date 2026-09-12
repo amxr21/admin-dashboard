@@ -84,6 +84,7 @@ const NEIGHBOR_PARAM_KEYS = ['search', 'status', 'from', 'to', 'sort', 'dir'] as
 
 export function OrderDetail({ id }: { id: string }) {
   const t = useTranslations('orders');
+  const tReturn = useTranslations('returns.detail');
   const tNav = useTranslations('nav');
   const tErrors = useTranslations('errorPages.notFound');
   const formatter = useFormatter();
@@ -476,6 +477,26 @@ export function OrderDetail({ id }: { id: string }) {
           <section className="bg-card rounded-lg border p-4">
             <h2 className="mb-3 font-medium">{t('payment.title')}</h2>
             <p className="text-sm">{order.paymentMethod ?? t('payment.unknown')}</p>
+            {(order.goodwillRefunds ?? []).map((refund) => (
+              <div key={refund.id} className="border-border mt-3 border-t pt-3 text-sm">
+                <p className="font-medium">
+                  {t('refund.action')} · {money(refund.amount)}
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  {formatter.dateTime(new Date(refund.paidAt), 'long')}
+                </p>
+                {refund.refundReason ? (
+                  <p className="mt-1">
+                    {t('refund.reasonLabel')}: {tReturn(`refundReasons.${refund.refundReason}`)}
+                    {refund.refundReasonNote ? <> — <bdi>{refund.refundReasonNote}</bdi></> : null}
+                  </p>
+                ) : refund.legacyReason ? (
+                  <p className="mt-1">
+                    {t('refund.reasonLabel')}: <bdi>{refund.legacyReason}</bdi>
+                  </p>
+                ) : null}
+              </div>
+            ))}
           </section>
 
           <OrderNotesSection order={order} onChanged={setOrder} />
