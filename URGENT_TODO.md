@@ -245,13 +245,19 @@ they must not be lost. Full detail lives in `TODO.md`.
       lint clean. Each new test is scoped to its own RMA — an unscoped
       `findFirst` on the type matched another test's row, which is how the
       first run reported the wrong RMA.
-- [ ] **Still not built, and deliberately so:** the fuller `ReturnStatus`
+- The fuller `ReturnStatus` lifecycle and the customer-facing resolution email
+  both moved to the **Parked by the owner** section below (2026-09-12). Kept
+  here only as a pointer, so neither reads as open work.
+
+<!-- Original wording, retained for the reasoning:
+      **Still not built, and deliberately so:** the fuller `ReturnStatus`
       lifecycle (label sent → in transit → received → inspected → resolved) is
       unchanged at REQUESTED/APPROVED/REJECTED. It was skipped on 2026-09-09 as
       a mail-order shipping flow that does not fit a physical till; reviving it
       needs a migration, new states and new UI. The customer still receives
       nothing on resolution — the UX-018 customer-email path exists to reuse,
       but that was not part of this approval.
+-->
 
 ## Remaining owner and UX work
 
