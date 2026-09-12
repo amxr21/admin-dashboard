@@ -339,7 +339,11 @@ export function OrderDetail({ id }: { id: string }) {
         <div className="space-y-6 lg:col-span-2">
           {/* bodyClassName="": the table is full-bleed and the total row below
               carries its own padding, so the default p-4 would inset both. */}
-          <CollapsibleSection title={t('items.title')} bodyClassName="">
+          <CollapsibleSection
+            title={t('items.title')}
+            aside={<span className="tabular-nums">{money(order.total)}</span>}
+            bodyClassName=""
+          >
             <Table>
               <TableHeader>
                 <TableRow>

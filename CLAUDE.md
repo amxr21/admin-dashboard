@@ -486,17 +486,23 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **Active branch**: `fix/urgent-goodwill-refund-reasons`, stacked on local R1 commit `e9d766b`
-  (`fix/urgent-migration-data-integrity`), itself stacked on published R0 `4eb5abc`.
-  R1 and R2 are not pushed/merged. PR #225 is the latest named stacked PR. Two
-  pre-existing untracked diagnostic artifacts (`frontend/branch-sheet-open.png` and
-  `frontend/scroll-check.mjs`) remain intentionally untouched.
-- **In progress**: R2 goodwill refund reasons, English-first implementation, with additional tests
-  deferred by the owner to a later stage. R1 remains open for disposable-DB reproduction and
-  environment/CI gates; both are itemized in `URGENT_TODO.md`. URG-004, URG-009, URG-011,
-  URG-013 and URG-014 were reopened after review of implementation against the owner's full
-  acceptance request. `gh` returned HTTP 401, so current PR checks/merge state cannot be asserted
-  from the earlier green reports. Do not infer production deployment from local commits.
+- **Active branch**: `fix/urgent-goodwill-refund-reasons` at `b162ba9`, with
+  further uncommitted changes. The owner reports most recent branches merged
+  except #224/#225, whose tests continue; exact GitHub state awaits restored
+  authentication. Two earlier diagnostic
+  artifacts (`frontend/branch-sheet-open.png`, `frontend/scroll-check.mjs`) and the
+  current group-toggle probe script are untracked and must not be staged.
+- **In progress**: URG-026/031 product-group enablement is coded but uncommitted.
+  An earlier Playwright probe verified create/edit, group disabling and payload
+  omission in English and Arabic; the latest rerun timed out loading the local
+  dev server. Resource/form and order-detail focused tests pass 98/98 with one
+  existing skip; frontend typecheck and targeted lint pass. URG-029's legacy
+  NULL variant intent is now preserved; URG-033/037/038 are completed locally.
+  R1 migration-data safety is still the release prerequisite. Goodwill refund
+  reasons and several R3/product/organization batches are implemented locally
+  and logged in `TODO.md`; their publication and production acceptance remain
+  in `URGENT_TODO.md`. `gh auth status` reports an invalid token, so current PR
+  checks and mergeability are unknown.
 - **The URG-004 finding worth remembering**: the startup gate as first written blocked the HTTP
   server on any non-zero `prisma migrate deploy` *or* `prisma migrate status`. That conflates
   migration BOOKKEEPING with schema CORRECTNESS, and the two diverge exactly when
@@ -573,18 +579,22 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   and exceptional-startup guard: failed migration history plus matching schema checks the known
   catalogue invariant; confirmed missing data or an unavailable check refuses the new container,
   while passing it still warns that other historical backfills are unproven. It never auto-baselines.
-  Local guarded check saw 30 products, 0 zero versions, 0 missing version-1 snapshots. Focused
-  Vitest 26/26, backend typecheck and lint pass. Merge-integrity launch failed twice with Windows
-  `uv_os_get_passwd` ENOMEM before project code, so build/merge checks remain pending. Current
+  Local guarded check saw 30 products, 0 zero versions, 0 missing version-1 snapshots. The opt-in
+  disposable repro now passes with the backfill omitted, history table absent,
+  schema drift and unavailable-check negative paths, plus a fully migrated
+  healthy control; the new
+  `RELEASE_MIGRATION_RUNBOOK.md` records the operator procedure. Focused
+  Vitest 26/26, backend typecheck, direct `tsc` emit and lint pass. Merge-integrity
+  launch failed twice with Windows `uv_os_get_passwd` ENOMEM before project code;
+  Prisma Client generation hit an EPERM DLL rename while a local API process
+  held it open, so the full build/merge checks remain pending. Current
   GitHub checks cannot be queried because `gh pr checks 225` returns HTTP 401.
-- **Next step**: R2 edited nullable Payment refund code/note, a shared server validator, strict
-  goodwill API, shared reason picker, and Order Detail legacy-aware display. Review the exact R2
-  checklist in `URGENT_TODO.md`. Prisma schema validates via the guarded local command and frontend
-  typecheck/targeted backend ESLint pass; `prisma generate` is blocked by Windows `EPERM` renaming
-  the query-engine DLL, probably held by a running dev server. Identify its exact PID with the
-  owner before stopping it; do not kill arbitrary Node processes. The migration is not applied,
-  backend typecheck and browser verification remain, and the branch is NOT deployable. The owner
-  clarified “now focus on English” and deferred new tests. Do not stage the two diagnostic artifacts.
+- **Next step**: repeat the browser pass after the latest changes, finish R1's
+  database-backed negative paths and merge gates, then review and commit
+  the logical batches before publishing
+  the later stack. Use the open-only `URGENT_TODO.md` for the full queue and
+  `TODO.md` for locally completed implementations. Do not stage diagnostic
+  artifacts.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.
@@ -783,6 +793,18 @@ above and `TODO.md` are authoritative for current work.
     `.claude-workbook/ROADMAP.md` — read it for anything this file summarizes too tersely.
 
 ## Changelog
+
+- **2026-09-12** — Reconciled the owner urgent queue: `URGENT_TODO.md` now
+  contains only open implementation, decision, release and production checks;
+  locally completed urgent items moved to the completed ledger in `TODO.md`.
+  Current uncommitted product-group toggles and R1 release dependency are
+  explicit. No merge or production verification was claimed.
+- **2026-09-12** — Reproduced the missing-history/data-only-backfill admission
+  failure on a disposable MySQL database; drafted the recovery runbook. Localized
+  all configured resource field labels, passed business country to branch phone
+  validation, preserved legacy variant intent, and kept order totals visible
+  when items collapse. Focused frontend checks pass; live browser and release
+  checks remain open.
 - **2026-09-11** — Merged UX stack synchronized locally at `acaff8f`; post-merge documentation
   records resolved owner issues, current verified gaps, and the complete supported scenario
   catalogue. UX-034 was reopened because the delivered Staff link is not a staff-detail workspace.

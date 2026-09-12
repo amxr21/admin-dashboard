@@ -1,8 +1,48 @@
 # TODO — the one list
 
-> Urgent production and UX findings reported on 2026-09-11 are inventoried one-by-one in
-> [URGENT_TODO.md](URGENT_TODO.md). The owner approved that tracked queue on 2026-09-11;
-> its production blockers and reconciled R0–R5 stack take priority over enhancement batches.
+> Open urgent production and UX work is tracked in [URGENT_TODO.md](URGENT_TODO.md).
+> Completed local urgent implementations are recorded below; release and production
+> acceptance remain open until verified. The owner-approved urgent queue takes priority
+> over enhancement batches.
+
+## Completed urgent implementations — local record, 2026-09-12
+
+These entries moved from `URGENT_TODO.md` because their scoped implementation or agreed
+investigation is complete **locally**. They are not a claim that the stacked PRs are merged or
+that production has been verified. The remaining release and acceptance checks stay in
+`URGENT_TODO.md` under R1/R4. Earlier detail remains available in the git history of that file.
+
+| Item | Completed local outcome | Evidence / boundary |
+| --- | --- | --- |
+| R0 | Restored the tracked urgent handoff and synchronized project state. | `4eb5abc` is pushed; merge position and current checks remain part of R4. |
+| URG-005 | Branch-stock checkout uses an atomic conditional decrement; a losing concurrent sale gets a business refusal rather than overselling or a 500. | Focused code and CI investigation; current CI and deployed race remain R4 checks. |
+| URG-006 | Sold-out products stay visible as disabled tiles by owner decision; direct scan refuses zero stock explicitly. | POS frontend tests and en/ar parity recorded in the urgent handoff. |
+| URG-007 | Single and split cash tender require cash received, with UI shortage feedback and server refusal. | Both typechecks, targeted lint and POS frontend tests recorded; deployed currency/rounding remains R4. |
+| URG-008 | Failed checkout keeps focus inside the open dialog; successful close restores scan focus. | Focus regression tests recorded; deployed keyboard/assistive-technology check remains R4. |
+| URG-009 | Return and goodwill refunds use one fixed reason catalogue with Other note, stored code/note, audit data, and legacy-note display. | R2 commits `17f5b6f`/`7e5041c`; full backend suite and en/ar browser review at three widths recorded. New dedicated tests were deferred by the owner; publication/production remain R4. |
+| URG-010 | Single and bulk cancellation require and persist a reason plus an Other note when selected. | Focused backend/frontend verification recorded; deployed audit display remains R4. |
+| URG-012 | Shared controls, sidebar and page spacing use the agreed one-step compact density. | Typecheck, lint and live desktop visual check recorded; final mobile/keyboard acceptance remains R4. |
+| URG-013 | Email/phone/URL and audited staff/branch/business text fields have useful en/ar examples where appropriate. | R3 commit `f451590`; a complete inventory of every form/control is still URG-035. |
+| URG-014 | Branch selector sizes to its label with a viewport cap and tooltip for overflow. | R3 commit `f451590`; live en/ar measurements include desktop and narrow topbars. |
+| URG-016 | Organization currency uses a searchable canonical ISO 4217 list and server membership check. | `dea3813`; en/ar browser review recorded. |
+| URG-017 | Time zone uses searchable canonical IANA IDs with offsets computed at display time. | `dea3813`; en/ar browser review recorded. |
+| URG-018 | Country uses stable ISO codes and localized names; legacy business values are reviewed rather than rewritten. | `dea3813`; en/ar browser review recorded. |
+| URG-019 | Per owner decision, city remains free text with a country-appropriate example on the business form. | `e9d9ba0`; no city dataset or restrictive validation was approved. |
+| URG-020 | Dialing prefix is derived from country where country context exists; other phone forms use international validation. | `e16a10d`; passing inherited business country into branch entry remains URG-038. |
+| URG-021 | Business type uses an 18-type catalogue with Other note and non-destructive legacy mapping. | `dea3813`; additive `kindNote` migration applied to local dev/test DBs. |
+| URG-022 | Shared phone field formats on blur, stores E.164 in the display `phone` field where valid, and forces LTR in Arabic. | `e16a10d`; five forms wired and en/ar browser checks recorded. Existing digits-only customer search key was preserved. |
+| URG-023 | Business tax ID validation is country-aware for AE/SA and permissive elsewhere; legacy values are surfaced for review. | `34491d0`; browser and focused backend checks recorded. |
+| URG-025 | Product creation shows six basic fields first and groups advanced fields under localized headings. | `3a1cc20`; browser checked in en/ar. Group enablement is separately open as URG-026/031. |
+| URG-027 | Product/category slugs generate only on create, resolve collisions, and preserve manually typed or existing slugs. | `f6ab947`; real API create/rename/collision paths checked. |
+| URG-036 | A cashier with one active branch assignment starts a shift without an admin branch selector; ambiguous assignments fail safely. | Existing `resolveShiftBranchId` behavior reverified, 52/52 shift tests. |
+| URG-033 | Order detail sections collapse independently; order status, actions and total remain visible above or beside collapsed content. Returns and audit remain top-level actions/links, while goodwill refunds remain under Payment. | Focused order-detail tests pass; deployed keyboard/phone/Arabic acceptance remains R4. |
+| URG-037 | Shared localized resource field labels cover all 49 configured field names, including form, table, search and filter renderers, with English fallback and a review-comment override. Stored API field keys are unchanged. | Arabic form assertion, typecheck and targeted lint pass; browser rerun awaits a responsive local dev server. |
+| URG-038 | Branch phone examples and validation use the inherited business country, with international fallback when absent. | Business summary already supplies the country; frontend typecheck and targeted lint pass. |
+| URG-032 | Category create keeps parent selection and server cycle/depth refusal, generates a unique slug, defaults Active correctly, and refreshes the list. Product form can open category creation in another tab and refresh choices without losing its draft. | Focused form tests 56/56, both typechecks and targeted lint pass; real create/duplicate, keyboard, phone and Arabic acceptance remain in R4. |
+
+Open items remain in the urgent queue: URG-001–004, 011, 015, 024,
+026, 028–031, 034 and 035. URG-029/030 have local components but
+do not yet meet their full acceptance criteria.
 
 ## Technical UX delivery plan — owner direction, 2026-09-10
 
@@ -87,23 +127,23 @@
 - [ ] Decide whether the future Admin role may view the non-secret configuration reference.
 - [ ] **Point 4 — final combined gate:** after the approved corrections, run project-wide unit, type, lint, build, and E2E checks plus the motion, accessibility, responsive, and native-Arabic review. Do not treat focused/merged CI as closing this broader gate.
 
-### Owner review notes pending discussion — 2026-09-11
+### Historical owner review notes — 2026-09-11
 
 These are captured for discussion only. Do not implement or fold them into point 4 until the owner
 confirms the intended behavior and priority.
 
-- [ ] **Till currencies:** consider accepting multiple currencies at the till, with the default
+- [ ] **Till currencies (open as URG-034):** consider accepting multiple currencies at the till, with the default
   currency taken from the existing Settings source of truth. Define supported currencies,
   exchange-rate ownership, rounding, tender/change behavior, receipt display, reconciliation, and
   reporting before implementation so historical transaction amounts remain trustworthy.
-- [ ] **Till customer search:** reconsider/remove the customer-search section because the owner
+- [x] **Till customer search:** reconsider/remove the customer-search section because the owner
   does not find it useful. Confirm whether anonymous checkout should be the only till flow or
   whether optional customer association should remain available through a less prominent action.
-- [ ] **Loading overlay redesign:** replace the current long/vertical presentation with a compact
+- [x] **Loading overlay redesign:** replace the current long/vertical presentation with a compact
   horizontal flex-row treatment and review the component's overall visual design. Preserve the
   shared loading coordinator, accessibility semantics, bilingual/RTL behavior, reduced motion,
   and anti-flicker timing.
-- [ ] **Multi-branch dashboard summary:** discuss redesigning the dashboard to show a concise
+- [x] **Multi-branch dashboard summary:** discuss redesigning the dashboard to show a concise
   summary of every branch when the business has more than one, while keeping the single-branch
   experience simple. Define aggregate-versus-branch metrics and navigation before approval.
 

@@ -377,6 +377,17 @@ describe('the order itself', () => {
     expect(screen.getAllByText(/59\.98/).length).toBeGreaterThan(0);
   });
 
+  it('keeps the order total visible when the items section closes', async () => {
+    fetchOrder.mockResolvedValue(makeOrder());
+    render(<OrderDetail id="o1" />);
+
+    const itemsToggle = await screen.findByRole('button', { name: /items.*59\.98/i });
+    await userEvent.click(itemsToggle);
+    expect(itemsToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(itemsToggle).toBeVisible();
+    expect(screen.getByText('Ceramic Planter')).not.toBeVisible();
+  });
+
   it('says so when a product was deleted rather than rendering a blank row', async () => {
     // Line items carry a price snapshot but NOT a name snapshot, so a
     // hard-deleted product leaves nothing to fall back to.

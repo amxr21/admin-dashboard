@@ -196,17 +196,14 @@ export function BranchSheet({
                 ) : null}
               </Label>
               {field === 'phone' ? (
-                /* URG-020/022. A branch has no country of its own — it
-                   inherits its business's, which this sheet does not load, so
-                   validation runs without a country context and accepts any
-                   number the library recognises internationally. Passing the
-                   business country through is a follow-up, not a guess to make
-                   here. */
+                /* A branch inherits its business country. Use that country
+                   for the example and validation; null keeps the international
+                   fallback when the business has no country recorded. */
                 <PhoneField
                   id="branch-phone"
                   value={values.phone ?? ''}
                   onChange={(next) => set('phone', next)}
-                  country={null}
+                  country={business.country}
                 />
               ) : (
                 <Input
