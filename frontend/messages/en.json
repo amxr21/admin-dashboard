@@ -680,6 +680,15 @@
       "confirmImport": "{count, plural, one {Import # row} other {Import # rows}}",
       "importing": "Importing…",
       "close": "Close"
+    },
+    "fieldGroups": {
+      "pricing": "Cost & margin",
+      "identifiers": "Codes & identifiers",
+      "inventory": "Stock settings",
+      "physical": "Dimensions & weight",
+      "shipping": "Shipping & customs",
+      "seo": "Search & links",
+      "organisation": "Tags & organisation"
     }
   },
   "placeholder": {

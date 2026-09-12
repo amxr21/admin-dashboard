@@ -680,6 +680,15 @@
       "confirmImport": "{count, plural, zero {استيراد} one {استيراد صف واحد} two {استيراد صفَّين} few {استيراد # صفوف} many {استيراد # صفاً} other {استيراد # صف}}",
       "importing": "جارٍ الاستيراد…",
       "close": "إغلاق"
+    },
+    "fieldGroups": {
+      "pricing": "التكلفة والهامش",
+      "identifiers": "الرموز والمعرّفات",
+      "inventory": "إعدادات المخزون",
+      "physical": "الأبعاد والوزن",
+      "shipping": "الشحن والجمارك",
+      "seo": "البحث والروابط",
+      "organisation": "الوسوم والتنظيم"
     }
   },
   "placeholder": {

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { CollapsibleSection } from '@/components/ui/collapsible-section';
 import { DatePicker } from '@/components/ui/date-picker';
 import { ImageUploadField } from '@/components/image-upload-field';
 import { Input } from '@/components/ui/input';
@@ -247,10 +248,34 @@ export function ResourceForm({
   onSaved,
 }: ResourceFormProps) {
   const t = useTranslations('resourceForm');
+  // Separate binding: `t` above is scoped to `resourceForm`, but the group
+  // headings are resource vocabulary shared with the table, so they live under
+  // `resource.fieldGroups`.
+  const tGroups = useTranslations('resource.fieldGroups');
   const translateError = useTranslatedApiError();
   const { editPanelMode } = useAppSettings();
 
   const fields = useMemo(() => formFields(schema), [schema]);
+
+  /**
+   * URG-025 — progressive disclosure. Fields with no `group` render in the
+   * default body; the rest collect into named sections in FIRST-APPEARANCE
+   * order, so the config file's ordering stays the source of truth rather than
+   * an alphabetical sort nobody chose.
+   */
+  const ungroupedFields = useMemo(() => fields.filter((field) => !field.group), [fields]);
+
+  const fieldGroups = useMemo(() => {
+    const byGroup = new Map<string, typeof fields>();
+    for (const field of fields) {
+      if (!field.group) continue;
+      const existing = byGroup.get(field.group);
+      if (existing) existing.push(field);
+      else byGroup.set(field.group, [field]);
+    }
+    return [...byGroup.entries()];
+  }, [fields]);
+
   const isEdit = row !== null;
 
   // Snapshot of what each field held when the form opened — used only to
@@ -377,6 +402,48 @@ export function ResourceForm({
     },
     [t],
   );
+
+  /**
+   * One field row. Extracted (URG-025) so the default body and every grouped
+   * section render fields identically — duplicating this block per section is
+   * how the two paths would quietly drift apart.
+   */
+  function renderField(field: FieldConfig) {
+    return (
+      <FormField
+        key={field.name}
+        field={field}
+        value={values[field.name] ?? ''}
+        originalValue={isEdit ? (originalValues[field.name] ?? '') : ''}
+        error={fieldErrors[field.name]}
+        options={relationOptions[field.name] ?? []}
+        resourceFolder={schema.resource}
+        onChange={(value) => setValue(field.name, value)}
+        onBlur={() => {
+          // A blank REQUIRED field left empty is deliberately not flagged
+          // here — a fresh create form's untouched fields are all blank by
+          // definition, and tabbing through them (focus → blur, never
+          // typing) would light up every required field red before the user
+          // has done anything wrong. Submit still catches a genuinely empty
+          // required field; blur only catches a WRONG value in a field that
+          // has content — a malformed email, an unparseable date — which is
+          // unambiguously a mistake worth surfacing early.
+          const current = values[field.name] ?? '';
+          if (String(current).trim() === '') return;
+
+          const message = validateField(field, current);
+          setFieldErrors((prev) => {
+            if (message === null) {
+              if (!(field.name in prev)) return prev;
+              const { [field.name]: _removed, ...rest } = prev;
+              return rest;
+            }
+            return { ...prev, [field.name]: message };
+          });
+        }}
+      />
+    );
+  }
 
   function buildPayload(): ResourceRow {
     const payload: ResourceRow = {};
@@ -560,40 +627,28 @@ export function ResourceForm({
           {/* The one scrolling region. `-mx-1 px-1` keeps focus rings on the
               inputs from being clipped by the overflow container. */}
           <div className="-mx-1 min-h-0 flex-1 space-y-4 overflow-y-auto px-1">
-            {fields.map((field) => (
-              <FormField
-                key={field.name}
-                field={field}
-                value={values[field.name] ?? ''}
-                originalValue={isEdit ? (originalValues[field.name] ?? '') : ''}
-                error={fieldErrors[field.name]}
-                options={relationOptions[field.name] ?? []}
-                resourceFolder={schema.resource}
-                onChange={(value) => setValue(field.name, value)}
-                onBlur={() => {
-                  // A blank REQUIRED field left empty is deliberately not
-                  // flagged here — a fresh create form's untouched fields
-                  // are all blank by definition, and tabbing through them
-                  // (focus → blur, never typing) would light up every
-                  // required field red before the user has done anything
-                  // wrong. Submit still catches a genuinely empty required
-                  // field; blur only catches a WRONG value in a field that
-                  // has content — a malformed email, an unparseable date —
-                  // which is unambiguously a mistake worth surfacing early.
-                  const current = values[field.name] ?? '';
-                  if (String(current).trim() === '') return;
+            {ungroupedFields.map(renderField)}
 
-                  const message = validateField(field, current);
-                  setFieldErrors((prev) => {
-                    if (message === null) {
-                      if (!(field.name in prev)) return prev;
-                      const { [field.name]: _removed, ...rest } = prev;
-                      return rest;
-                    }
-                    return { ...prev, [field.name]: message };
-                  });
-                }}
-              />
+            {/*
+              URG-025 — progressive disclosure. Specialist fields collect into
+              named sections instead of sitting between Name and Price with the
+              same visual weight.
+
+              Open by DEFAULT, deliberately: a grouped field is one click away,
+              not hidden. Starting them closed would also remove every grouped
+              input from the accessibility tree on first paint (the section
+              uses the `hidden` attribute), which is both worse for a screen
+              reader and would break every `getByLabelText` in the suite.
+            */}
+            {fieldGroups.map(([groupKey, groupFields]) => (
+              <CollapsibleSection
+                key={groupKey}
+                title={tGroups(groupKey)}
+                aside={String(groupFields.length)}
+                bodyClassName="space-y-4 p-4"
+              >
+                {groupFields.map(renderField)}
+              </CollapsibleSection>
             ))}
 
             <MarginSummary

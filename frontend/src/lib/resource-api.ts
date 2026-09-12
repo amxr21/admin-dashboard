@@ -47,6 +47,19 @@ export interface FieldConfig {
   /** Shown when an existing non-empty value is being changed, never on
    *  first-time entry or create. See admin.config.ts's own comment. */
   changeWarning?: string;
+  /**
+   * Progressive disclosure (URG-025). Fields with no group render first, in
+   * the default form body; everything carrying a group collects into a named
+   * optional section below, in first-appearance order.
+   *
+   * The value is a translation key under `resource.fieldGroups`, not prose —
+   * the section heading has to be localized like every other label.
+   *
+   * A grouped field is NOT conditional: it still submits, still validates, and
+   * is one click away. This only stops a 24-field product form presenting
+   * dimensions and SEO with the same weight as name and price.
+   */
+  group?: string;
 }
 
 export interface ResourceSchema {
