@@ -302,6 +302,72 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
       after passing gates, then verify authenticated Organization, Customer Cases, checkout, stock,
       cash, refund/cancel and focus in production. Do not mark an endpoint 500 fixed solely from a
       401 probe or a migrated test database.
+      R5 progress (2026-09-12, Claude — owner decisions taken 2026-09-12: city stays free text,
+      libphonenumber-js approved, best-effort legacy mapping, 18-type catalogue with Other+note):
+      - [x] **URG-016/017/018 canonical option sets — implemented, no dataset dependency.**
+            `Intl.supportedValuesOf` ships 162 ISO 4217 currencies and 417 IANA zones with the
+            runtime, and `Intl.DisplayNames` localizes currency and country names into en AND ar
+            from CLDR. That is better than any bundled dataset (no weight, never stale, better
+            Arabic), so the earlier "which dataset" question is moot — nothing was bundled.
+            New `frontend/src/lib/canonical-options.ts` builds the option lists;
+            `backend/src/lib/canonical-values.ts` enforces MEMBERSHIP server-side.
+            **Why the backend guard matters**: `businessSchema` previously checked shape only
+            (`.length(2)`/`.length(3)`), so "ZZ" and "XYZ" stored cleanly and only failed later
+            when a currency was formatted or a shift resolved against a zone. A select on the
+            client is a convenience; the endpoint is reachable directly.
+            **Offsets are computed, never stored** (the ticket is explicit): `zoneOffsetLabel`
+            derives `UTC+04:00` from the zone id at call time via `longOffset`, so a DST change
+            is reflected automatically rather than frozen into a stored offset.
+      - [x] **New `Combobox` primitive** (`frontend/src/components/ui/combobox.tsx`). `Select` is
+            unusable for 417 zones — there is no way to type. Built on the existing Popover and
+            following `command-palette.tsx`'s established `role="combobox"` + `role="listbox"`
+            pattern rather than adding `cmdk`, so the app keeps ONE search-list idiom.
+            Caught during review: I first wrote the trigger-width class as Tailwind v3's
+            `w-[--radix-popover-trigger-width]`, which compiles to nothing under v4 — the same
+            silent-zero-CSS failure mode CLAUDE.md records as having made every drawer invisible.
+            Corrected to `w-(--radix-popover-trigger-width)`.
+      - [x] **URG-021 business-type catalogue — 18 owner-approved types + Other-requires-a-note.**
+            `frontend/src/lib/business-types.ts` and its backend mirror. Kept as a code list on
+            the existing `VarChar(60)` column rather than a Prisma enum, because the owner expects
+            the catalogue to GROW and an enum makes every addition a migration.
+            New nullable `Business.kindNote` (migration `20260912160000_add_business_kind_note`,
+            additive, never backfilled) holds the Other note, with the same server contract as the
+            refund/cancellation reasons: Other without a note is refused, a note on any other type
+            is refused.
+            **Legacy values are mapped on READ, never rewritten.** `toBusinessType` maps exact
+            aliases ("cafe" -> CAFE); anything unmappable keeps its stored text and is shown back
+            to the owner with a "needs review" hint so they choose. The approved best-effort
+            migration was NOT written: the live data is already canonical (2 businesses, both
+            `AE`/`AED`/`Asia/Dubai`, kinds "cafe"/"restaurant"), so a data-rewriting migration
+            would have carried real risk for zero rows. Flagged to the owner as a departure.
+      - [x] Backend + frontend typecheck and lint clean; en/ar parity 2351/2351; migration applied
+            to both the dev and integration-test databases.
+      - [ ] URG-020/022/023 (dialing code, phone formatting, tax/TRN templates) not started.
+            `libphonenumber-js@1.13.13` is installed for URG-022 but not yet wired; the existing
+            `backend/src/lib/phone.ts` is a two-line digits-stripper it will supersede.
+      - [ ] URG-019 city: owner chose free text + country-aware validation, so only the
+            country-aware part remains once URG-018's control is in place everywhere.
+      - [x] **Browser acceptance of the new controls — PASSED in both locales**, against the real
+            seeded business (`/admin/branches/<id>` renders `BusinessForm`; there is no
+            `/admin/businesses` route, which cost one probe run to discover).
+              - Legacy `kind` "cafe" maps and displays as "Cafe" / "مقهى" without the stored value
+                being rewritten; all 18 catalogue types render translated in both locales.
+              - Other reveals its note with the right label and placeholder in both locales.
+              - Currency Combobox opens with 160 options; filtering by the ISO code `AED` returns
+                exactly one match in BOTH locales, which proves hint-matching does not depend on
+                the display language (the Arabic label is "درهم إماراتي", so an English word
+                would never have matched).
+              - Timezone shows `Asia/Dubai` with its COMPUTED `GMT+04:00` hint.
+              - Popover width tracks the trigger exactly (415/415), confirming the Tailwind v4
+                `w-(--var)` fix actually generates CSS.
+              - Zero console errors in either locale.
+            **A real bug in the new Combobox was caught by this probe and fixed**: the "not set"
+            clear row was rendered outside the filter, so a zero-match query showed one stray
+            clickable row instead of the empty state — and because it sat first, clicking the
+            apparent "only match" CLEARED the field instead of selecting anything. The clear row
+            is now offered only while the query is empty. Re-verified: zero-match now reports
+            0 options with the empty state shown, and selecting after a filter commits correctly.
+      - [ ] URG-035 full-form inventory still open.
 - [ ] **R5 — remaining approved queue.** URG-035 field inventory first, then URG-016–024 structured
       organization/identity inputs; URG-025–032 product/category simplification; URG-033 order
       details; URG-034 till currencies; URG-036 cashier branch regression. URG-015 waits for a

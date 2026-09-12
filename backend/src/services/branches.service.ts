@@ -196,6 +196,8 @@ export async function resolveBrand(
 export interface BusinessInput {
   name: string;
   kind?: string | null;
+  /** Required free text when `kind` is `OTHER` (URG-021). */
+  kindNote?: string | null;
   legalName?: string | null;
   taxId?: string | null;
   email?: string | null;

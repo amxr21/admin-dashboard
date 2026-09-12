@@ -32,6 +32,11 @@
       "city": "e.g. Dubai",
       "legalName": "e.g. Haddad Trading LLC",
       "taxId": "e.g. 100123456700003"
+    },
+    "combobox": {
+      "search": "Search…",
+      "empty": "No matches",
+      "none": "Not set"
     }
   },
   "language": {
@@ -328,7 +333,14 @@
           "title": "Brand",
           "hint": "The logo shown on this business's invoices and letterhead."
         }
-      }
+      },
+      "kindNoteLabel": "Describe the business type",
+      "kindNotePlaceholder": "e.g. Cloud kitchen",
+      "kindPlaceholder": "Choose a type",
+      "kindLegacyReview": "Stored as \"{value}\" before types were standardized. Choose the closest match to update it.",
+      "chooseCountry": "Choose a country",
+      "chooseCurrency": "Choose a currency",
+      "chooseTimezone": "Choose a time zone"
     },
     "roster": {
       "title": "Who works at {name}",
@@ -593,10 +605,10 @@
       "description": "Your device looks offline, or the server is briefly unavailable. Check your connection and try again."
     },
     "forbidden": {
-  "title": "You don't have access to this",
-  "description": "Your account role doesn’t include this area. If you think it should, ask an owner to update your permissions.",
-  "descriptionWithArea": "Your account role doesn’t include {area}. If you think it should, ask an owner to update your permissions."
-}
+      "title": "You don't have access to this",
+      "description": "Your account role doesn’t include this area. If you think it should, ask an owner to update your permissions.",
+      "descriptionWithArea": "Your account role doesn’t include {area}. If you think it should, ask an owner to update your permissions."
+    }
   },
   "resource": {
     "yes": "Yes",
@@ -1030,28 +1042,63 @@
     "total": "{count, plural, one {# supplier} other {# suppliers}}",
     "emptyTitle": "No suppliers match this view",
     "emptyBody": "Add a supplier or remove the current filters.",
-    "search": { "label": "Search suppliers", "placeholder": "Name, contact, email, or phone" },
-    "columns": { "name": "Supplier", "contact": "Contact", "products": "Products", "receipts": "Receipts", "lastReceived": "Last received", "status": "Status", "actions": "Actions" },
-    "actions": { "create": "New supplier", "edit": "Edit", "deactivate": "Deactivate", "reactivate": "Reactivate" },
-    "notice": { "saved": "Supplier saved.", "deactivated": "Supplier deactivated.", "reactivated": "Supplier reactivated." },
+    "search": {
+      "label": "Search suppliers",
+      "placeholder": "Name, contact, email, or phone"
+    },
+    "columns": {
+      "name": "Supplier",
+      "contact": "Contact",
+      "products": "Products",
+      "receipts": "Receipts",
+      "lastReceived": "Last received",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "actions": {
+      "create": "New supplier",
+      "edit": "Edit",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate"
+    },
+    "notice": {
+      "saved": "Supplier saved.",
+      "deactivated": "Supplier deactivated.",
+      "reactivated": "Supplier reactivated."
+    },
     "form": {
-      "createTitle": "New supplier", "editTitle": "Edit supplier",
+      "createTitle": "New supplier",
+      "editTitle": "Edit supplier",
       "description": "Keep only the contact details needed to receive and reorder stock.",
-      "name": "Supplier name", "email": "Email", "phone": "Phone", "contactName": "Contact person", "note": "Note",
-      "nameRequired": "Supplier name is required.", "saveFailed": "Could not save supplier",
-      "cancel": "Cancel", "save": "Save supplier", "saving": "Saving…"
+      "name": "Supplier name",
+      "email": "Email",
+      "phone": "Phone",
+      "contactName": "Contact person",
+      "note": "Note",
+      "nameRequired": "Supplier name is required.",
+      "saveFailed": "Could not save supplier",
+      "cancel": "Cancel",
+      "save": "Save supplier",
+      "saving": "Saving…"
     },
     "outreach": {
       "title": "Email supplier — {product}",
       "description": "Choose a supplier from this product's receiving history, then review the message before sending.",
-      "supplier": "Supplier", "subject": "Subject", "message": "Message",
+      "supplier": "Supplier",
+      "subject": "Subject",
+      "message": "Message",
       "defaultSubject": "Restock request: {product}",
       "defaultMessage": "Hello,\n\nWe currently have {stock} units of {product} in stock. Please confirm availability and expected delivery timing for a restock.\n\nThank you.",
       "editableHint": "This message is a starting point. Review quantities and details before sending.",
-      "loading": "Loading suppliers", "sendFailed": "Email was not sent",
-      "noHistoryTitle": "No supplier history for this product", "noHistoryBody": "Receive this product from a supplier first so the relationship is recorded.",
-      "noEmailTitle": "No supplier can be emailed", "noEmailBody": "Add an email address to an active supplier in the directory, then try again.",
-      "cancel": "Cancel", "send": "Send email", "sending": "Sending…"
+      "loading": "Loading suppliers",
+      "sendFailed": "Email was not sent",
+      "noHistoryTitle": "No supplier history for this product",
+      "noHistoryBody": "Receive this product from a supplier first so the relationship is recorded.",
+      "noEmailTitle": "No supplier can be emailed",
+      "noEmailBody": "Add an email address to an active supplier in the directory, then try again.",
+      "cancel": "Cancel",
+      "send": "Send email",
+      "sending": "Sending…"
     }
   },
   "stockReason": {
@@ -3042,5 +3089,25 @@
     "yes": "Yes",
     "no": "No",
     "noFields": "No custom fields yet. Add them in the Custom fields tab."
+  },
+  "businessTypes": {
+    "RESTAURANT": "Restaurant",
+    "CAFE": "Cafe",
+    "BAKERY": "Bakery",
+    "FOOD_TRUCK": "Food truck",
+    "GROCERY": "Grocery",
+    "SUPERMARKET": "Supermarket",
+    "PHARMACY": "Pharmacy",
+    "CLOTHING": "Clothing",
+    "ELECTRONICS": "Electronics",
+    "FURNITURE": "Furniture",
+    "JEWELLERY": "Jewellery",
+    "BOOKSTORE": "Bookstore",
+    "SALON": "Salon",
+    "BARBERSHOP": "Barbershop",
+    "SPA": "Spa",
+    "GYM": "Gym",
+    "LAUNDRY": "Laundry",
+    "OTHER": "Other"
   }
 }

@@ -1,18 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/navigation';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { ImageUploadField } from '@/components/image-upload-field';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import {
+  countryOptions,
+  currencyOptions,
+  timezoneOptions,
+} from '@/lib/canonical-options';
+import { BUSINESS_TYPES, toBusinessType } from '@/lib/business-types';
 import {
   createBusiness,
   fetchBusinesses,
@@ -62,11 +76,19 @@ const GROUPS = [
 ] as const;
 
 /** Every writable field, in payload order. `logoUrl` included — it is stored
- *  exactly like the others, it just has a better control. */
+ *  exactly like the others, it just has a better control. `kindNote` is not in
+ *  a GROUP because it is not independently placed: it renders directly beneath
+ *  `kind`, and only when that is `OTHER`. */
 const FIELDS = [
   ...GROUPS.flatMap((group) => group.fields),
   'logoUrl',
+  'kindNote',
 ] as const;
+
+/** URG-016/017/018 — fields whose value must come from a canonical catalogue
+ *  rather than being typed. The control differs (searchable vs a short list),
+ *  so the renderer branches on this rather than on the field name inline. */
+const CANONICAL_FIELDS = new Set(['country', 'currency', 'timezone']);
 
 /** Full-width inside its group: a legal name or a street rarely fits the half
  *  column a two-up grid gives it. */
@@ -95,9 +117,18 @@ const BUSINESS_PLACEHOLDERS: Record<string, string | undefined> = {
 type Values = Record<string, string>;
 
 function initial(business: BusinessSummary | null): Values {
-  return Object.fromEntries(
+  const values = Object.fromEntries(
     FIELDS.map((field) => [field, (business?.[field] as string | null | undefined) ?? '']),
   ) as Values;
+
+  // URG-021 — a row stored before the catalogue holds free text ("cafe").
+  // Map it to its code where the intent is unambiguous so the Select shows the
+  // right option; anything unmappable keeps its raw text and is surfaced for
+  // review by `legacyKind` below rather than being silently cleared.
+  const mapped = toBusinessType(values.kind);
+  if (mapped) values.kind = mapped;
+
+  return values;
 }
 
 export function BusinessForm({ businessId }: BusinessFormProps) {
@@ -105,12 +136,35 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
   // URG-013 — shared format-example placeholders, same strings every
   // email/phone input in the app uses (see resource-form.tsx's placeholderFor).
   const tCommon = useTranslations('common');
+  const tTypes = useTranslations('businessTypes');
   const translateError = useTranslatedApiError();
   const router = useRouter();
+  const locale = useLocale();
+
+  // URG-016/017/018 — built from `Intl`, so they are locale-sensitive and
+  // rebuild only when the locale changes, not on every keystroke in the form.
+  // 162 currencies / 417 zones / ~250 countries is real work to sort.
+  const optionsFor = useMemo(
+    () => ({
+      country: countryOptions(locale),
+      currency: currencyOptions(locale),
+      timezone: timezoneOptions(locale),
+    }),
+    [locale],
+  );
 
   const isEdit = businessId !== undefined;
 
   const [values, setValues] = useState<Values>(() => initial(null));
+  /**
+   * URG-021 — the raw stored `kind` when it predates the catalogue AND matches
+   * no alias, so the Select cannot represent it.
+   *
+   * Held separately rather than read off `values.kind`, because `initial()`
+   * rewrites that to a catalogue code whenever the mapping succeeds. Only the
+   * value as it arrived can tell the owner what the record actually said.
+   */
+  const [legacyKind, setLegacyKind] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(true);
   const [isLoading, setIsLoading] = useState(isEdit);
   const [error, setError] = useState<string | null>(null);
@@ -136,6 +190,11 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
         }
 
         setValues(initial(found));
+        // Unmappable free text: shown back to the owner for review rather than
+        // discarded. A value that DID map needs no notice — it is already
+        // selected correctly.
+        const stored = found.kind?.trim();
+        setLegacyKind(stored && !toBusinessType(stored) ? stored : null);
         setIsActive(found.isActive);
       })
       .catch((caught: unknown) => {
@@ -247,19 +306,87 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
                     </span>
                   ) : null}
                 </Label>
-                <Input
-                  id={`business-${field}`}
-                  type={field === 'email' ? 'email' : field === 'phone' ? 'tel' : 'text'}
-                  placeholder={
-                    BUSINESS_PLACEHOLDERS[field] ? tCommon(BUSINESS_PLACEHOLDERS[field]) : undefined
-                  }
-                  value={values[field] ?? ''}
-                  onChange={(event) => set(field, event.target.value)}
-                  aria-invalid={field === 'name' && nameError ? true : undefined}
-                  aria-describedby={
-                    field === 'name' && nameError ? 'business-name-error' : undefined
-                  }
-                />
+                {CANONICAL_FIELDS.has(field) ? (
+                  <Combobox
+                    id={`business-${field}`}
+                    options={optionsFor[field as 'country' | 'currency' | 'timezone']}
+                    value={values[field] || null}
+                    onValueChange={(next) => set(field, next ?? '')}
+                    placeholder={
+                      field === 'country'
+                        ? t('chooseCountry')
+                        : field === 'currency'
+                          ? t('chooseCurrency')
+                          : t('chooseTimezone')
+                    }
+                    searchPlaceholder={tCommon('combobox.search')}
+                    emptyText={tCommon('combobox.empty')}
+                    clearText={tCommon('combobox.none')}
+                  />
+                ) : field === 'kind' ? (
+                  <Select
+                    value={values.kind || 'none'}
+                    onValueChange={(next) => {
+                      set('kind', next === 'none' ? '' : next);
+                      // Leaving OTHER must not strand its note: the server
+                      // refuses a note on any other type, so keeping it would
+                      // turn a type change into an unexplainable 400.
+                      if (next !== 'OTHER') set('kindNote', '');
+                    }}
+                  >
+                    <SelectTrigger id="business-kind" className="w-full">
+                      <SelectValue placeholder={t('kindPlaceholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{tCommon('combobox.none')}</SelectItem>
+                      {BUSINESS_TYPES.map((code) => (
+                        <SelectItem key={code} value={code}>
+                          {tTypes(code)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    id={`business-${field}`}
+                    type={field === 'email' ? 'email' : field === 'phone' ? 'tel' : 'text'}
+                    placeholder={
+                      BUSINESS_PLACEHOLDERS[field]
+                        ? tCommon(BUSINESS_PLACEHOLDERS[field])
+                        : undefined
+                    }
+                    value={values[field] ?? ''}
+                    onChange={(event) => set(field, event.target.value)}
+                    aria-invalid={field === 'name' && nameError ? true : undefined}
+                    aria-describedby={
+                      field === 'name' && nameError ? 'business-name-error' : undefined
+                    }
+                  />
+                )}
+
+                {/* URG-021 — the escape hatch's note, required by the server
+                    when the type is OTHER and refused for any other type. */}
+                {field === 'kind' && values.kind === 'OTHER' ? (
+                  <div className="space-y-2 pt-2">
+                    <Label htmlFor="business-kind-note">{t('kindNoteLabel')}</Label>
+                    <Input
+                      id="business-kind-note"
+                      maxLength={200}
+                      placeholder={t('kindNotePlaceholder')}
+                      value={values.kindNote ?? ''}
+                      onChange={(event) => set('kindNote', event.target.value)}
+                    />
+                  </div>
+                ) : null}
+
+                {/* A stored value that predates the catalogue and matches no
+                    alias. Shown, not silently discarded — the owner is the only
+                    one who can say which type it meant. */}
+                {field === 'kind' && legacyKind ? (
+                  <p className="text-muted-foreground text-xs">
+                    {t('kindLegacyReview', { value: legacyKind })}
+                  </p>
+                ) : null}
                 {field === 'name' && nameError ? (
                   <p id="business-name-error" role="alert" className="text-destructive text-sm">
                     {nameError}

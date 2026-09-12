@@ -259,11 +259,22 @@ model Business {
   id   String @id @default(cuid())
   name String @db.VarChar(160)
 
-  /// Free text, since a business type is a label for the owner's benefit
-  /// rather than something the app branches on — a "cafe" and a "food truck"
-  /// run identically here. Kept so a future template/wizard has something to
-  /// key off without needing a migration first.
+  /// A curated catalogue code (URG-021), e.g. `CAFE`, `RESTAURANT`, `OTHER`.
+  /// See `lib/canonical-values.ts` for the list.
+  ///
+  /// Still `VarChar`, not an enum: the owner expects the catalogue to GROW,
+  /// and an enum would make every addition a migration. Pre-URG-021 rows hold
+  /// free text (`"cafe"`) and are mapped on read where the intent is
+  /// unambiguous, never rewritten in place — a value nobody can interpret is
+  /// shown back to the owner for review instead of being guessed at.
   kind String? @db.VarChar(60)
+
+  /// Required free text when `kind` is `OTHER`, and null otherwise (URG-021).
+  /// Same contract as the refund/cancellation reasons: a bare "Other" records
+  /// only that the list was insufficient, so the note is what tells you which
+  /// type to add next. Nullable because every row predating this column has
+  /// no note and inventing one would be fabrication.
+  kindNote String? @map("kind_note") @db.VarChar(200)
 
   /// "Every detail of the shop" (F8.5). All optional: an owner setting up
   /// their first business should not have to fill in a tax id before they

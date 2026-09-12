@@ -43,6 +43,7 @@ const BUSINESS: BusinessSummary = {
   id: 'biz-1',
   name: 'Corner Cafe',
   kind: null,
+  kindNote: null,
   legalName: null,
   taxId: null,
   email: null,
