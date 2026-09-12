@@ -34,7 +34,7 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
 | URG-033 | `[ ]` | Order detail sections still need accessible collapsible groups. |
 | URG-034 | `[ ]` | Finish multi-currency selector/receipt/per-currency shift count against store default. |
 | URG-035 | `[ ]` | Every form and field still needs the named inventory, control/validation review and sign-off; this includes the URG-013 remainder. |
-| URG-036 | `[ ]` | Reverify singly assigned cashier starts a shift without admin branch switching, including ambiguous assignments. |
+| URG-036 | `[x]` | **Reverified 2026-09-12, no code change needed.** `resolveShiftBranchId` already does exactly what the ticket asks, and `shifts.test.ts` already asserts all three cases by name — 52/52 pass. A branch-scoped role with exactly ONE active assignment starts a shift with no `X-Branch-Id` header (test: "assigned to exactly one branch defaults to it, no header needed"); more than one assignment fails safely with `BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS` rather than guessing; no roster row at all falls through to the single-business shortcut so a one-branch install keeps working. Genuine multi-branch/multi-business ambiguity still refuses, which is the half that must not regress. |
 
 ### Correction and delivery batches, in stack order
 
@@ -413,8 +413,23 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
                data is surfaced for review, never used to block an unrelated edit, the same rule
                the business-type catalogue follows.
             Backend typecheck and lint clean; `branch-writes` + `organization` 25/25.
-      - [ ] URG-019 city: owner chose free text + country-aware validation, so only the
-            country-aware part remains once URG-018's control is in place everywhere.
+      - [x] **URG-019 city — done, deliberately small.** The owner chose free
+            text over a bundled dataset, so the only remaining half is making the field
+            country-aware. Recon of every city surface:
+              - `business-form` has a canonical `country` sibling (`VarChar(2)` ISO) — this is
+                the one surface where country-aware behaviour is genuinely possible.
+              - `branch-sheet` has city but NO country: a branch inherits its business's, and the
+                sheet does not load it. Same limitation already recorded for the phone field.
+              - `couriers.route.ts` / `assign-courier-control` — **worth recording, because I got
+                this wrong twice while checking.** `DeliveryAssignment` DOES have a `country`
+                column, but it is `VarChar(96)` free-text country NAMES, not the `VarChar(2)` ISO
+                code the business model uses, and no service ever writes it — it appears in
+                exactly one Zod field and nowhere else. So it is a declared-but-dead column of the
+                wrong type, and `isCanonicalCountry` cannot be applied to it without a conversion
+                that is out of scope here. The delivery surfaces stay as they are.
+            Remaining work is therefore only: a country-appropriate city placeholder on
+            `business-form` instead of a fixed "e.g. Dubai". No validation is added, per the
+            owner's decision that a legitimate city absent from any dataset must never be refused.
       - [x] **Browser acceptance of the new controls — PASSED in both locales**, against the real
             seeded business (`/admin/branches/<id>` renders `BusinessForm`; there is no
             `/admin/businesses` route, which cost one probe run to discover).

@@ -103,6 +103,41 @@ export function countryOptions(locale: string): CanonicalOption[] {
   return out.sort((a, b) => a.label.localeCompare(b.label, locale));
 }
 
+/**
+ * An example city for a country (URG-019).
+ *
+ * The owner chose free text over a bundled city dataset, so this is NOT
+ * validation and never refuses anything — a legitimate place absent from any
+ * list must always be typeable. It only makes the placeholder honest: "e.g.
+ * Dubai" on a business registered in Egypt teaches the wrong thing.
+ *
+ * Deliberately a handful of entries rather than a generated list. `Intl` has
+ * no city data, so every entry here is a judgement call, and a short table
+ * whose absences fall back cleanly is better than a long one that is wrong in
+ * places nobody checks.
+ */
+const EXAMPLE_CITIES: Record<string, string> = {
+  AE: 'Dubai',
+  SA: 'Riyadh',
+  EG: 'Cairo',
+  GB: 'London',
+  US: 'New York',
+  IN: 'Mumbai',
+  PK: 'Karachi',
+  JO: 'Amman',
+  LB: 'Beirut',
+  QA: 'Doha',
+  KW: 'Kuwait City',
+  BH: 'Manama',
+  OM: 'Muscat',
+};
+
+/** The country's own example city, or null to fall back to the shared one. */
+export function exampleCityFor(country: string | null | undefined): string | null {
+  if (!country) return null;
+  return EXAMPLE_CITIES[country.trim().toUpperCase()] ?? null;
+}
+
 /** True when `value` is a currency this runtime recognizes. */
 export function isCanonicalCurrency(value: string): boolean {
   return Intl.supportedValuesOf('currency').includes(value.toUpperCase());

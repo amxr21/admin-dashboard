@@ -25,6 +25,7 @@ import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
   countryOptions,
   currencyOptions,
+  exampleCityFor,
   timezoneOptions,
 } from '@/lib/canonical-options';
 import { BUSINESS_TYPES, toBusinessType } from '@/lib/business-types';
@@ -383,9 +384,15 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
                       // when the jurisdiction has no rule.
                       field === 'taxId' && taxIdExampleFor(values.country)
                         ? (taxIdExampleFor(values.country) ?? undefined)
-                        : BUSINESS_PLACEHOLDERS[field]
-                          ? tCommon(BUSINESS_PLACEHOLDERS[field])
-                          : undefined
+                        : // URG-019 — the country's own example city. Not
+                          // validation: free text stays free text, this only
+                          // stops "e.g. Dubai" appearing on a business
+                          // registered somewhere else.
+                          field === 'city' && exampleCityFor(values.country)
+                          ? (exampleCityFor(values.country) ?? undefined)
+                          : BUSINESS_PLACEHOLDERS[field]
+                            ? tCommon(BUSINESS_PLACEHOLDERS[field])
+                            : undefined
                     }
                     value={values[field] ?? ''}
                     onChange={(event) => set(field, event.target.value)}
