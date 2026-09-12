@@ -1364,14 +1364,14 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     });
   }
 
-  it('writes a negative Payment row with the reason as its note', async () => {
+  it('writes a negative Payment row with the coded reason', async () => {
     const id = await makeOrder();
     await makePayment(id, '59.98');
 
     const res = await request(app)
       .post(`/api/v1/orders/${id}/refund`)
       .set(auth(ownerToken))
-      .send({ amount: '20.00', reason: 'Goodwill — arrived late' });
+      .send({ amount: '20.00', refundReason: 'CHANGED_MIND' });
 
     expect(res.status).toBe(200);
 
@@ -1380,7 +1380,29 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     });
     expect(payment).not.toBeNull();
     expect(payment?.amount.toFixed(2)).toBe('-20.00');
-    expect(payment?.note).toBe('Goodwill — arrived late');
+    expect(payment?.refundReason).toBe('CHANGED_MIND');
+  });
+
+  it('requires and persists a note when the reason is OTHER', async () => {
+    const id = await makeOrder();
+    await makePayment(id, '59.98');
+
+    const missingNote = await request(app)
+      .post(`/api/v1/orders/${id}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '10.00', refundReason: 'OTHER' });
+    expect(missingNote.status).toBe(400);
+
+    const withNote = await request(app)
+      .post(`/api/v1/orders/${id}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '10.00', refundReason: 'OTHER', refundReasonNote: 'Price-matched a competitor' });
+    expect(withNote.status).toBe(200);
+
+    const payment = await prisma.payment.findFirst({
+      where: { orderId: id, method: 'goodwill-refund' },
+    });
+    expect(payment?.refundReasonNote).toBe('Price-matched a competitor');
   });
 
   it('caps at what remains paid, not the raw order total', async () => {
@@ -1391,7 +1413,7 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     const first = await request(app)
       .post(`/api/v1/orders/${id}/refund`)
       .set(auth(ownerToken))
-      .send({ amount: '40.00', reason: 'Partial goodwill' });
+      .send({ amount: '40.00', refundReason: 'FAULTY' });
     expect(first.status).toBe(200);
 
     // A second refund for MORE than what remains (19.98) must be refused —
@@ -1400,24 +1422,12 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     const overCap = await request(app)
       .post(`/api/v1/orders/${id}/refund`)
       .set(auth(ownerToken))
-      .send({ amount: '25.00', reason: 'Second goodwill' });
+      .send({ amount: '25.00', refundReason: 'FAULTY' });
 
     expect(overCap.status).toBe(400);
     expect((overCap.body as { error: { details?: { max?: string } } }).error.details?.max).toBe(
       '19.98',
     );
-  });
-
-  it('refuses a reason left blank', async () => {
-    const id = await makeOrder();
-    await makePayment(id, '59.98');
-
-    const res = await request(app)
-      .post(`/api/v1/orders/${id}/refund`)
-      .set(auth(ownerToken))
-      .send({ amount: '10.00', reason: '   ' });
-
-    expect(res.status).toBe(400);
   });
 
   it('refuses a zero or negative amount', async () => {
@@ -1427,7 +1437,7 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     const zero = await request(app)
       .post(`/api/v1/orders/${id}/refund`)
       .set(auth(ownerToken))
-      .send({ amount: '0.00', reason: 'x' });
+      .send({ amount: '0.00', refundReason: 'DAMAGED' });
     expect(zero.status).toBe(400);
   });
 
@@ -1438,7 +1448,7 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     await request(app)
       .post(`/api/v1/orders/${id}/refund`)
       .set(auth(ownerToken))
-      .send({ amount: '10.00', reason: 'Goodwill' });
+      .send({ amount: '10.00', refundReason: 'WRONG_ITEM' });
 
     const entry = await waitFor(() =>
       prisma.auditLog.findFirst({

@@ -140,7 +140,7 @@ export function RefundOrderDialog({ order, open, onOpenChange, onRefunded }: Ref
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="refund-reason">{tReturn('refundReasonLabel')}</Label>
+            <Label htmlFor="refund-reason">{t('refundReasonLabel')}</Label>
             <Select
               value={reason}
               onValueChange={(value) => {
@@ -150,7 +150,7 @@ export function RefundOrderDialog({ order, open, onOpenChange, onRefunded }: Ref
               disabled={isSaving}
             >
               <SelectTrigger id="refund-reason" className="w-full">
-                <SelectValue placeholder={tReturn('refundReasonPlaceholder')} />
+                <SelectValue placeholder={t('refundReasonPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
                 {REFUND_REASONS.map((item) => (
@@ -164,12 +164,12 @@ export function RefundOrderDialog({ order, open, onOpenChange, onRefunded }: Ref
 
           {reason === 'OTHER' ? (
             <div className="space-y-2">
-              <Label htmlFor="refund-reason-note">{tReturn('refundReasonNoteLabel')}</Label>
+              <Label htmlFor="refund-reason-note">{t('refundReasonNoteLabel')}</Label>
               <Textarea
                 id="refund-reason-note"
                 value={reasonNote}
                 onChange={(event) => setReasonNote(event.target.value)}
-                placeholder={tReturn('refundReasonNotePlaceholder')}
+                placeholder={t('refundReasonNotePlaceholder')}
                 maxLength={500}
                 disabled={isSaving}
               />

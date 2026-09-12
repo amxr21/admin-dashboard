@@ -22,7 +22,7 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
 | URG-006 | `[x]` | Owner chose visible-disabled sold-out tiles; direct scan now refuses zero stock. Preserve that explicit exception to the original hide request. |
 | URG-007 | `[x]` | Cash received required for single and split cash tender; confirm local/current CI and deployed currency/rounding behavior. |
 | URG-008 | `[x]` | Failed charge keeps focus inside dialog; successful close restores scan focus. Browser keyboard/assistive-tech acceptance still valuable. |
-| URG-009 | `[*]` | Return-based refund uses enum + Other; R2 now edits the goodwill path with nullable Payment code/note, but Prisma generation, migration, UI acceptance and deferred tests remain. Cover both workflows before closing. |
+| URG-009 | `[*]` | Return-based refund uses enum + Other; goodwill path now shares the same contract with nullable Payment code/note. Prisma generated, migrations applied to local dev+test DBs, existing test regressions fixed, typecheck/lint clean. Still open: real-browser UI review, full backend suite result, and publishing the stack. |
 | URG-010 | `[x]` | Single and bulk cancellation reasons implemented; current CI and deployed audit display need confirmation. |
 | URG-011 | `[*]` | Sidebar rows became shorter and its scrollbar thinner; two independently scrollable regions can still coexist on short viewports. Recheck owner's screenshot dimensions and both open/closed sheet states before claiming resolved. |
 | URG-012 | `[x]` | Shared Button/Input/Select, sidebar and shell spacing compacted one step; no global font shrink. Verify keyboard/touch/Arabic/phone layouts in acceptance. |
@@ -114,13 +114,14 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
       2026-09-12 to defer additional tests and focus implementing the English version; the owner
       explicitly corrected “not” to “now”. Reuse existing Arabic reason labels to avoid breaking
       that route, but a separate Arabic polish/visual pass can follow implementation.
-      R2 handoff checklist (2026-09-12; this branch is NOT ready to deploy):
+      R2 handoff checklist (updated 2026-09-12 by Claude, continuing from Codex's `5bf139c`
+      checkpoint; this branch is CLOSER but still NOT ready to deploy):
       - [x] Trace the two workflows. Return approval stores `Return.refundReason/Note`; goodwill
             refund creates a negative `Payment` with a free-text `note` and no Return. The latter
             was the actual URG-009 gap. `GET /orders/:id` previously omitted payment rows.
       - [x] Add nullable `Payment.refundReason/Note` and additive migration
             `20260912120000_add_goodwill_refund_reasons`. Never guess a code for older rows; their
-            existing note remains available as `legacyReason`. Migration has NOT been applied.
+            existing note remains available as `legacyReason`.
       - [x] Extract server reason/Other validation to `services/refund-reason.ts`; use it from
             return approval and goodwill refund. Goodwill route now accepts strict
             `{ amount, refundReason, refundReasonNote? }`, persists code/note in the same payment
@@ -132,23 +133,84 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
             reason labels; amount input has a format placeholder. `getOrder` returns positive
             display amounts for goodwill refunds with nullable code/note/legacy text; Order Detail
             payment panel shows reason and older notes without inventing an RMA.
-      - [*] Review static types and running schema: frontend typecheck and targeted backend ESLint
-            passed; guarded `prisma validate` passed. Direct unguarded Prisma validation initially
-            failed only because `DATABASE_URL` was unset. `prisma generate` then failed `EPERM`
-            renaming the Windows query-engine DLL, likely held by a running backend. Do NOT kill
-            broad Node processes or run a build over someone else's dev session. Identify the
-            exact owning PID with the owner before stopping it, then regenerate and typecheck.
-      - [ ] Apply migration to a disposable/test DB through the APP_MODE guard; verify live schema
-            parity and existing legacy refund rows. Do NOT apply it to production from this task.
+      - [x] Regenerated the Prisma Client (stopped the one PID actually holding the query-engine
+            DLL lock — confirmed by identity, `node.exe`, started this session, before stopping it
+            — then restarted the backend dev server). Backend and frontend `tsc --noEmit` both
+            clean; targeted ESLint clean on every touched backend and frontend file.
+      - [x] Applied both pending migrations (`20260912000000`, `20260912120000`) to the local
+            dev DB (`admin_dashboard`) via the guarded `db:deploy` wrapper. Live schema now has
+            zero diff against `schema.prisma` (`prisma migrate diff`, read-only, confirmed empty).
+      - [x] Applied the same two migrations to the local integration test DB
+            (`admin_dashboard_test`). Hit the SAME recurring "missing `_prisma_migrations`
+            bookkeeping" issue this file already documents under R1/URG-004 — verified via
+            read-only `migrate diff` that it was bookkeeping-only (the live shape already matched
+            57 of 59 migrations, later confirmed column-by-column through Prisma, not the broken
+            local `mysql` CLI) before repairing with `migrate resolve --applied` per migration.
+            Never replayed SQL or guessed at data. One migration (`20260912000000`) had a stuck
+            `finished_at: null` failed row from an earlier partial apply attempt — resolved
+            explicitly after confirming its actual columns existed. Test DB now also has zero
+            schema diff.
+      - [x] Found and fixed real regressions in EXISTING tests (not new coverage, per the
+            owner's deferral): `backend/src/__tests__/orders.test.ts`'s "goodwill refund" describe
+            block still used the old free-text `{ amount, reason }` shape the route no longer
+            accepts — updated to `{ amount, refundReason, refundReasonNote? }`. Same for
+            `frontend/src/components/orders/__tests__/order-detail.test.tsx`'s matching block,
+            which typed into a free-text reason field that no longer exists (replaced by a Select
+            + conditional Other-only Textarea) — updated to select an option / fill the Other
+            note. `returns.test.ts` (49/49) confirms the `assertRefundReason` extraction is
+            behaviourally identical to the inline function it replaced.
+      - [x] **Pre-existing, unrelated finding, logged not fixed**: `orders.test.ts` sits close
+            enough to the global `apiRateLimit` (120 req/60s, in-memory, per-process —
+            `backend/src/middleware/rateLimit.ts`) that its last describe block intermittently
+            hits 429 depending on how fast the file executes. Confirmed via the UNMODIFIED
+            pre-R2 baseline (`4eb5abc`) run standalone: it ALSO fails 3/105 the same way. This is
+            not caused by R2 or by this session's edits — it is latent test-infra fragility this
+            file was already sitting on top of. Trimmed the new test's added request count back
+            toward the original block's footprint (+1 net request for real new coverage of the
+            Other-note contract, down from +2) but did not chase it further or touch the shared
+            rate limiter, since that is out of scope for URG-009 and the owner deferred test work.
+            Whoever picks up R3/R5 test hardening should decide whether `apiRateLimit` should
+            skip in test envs (`NODE_ENV === 'test'`) — that would fix this at the root instead of
+            every large test file having to mind its own request budget.
       - [ ] Review/refine the new Order Detail payment panel at mobile/tablet/desktop and keyboard
             focus with its nested Select; confirm English copy and no Arabic regression. The
-            current code was not browser-tested, and the browser console was not inspected.
-      - [ ] Owner explicitly deferred new tests to a later stage. Record coverage debt: missing,
-            invalid and Other reasons; non-Other note rejection; amount cap; cross-branch refusal;
-            atomic payment/audit; legacy records; both refund flows and UI keyboard/RTL.
-      - [ ] Only after generation/typecheck, migration and UI review, commit the completed batch,
-            publish the stack in base order, and inspect GitHub checks. `gh` still returned 401
-            last checked; never claim green from historical reports.
+            code has NOT been opened in a real browser this session — only typechecked, linted,
+            and exercised through jsdom component tests.
+      - [x] Full backend suite (`vitest run`, no `-t` filter) completed with exit code 0 — green.
+            Note the `orders.test.ts` rate-limit flake described above can still surface on a
+            slower/faster run; it is pre-existing and unrelated to this feature.
+      - [x] English copy pass: the dialog no longer borrows its own labels from
+            `returns.detail.*`. `orders.refund` now owns `refundReasonLabel`,
+            `refundReasonPlaceholder`, `refundReasonNoteLabel` and `refundReasonNotePlaceholder`
+            in both locales, and the dead `orders.refund.reasonPlaceholder` (orphaned when the
+            free-text field became a Select) was removed. The six `refundReasons.*` OPTION names
+            are still shared from `returns.detail` on purpose — that is one vocabulary, not drift.
+            The note placeholder was deliberately NOT copied from the return-approval wording:
+            "What was the problem?" is wrong for a goodwill gesture where there may be no problem
+            (a price match), so it reads "e.g. price-matched a competitor" instead.
+            en/ar parity 2316/2316, frontend typecheck and lint clean, order-detail 44/45 (the 1
+            skip is the pre-existing documented one).
+      - [ ] Owner explicitly deferred new dedicated test files to a later stage; the fixes above
+            are regression repairs to existing tests, not new suites. Still-open coverage debt:
+            missing/invalid/Other reasons at the unit level, cross-branch refusal, atomic
+            payment/audit, legacy record display, and Arabic/RTL/keyboard flow for the new Select.
+      - [ ] Only after full-suite/build/merge-integrity and a real browser check, finalize the
+            batch commits, publish the stack in base order, and inspect GitHub checks. `gh` still
+            returned 401 last checked; never claim green from historical reports.
+      Tips for whoever continues R2: the branch has moved past the `5bf139c` checkpoint — re-read
+      this checklist's `[x]` rows before redoing work. `Payment.note` is the historical free-text
+      record; `refundReason` is nullable by design, so never backfill old refunds with `OTHER` or
+      copy today's values into historical records. Reuse `services/refund-reason.ts` and
+      `lib/refund-reasons.ts` instead of diverging catalogues. The old
+      `orders.refund.reasonPlaceholder` translation can remain unused until a copy cleanup; do not
+      delete it mid-feature. If `prisma generate` EPERMs again, identify the exact owning PID by
+      process identity (not just "something on port 4000") before stopping it, and restart the dev
+      server afterward rather than leaving the owner without one. If `migrate deploy`/`status`
+      disagrees with `information_schema` on any shared local DB again, trust a raw
+      `information_schema.COLUMNS` query over a broken/absent `mysql` CLI — this session initially
+      misread column absence because `mysql` isn't on PATH here, not because the columns were
+      actually missing. The prior R1 branch is still local/incomplete; preserve the parent commit
+      and stacked merge order.
 - [ ] **R3 — finish shell/field corrections (URG-011/013/014).** Reproduce short-screen two-scrollbar
       state; resolve it without trapping navigation; inventory missing placeholders field-by-field;
       implement selected-branch/content width with narrow-screen fallback; test keyboard, mobile,

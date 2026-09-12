@@ -658,7 +658,7 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     expect(screen.getByRole('button', { name: /^refund$/i })).toBeInTheDocument();
   });
 
-  it('submits the amount and reason, then shows the confirmation', async () => {
+  it('submits the amount and coded reason, then shows the confirmation', async () => {
     fetchOrder.mockResolvedValue(makeOrder());
     refundOrder.mockResolvedValue(makeOrder());
 
@@ -673,19 +673,21 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     const dialog = await screen.findByRole('alertdialog');
 
     await userEvent.type(within(dialog).getByLabelText(/amount/i), '20');
-    await userEvent.type(within(dialog).getByLabelText(/reason/i), 'Goodwill — arrived late');
+    await userEvent.click(within(dialog).getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: /changed their mind/i }));
     await userEvent.click(within(dialog).getByRole('button', { name: /^refund$/i }));
 
     await waitFor(() => {
       expect(refundOrder).toHaveBeenCalledWith('o1', {
         amount: '20',
-        reason: 'Goodwill — arrived late',
+        refundReason: 'CHANGED_MIND',
       });
     });
   });
 
-  it('disables the confirm button until both an amount and a reason are entered', async () => {
+  it('requires an Other note before the confirm button enables', async () => {
     fetchOrder.mockResolvedValue(makeOrder());
+    refundOrder.mockResolvedValue(makeOrder());
 
     render(<OrderDetail id="o1" />);
     await screen.findByText('Ceramic Planter');
@@ -696,10 +698,24 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     expect(within(dialog).getByRole('button', { name: /^refund$/i })).toBeDisabled();
 
     await userEvent.type(within(dialog).getByLabelText(/amount/i), '20');
+    await userEvent.click(within(dialog).getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: /^other$/i }));
     expect(within(dialog).getByRole('button', { name: /^refund$/i })).toBeDisabled();
 
-    await userEvent.type(within(dialog).getByLabelText(/reason/i), 'x');
+    await userEvent.type(
+      within(dialog).getByLabelText(/describe the reason/i),
+      'Price-matched a competitor',
+    );
     expect(within(dialog).getByRole('button', { name: /^refund$/i })).toBeEnabled();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: /^refund$/i }));
+    await waitFor(() => {
+      expect(refundOrder).toHaveBeenCalledWith('o1', {
+        amount: '20',
+        refundReason: 'OTHER',
+        refundReasonNote: 'Price-matched a competitor',
+      });
+    });
   });
 
   it('surfaces the server refusal — e.g. over the cap — instead of failing silently', async () => {
@@ -715,7 +731,8 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     const dialog = await screen.findByRole('alertdialog');
 
     await userEvent.type(within(dialog).getByLabelText(/amount/i), '50');
-    await userEvent.type(within(dialog).getByLabelText(/reason/i), 'x');
+    await userEvent.click(within(dialog).getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: /faulty/i }));
     await userEvent.click(within(dialog).getByRole('button', { name: /^refund$/i }));
 
     expect(await screen.findByText(/cannot exceed 19\.98/i)).toBeInTheDocument();
