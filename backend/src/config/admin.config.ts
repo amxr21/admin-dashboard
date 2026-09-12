@@ -293,7 +293,13 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
     fields: [
       { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
       { name: 'name', label: 'Name', type: 'text', required: true, searchable: true, sortable: true },
-      { name: 'slug', label: 'Slug', type: 'text', required: true, searchable: true },
+      // URG-027/032 — no longer required of the ADMINISTRATOR. The column is
+      // still NOT NULL and unique; `resource-hooks.ts` derives a free slug
+      // from the name on create when this is left blank. Keeping
+      // `required: true` here would make the form refuse the write before the
+      // server ever got the chance to generate one, which is precisely the
+      // "adding a category feels strange" complaint.
+      { name: 'slug', label: 'Slug', type: 'text', searchable: true },
       // Depth cap and circular-parent prevention are enforced server-side
       // (resource-hooks.ts's beforeWrite, S7.6) — a resource with no field
       // rule for "cannot select an id below a certain depth" leans on that,

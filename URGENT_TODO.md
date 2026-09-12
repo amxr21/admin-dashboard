@@ -969,6 +969,39 @@ These are recurring gates for each new branch, not one-time unfinished tickets.
 - [ ] **URG-026 — Show physical attributes only when relevant.** Weight, height, density, and similar
       fields must be enabled by product type or an explicit advanced toggle, not displayed for every
       product. Hidden fields must not submit stale values.
+      **URG-027/032 slug generation — implemented 2026-09-12.** A new `uniqueSlug` helper wraps
+      the EXISTING `slugify` (which had no callers in `src` — only the seeder) and resolves
+      collisions with a readable numeric suffix rather than a hash: `blue-mug-2` is something a
+      human recognises. Generation runs in `beforeWrite` guarded on `id === null`, which is
+      exactly the create signal (`createResourceRow` passes null, `updateResourceRow` passes the
+      row id). A slug the user TYPED always wins over generation, on create and update alike.
+      **Why only on create**: `admin.config.ts` carries a deliberate note that a slug is never
+      auto-derived, because changing one writes a `ProductRedirect` and should be conscious. That
+      rule still holds for every update — this only fills the case it was never about.
+      **`Category.slug` lost its `required: true`** in the config. It is still NOT NULL and unique
+      in the database, but keeping the flag made the FORM refuse a blank slug before the server
+      could ever generate one — precisely the "adding a category feels strange" complaint.
+      **Crash path closed**: an all-punctuation name slugifies to `""`, and because the category
+      column is NOT NULL that would have reached Prisma as a raw constraint violation — a 500
+      shaped like a bug rather than a refusal. The category hook falls back to a generated stem.
+      Verified against real rows: `-2`/`-3` suffixing, `""` for an all-punctuation name, and the
+      fallback resolving. Backend typecheck/lint clean, resource-engine 46/46 — though note that
+      suite creates rows via Prisma directly or sends an explicit slug, so it proves nothing was
+      broken rather than proving the new path works; the hook path was checked separately.
+      **Hook path verified end to end through the real API** (`createApp()` + supertest, owner
+      token, all rows cleaned up afterwards):
+        - product created with no slug -> `hookslug-…-blue-mug` (generated)
+        - renaming that product -> slug UNCHANGED (the load-bearing guarantee: rewriting it would
+          write a spurious `ProductRedirect`)
+        - second product, same name -> `…-blue-mug-2` (collision suffix)
+        - category created with no slug -> generated, proving the dropped `required: true`
+          actually unblocked the server-side generation rather than just relaxing the form
+        - category created WITH a typed slug -> preserved verbatim
+      **Probe lessons, recorded because each cost a cycle:** the create envelope is
+      `{ data: { row } }`, not `{ data }` — reading the wrong shape returned `null` for every
+      slug and made the cleanup deletes silently miss, orphaning four rows in the dev DB (since
+      removed). `app.ts` exports `createApp()`, not a named `app`. And a `.ts` helper cannot be
+      imported by plain `node` — use `tsx`, which this repo already runs `pnpm dev` through.
 - [ ] **URG-027 — Auto-generate product slugs.** Generate a unique normalized slug from the product
       name, update it predictably while creating, preserve deliberate edits if advanced editing is
       allowed, and resolve collisions server-side.

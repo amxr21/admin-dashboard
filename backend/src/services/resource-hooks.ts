@@ -6,6 +6,7 @@ import { AppError } from '../errors/AppError.js';
 import { logger } from '../logger.js';
 import { defaultBranchId } from './inventory.service.js';
 import { normalizePhone } from '../lib/phone.js';
+import { uniqueSlug } from '../lib/slug.js';
 import { recordCatalogueVersion } from './product-catalogue-version.service.js';
 
 /// The category tree's own cap (S7.6) — decided rather than left unbounded:
@@ -110,6 +111,43 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
      * traversal, so this fires ONE query per ancestor, not two passes.
      */
     beforeWrite: async (data: Record<string, unknown>, id: string | null): Promise<void> => {
+      /**
+       * Generate the slug on CREATE only (URG-027/032).
+       *
+       * `Category.slug` is REQUIRED and `@unique`, so a blank one is a hard
+       * failure the administrator currently has to resolve by hand — which is
+       * exactly the "adding a category feels strange" complaint. Same rule as
+       * products: only on create, and never over a slug the user typed.
+       *
+       * Runs before the parent walk below because a slug clash and a cycle are
+       * independent refusals; neither needs the other to have passed.
+       */
+      if (id === null) {
+        const typed = typeof data.slug === 'string' ? data.slug.trim() : '';
+        const name = typeof data.name === 'string' ? data.name.trim() : '';
+        if (!typed && name) {
+          const isTaken = async (candidate: string): Promise<boolean> => {
+            const clash = await prisma.category.findUnique({
+              where: { slug: candidate },
+              select: { id: true },
+            });
+            return clash !== null;
+          };
+
+          const slug = await uniqueSlug(name, isTaken);
+
+          /**
+           * `Category.slug` is NOT NULL, unlike the product's. A name made
+           * entirely of punctuation ("???") slugifies to an empty string, and
+           * leaving the column unset there would reach Prisma as a raw
+           * constraint violation — a 500 shaped like a bug rather than a
+           * refusal anyone can act on. Fall back to a generated stem so the
+           * create still succeeds with a real, unique, editable slug.
+           */
+          data.slug = slug || (await uniqueSlug('category', isTaken));
+        }
+      }
+
       const parentId = data.parentId;
       if (typeof parentId !== 'string') return; // Unset or explicitly null — no parent, no walk.
 
@@ -169,6 +207,46 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
     },
   },
   products: {
+    /**
+     * Generate the slug on CREATE only (URG-027).
+     *
+     * ─── WHY ONLY ON CREATE ──────────────────────────────────────────
+     * `admin.config.ts` carries a deliberate note that a slug is never
+     * auto-derived from the name, because changing one records a
+     * `ProductRedirect` and should be a conscious act rather than a side
+     * effect of renaming a product. That rule still holds for every UPDATE —
+     * this fills in the one case it was never really about: a brand-new
+     * product where the user left the field blank and there is no previous
+     * slug to redirect from.
+     *
+     * `id === null` is exactly the create signal: `createResourceRow` calls
+     * this hook with null, `updateResourceRow` passes the row's own id.
+     *
+     * A slug the user TYPED is left alone in both cases — deliberate input
+     * always wins over generation.
+     */
+    beforeWrite: async (data: Record<string, unknown>, id: string | null): Promise<void> => {
+      if (id !== null) return; // Update: never rewrite an existing slug.
+
+      const existing = typeof data.slug === 'string' ? data.slug.trim() : '';
+      if (existing) return; // The user chose one; respect it.
+
+      const name = typeof data.name === 'string' ? data.name.trim() : '';
+      if (!name) return; // No name to derive from — the field stays null.
+
+      const slug = await uniqueSlug(name, async (candidate) => {
+        const clash = await prisma.product.findUnique({
+          where: { slug: candidate },
+          select: { id: true },
+        });
+        return clash !== null;
+      });
+
+      // An all-punctuation name slugifies to nothing; leave the column null
+      // rather than storing an empty string that looks like a real value.
+      if (slug) data.slug = slug;
+    },
+
     /**
      * Give the opening stock a BRANCH (O9.1).
      *
