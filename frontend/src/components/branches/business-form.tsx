@@ -28,6 +28,7 @@ import {
   timezoneOptions,
 } from '@/lib/canonical-options';
 import { BUSINESS_TYPES, toBusinessType } from '@/lib/business-types';
+import { isValidTaxId, taxIdExampleFor, taxIdRuleFor } from '@/lib/tax-id';
 import {
   createBusiness,
   fetchBusinesses,
@@ -167,6 +168,20 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
    */
   const [legacyKind, setLegacyKind] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(true);
+
+  /**
+   * URG-023 — derived, not state: it is a pure function of the tax id and the
+   * currently selected country, so holding it separately would just create a
+   * second copy to keep in sync. Changing the country re-evaluates it for free,
+   * which is the behaviour the ticket asks for (a value valid in one
+   * jurisdiction must not stay silently "valid" after switching to another).
+   */
+  const taxIdError = (() => {
+    const raw = values.taxId ?? '';
+    if (isValidTaxId(raw, values.country)) return null;
+    const rule = taxIdRuleFor(values.country);
+    return rule ? t(rule.hintKey) : null;
+  })();
   const [isLoading, setIsLoading] = useState(isEdit);
   const [error, setError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
@@ -362,18 +377,41 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
                     id={`business-${field}`}
                     type={field === 'email' ? 'email' : 'text'}
                     placeholder={
-                      BUSINESS_PLACEHOLDERS[field]
-                        ? tCommon(BUSINESS_PLACEHOLDERS[field])
-                        : undefined
+                      // URG-023 — the country's own example beats a fixed one:
+                      // a UAE sample on a business registered elsewhere teaches
+                      // the wrong shape. Falls back to the shared placeholder
+                      // when the jurisdiction has no rule.
+                      field === 'taxId' && taxIdExampleFor(values.country)
+                        ? (taxIdExampleFor(values.country) ?? undefined)
+                        : BUSINESS_PLACEHOLDERS[field]
+                          ? tCommon(BUSINESS_PLACEHOLDERS[field])
+                          : undefined
                     }
                     value={values[field] ?? ''}
                     onChange={(event) => set(field, event.target.value)}
-                    aria-invalid={field === 'name' && nameError ? true : undefined}
+                    aria-invalid={
+                      (field === 'name' && nameError) || (field === 'taxId' && taxIdError)
+                        ? true
+                        : undefined
+                    }
                     aria-describedby={
-                      field === 'name' && nameError ? 'business-name-error' : undefined
+                      field === 'name' && nameError
+                        ? 'business-name-error'
+                        : field === 'taxId' && taxIdError
+                          ? 'business-taxid-error'
+                          : undefined
                     }
                   />
                 )}
+
+                {/* URG-023 — shown as soon as the shape is wrong, so the owner
+                    is not told only after pressing Save. The server enforces
+                    the same rule; this is the earlier, kinder half of it. */}
+                {field === 'taxId' && taxIdError ? (
+                  <p id="business-taxid-error" role="alert" className="text-destructive text-sm">
+                    {taxIdError}
+                  </p>
+                ) : null}
 
                 {/* URG-021 — the escape hatch's note, required by the server
                     when the type is OTHER and refused for any other type. */}

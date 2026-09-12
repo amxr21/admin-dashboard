@@ -342,7 +342,9 @@
       "kindLegacyReview": "Stored as \"{value}\" before types were standardized. Choose the closest match to update it.",
       "chooseCountry": "Choose a country",
       "chooseCurrency": "Choose a currency",
-      "chooseTimezone": "Choose a time zone"
+      "chooseTimezone": "Choose a time zone",
+      "taxIdHintAE": "A UAE TRN is 15 digits.",
+      "taxIdHintSA": "A Saudi VAT number is 15 digits."
     },
     "roster": {
       "title": "Who works at {name}",

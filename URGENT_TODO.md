@@ -372,10 +372,47 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
                 `aria-invalid="true"` — it does not store a canonical-looking wrong value.
               - `force-ltr` confirmed present on the input in both locales.
             Typecheck and lint clean; 12/12 branches and 54/54 staff+supplier tests pass.
-      - [ ] URG-023 tax/TRN templates not started. Both `Business.taxId` and the `store.taxId`
-            setting are free text, and that setting's own comment admits a "single-jurisdiction
-            assumption" — jurisdiction-aware validation should key off the business `country` that
-            URG-018 now provides.
+      - [x] **URG-023 jurisdiction-aware tax ids — implemented and verified in a browser.**
+            Acceptance, both locales, zero console errors: the seeded legacy value
+            `TRN-100234567800003` loads with `aria-invalid="true"` and its localized hint
+            ("A UAE TRN is 15 digits." / "رقم التسجيل الضريبي الإماراتي مكوّن من 15 رقمًا."),
+            proving the review-not-rewrite path; the placeholder is the AE example rather than a
+            fixed one; a valid 15-digit id clears both the hint and `aria-invalid`; an empty value
+            is accepted, since every business field but the name is optional. All five branch
+            suites green (25/25 writes+organization, 43/43 isolation/roles/roster).
+            `backend/src/lib/tax-id.ts` + `frontend/src/lib/tax-id.ts` (a deliberate parallel
+            table: four lines of rules, and a round trip to learn "a UAE TRN is 15 digits" would
+            make the form worse). Keyed off the canonical `country` URG-018 added.
+            **Scope decision**: strict rules ONLY for jurisdictions we are confident about (AE and
+            SA, both 15 digits). Every other country accepts free text within the column length.
+            The ticket demands both halves — UAE TRN must follow its legal shape AND other
+            jurisdictions must not be forced into a UAE-only mask — and those pull opposite ways.
+            The failure modes are asymmetric: refusing a legitimate foreign identifier blocks an
+            owner from saving their own business, while accepting an unusual one costs nothing,
+            because this value is printed on an invoice rather than used to compute anything.
+            Adding a jurisdiction is a one-line entry; an absent one is a deliberate "we do not
+            know", never an oversight.
+            **`store.taxId` (the settings-level one) deliberately left as free text.** The
+            settings registry has no per-field pattern hook (`validateSetting` enforces enum
+            membership only), and more importantly that value is store-wide with NO country
+            attached — there is genuinely no jurisdiction to derive a rule from. Extending the
+            registry's contract for a value that cannot be validated would be motion, not progress.
+            **Two bugs found and fixed during this work, both mine, both worth keeping:**
+            1. `.partial()` cannot be used on a schema carrying refinements. Converting
+               `businessSchema` to `.superRefine()` made it a `ZodEffects`, and the PATCH route
+               called `businessSchema.partial()` — so EVERY business edit returned 500. Caught by
+               `branch-writes.test.ts`, not by typecheck, because it is a runtime Zod constraint.
+               Fixed by extracting the rules into a shared `refineBusiness` applied to both a full
+               and a partial base object. Writing them twice would have been the URG-009/010
+               mistake again: a guard on one caller and not the other is a way AROUND the rule.
+            2. The `updateBusiness` guard, as first written, validated the tax id on EVERY update.
+               Both seeded businesses store `TRN-…`-prefixed ids normalizing to 18 characters
+               against a 15-digit rule, so renaming a business, swapping its logo or deactivating
+               it would all have been refused over a field the request never mentioned. The guard
+               now fires only when `taxId` or `country` is actually part of the request — legacy
+               data is surfaced for review, never used to block an unrelated edit, the same rule
+               the business-type catalogue follows.
+            Backend typecheck and lint clean; `branch-writes` + `organization` 25/25.
       - [ ] URG-019 city: owner chose free text + country-aware validation, so only the
             country-aware part remains once URG-018's control is in place everywhere.
       - [x] **Browser acceptance of the new controls — PASSED in both locales**, against the real

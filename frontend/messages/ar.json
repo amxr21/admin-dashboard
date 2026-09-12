@@ -342,7 +342,9 @@
       "kindLegacyReview": "كان محفوظًا كـ \"{value}\" قبل توحيد الأنواع. اختر أقرب نوع لتحديثه.",
       "chooseCountry": "اختر دولة",
       "chooseCurrency": "اختر عملة",
-      "chooseTimezone": "اختر منطقة زمنية"
+      "chooseTimezone": "اختر منطقة زمنية",
+      "taxIdHintAE": "رقم التسجيل الضريبي الإماراتي مكوّن من 15 رقمًا.",
+      "taxIdHintSA": "الرقم الضريبي السعودي مكوّن من 15 رقمًا."
     },
     "roster": {
       "title": "من يعمل في {name}",

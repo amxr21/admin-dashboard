@@ -2,6 +2,7 @@ import { Prisma, StaffRole } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
+import { checkTaxId } from '../lib/tax-id.js';
 import { isBusinessWideRole } from './branch-roles.service.js';
 
 /**
@@ -223,6 +224,36 @@ export async function updateBusiness(businessId: string, input: Partial<Business
   const before = await prisma.business.findUnique({ where: { id: businessId } });
 
   if (!before) throw AppError.notFound('Business not found');
+
+  /**
+   * URG-023 — the jurisdiction check, completed here.
+   *
+   * The route's schema sees only the request body, so a PATCH sending a tax id
+   * WITHOUT a country has no jurisdiction to validate against and accepts
+   * anything. This is the only place that knows the stored country, so the
+   * effective country is resolved here and the id re-checked against it. It
+   * also catches the reverse: changing only the COUNTRY must not leave behind
+   * a tax id that is invalid under the new jurisdiction.
+   *
+   * ─── WHY ONLY WHEN ONE OF THE TWO IS BEING CHANGED ───────────────────
+   * Rows predating this rule hold values that do not satisfy it — every
+   * seeded business here stores a "TRN-…"-prefixed id that normalizes to 18
+   * characters against a 15-digit rule. Validating on EVERY update would make
+   * those records unsavable: renaming a business, swapping its logo, or
+   * deactivating it would all be refused over a field the request never
+   * mentioned. Legacy data is surfaced for review, never used to block an
+   * unrelated edit — the same rule the business-type catalogue follows.
+   */
+  if (input.taxId !== undefined || input.country !== undefined) {
+    const effectiveCountry = input.country !== undefined ? input.country : before.country;
+    const effectiveTaxId = input.taxId !== undefined ? input.taxId : before.taxId;
+    const tax = checkTaxId(effectiveTaxId, effectiveCountry);
+    if (!tax.ok) {
+      throw AppError.badRequest(tax.hint ?? 'Check this tax registration number', {
+        field: 'taxId',
+      });
+    }
+  }
 
   const updated = await prisma.business.update({ where: { id: businessId }, data: input });
 
