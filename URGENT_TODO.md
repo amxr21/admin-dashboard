@@ -58,6 +58,10 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
       - [x] Locate data-mutating migrations; `20260911100000_backfill_catalogue_version_baselines`
             is data-only, so schema parity would remain green even if it never ran.
       - [x] Run baseline production-start/schema-integrity tests (Vitest: 17/17).
+      - [x] Add a non-blocking `MIGRATION_DATA_REVIEW_REQUIRED` startup diagnostic whenever
+            deploy/status fails but live shape matches. It explicitly warns that data-only
+            backfills are unverified and forbids blind replay. Focused Vitest 17/17 and targeted
+            ESLint passed; this is visibility, not closure of the integrity gap.
       - [*] Classify each historical mutation by a verifiable invariant versus an irreversible
             historical fact; inspect all SQL and app assumptions before deciding a startup gate.
             - Default business/branch seed (`20260906020000`) and default flag (`06040000`):

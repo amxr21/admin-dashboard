@@ -21,8 +21,9 @@ export const DATABASE_SCHEMA_DIFF_ARGS = Object.freeze([
 ]);
 
 /**
- * Apply every committed migration and verify migration history is healthy
- * before the HTTP process starts.
+ * Attempt every committed migration and verify migration history before the
+ * HTTP process starts. A failed history command is diagnosed separately from
+ * live schema drift; see runProductionStart for its current admission policy.
  *
  * The deployment used to rely on a command configured only in Coolify. A
  * container could therefore start against an older schema when that setting
@@ -83,8 +84,10 @@ export function verifyDatabaseSchema() {
  * Gating startup on either of those would turn a bookkeeping gap into a total
  * outage, which is strictly worse than the drift-induced 500 this gate exists
  * to prevent. So both are reported loudly and allowed to proceed; the live
- * shape check below is authoritative and still blocks a genuinely mismatched
- * database. A shape mismatch is the condition that actually breaks queries.
+ * shape check below still blocks a genuinely mismatched database. This does
+ * NOT prove data-only migrations ran: an omitted backfill can leave the same
+ * schema while changing business behavior. Keep the release review open until
+ * migration history and data effects have been reconciled by an operator.
  */
 export async function runProductionStart({
   migrate = runMigrations,
@@ -116,6 +119,15 @@ export async function runProductionStart({
         'Refusing to serve traffic.',
     );
     return schemaExitCode;
+  }
+
+  if (migrationExitCode !== 0 || statusExitCode !== 0) {
+    log(
+      'MIGRATION_DATA_REVIEW_REQUIRED: live schema matches, but migration ' +
+        'history is unverified. Data-only backfills are not covered by schema ' +
+        'parity. Audit applied migrations and affected records before calling ' +
+        'this release healthy; do not replay SQL solely from this warning.',
+    );
   }
 
   await startServer();

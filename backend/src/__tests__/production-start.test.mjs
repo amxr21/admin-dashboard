@@ -64,6 +64,9 @@ describe('production startup migration gate', () => {
     ).resolves.toBe(0);
     expect(startServer).toHaveBeenCalledOnce();
     expect(log).toHaveBeenCalledWith(expect.stringContaining('migrate deploy'));
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('MIGRATION_DATA_REVIEW_REQUIRED'),
+    );
   });
 
   it('still serves traffic when migration status is unhealthy but the live schema matches', async () => {
@@ -81,6 +84,9 @@ describe('production startup migration gate', () => {
     ).resolves.toBe(0);
     expect(startServer).toHaveBeenCalledOnce();
     expect(log).toHaveBeenCalledWith(expect.stringContaining('migrate status'));
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('MIGRATION_DATA_REVIEW_REQUIRED'),
+    );
   });
 
   it('checks the live schema even after both migration commands fail', async () => {

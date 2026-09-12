@@ -568,7 +568,9 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   fixed enums in code (not admin-configurable), values chosen without waiting for approval.
 - **Next step**: classify every data mutation in committed migrations and reproduce an omitted
   backfill with matching schema on a disposable database. Design a safe release/repair policy before
-  changing admission logic. Baseline focused Vitest is 17/17; current GitHub checks cannot be
+  changing admission logic. R1 added a diagnostic-only `MIGRATION_DATA_REVIEW_REQUIRED` warning
+  for failed migration history with matching schema; focused Vitest is 17/17 and targeted ESLint
+  clean. This warning is not a backfill verification. Current GitHub checks cannot be
   queried because `gh pr checks 225` returns HTTP 401. R2/R3/R4/R5 stack order is in
   `URGENT_TODO.md`. Do not stage the two untracked diagnostic artifacts.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
