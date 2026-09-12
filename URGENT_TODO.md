@@ -172,10 +172,40 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
             Whoever picks up R3/R5 test hardening should decide whether `apiRateLimit` should
             skip in test envs (`NODE_ENV === 'test'`) — that would fix this at the root instead of
             every large test file having to mind its own request budget.
-      - [ ] Review/refine the new Order Detail payment panel at mobile/tablet/desktop and keyboard
-            focus with its nested Select; confirm English copy and no Arabic regression. The
-            code has NOT been opened in a real browser this session — only typechecked, linted,
-            and exercised through jsdom component tests.
+      - [*] Real-browser review (Playwright, en+ar × desktop/tablet/phone) is IN PROGRESS.
+            Established so far: the Order Detail Payment panel renders in both locales
+            ("Payment" / "الدفع") with no horizontal overflow at any of the three widths, and the
+            Refund button is present. Dialog VERIFIED in both locales: English renders
+            "Why is this refund being given?" / "Choose a reason" and Arabic renders
+            "لماذا يُمنح هذا الاسترداد؟" / "اختر سببًا", which proves the new `orders.refund`
+            keys resolve and are not silently falling back. All six reason options render
+            translated in both locales from the shared `returns.detail.refundReasons.*`.
+            Selecting Other reveals the note field with the new goodwill-specific placeholder
+            ("e.g. price-matched a competitor" / "مثال: مطابقة سعر منافس"), and confirm stays
+            disabled until that note is filled — the client mirrors the server contract.
+            `dir="rtl"` correct, focus lands inside the dialog, and the dialog fits the viewport
+            at 1440/820/390 widths (phone dialog 390w × 412h after the note field expands).
+            No console errors on any passing run. The two Arabic viewports that initially failed
+            were refused with 429 by the global apiRateLimit — an artifact of six back-to-back
+            automated logins inside one 60s window, NOT an application fault. Re-run with the
+            logins paced 45s apart: both passed, identical results. **All six locale × viewport
+            combinations (en/ar × desktop 1440 / tablet 820 / phone 390) now pass.** Screenshots
+            reviewed visually, not just as DOM metrics: RTL layout correct, dialog centred and
+            fully in frame, Select and conditional note field rendering the new goodwill copy,
+            Payment panel legible behind it.
+            Note for a human eye (not a defect, no code change made): the dialog covers the
+            order's own total while the amount field is empty, so the "capped at what remains
+            paid" rule is stated in the dialog body but the actual figure is not visible at the
+            moment of typing. Worth deciding whether the cap should be shown inline.
+            **Correction worth keeping**: the first attempt reported every click as blocked by a
+            `data-slot="sheet-overlay"` backdrop with `body{pointer-events:none}`, and this was
+            briefly written up as a user-facing defect. It is NOT a defect — it is the first-run
+            `OnboardingWelcome` Sheet (`hooks/useOnboardingWelcome.ts`), gated on the per-browser
+            localStorage key `admin-dashboard:onboarding-welcome-seen`. Every fresh Playwright
+            context has empty storage, so it opens on every automated run while a real user sees
+            it once. Any future browser automation against this app must pre-seed that key (via
+            `context.addInitScript`) or it will trip over the same thing and mistake a working
+            feature for a bug. Check the hook before calling a stuck overlay a defect.
       - [x] Full backend suite (`vitest run`, no `-t` filter) completed with exit code 0 — green.
             Note the `orders.test.ts` rate-limit flake described above can still surface on a
             slower/faster run; it is pre-existing and unrelated to this feature.
