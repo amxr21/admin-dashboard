@@ -197,8 +197,29 @@ already-approved merge.
 - [ ] Add the owner-deferred dedicated refund tests when test work resumes:
       missing/invalid/Other reasons, cross-branch refusal, payment/audit
       atomicity, older refund display and keyboard/RTL Select behavior.
-      Investigate the pre-existing `orders.test.ts` rate-limit 429 flake as
-      test infrastructure, without weakening production rate limiting.
+      ~~Investigate the pre-existing `orders.test.ts` rate-limit 429 flake~~ —
+      **DONE 2026-09-12.** It was never flaky: `apiRateLimit` allows 120
+      requests per 60s per IP across all of `/api/v1`, and `orders.test.ts`
+      drives 105 tests from one loopback address, so everything after the
+      120th request got a 429 and the goodwill-refund cases simply sit near
+      the end of the file. Skipped under `NODE_ENV=test` for that general
+      backstop ONLY; every per-route security limiter still counts, so the
+      tests asserting their 429s keep passing. Production limits untouched.
+
+### Release gates — NOT parked, and not optional before a client sees this
+
+These two are quality gates rather than features: they are what catches a
+regression before a real shop does. Not being worked on, deliberately, but
+they must not be lost. Full detail lives in `TODO.md`.
+
+- [ ] **Point 4 — the final combined gate.** Project-wide unit, type, lint,
+      production-build and E2E checks, plus the motion, accessibility,
+      responsive and native-Arabic review. Focused or merged CI does NOT close
+      it — that is the whole point of the item.
+- [ ] **Native-Arabic review.** Parity holds mechanically, but every Arabic
+      string is machine/self-translated MSA that no native speaker has read.
+      **This blocks any client demo and is not self-certifiable** — I cannot
+      sign it off, and neither can a test.
 
 ## Returns — decision notifications (owner-approved 2026-09-12)
 
@@ -249,14 +270,8 @@ already-approved merge.
       without a speculative shared portal/overflow change, which would have
       risked every dropdown in the app to chase one unconfirmed report.
       Reopen only with a real reproduction.
-- [ ] **URG-024 — registration/identity IDs: DEFERRED by the owner 2026-09-12**
-      ("leave it for later, I don't remember this"). Genuinely unscoped: the
-      records meant by "IDs" were never identified. Do NOT guess — candidates
-      were business trade-licence/commercial-registration numbers, staff
-      identity documents (Emirates ID/passport) and customer identity numbers,
-      and the latter two carry real privacy weight needing a read-access
-      decision, not just validation. Business tax/TRN validation is already
-      done separately as URG-023. Ask again before starting.
+- URG-024 (registration/identity IDs) moved to the **Parked by the owner**
+  section below — it was parked on 2026-09-12 rather than left open.
 - [*] **URG-028 — product code types. APPROVED 2026-09-12: opt-in per product,
       curated types. BACKEND HALF DONE AND VERIFIED; one client-side design
       question open.**
@@ -436,6 +451,51 @@ already-approved merge.
       remaining field-specific placeholder work from URG-013. Start it only
       after URG-028 and URG-034 land — beginning a days-long enumeration with
       two approved implementations queued would leave all three half-finished.
+
+## Parked by the owner — 2026-09-12. Do not raise these again unless asked.
+
+Each was a real open item; none is forgotten, and the reasoning is kept here so
+a future session does not rediscover it as "missing". **Do not start any of
+these without the owner asking first.**
+
+- **URG-024 — registration/identity IDs.** Genuinely unscoped: the records
+  meant by "IDs" were never identified and the owner does not recall the
+  request. Candidates were business trade-licence/commercial-registration
+  numbers, staff identity documents (Emirates ID/passport) and customer
+  identity numbers — the latter two carry real privacy weight needing a
+  read-access decision, not just validation. Business tax/TRN validation is
+  already done separately as URG-023. **Ask what "IDs" means before starting.**
+- **Fuller `ReturnStatus` lifecycle** (label sent → in transit → received →
+  inspected → resolved). Skipped on 2026-09-09 as a mail-order shipping flow
+  that does not fit a physical till, and parked again now. Reviving it means a
+  migration, new states, new transitions and new UI. The shipped
+  REQUESTED/APPROVED/REJECTED lifecycle is unchanged and works.
+- **Customer-facing email on return resolution.** The customer currently
+  learns nothing when a return is decided. The UX-018 customer order-status
+  email path exists to reuse, so this is wiring rather than new
+  infrastructure — but it was never part of an approval, and it needs SMTP
+  configured to be worth anything in production.
+- **Role simplification to Admin / Developer / Cashier.** Blocked on the
+  owner approving how every legacy Owner/Manager/Fulfillment/Support/Demo
+  account and branch assignment maps. Nothing may run a destructive enum or
+  data migration before that mapping is agreed. Prepared role templates stay
+  out of scope; future templates must be configurable data, not more
+  hard-coded roles.
+- **Pull-request E2E rewrite for Coolify.** `.github/workflows/e2e.yml` is
+  still written around Vercel preview URLs and `RENDER_DEV_BACKEND_URL`, both
+  of which are gone. It is disabled, so it breaks nothing, but the
+  `pull_request` trigger cannot come back until it is rewritten.
+- **Production monitoring replacement.** Sentry is on hold, not merely
+  unconfigured — the owner's trial ended. Needs a replacement or a plan.
+- **PR #227's missing CI.** Zero GitHub Actions runs across four pushes and a
+  close/reopen, while Actions is `enabled`, the CI workflow is `active`, the
+  PR is OPEN and its head SHA matches local. Every configuration input is
+  correct and GitHub simply never scheduled a run; #228 ran 11 jobs normally
+  minutes earlier, so it is not the repository. A rebase was declined as too
+  risky (the branch is 38 commits ahead / 9 behind and carries its own copies
+  of work `dev` already merged under different SHAs — the pattern that made an
+  earlier rebase start reverting merged work). The owner is ignoring it during
+  the testing phase. **#228 is green and `CLEAN` and can be merged.**
 
 ## Guardrails
 

@@ -242,6 +242,13 @@ earlier remote run to finish, but must retain the merge order.
   - [ ] **Remaining: the till UI.** A currency control on the sale screen reading `GET /pos/tenders`,
     the receipt showing both currencies and the rate, and the per-currency count at shift close.
     The contract and every guard are in place and tested; this is the presentation layer only.
+> **PARKED 2026-09-12** — role simplification, the Coolify E2E rewrite, the
+> native-Arabic review and the monitoring replacement were parked by the owner.
+> See the "Parked by the owner" section in [URGENT_TODO.md](URGENT_TODO.md) for
+> the reasoning on each. Point 4 and the native-Arabic review remain listed
+> there as RELEASE GATES rather than parked work: they are what catches a
+> regression before a real shop does.
+
 - [ ] **Role simplification migration (approval gate).** Migrate enabled roles to Admin,
   Developer, and Cashier only after the owner approves how every legacy
   Owner/Manager/Fulfillment/Support/Demo account and branch assignment maps. Prepared roles remain
