@@ -400,6 +400,30 @@ export const SETTINGS = {
     description: 'Notify staff when a customer return is requested.',
   },
 
+  /**
+   * ONE key for both approval and rejection, not two.
+   *
+   * They are the same event class — a pending return stopped being pending —
+   * and whoever wants to know a return was approved wants to know it was
+   * refused just as much; the outcome is in the notification body either way.
+   * Two switches would invite the state nobody wants ("tell me about
+   * approvals but not rejections"), which reads as a bug the first time a
+   * rejection goes unannounced.
+   *
+   * Separate from `returnRequestAlerts` on purpose, though: that one fires
+   * when work ARRIVES and is aimed at whoever picks it up, while this fires
+   * when work is FINISHED and is aimed at whoever was waiting on the answer.
+   * A shop with one person handling returns end to end may legitimately want
+   * the first and not the second.
+   */
+  'notifications.returnDecisionAlerts': {
+    type: 'boolean',
+    default: true,
+    area: 'settings',
+    label: 'Return decision alerts',
+    description: 'Notify staff when a return is approved or rejected.',
+  },
+
   // ─── Returns (B4.11) ─────────────────────────────────────────────────
   /**
    * A WARNING, not a gate — the owner's own call. A return past the window

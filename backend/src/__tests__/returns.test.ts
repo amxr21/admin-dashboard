@@ -143,9 +143,16 @@ afterAll(async () => {
   await prisma.customer.deleteMany({ where: { id: customerId } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.notification.deleteMany({
-    where: { type: 'return.requested', body: { contains: RUN } },
+    where: {
+      type: { in: ['return.requested', 'return.approved', 'return.rejected'] },
+      body: { contains: RUN },
+    },
   });
-  await prisma.setting.deleteMany({ where: { key: 'notifications.returnRequestAlerts' } });
+  await prisma.setting.deleteMany({
+    where: {
+      key: { in: ['notifications.returnRequestAlerts', 'notifications.returnDecisionAlerts'] },
+    },
+  });
   await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
   await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
   await prisma.$disconnect();
@@ -784,6 +791,119 @@ describe('rejecting a return', () => {
 describe('the engine does not serve returns', () => {
   it('404s /r/returns', async () => {
     expect((await request(app).get('/api/v1/r/returns').set(auth(ownerToken))).status).toBe(404);
+  });
+});
+
+/**
+ * Deciding a return notifies staff too.
+ *
+ * Until this existed, `notify()` fired only when a return was REQUESTED — the
+ * arrival of work was announced and its completion was not, so whoever was
+ * waiting on the answer learned nothing. These pin the outcome reaching the
+ * shared inbox, and pin the reason/resolution being IN the body: "rejected"
+ * with no why is the notification that generates the question it should have
+ * answered.
+ */
+describe('deciding a return notifies staff', () => {
+  function saveSetting(body: Record<string, unknown>) {
+    return request(app).patch('/api/v1/settings').set(auth(ownerToken)).send(body);
+  }
+
+  async function requestReturn(orderId: string, orderItemId: string) {
+    const res = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: `${RUN} decision test`, items: [{ orderItemId, quantity: 1 }] });
+    expect(res.status).toBe(201);
+    return (res.body as ReturnBody).data.return;
+  }
+
+  afterEach(async () => {
+    await prisma.notification.deleteMany({
+      where: {
+        type: { in: ['return.requested', 'return.approved', 'return.rejected'] },
+        body: { contains: RUN },
+      },
+    });
+    await prisma.setting.deleteMany({
+      where: {
+        key: { in: ['notifications.returnRequestAlerts', 'notifications.returnDecisionAlerts'] },
+      },
+    });
+  });
+
+  it('notifies on approval, naming the resolution', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await requestReturn(orderId, orderItemId);
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${created.id}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'STORE_CREDIT', restock: false });
+    expect(res.status).toBe(200);
+
+    // Scoped to THIS return's RMA, not just the type: several tests in this
+    // file approve a return, so an unscoped findFirst matches whichever row
+    // happens to be oldest and reports the wrong RMA.
+    const notification = await waitFor(() =>
+      prisma.notification.findFirst({
+        where: { type: 'return.approved', title: { contains: created.rmaNumber } },
+      }),
+    );
+    expect(notification).not.toBeNull();
+    // The resolution is the first thing a reader needs: "approved" alone does
+    // not say whether money moved, became credit, or shipped a replacement.
+    expect(notification?.body).toContain('STORE_CREDIT');
+  });
+
+  it('notifies on rejection, carrying the reason', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await requestReturn(orderId, orderItemId);
+    const rejectionReason = `${RUN} outside the return window`;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${created.id}/reject`)
+      .set(auth(ownerToken))
+      .send({ rejectionReason });
+    expect(res.status).toBe(200);
+
+    const notification = await waitFor(() =>
+      prisma.notification.findFirst({
+        where: { type: 'return.rejected', title: { contains: created.rmaNumber } },
+      }),
+    );
+    expect(notification).not.toBeNull();
+    expect(notification?.body).toContain(rejectionReason);
+  });
+
+  it('does not notify a decision when returnDecisionAlerts is off', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await requestReturn(orderId, orderItemId);
+    await saveSetting({ 'notifications.returnDecisionAlerts': false });
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${created.id}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'REPLACEMENT', restock: false });
+    expect(res.status).toBe(200);
+
+    // Scoped to THIS return, so a row left by the approval test above cannot
+    // make this pass or fail depending on execution order.
+    const decision = await prisma.notification.findFirst({
+      where: { type: 'return.approved', title: { contains: created.rmaNumber } },
+    });
+    expect(decision).toBeNull();
+
+    // The request alert is a SEPARATE switch and stays on, so ITS row must
+    // still exist — that is what proves the off-switch silenced the decision
+    // specifically rather than notifications in general.
+    // NOT named `request`: that is supertest's imported helper, and a local
+    // of the same name shadows it for the whole test body — the earlier
+    // `request(app)` call above then hits this declaration's TDZ.
+    const requestAlert = await prisma.notification.findFirst({
+      where: { type: 'return.requested', title: { contains: created.rmaNumber } },
+    });
+    expect(requestAlert).not.toBeNull();
   });
 });
 

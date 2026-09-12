@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PhoneField } from '@/components/ui/phone-field';
 import {
   Select,
   SelectContent,
@@ -234,6 +235,7 @@ export function StaffSheet({
             <Input
               id="staff-name"
               type="text"
+              placeholder={tCommon('placeholders.personName')}
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
@@ -241,12 +243,14 @@ export function StaffSheet({
 
           <div className="space-y-2">
             <Label htmlFor="staff-phone">{t('form.fields.phone')}</Label>
-            <Input
+            {/* URG-020/022. No country context here — a staff record has no
+                country field — so this validates against international rules
+                rather than assuming one. */}
+            <PhoneField
               id="staff-phone"
-              type="tel"
-              placeholder={tCommon('placeholders.phone')}
               value={phone}
-              onChange={(event) => setPhone(event.target.value)}
+              onChange={setPhone}
+              country={null}
             />
           </div>
 

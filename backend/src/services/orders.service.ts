@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import { CancellationReason, OrderStatus, Prisma } from '@prisma/client';
+import { CancellationReason, OrderStatus, Prisma, type RefundReason } from '@prisma/client';
 import { resolveBranchLabels } from './branches.service.js';
 
 import { prisma } from '../db/prisma.js';
@@ -12,6 +12,7 @@ import {
 } from '../config/orders.config.js';
 import { notifyCustomerOrderStatus } from './customer-order-notifications.service.js';
 import { normalizePhone } from '../lib/phone.js';
+import { assertRefundReason } from './refund-reason.js';
 
 /**
  * Orders — the one resource the generic engine cannot express.
@@ -273,6 +274,18 @@ export async function getOrder(id: string) {
       taxAmount: true,
       paymentMethod: true,
       placedAt: true,
+      payments: {
+        where: { method: 'goodwill-refund' },
+        orderBy: { paidAt: 'desc' },
+        select: {
+          id: true,
+          amount: true,
+          paidAt: true,
+          refundReason: true,
+          refundReasonNote: true,
+          note: true,
+        },
+      },
       // Which branch took it (F8). Selected so the detail page can SAY so —
       // without it, two orders from different businesses look identical once
       // opened, which is exactly the confusion branch scoping exists to end.
@@ -362,6 +375,14 @@ export async function getOrder(id: string) {
     taxAmount: money(order.taxAmount),
     paymentMethod: order.paymentMethod,
     placedAt: order.placedAt.toISOString(),
+    goodwillRefunds: order.payments.map((payment) => ({
+      id: payment.id,
+      amount: payment.amount.negated().toFixed(2),
+      paidAt: payment.paidAt.toISOString(),
+      refundReason: payment.refundReason,
+      refundReasonNote: payment.refundReasonNote,
+      legacyReason: payment.refundReason ? null : payment.note,
+    })),
     notes: order.notes.map((note) => ({
       id: note.id,
       body: note.body,
@@ -810,14 +831,11 @@ export async function addOrderNote(id: string, body: string, actorId: string) {
  */
 export async function refundOrder(
   orderId: string,
-  input: { amount: string; reason: string },
+  input: { amount: string; refundReason: RefundReason; refundReasonNote?: string | undefined },
   actorId: string,
   req: Request,
 ) {
-  const trimmedReason = input.reason.trim();
-  if (!trimmedReason) {
-    throw AppError.badRequest('Enter a reason for this refund', { field: 'reason' });
-  }
+  const reason = assertRefundReason(input);
 
   const requested = new Prisma.Decimal(input.amount);
   if (requested.isNegative() || requested.isZero()) {
@@ -829,12 +847,15 @@ export async function refundOrder(
       where: { id: orderId },
       select: {
         id: true,
+        branchId: true,
         total: true,
         payments: { select: { amount: true } },
       },
     });
 
-    if (!order) throw AppError.notFound('Order not found');
+    if (!order || (req.branchId && order.branchId !== req.branchId)) {
+      throw AppError.notFound('Order not found');
+    }
 
     const netPaid = order.payments.reduce(
       (sum, payment) => sum.add(payment.amount),
@@ -854,7 +875,8 @@ export async function refundOrder(
         amount: requested.negated(),
         method: 'goodwill-refund',
         actorId,
-        note: trimmedReason,
+        refundReason: reason.refundReason,
+        refundReasonNote: reason.refundReasonNote,
       },
       select: { id: true, amount: true },
     });
@@ -866,7 +888,8 @@ export async function refundOrder(
     entityId: orderId,
     changes: {
       amount: { from: null, to: created.amount.negated().toFixed(2) },
-      reason: { from: null, to: trimmedReason },
+      refundReason: { from: null, to: reason.refundReason },
+      refundReasonNote: { from: null, to: reason.refundReasonNote },
     },
   });
 

@@ -819,6 +819,18 @@ export async function getTillReport(shiftId: string) {
   return {
     shift: serialise(shift),
     byMethod: takings.byMethod,
+    /**
+     * URG-034 — forwarded, not recomputed. `getShiftTakings` already counts
+     * foreign cash per currency (each in its OWN units, deliberately never
+     * converted into one expected total), and this report was silently
+     * dropping it: the breakdown existed in the service and never reached the
+     * client, so a drawer holding two currencies printed a Z report that
+     * accounted for only one of them.
+     *
+     * Already strings from `getShiftTakings` (`.toFixed(2)` per row), unlike
+     * the Decimal fields below.
+     */
+    byTenderCurrency: takings.byTenderCurrency,
     // `getShiftTakings` returns these as `Prisma.Decimal` — fine when a
     // ROUTE hands them straight to `res.json()` (Decimal serialises to a
     // string via its own `toJSON`), but this function is called BY a

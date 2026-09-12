@@ -70,6 +70,8 @@ export interface FieldConfig {
   /** Editable in the create/edit form. Defaults to true. */
   inForm?: boolean;
   required?: boolean;
+  /** Create-form default for booleans, matching the model default. */
+  defaultValue?: boolean;
   /** Included in the `search` query. Only index-backed columns belong here. */
   searchable?: boolean;
   sortable?: boolean;
@@ -85,6 +87,24 @@ export interface FieldConfig {
    * backend enforces nothing extra because of this flag.
    */
   changeWarning?: string;
+  /**
+   * Progressive disclosure (URG-025). A field with no group renders in the
+   * default form body; grouped fields collect into named optional sections
+   * below, in first-appearance order.
+   *
+   * The value is a translation key under `resource.fieldGroups`, not prose —
+   * the heading is localized like every other label.
+   *
+   * Product groups are optionally enabled in the form. Disabled groups are
+   * omitted from client validation and payloads; the server still validates
+   * every field it receives.
+   */
+  group?: string;
+  /**
+   * Older CSV templates may carry a previous human label. These aliases are
+   * read on import only; templates still emit the current `label`.
+   */
+  importAliases?: readonly string[];
 }
 
 export interface ResourceConfig {
@@ -120,15 +140,28 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
       { name: 'imageUrl', label: 'Image', type: 'image' },
       { name: 'name', label: 'Name', type: 'text', required: true, searchable: true, sortable: true },
-      { name: 'sku', label: 'SKU', type: 'text', searchable: true },
+      // URG-025/028 — SKU is the identifier every product gets, so it stays
+      // reachable, but it is not one of the six fields needed to list a
+      // sellable product. Grouped with the other codes rather than sitting
+      // between Name and Description.
+      { name: 'sku', label: 'SKU', type: 'text', searchable: true, group: 'identifiers' },
       // Excluded from the list view: a TEXT column makes rows unreadable and
       // is not what anyone scans a catalogue for.
-      { name: 'description', label: 'Description', type: 'longtext', inList: false },
+      // URG-025 — not one of the six fields needed to list a sellable product.
+      // A long description is written deliberately, not filled in while
+      // rattling off name/price/stock, so it groups with the other content.
+      {
+        name: 'description',
+        label: 'Description',
+        type: 'longtext',
+        inList: false,
+        group: 'organisation',
+      },
       { name: 'price', label: 'Price', type: 'money', required: true, sortable: true },
       // Optional and deliberately not in the list view: most rows won't have
       // it filled in yet, and margin reporting must treat a blank cost as
       // "not tracked", never as free — see the schema comment on Product.cost.
-      { name: 'cost', label: 'Cost', type: 'money', inList: false },
+      { name: 'cost', label: 'Cost', type: 'money', inList: false, group: 'pricing' },
       { name: 'stock', label: 'Stock', type: 'number', sortable: true },
       /**
        * Per-product stock defaults (F7.8). Both `inList: false` — they are
@@ -144,12 +177,14 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         label: 'Low stock alert at',
         type: 'number',
         inList: false,
+        group: 'inventory',
       },
       {
         name: 'storageLocation',
         label: 'Stored at',
         type: 'text',
         inList: false,
+        group: 'inventory',
       },
       {
         name: 'categoryId',
@@ -166,7 +201,22 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         label: 'Tags',
         type: 'tags',
         relation: { resource: 'tags', labelField: 'name' },
+        group: 'organisation',
       },
+      /**
+       * URG-029/030 — per-product opt-in for the variant and colour
+       * dimensions. Grouped with the other options rather than sitting in the
+       * default body: a simple product should never have to answer them.
+       *
+       * Turning either off hides the builder and NOTHING else — existing
+       * variant rows keep their stock and sales history, per the owner's
+       * decision that a UI toggle must not destroy data. Because that also
+       * hides the only route to those rows, the form warns as the change is
+       * made rather than letting real variants quietly become unreachable
+       * (URG-029).
+       */
+      { name: 'hasVariants', label: 'This product has variants', type: 'boolean', inList: false, group: 'options' },
+      { name: 'hasColors', label: 'This product has colours', type: 'boolean', inList: false, group: 'options' },
       {
         name: 'status',
         label: 'Status',
@@ -178,13 +228,56 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       // catalogue table isn't where anyone scans for these, and most rows
       // won't have them filled in yet (same "not yet tracked" framing as
       // `cost`, not a required-fields regression).
-      { name: 'barcode', label: 'Barcode (EAN/UPC)', type: 'text', inList: false, searchable: true },
-      { name: 'weightKg', label: 'Weight (kg)', type: 'number', inList: false },
-      { name: 'lengthCm', label: 'Length (cm)', type: 'number', inList: false },
-      { name: 'widthCm', label: 'Width (cm)', type: 'number', inList: false },
-      { name: 'heightCm', label: 'Height (cm)', type: 'number', inList: false },
-      { name: 'hsCode', label: 'HS code', type: 'text', inList: false },
-      { name: 'countryOfOrigin', label: 'Country of origin', type: 'text', inList: false },
+      /**
+       * URG-028 — a barcode is opt-in per product, and says which symbology
+       * it is.
+       *
+       * Grouped with the other codes, and `hasBarcode` sits FIRST so the
+       * switch reads before the fields it governs. A shop selling unpackaged
+       * goods (a bakery, a cafe) never prints one, and the toggle is what
+       * stops the form asking them for it.
+       *
+       * The type is a plain enum field rather than free text: the point of
+       * declaring it is that `lib/barcode.ts` can then check the digits, and
+       * an unconstrained string would defeat that. Legacy rows hold NULL,
+       * which that module treats as "unclassified, accept as-is".
+       */
+      {
+        name: 'hasBarcode',
+        label: 'This product has a barcode',
+        type: 'boolean',
+        inList: false,
+        group: 'identifiers',
+      },
+      {
+        name: 'barcodeType',
+        label: 'Barcode type',
+        type: 'enum',
+        options: ['EAN13', 'EAN8', 'UPCA', 'UPCE', 'ITF14', 'CODE128'],
+        inList: false,
+        group: 'identifiers',
+      },
+      {
+        name: 'barcode',
+        label: 'Barcode',
+        type: 'text',
+        inList: false,
+        searchable: true,
+        group: 'identifiers',
+        importAliases: ['Barcode (EAN/UPC)'],
+      },
+      { name: 'weightKg', label: 'Weight (kg)', type: 'number', inList: false, group: 'physical' },
+      { name: 'lengthCm', label: 'Length (cm)', type: 'number', inList: false, group: 'physical' },
+      { name: 'widthCm', label: 'Width (cm)', type: 'number', inList: false, group: 'physical' },
+      { name: 'heightCm', label: 'Height (cm)', type: 'number', inList: false, group: 'physical' },
+      { name: 'hsCode', label: 'HS code', type: 'text', inList: false, group: 'shipping' },
+      {
+        name: 'countryOfOrigin',
+        label: 'Country of origin',
+        type: 'text',
+        inList: false,
+        group: 'shipping',
+      },
       // SEO block. `slug` is never auto-derived from `name` on write — see
       // the schema comment on Product.slug — a user types it, so changing it
       // is a deliberate act the UI can warn about, not a side effect of
@@ -197,11 +290,18 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         type: 'text',
         inList: false,
         searchable: true,
+        group: 'seo',
         changeWarning:
           'Changing the slug records a redirect from the old one, but nothing in this app resolves products by slug yet — this is for a future public site.',
       },
-      { name: 'metaTitle', label: 'Meta title', type: 'text', inList: false },
-      { name: 'metaDescription', label: 'Meta description', type: 'longtext', inList: false },
+      { name: 'metaTitle', label: 'Meta title', type: 'text', inList: false, group: 'seo' },
+      {
+        name: 'metaDescription',
+        label: 'Meta description',
+        type: 'longtext',
+        inList: false,
+        group: 'seo',
+      },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],
   },
@@ -244,7 +344,13 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
     fields: [
       { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
       { name: 'name', label: 'Name', type: 'text', required: true, searchable: true, sortable: true },
-      { name: 'slug', label: 'Slug', type: 'text', required: true, searchable: true },
+      // URG-027/032 — no longer required of the ADMINISTRATOR. The column is
+      // still NOT NULL and unique; `resource-hooks.ts` derives a free slug
+      // from the name on create when this is left blank. Keeping
+      // `required: true` here would make the form refuse the write before the
+      // server ever got the chance to generate one, which is precisely the
+      // "adding a category feels strange" complaint.
+      { name: 'slug', label: 'Slug', type: 'text', searchable: true },
       // Depth cap and circular-parent prevention are enforced server-side
       // (resource-hooks.ts's beforeWrite, S7.6) — a resource with no field
       // rule for "cannot select an id below a certain depth" leans on that,
@@ -255,7 +361,7 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         type: 'relation',
         relation: { resource: 'categories', labelField: 'name' },
       },
-      { name: 'isActive', label: 'Active', type: 'boolean', sortable: true },
+      { name: 'isActive', label: 'Active', type: 'boolean', defaultValue: true, sortable: true },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],
   },
@@ -326,7 +432,7 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       { name: 'value', label: 'Value', type: 'money', required: true, sortable: true },
       { name: 'maxUses', label: 'Max uses', type: 'number' },
       { name: 'usedCount', label: 'Used', type: 'number', readOnly: true, sortable: true },
-      { name: 'isActive', label: 'Active', type: 'boolean', sortable: true },
+      { name: 'isActive', label: 'Active', type: 'boolean', defaultValue: true, sortable: true },
       { name: 'expiresAt', label: 'Expires', type: 'datetime', sortable: true },
       {
         name: 'scope',

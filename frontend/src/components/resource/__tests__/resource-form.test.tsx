@@ -103,6 +103,24 @@ describe('which fields appear', () => {
     expect(await screen.findByLabelText(/name/i)).toHaveValue('Ceramic Planter');
     expect(screen.getByLabelText(/price/i)).toHaveValue('34.99');
   });
+
+  it('localizes schema labels in Arabic without changing field values', async () => {
+    renderForm(existing, 'ar');
+    expect(await screen.findByLabelText(/الاسم/)).toHaveValue('Ceramic Planter');
+    expect(screen.getByLabelText(/السعر/)).toHaveValue('34.99');
+  });
+
+  it('keeps a product draft open while a category is created in another tab', async () => {
+    renderForm();
+    const link = await screen.findByRole('link', { name: 'Create a category in a new tab' });
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(link.getAttribute('href')).toContain('/admin/r/categories');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh categories' }));
+    await waitFor(() => expect(fetchRelationOptions).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
 });
 
 describe('variants/gallery on create — no dead end', () => {
@@ -146,6 +164,118 @@ describe('variants/gallery on create — no dead end', () => {
     await screen.findByLabelText(/name/i);
     expect(screen.queryByRole('button', { name: 'Manage variants' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Manage gallery' })).not.toBeInTheDocument();
+  });
+});
+
+describe('variant intent on existing products', () => {
+  const variantSchema: ResourceSchema = {
+    ...schema,
+    fields: [
+      ...schema.fields,
+      { name: 'hasVariants', label: 'This product has variants', type: 'boolean', group: 'options' },
+    ],
+  };
+
+  function renderVariantForm(hasVariants: boolean | null) {
+    render(
+      <ResourceForm
+        schema={variantSchema}
+        row={{ ...existing, hasVariants }}
+        open
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+  }
+
+  it('keeps the builder reachable for a legacy NULL intent', async () => {
+    renderVariantForm(null);
+    expect(await screen.findByRole('button', { name: 'Manage variants' })).toBeEnabled();
+  });
+
+  it('hides the builder after an explicit opt-out', async () => {
+    renderVariantForm(false);
+    expect(await screen.findByRole('button', { name: 'Manage gallery' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Manage variants' })).not.toBeInTheDocument();
+  });
+
+  it('restores the builder when an opted-out product enables variants again', async () => {
+    renderVariantForm(false);
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Use Variants & options/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'This product has variants' }));
+    expect(screen.getByRole('button', { name: 'Manage variants' })).toBeEnabled();
+  });
+
+  /**
+   * URG-029 — hiding the builder leaves real variant rows reachable only
+   * through the database, so the moment of opting out has to say so. The
+   * property that matters is WHEN it fires: on the transition away from an
+   * existing intent, never as standing text on an already-opted-out product.
+   */
+  /**
+   * The group seeds OPEN when the field already holds a value and closed when
+   * it does not, so a test must reveal the field rather than assume a click
+   * opens the group — clicking an already-open group closes it and hides the
+   * very checkbox under test.
+   */
+  async function revealVariantField() {
+    const groupToggle = await screen.findByRole('checkbox', {
+      name: /Use Variants & options/,
+    });
+    if (!screen.queryByRole('checkbox', { name: 'This product has variants' })) {
+      await userEvent.click(groupToggle);
+    }
+    return screen.getByRole('checkbox', { name: 'This product has variants' });
+  }
+
+  it('warns when an existing product is opted out of variants', async () => {
+    renderVariantForm(true);
+    const field = await revealVariantField();
+    expect(screen.queryByText(/keep their stock and sales history/i)).not.toBeInTheDocument();
+
+    await userEvent.click(field);
+    expect(screen.getByText(/keep their stock and sales history/i)).toBeInTheDocument();
+  });
+
+  it('warns a legacy product with no recorded intent on opt-out', async () => {
+    renderVariantForm(null);
+    const field = await revealVariantField();
+
+    // A legacy NULL reads as unchecked, so reaching an explicit "no" means
+    // switching it on and back off again.
+    await userEvent.click(field);
+    expect(screen.queryByText(/keep their stock and sales history/i)).not.toBeInTheDocument();
+
+    await userEvent.click(field);
+    expect(screen.getByText(/keep their stock and sales history/i)).toBeInTheDocument();
+  });
+
+  it('does not warn a product that was already opted out', async () => {
+    renderVariantForm(false);
+    await revealVariantField();
+    expect(screen.queryByText(/keep their stock and sales history/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('category creation defaults', () => {
+  it('starts a new category active while preserving its parent picker', async () => {
+    const categorySchema: ResourceSchema = {
+      ...schema,
+      resource: 'categories',
+      label: 'Categories',
+      fields: [
+        { name: 'name', label: 'Name', type: 'text', required: true },
+        { name: 'slug', label: 'Slug', type: 'text' },
+        { name: 'parentId', label: 'Parent category', type: 'relation', relation: { resource: 'categories', labelField: 'name' } },
+        { name: 'isActive', label: 'Active', type: 'boolean', defaultValue: true },
+      ],
+    };
+    render(
+      <ResourceForm schema={categorySchema} row={null} open onOpenChange={vi.fn()} onSaved={vi.fn()} />,
+    );
+
+    expect(await screen.findByRole('checkbox', { name: 'Active' })).toBeChecked();
+    expect(screen.getByLabelText('Parent category')).toBeInTheDocument();
   });
 });
 

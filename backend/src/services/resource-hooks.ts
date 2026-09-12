@@ -5,7 +5,9 @@ import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { logger } from '../logger.js';
 import { defaultBranchId } from './inventory.service.js';
+import { checkBarcode } from '../lib/barcode.js';
 import { normalizePhone } from '../lib/phone.js';
+import { uniqueSlug } from '../lib/slug.js';
 import { recordCatalogueVersion } from './product-catalogue-version.service.js';
 
 /// The category tree's own cap (S7.6) — decided rather than left unbounded:
@@ -110,6 +112,43 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
      * traversal, so this fires ONE query per ancestor, not two passes.
      */
     beforeWrite: async (data: Record<string, unknown>, id: string | null): Promise<void> => {
+      /**
+       * Generate the slug on CREATE only (URG-027/032).
+       *
+       * `Category.slug` is REQUIRED and `@unique`, so a blank one is a hard
+       * failure the administrator currently has to resolve by hand — which is
+       * exactly the "adding a category feels strange" complaint. Same rule as
+       * products: only on create, and never over a slug the user typed.
+       *
+       * Runs before the parent walk below because a slug clash and a cycle are
+       * independent refusals; neither needs the other to have passed.
+       */
+      if (id === null) {
+        const typed = typeof data.slug === 'string' ? data.slug.trim() : '';
+        const name = typeof data.name === 'string' ? data.name.trim() : '';
+        if (!typed && name) {
+          const isTaken = async (candidate: string): Promise<boolean> => {
+            const clash = await prisma.category.findUnique({
+              where: { slug: candidate },
+              select: { id: true },
+            });
+            return clash !== null;
+          };
+
+          const slug = await uniqueSlug(name, isTaken);
+
+          /**
+           * `Category.slug` is NOT NULL, unlike the product's. A name made
+           * entirely of punctuation ("???") slugifies to an empty string, and
+           * leaving the column unset there would reach Prisma as a raw
+           * constraint violation — a 500 shaped like a bug rather than a
+           * refusal anyone can act on. Fall back to a generated stem so the
+           * create still succeeds with a real, unique, editable slug.
+           */
+          data.slug = slug || (await uniqueSlug('category', isTaken));
+        }
+      }
+
       const parentId = data.parentId;
       if (typeof parentId !== 'string') return; // Unset or explicitly null — no parent, no walk.
 
@@ -169,6 +208,104 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
     },
   },
   products: {
+    /**
+     * Generate the slug on CREATE only (URG-027).
+     *
+     * ─── WHY ONLY ON CREATE ──────────────────────────────────────────
+     * `admin.config.ts` carries a deliberate note that a slug is never
+     * auto-derived from the name, because changing one records a
+     * `ProductRedirect` and should be a conscious act rather than a side
+     * effect of renaming a product. That rule still holds for every UPDATE —
+     * this fills in the one case it was never really about: a brand-new
+     * product where the user left the field blank and there is no previous
+     * slug to redirect from.
+     *
+     * `id === null` is exactly the create signal: `createResourceRow` calls
+     * this hook with null, `updateResourceRow` passes the row's own id.
+     *
+     * A slug the user TYPED is left alone in both cases — deliberate input
+     * always wins over generation.
+     */
+    beforeWrite: async (data: Record<string, unknown>, id: string | null): Promise<void> => {
+      /**
+       * URG-028 — check the barcode against its declared symbology.
+       *
+       * Runs on CREATE AND UPDATE, unlike the slug generation below: a
+       * mistyped check digit is just as wrong on an edit, and unlike a slug
+       * there is no redirect history making a later change delicate.
+       *
+       * ─── ONLY WHEN THE WRITE ACTUALLY TOUCHES THESE FIELDS ───────────
+       * `Product.barcode` predates this feature, so rows hold codes nobody
+       * classified. Validating unconditionally would mean editing a product's
+       * PRICE could fail on its old barcode — a refusal about a field the
+       * user never opened. Same `hasOwnProperty` discipline as the customers
+       * hook: absent means "not part of this write", which is different from
+       * present-and-empty.
+       *
+       * A PATCH that sets only the type is checked against the STORED code,
+       * because declaring "this is an EAN-13" is exactly the moment to find
+       * out the saved digits are not one.
+       */
+      const touchesBarcode =
+        Object.prototype.hasOwnProperty.call(data, 'barcode') ||
+        Object.prototype.hasOwnProperty.call(data, 'barcodeType');
+
+      if (touchesBarcode) {
+        let code = typeof data.barcode === 'string' ? data.barcode : null;
+        let type = typeof data.barcodeType === 'string' ? data.barcodeType : null;
+
+        // Fill in whichever half this write did not carry, from the row as it
+        // stands — a partial update still has to be judged as a whole.
+        if (id !== null && (code === null || type === null)) {
+          const stored = await prisma.product.findUnique({
+            where: { id },
+            select: { barcode: true, barcodeType: true },
+          });
+          if (!Object.prototype.hasOwnProperty.call(data, 'barcode')) {
+            code = stored?.barcode ?? null;
+          }
+          if (!Object.prototype.hasOwnProperty.call(data, 'barcodeType')) {
+            type = stored?.barcodeType ?? null;
+          }
+        }
+
+        const checked = checkBarcode(code, type);
+
+        if (!checked.ok) {
+          throw AppError.badRequest(checked.hint ?? 'That barcode does not match its type', {
+            field: 'barcode',
+          });
+        }
+
+        // Write back the canonical form so the till's EXACT-match scan cannot
+        // miss on a stored space or dash. Only when this write supplied it —
+        // never reformatting a stored value the user did not touch.
+        if (Object.prototype.hasOwnProperty.call(data, 'barcode') && checked.value !== '') {
+          data.barcode = checked.value;
+        }
+      }
+
+      if (id !== null) return; // Update: never rewrite an existing slug.
+
+      const existing = typeof data.slug === 'string' ? data.slug.trim() : '';
+      if (existing) return; // The user chose one; respect it.
+
+      const name = typeof data.name === 'string' ? data.name.trim() : '';
+      if (!name) return; // No name to derive from — the field stays null.
+
+      const slug = await uniqueSlug(name, async (candidate) => {
+        const clash = await prisma.product.findUnique({
+          where: { slug: candidate },
+          select: { id: true },
+        });
+        return clash !== null;
+      });
+
+      // An all-punctuation name slugifies to nothing; leave the column null
+      // rather than storing an empty string that looks like a real value.
+      if (slug) data.slug = slug;
+    },
+
     /**
      * Give the opening stock a BRANCH (O9.1).
      *

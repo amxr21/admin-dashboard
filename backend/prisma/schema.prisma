@@ -259,11 +259,22 @@ model Business {
   id   String @id @default(cuid())
   name String @db.VarChar(160)
 
-  /// Free text, since a business type is a label for the owner's benefit
-  /// rather than something the app branches on — a "cafe" and a "food truck"
-  /// run identically here. Kept so a future template/wizard has something to
-  /// key off without needing a migration first.
+  /// A curated catalogue code (URG-021), e.g. `CAFE`, `RESTAURANT`, `OTHER`.
+  /// See `lib/canonical-values.ts` for the list.
+  ///
+  /// Still `VarChar`, not an enum: the owner expects the catalogue to GROW,
+  /// and an enum would make every addition a migration. Pre-URG-021 rows hold
+  /// free text (`"cafe"`) and are mapped on read where the intent is
+  /// unambiguous, never rewritten in place — a value nobody can interpret is
+  /// shown back to the owner for review instead of being guessed at.
   kind String? @db.VarChar(60)
+
+  /// Required free text when `kind` is `OTHER`, and null otherwise (URG-021).
+  /// Same contract as the refund/cancellation reasons: a bare "Other" records
+  /// only that the list was insufficient, so the note is what tells you which
+  /// type to add next. Nullable because every row predating this column has
+  /// no note and inventing one would be fabrication.
+  kindNote String? @map("kind_note") @db.VarChar(200)
 
   /// "Every detail of the shop" (F8.5). All optional: an owner setting up
   /// their first business should not have to fill in a tax id before they
@@ -794,6 +805,35 @@ model Product {
   /// the default", not "no title".
   metaTitle       String? @map("meta_title") @db.VarChar(160)
   metaDescription String? @map("meta_description") @db.VarChar(320)
+
+  /// Per-product opt-in for the variant and colour dimensions (URG-029/030).
+  ///
+  /// NULL means "the owner has not said", deliberately distinct from an
+  /// explicit false: a product created before these existed has not opted out,
+  /// it was never asked. Turning the flag off hides the variant builder but
+  /// preserves existing variant rows, stock and sales history — so the form
+  /// warns at the moment of opting out that saved variants survive while the
+  /// only route to them is being hidden (URG-029).
+  hasVariants Boolean? @map("has_variants")
+  hasColors   Boolean? @map("has_colors")
+
+  /// Per-product opt-in for a barcode, and which symbology it is (URG-028).
+  ///
+  /// NULL `hasBarcode` means "never asked", the same three-state contract as
+  /// the flags above: a product created before this existed has not opted out.
+  ///
+  /// `barcodeType` is STORED rather than derived because it cannot be
+  /// recovered from the digits — `5012345678900` is a valid EAN-13 and also a
+  /// legal prefix for other lengths, and CODE128 accepts almost anything. It
+  /// stays NULL on every row that predates this column, which is precisely
+  /// what makes those codes "unclassified, shown for review" rather than
+  /// retroactively invalid.
+  ///
+  /// Deliberately NOT an enum: the retail symbology list is expected to grow
+  /// (see `lib/barcode.ts`), and an enum would make each addition a migration.
+  /// Same reasoning as `Business.kind`.
+  hasBarcode  Boolean? @map("has_barcode")
+  barcodeType String?  @map("barcode_type") @db.VarChar(16)
 
   categoryId String?   @map("category_id")
   /// SetNull, not Cascade — deleting a category must never delete products.
@@ -2309,6 +2349,11 @@ model Payment {
   /// The terminal's reference, the transfer id, whatever the paper says.
   reference String? @db.VarChar(120)
   note      String? @db.VarChar(255)
+
+  /// Staff's fixed reason for a goodwill refund. Nullable for historical
+  /// payments and refunds created before reason codes were introduced.
+  refundReason     RefundReason? @map("refund_reason")
+  refundReasonNote String?       @map("refund_reason_note") @db.VarChar(500)
 
   createdAt DateTime @default(now()) @map("created_at")
 

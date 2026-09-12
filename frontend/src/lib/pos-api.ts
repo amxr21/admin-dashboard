@@ -112,6 +112,45 @@ export interface CheckoutResult {
   total: string;
   /** Cash to hand back. Null on a card sale — nothing was tendered. */
   change: string | null;
+  /**
+   * URG-034 — the foreign-currency figures for the receipt, all null on a
+   * base-currency sale (the overwhelming majority).
+   *
+   * Computed SERVER-side from the same values written to the payment row, on
+   * purpose: the till knows the rate and could multiply the total itself, but
+   * two implementations of the same money arithmetic is how a receipt ends up
+   * disagreeing with the drawer.
+   */
+  tenderCurrency: string | null;
+  /** The sale total expressed in `tenderCurrency`. */
+  tenderTotal: string | null;
+  /** Change to hand back, in `tenderCurrency` — change is given in whatever
+   *  was tendered, by owner decision. */
+  tenderChange: string | null;
+  /** The rate actually applied, snapshotted at sale time and printed on the
+   *  receipt so a reprint can never disagree with the customer's copy. */
+  tenderRate: string | null;
+}
+
+/**
+ * A currency this till accepts right now (URG-034).
+ *
+ * The store's own currency is always present with a rate of exactly 1; every
+ * other entry appears only when an owner configured a rate above zero. An
+ * install that configured nothing gets exactly ONE entry, which is what lets
+ * the selector hide itself entirely rather than showing a control with a
+ * single choice.
+ */
+export interface AcceptedTender {
+  currency: string;
+  /** How many of this currency equal one unit of the store currency. */
+  rate: string;
+  isBase: boolean;
+}
+
+export async function fetchTenders(): Promise<AcceptedTender[]> {
+  const result = await apiFetch<{ tenders: AcceptedTender[] }>('/pos/tenders');
+  return result.tenders;
 }
 
 export interface SplitPayment {
@@ -150,6 +189,16 @@ export interface CheckoutInput {
    *  validates the return exists, is resolved as REPLACEMENT, and is not
    *  already linked. */
   exchangeReturnId?: string;
+  /**
+   * URG-034 — what the customer actually paid in. Absent means the store's
+   * own currency, which is the overwhelming majority.
+   *
+   * `tendered` is then read in THIS currency, not the base: the cashier types
+   * the notes handed over. The server refuses a code with no configured rate
+   * rather than falling back to the base, since a silent fallback would
+   * record a sale in the wrong money and nothing downstream could detect it.
+   */
+  tenderCurrency?: string;
 }
 
 export async function checkout(

@@ -926,6 +926,27 @@ async function checkoutOnce(
       taxAmount: created.totals.taxAmount.toFixed(2),
       total: created.totals.total.toFixed(2),
       change: created.change?.toFixed(2) ?? null,
+      /**
+       * URG-034 — the foreign-currency figures the receipt prints, returned
+       * by the server rather than recomputed by the till.
+       *
+       * The owner's decision, and the only safe one: the till already knows
+       * the rate from `GET /pos/tenders`, so it COULD multiply the total
+       * itself — but that would be a second implementation of the same money
+       * arithmetic, and a rounding difference between the two shows up as a
+       * receipt disagreeing with the payment that was actually recorded.
+       * These come from the same `tenderDue`/`tenderInfo` values written to
+       * the `Payment` row moments earlier, so the printed copy and the drawer
+       * cannot drift.
+       *
+       * All null on a base-currency sale, which is the overwhelming majority
+       * — additive, so nothing changes for an install that accepts one
+       * currency.
+       */
+      tenderCurrency: tenderInfo?.currency ?? null,
+      tenderTotal: tenderInfo ? created.totals.total.mul(tenderInfo.rate).toDecimalPlaces(2).toFixed(2) : null,
+      tenderChange: tenderInfo ? (created.change?.toFixed(2) ?? null) : null,
+      tenderRate: tenderInfo?.rate.toFixed(4) ?? null,
     },
     audit: {
       entityId: created.order.id,

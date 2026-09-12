@@ -39,9 +39,11 @@ const {
   createReturn,
   approveReturn,
   searchPosCustomers,
+  fetchTenders,
 } = vi.hoisted(() => ({
   scanProduct: vi.fn(),
   checkout: vi.fn(),
+  fetchTenders: vi.fn(),
   browseProducts: vi.fn(),
   browseCategories: vi.fn(),
   requestManagerOverride: vi.fn(),
@@ -70,6 +72,10 @@ vi.mock('@/lib/pos-api', async (importOriginal) => ({
   resumeParkedSale,
   discardParkedSale,
   searchPosCustomers,
+  // URG-034 — the sale screen loads accepted tenders on mount. Stubbed
+  // because the spread above keeps the REAL implementation otherwise, which
+  // would fire a network call in jsdom on every render in this file.
+  fetchTenders,
 }));
 
 vi.mock('@/lib/auth-api', async (importOriginal) => ({
@@ -114,6 +120,11 @@ beforeEach(() => {
   // for tests that aren't about parking (see the dedicated describe below).
   listParkedSales.mockResolvedValue([]);
   searchPosCustomers.mockResolvedValue([]);
+  // URG-034 — also fetched once on mount. Base currency ONLY, which is the
+  // state of every install that has not configured a rate: the selector then
+  // hides itself and every test in this file behaves exactly as it did
+  // before multi-currency existed. The dedicated describe below overrides it.
+  fetchTenders.mockResolvedValue([{ currency: 'AED', rate: '1', isBase: true }]);
 });
 
 async function scan(code: string) {
@@ -180,6 +191,110 @@ describe('building a sale', () => {
     await scan('5012345678900');
 
     expect(await screen.findByText('Flat white')).toBeInTheDocument();
+  });
+});
+
+/**
+ * URG-034 — taking payment in another currency.
+ *
+ * The two properties worth pinning are the ones that decide whether this is
+ * safe to ship to installs that never asked for it: the control is INVISIBLE
+ * when only the store currency is accepted (so nothing changes for them), and
+ * an ordinary sale sends no `tenderCurrency` at all, keeping it on the
+ * unchanged server path rather than a conversion path with a rate of 1.
+ */
+describe('paying in another currency', () => {
+  const twoTenders = [
+    { currency: 'AED', rate: '1', isBase: true },
+    { currency: 'USD', rate: '0.2723', isBase: false },
+  ];
+
+  it('hides the currency control when only the store currency is accepted', async () => {
+    render(<SaleScreen />);
+
+    // The default from beforeEach is base-only — one choice is not a choice.
+    await waitFor(() => expect(fetchTenders).toHaveBeenCalled());
+    expect(screen.queryByLabelText(/paid in/i)).toBeNull();
+  });
+
+  it('offers the control, and the rate, once a second currency is configured', async () => {
+    fetchTenders.mockResolvedValue(twoTenders);
+    render(<SaleScreen />);
+
+    const control = await screen.findByLabelText(/paid in/i);
+    expect(control).toBeInTheDocument();
+    // The rate is shown only once a foreign currency is actually selected —
+    // the base needs none.
+    expect(screen.queryByText(/0\.2723/)).toBeNull();
+  });
+
+  it('sends no tenderCurrency on an ordinary store-currency sale', async () => {
+    fetchTenders.mockResolvedValue(twoTenders);
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({
+      orderId: 'o1',
+      orderNumber: 'POS-1',
+      subtotal: '4.50',
+      taxAmount: '0.00',
+      total: '4.50',
+      change: null,
+      tenderCurrency: null,
+      tenderTotal: null,
+      tenderChange: null,
+      tenderRate: null,
+    });
+    render(<SaleScreen />);
+
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+    await takePaymentThroughConfirm();
+
+    await waitFor(() => expect(checkout).toHaveBeenCalled());
+    const [payload] = checkout.mock.calls[0] as [Record<string, unknown>];
+    // Absent, not 'AED': the server treats a missing currency as the base and
+    // stores no tender columns, which is what keeps every existing revenue
+    // and shift query summing one comparable unit.
+    expect(payload).not.toHaveProperty('tenderCurrency');
+  });
+
+  it('carries the chosen currency into checkout and prints it on the receipt', async () => {
+    fetchTenders.mockResolvedValue(twoTenders);
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({
+      orderId: 'o1',
+      orderNumber: 'POS-1',
+      subtotal: '4.50',
+      taxAmount: '0.00',
+      total: '4.50',
+      change: '0.27',
+      // Server-computed, never derived by the till — see CheckoutResult.
+      tenderCurrency: 'USD',
+      tenderTotal: '1.23',
+      tenderChange: '0.27',
+      tenderRate: '0.2723',
+    });
+    render(<SaleScreen />);
+
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+
+    await userEvent.click(await screen.findByLabelText(/paid in/i));
+    await userEvent.click(await screen.findByRole('option', { name: 'USD' }));
+
+    // The rate the server will apply, surfaced before charging: a
+    // wrong-direction rate is silently wrong rather than obviously broken.
+    expect(await screen.findByText(/0\.2723/)).toBeInTheDocument();
+    // The cash field now names the currency it is asking for, so the cashier
+    // cannot type dirhams into a field that means dollars.
+    await userEvent.type(screen.getByLabelText(/cash received \(usd\)/i), '1.50');
+
+    await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /confirm & charge/i }));
+
+    await waitFor(() => expect(checkout).toHaveBeenCalled());
+    const [payload] = checkout.mock.calls[0] as [Record<string, unknown>];
+    expect(payload.tenderCurrency).toBe('USD');
+    expect(payload.tendered).toBe('1.50');
   });
 
   it('scanning the same item twice adds ONE, not a second line', async () => {

@@ -20,6 +20,7 @@
     "test:coverage": "vitest run --coverage --passWithNoTests",
     "db:migrate": "node scripts/with-db-url.mjs prisma migrate dev",
     "db:deploy": "node scripts/with-db-url.mjs prisma migrate deploy",
+    "db:check-data": "node scripts/with-db-url.mjs node scripts/check-migration-data.mjs",
     "db:studio": "node scripts/with-db-url.mjs prisma studio",
     "db:generate": "prisma generate",
     "db:seed": "node scripts/with-db-url.mjs tsx prisma/seed.ts",

@@ -39,6 +39,7 @@ export interface FieldConfig {
   inList?: boolean;
   inForm?: boolean;
   required?: boolean;
+  defaultValue?: boolean;
   searchable?: boolean;
   sortable?: boolean;
   readOnly?: boolean;
@@ -47,6 +48,18 @@ export interface FieldConfig {
   /** Shown when an existing non-empty value is being changed, never on
    *  first-time entry or create. See admin.config.ts's own comment. */
   changeWarning?: string;
+  /**
+   * Progressive disclosure (URG-025). Fields with no group render first, in
+   * the default form body; everything carrying a group collects into a named
+   * optional section below, in first-appearance order.
+   *
+   * The value is a translation key under `resource.fieldGroups`, not prose —
+   * the section heading has to be localized like every other label.
+   *
+   * Product groups can be disabled in the form. Disabled groups are omitted
+   * from client validation and payloads; the server validates received fields.
+   */
+  group?: string;
 }
 
 export interface ResourceSchema {

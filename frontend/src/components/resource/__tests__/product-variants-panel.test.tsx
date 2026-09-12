@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { render, screen, waitFor } from '@/test/render';
 import { ApiError } from '@/lib/api';
 import { ProductVariantsPanel } from '../product-variants-panel';
+import { PRODUCT_COLOURS } from '@/lib/product-colours';
 import type { Variant } from '@/lib/variants-api';
 
 /**
@@ -50,7 +51,7 @@ function makeVariant(overrides: Partial<Variant> = {}): Variant {
   };
 }
 
-function renderPanel(open = true) {
+function renderPanel(open = true, suggestColours = false) {
   const onOpenChange = vi.fn();
   const result = render(
     <ProductVariantsPanel
@@ -58,6 +59,7 @@ function renderPanel(open = true) {
       productName="Ceramic Planter"
       open={open}
       onOpenChange={onOpenChange}
+      suggestColours={suggestColours}
     />,
   );
   return { ...result, onOpenChange };
@@ -95,6 +97,56 @@ describe('listing', () => {
     expect(screen.getByText('SKU-RL')).toBeInTheDocument();
     expect(screen.getByText('24.99')).toBeInTheDocument();
     expect(screen.getByText(/10 in stock/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * URG-030 — colour is a variant NAME, so opting in adds SUGGESTIONS to the
+ * name field and nothing else. The properties worth pinning are that the
+ * suggestions are absent unless asked for, and that they never constrain the
+ * field: the input keeps no `pattern`, and an unlisted colour stays typeable,
+ * because the server accepts any variant name.
+ */
+describe('colour suggestions (URG-030)', () => {
+  it('offers no suggestions when the product has not opted into colours', async () => {
+    fetchVariants.mockResolvedValue([]);
+    renderPanel(true, false);
+
+    const input = await screen.findByLabelText('Name');
+    expect(input).not.toHaveAttribute('list');
+    expect(document.querySelector('datalist')).toBeNull();
+    expect(screen.queryByText(/common colour names are suggested/i)).not.toBeInTheDocument();
+  });
+
+  it('suggests the curated colours when the product opts in', async () => {
+    fetchVariants.mockResolvedValue([]);
+    renderPanel(true, true);
+
+    const input = await screen.findByLabelText('Name');
+    expect(input).toHaveAttribute('list', 'variant-colour-suggestions');
+
+    const datalist = document.getElementById('variant-colour-suggestions');
+    expect(datalist).not.toBeNull();
+    expect(datalist?.querySelectorAll('option')).toHaveLength(PRODUCT_COLOURS.length);
+    expect(screen.getByText(/common colour names are suggested/i)).toBeInTheDocument();
+  });
+
+  it('still accepts a colour that is not in the catalogue', async () => {
+    // The catalogue standardises the common spellings; it must not become a
+    // closed list, since variant names are free text on the server.
+    fetchVariants.mockResolvedValue([]);
+    createVariant.mockResolvedValue(makeVariant({ id: 'new', name: 'Burnt Orange' }));
+    renderPanel(true, true);
+
+    const input = await screen.findByLabelText('Name');
+    expect(input).not.toHaveAttribute('pattern');
+
+    await userEvent.type(input, 'Burnt Orange');
+    await userEvent.type(screen.getByLabelText('Price'), '19.99');
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() => expect(createVariant).toHaveBeenCalled());
+    expect(createVariant.mock.calls[0]?.[1]).toMatchObject({ name: 'Burnt Orange' });
   });
 });
 

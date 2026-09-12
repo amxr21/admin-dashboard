@@ -30,6 +30,7 @@ import { ApiError } from '@/lib/api';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { VariantMovementLogSheet } from '@/components/resource/variant-movement-log-sheet';
+import { PRODUCT_COLOURS } from '@/lib/product-colours';
 import {
   STOCK_REASONS,
   adjustVariantStock,
@@ -71,6 +72,14 @@ interface ProductVariantsPanelProps {
   productName: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * URG-030 — offer the curated colour names while naming a variant, because
+   * this product opted into colours. Suggestion only: a variant name is free
+   * text on the server, so an unlisted colour stays typeable. False simply
+   * omits the list, which is why a product that never opted in sees no
+   * change at all.
+   */
+  suggestColours?: boolean;
 }
 
 export function ProductVariantsPanel({
@@ -78,6 +87,7 @@ export function ProductVariantsPanel({
   productName,
   open,
   onOpenChange,
+  suggestColours = false,
 }: ProductVariantsPanelProps) {
   const t = useTranslations('productVariants');
   const translateError = useTranslatedApiError();
@@ -137,6 +147,7 @@ export function ProductVariantsPanel({
               setEditingId(null);
             }}
             productId={productId}
+            suggestColours={suggestColours}
           />
 
           {error ? (
@@ -273,11 +284,14 @@ export function ProductVariantsPanel({
 function VariantForm({
   variant,
   productId,
+  suggestColours,
   onSaved,
   onCancelEdit,
 }: {
   variant: Variant | null;
   productId: string;
+  /** See the panel's own prop comment — suggestion only, never a constraint. */
+  suggestColours: boolean;
   onSaved: (variant: Variant) => void;
   onCancelEdit: () => void;
 }) {
@@ -319,7 +333,27 @@ function VariantForm({
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
           <Label htmlFor="variant-name">{t('name')}</Label>
-          <Input id="variant-name" value={name} onChange={(event) => setName(event.target.value)} />
+          {/* URG-030 — a native datalist, not a Select or Combobox: the
+              catalogue SUGGESTS a spelling ("Navy" rather than navy/NAVY/dark
+              blue) without closing the field, and a shop selling "Burnt
+              Orange" must still be able to type it. A picker would imply the
+              list is exhaustive, which the server does not enforce. */}
+          <Input
+            id="variant-name"
+            list={suggestColours ? 'variant-colour-suggestions' : undefined}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+          {suggestColours ? (
+            <>
+              <datalist id="variant-colour-suggestions">
+                {PRODUCT_COLOURS.map((colour) => (
+                  <option key={colour} value={colour} />
+                ))}
+              </datalist>
+              <p className="text-muted-foreground text-xs">{t('colourHint')}</p>
+            </>
+          ) : null}
         </div>
         <div className="space-y-1">
           <Label htmlFor="variant-sku">{t('sku')}</Label>
