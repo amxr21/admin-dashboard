@@ -806,6 +806,16 @@ model Product {
   metaTitle       String? @map("meta_title") @db.VarChar(160)
   metaDescription String? @map("meta_description") @db.VarChar(320)
 
+  /// Per-product opt-in for the variant and colour dimensions (URG-029/030).
+  ///
+  /// NULL means "the owner has not said", deliberately distinct from an
+  /// explicit false: a product created before these existed has not opted out,
+  /// it was never asked. A product that already HAS variants is treated as
+  /// enabled regardless, so turning the flag off never hides real rows — the
+  /// owner's rule is that a UI toggle must not destroy stock or sales history.
+  hasVariants Boolean? @map("has_variants")
+  hasColors   Boolean? @map("has_colors")
+
   categoryId String?   @map("category_id")
   /// SetNull, not Cascade — deleting a category must never delete products.
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)

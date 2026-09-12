@@ -38,6 +38,16 @@ interface CollapsibleSectionProps {
   defaultOpen?: boolean;
   /** Rendered next to the title, e.g. a count or a status badge. */
   aside?: ReactNode;
+  /**
+   * An interactive control for the section as a whole — a group-enable switch
+   * (URG-026/031), say.
+   *
+   * Rendered as a SIBLING of the toggle button, never inside it: a button or
+   * checkbox nested in a button is invalid HTML, and the inner control would
+   * be unreachable by keyboard because the outer button swallows the events.
+   * `aside` is for inert text; anything clickable belongs here.
+   */
+  action?: ReactNode;
   className?: string;
   /**
    * Replaces the body's default `p-4`. For full-bleed content — a table that
@@ -52,6 +62,7 @@ export function CollapsibleSection({
   children,
   defaultOpen = true,
   aside,
+  action,
   className,
   bodyClassName,
 }: CollapsibleSectionProps) {
@@ -60,7 +71,8 @@ export function CollapsibleSection({
 
   return (
     <section className={cn('bg-card rounded-lg border', className)}>
-      <h2 className="font-medium">
+      <div className={cn('flex items-center', isOpen && 'border-b')}>
+      <h2 className="min-w-0 flex-1 font-medium">
         <button
           type="button"
           onClick={() => setIsOpen((current) => !current)}
@@ -69,7 +81,6 @@ export function CollapsibleSection({
           className={cn(
             'flex w-full items-center gap-2 px-4 py-3 text-start',
             'focus-visible:ring-ring rounded-lg focus-visible:ring-2 focus-visible:outline-none',
-            isOpen && 'border-b',
           )}
         >
           <ChevronDown
@@ -88,6 +99,8 @@ export function CollapsibleSection({
           {aside ? <span className="text-muted-foreground text-sm">{aside}</span> : null}
         </button>
       </h2>
+      {action ? <div className="shrink-0 pe-4">{action}</div> : null}
+      </div>
 
       <div id={regionId} hidden={!isOpen} className={bodyClassName ?? 'p-4'}>
         {children}
