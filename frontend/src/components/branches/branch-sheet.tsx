@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PhoneField } from '@/components/ui/phone-field';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ApiError } from '@/lib/api';
 import { useAppSettings } from '@/components/providers/settings-provider';
@@ -194,15 +195,30 @@ export function BranchSheet({
                   </span>
                 ) : null}
               </Label>
-              <Input
-                id={`branch-${field}`}
-                type={field === 'phone' ? 'tel' : 'text'}
-                placeholder={BRANCH_PLACEHOLDERS[field] ? tCommon(BRANCH_PLACEHOLDERS[field]) : undefined}
-                value={values[field] ?? ''}
-                onChange={(event) => set(field, event.target.value)}
-                aria-invalid={field === 'name' && nameError ? true : undefined}
-                aria-describedby={field === 'name' && nameError ? 'branch-name-error' : undefined}
-              />
+              {field === 'phone' ? (
+                /* URG-020/022. A branch has no country of its own — it
+                   inherits its business's, which this sheet does not load, so
+                   validation runs without a country context and accepts any
+                   number the library recognises internationally. Passing the
+                   business country through is a follow-up, not a guess to make
+                   here. */
+                <PhoneField
+                  id="branch-phone"
+                  value={values.phone ?? ''}
+                  onChange={(next) => set('phone', next)}
+                  country={null}
+                />
+              ) : (
+                <Input
+                  id={`branch-${field}`}
+                  type="text"
+                  placeholder={BRANCH_PLACEHOLDERS[field] ? tCommon(BRANCH_PLACEHOLDERS[field]) : undefined}
+                  value={values[field] ?? ''}
+                  onChange={(event) => set(field, event.target.value)}
+                  aria-invalid={field === 'name' && nameError ? true : undefined}
+                  aria-describedby={field === 'name' && nameError ? 'branch-name-error' : undefined}
+                />
+              )}
               {field === 'name' && nameError ? (
                 <p id="branch-name-error" role="alert" className="text-destructive text-sm">
                   {nameError}

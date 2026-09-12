@@ -342,9 +342,40 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
             would have carried real risk for zero rows. Flagged to the owner as a departure.
       - [x] Backend + frontend typecheck and lint clean; en/ar parity 2351/2351; migration applied
             to both the dev and integration-test databases.
-      - [ ] URG-020/022/023 (dialing code, phone formatting, tax/TRN templates) not started.
-            `libphonenumber-js@1.13.13` is installed for URG-022 but not yet wired; the existing
-            `backend/src/lib/phone.ts` is a two-line digits-stripper it will supersede.
+      - [*] **URG-020/022 phone — shared field built and wired into the business and branch
+            forms.** `frontend/src/lib/phone-format.ts` (libphonenumber-js) and
+            `frontend/src/components/ui/phone-field.tsx`.
+            **The critical constraint, found before writing any code**: `Customer.phoneNormalized`
+            is a DIGITS-ONLY indexed search key (`@@index([phoneNormalized])`), backfilled by
+            `REGEXP_REPLACE(phone,'[^0-9]','')` in migration `20260910151000`, and matched with
+            `contains` by orders, POS and customer-cases. Emitting E.164 into it would leave old
+            rows as `971501234567` and new rows as `+971501234567`, so cross-boundary `contains`
+            matching would break SILENTLY and only for customers saved after the change. So E.164
+            goes on the user-facing `phone` column and `backend/src/lib/phone.ts` is UNCHANGED.
+            Design notes: formatting happens as-you-type (rewriting to E.164 per keystroke fights
+            the caret); normalization happens once on blur; an invalid number keeps the raw text
+            and shows an error rather than storing something that looks canonical but is not; the
+            dialing code is DERIVED from the country (URG-020 is explicit that a prefix and an ISO
+            code must not be confused); `force-ltr` because a phone number reads left-to-right
+            even in Arabic. An empty value stays valid — every phone field here is optional.
+            **Wired into all five call sites**: business-form, branch-sheet, staff-sheet,
+            invite-staff-sheet and supplier-sheet. Only business-form has real country context
+            (its own country field); the other four pass `country={null}` and validate against
+            international rules, because a branch inherits its business's country without the
+            sheet loading it, and staff/supplier records have no country field at all. Passing
+            the business country into branch-sheet is a follow-up, deliberately not guessed here.
+            **Browser acceptance PASSED, both locales, zero console errors:**
+              - Placeholder derives from the selected country: `+971 50 123 4567`.
+              - Typing `501234567` stays as typed; blur normalizes it to `+971501234567`.
+              - Invalid `123` KEEPS the raw text, shows the error in the right language
+                ("That does not look like…" / "لا يبدو هذا رقم هاتف صالحًا…") and sets
+                `aria-invalid="true"` — it does not store a canonical-looking wrong value.
+              - `force-ltr` confirmed present on the input in both locales.
+            Typecheck and lint clean; 12/12 branches and 54/54 staff+supplier tests pass.
+      - [ ] URG-023 tax/TRN templates not started. Both `Business.taxId` and the `store.taxId`
+            setting are free text, and that setting's own comment admits a "single-jurisdiction
+            assumption" — jurisdiction-aware validation should key off the business `country` that
+            URG-018 now provides.
       - [ ] URG-019 city: owner chose free text + country-aware validation, so only the
             country-aware part remains once URG-018's control is in place everywhere.
       - [x] **Browser acceptance of the new controls — PASSED in both locales**, against the real

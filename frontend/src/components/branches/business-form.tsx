@@ -11,6 +11,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { ImageUploadField } from '@/components/image-upload-field';
 import { Label } from '@/components/ui/label';
+import { PhoneField } from '@/components/ui/phone-field';
 import {
   Select,
   SelectContent,
@@ -346,10 +347,20 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
                       ))}
                     </SelectContent>
                   </Select>
+                ) : field === 'phone' ? (
+                  /* URG-020/022 — validated against the country chosen in this
+                     same form, so the example and the rules match what the
+                     owner just picked rather than a fixed locale. */
+                  <PhoneField
+                    id="business-phone"
+                    value={values.phone ?? ''}
+                    onChange={(next) => set('phone', next)}
+                    country={values.country || null}
+                  />
                 ) : (
                   <Input
                     id={`business-${field}`}
-                    type={field === 'email' ? 'email' : field === 'phone' ? 'tel' : 'text'}
+                    type={field === 'email' ? 'email' : 'text'}
                     placeholder={
                       BUSINESS_PLACEHOLDERS[field]
                         ? tCommon(BUSINESS_PLACEHOLDERS[field])

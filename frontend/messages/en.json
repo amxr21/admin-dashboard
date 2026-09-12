@@ -37,7 +37,9 @@
       "search": "Search…",
       "empty": "No matches",
       "none": "Not set"
-    }
+    },
+    "phoneInvalid": "That does not look like a valid phone number for the selected country.",
+    "phoneInvalidNoCountry": "That does not look like a valid international phone number."
   },
   "language": {
     "label": "Language",
