@@ -453,6 +453,49 @@ export function SaleScreen() {
     [splitLines],
   );
 
+  /**
+   * URG-007 — cash must cover what is owed, explained before the confirm
+   * dialog rather than refused at it.
+   *
+   * A NUDGE in the same sense as `needsOverride`: the server independently
+   * enforces this and is the real boundary. Cash only — a card or transfer
+   * hands nothing over, so there is nothing to be short of.
+   *
+   * Deliberately compared against `estimate`, the same display figure the
+   * cashier is reading on screen. The authoritative total comes back from the
+   * server, which is why a rounding edge can only ever cost a refusal the
+   * cashier can see and correct, never a silently accepted short payment.
+   *
+   * `null` means nothing to say; a string is the message to show.
+   */
+  const cashShortfall = useMemo(() => {
+    if (lines.length === 0) return null;
+
+    if (isSplitting) {
+      for (const [index, line] of splitLines.entries()) {
+        if (line.method !== 'cash') continue;
+
+        const amount = Number(line.amount) || 0;
+        if (amount <= 0) continue;
+
+        if (line.tendered.trim() === '') {
+          return t('splitTenderedMissing', { index: index + 1 });
+        }
+
+        const short = amount - (Number(line.tendered) || 0);
+        if (short > 0) return t('tenderedShort', { short: short.toFixed(2) });
+      }
+
+      return null;
+    }
+
+    if (method !== 'cash') return null;
+    if (tendered.trim() === '') return t('tenderedMissing');
+
+    const short = Number(estimate) - (Number(tendered) || 0);
+    return short > 0 ? t('tenderedShort', { short: short.toFixed(2) }) : null;
+  }, [lines, isSplitting, splitLines, method, tendered, estimate, t]);
+
   async function takePayment() {
     if (lines.length === 0 || isSelling) return;
 
@@ -935,6 +978,20 @@ export function SaleScreen() {
                   className="force-ltr"
                   aria-label={t('splitAmountLabel', { index: index + 1 })}
                 />
+                {/* URG-007 — a cash leg records what was handed over. The
+                    state field and the request already carried this, but no
+                    input ever rendered it, so `line.tendered` was permanently
+                    empty and every cash leg sent nothing. */}
+                {line.method === 'cash' ? (
+                  <Input
+                    value={line.tendered}
+                    onChange={(event) => updateSplitLine(index, { tendered: event.target.value })}
+                    placeholder={t('tenderedPlaceholder')}
+                    inputMode="decimal"
+                    className="force-ltr"
+                    aria-label={t('splitTenderedLabel', { index: index + 1 })}
+                  />
+                ) : null}
                 {splitLines.length > 2 ? (
                   <Button
                     variant="ghost"
@@ -964,6 +1021,18 @@ export function SaleScreen() {
           </div>
         )}
 
+        {/* URG-007 — the shortfall is explained BEFORE the confirm dialog,
+            which is where money actually moves. Mirrors the override dialog's
+            reasoning above: do not let a cashier reach the last step only to
+            be refused there. The server independently enforces the same rule,
+            so this is a courtesy, not the boundary. */}
+        {cashShortfall !== null ? (
+          <p className="text-warning flex items-center gap-1 text-xs">
+            <AlertTriangle className="size-3 shrink-0" aria-hidden />
+            {cashShortfall}
+          </p>
+        ) : null}
+
         <Button
           className="w-full"
           onClick={() => {
@@ -978,7 +1047,7 @@ export function SaleScreen() {
             }
             setConfirmOpen(true);
           }}
-          disabled={lines.length === 0 || isSelling}
+          disabled={lines.length === 0 || isSelling || cashShortfall !== null}
         >
           {t('takePayment')}
         </Button>

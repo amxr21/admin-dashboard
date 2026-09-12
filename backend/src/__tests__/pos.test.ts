@@ -470,7 +470,13 @@ describe('taking a sale (O5.7, O5.8)', () => {
     const product = await makeProduct({ sku: `${RUN}-OVERSELL-RACE`, price: '9.00', stock: 2 });
     await stockAt(product.id, 2);
 
-    const body = { lines: [{ productId: product.id, quantity: 2 }], method: 'cash' };
+    // Enough cash for either sale to complete (URG-007) — the point of this
+    // test is that STOCK refuses one of them, not the tender.
+    const body = {
+      lines: [{ productId: product.id, quantity: 2 }],
+      method: 'cash',
+      tendered: '99.00',
+    };
 
     const [left, right] = await Promise.all([sell(body), sell(body)]);
 
@@ -557,13 +563,16 @@ describe('taking a sale (O5.7, O5.8)', () => {
     await stockAt(product.id, 5);
     const key = randomUUID();
 
+    // Both carry the SAME tender (URG-007) so the only difference between the
+    // two payloads stays the quantity — which is what makes the second a
+    // key-reuse mismatch rather than a tender refusal.
     const first = await sell(
-      { lines: [{ productId: product.id, quantity: 1 }], method: 'cash' },
+      { lines: [{ productId: product.id, quantity: 1 }], method: 'cash', tendered: '99.00' },
       ownerToken,
       key,
     );
     const mismatch = await sell(
-      { lines: [{ productId: product.id, quantity: 2 }], method: 'cash' },
+      { lines: [{ productId: product.id, quantity: 2 }], method: 'cash', tendered: '99.00' },
       ownerToken,
       key,
     );
@@ -613,7 +622,12 @@ describe('taking a sale (O5.7, O5.8)', () => {
     const product = await makeProduct({ sku: `${RUN}-SELL-3`, price: '6.00', stock: 4 });
     await stockAt(product.id, 4);
 
-    const res = await sell({ lines: [{ productId: product.id, quantity: 1 }], method: 'cash' });
+    const res = await sell({
+      lines: [{ productId: product.id, quantity: 1 }],
+      method: 'cash',
+      // Cash records what was handed over (URG-007).
+      tendered: '10.00',
+    });
     const orderId = (res.body as { data: { orderId: string } }).data.orderId;
 
     const item = await prisma.orderItem.findFirst({ where: { orderId }, select: { cost: true } });
@@ -674,7 +688,11 @@ describe('taking a sale (O5.7, O5.8)', () => {
     });
 
     try {
-      const res = await sell({ lines: [{ productId: product.id, quantity: 3 }], method: 'cash' });
+      const res = await sell({
+        lines: [{ productId: product.id, quantity: 3 }],
+        method: 'cash',
+        tendered: '20.00',
+      });
 
       expect(res.status).toBe(201);
 
@@ -773,6 +791,36 @@ describe('taking a sale (O5.7, O5.8)', () => {
     expect(payment.tenderCurrency).toBeNull();
     expect(payment.tenderAmount).toBeNull();
     expect(payment.tenderRate).toBeNull();
+  });
+
+  it('refuses a cash sale that records no tendered amount (URG-007)', async () => {
+    // Cash genuinely crossed the counter, so "not recorded" is a gap in the
+    // drawer's audit trail — unlike a card sale, where null means "not
+    // applicable". Previously this skipped the underpayment check entirely
+    // and completed with tendered/change both null.
+    const product = await makeProduct({ sku: `${RUN}-TENDER-1`, price: '30.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sell({ lines: [{ productId: product.id, quantity: 1 }], method: 'cash' });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/cash received/i);
+
+    // Nothing was written — the refusal happens inside the same transaction.
+    const stock = await prisma.branchStock.findUnique({
+      where: { productId_branchId: { productId: product.id, branchId } },
+    });
+    expect(stock?.quantity).toBe(5);
+  });
+
+  it('still accepts a card sale with no tendered amount (URG-007)', async () => {
+    // The requirement is cash-only: nothing is handed over on a card sale.
+    const product = await makeProduct({ sku: `${RUN}-TENDER-3`, price: '14.00', stock: 3 });
+    await stockAt(product.id, 3);
+
+    const res = await sell({ lines: [{ productId: product.id, quantity: 1 }], method: 'card' });
+
+    expect(res.status).toBe(201);
   });
 
   it('refuses tendered less than the total', async () => {
@@ -1176,6 +1224,7 @@ describe('discounts at the till (O9 Tier 3)', () => {
       const res = await sellWithDiscount({
         lines: [{ productId: product.id, quantity: 1, discountPercent: 30 }],
         method: 'cash',
+        tendered: '99.00',
         overrideToken: approval.overrideToken,
       });
 
@@ -1193,6 +1242,7 @@ describe('discounts at the till (O9 Tier 3)', () => {
       const res = await sellWithDiscount({
         lines: [{ productId: product.id, quantity: 1, discountPercent: 20 }],
         method: 'cash',
+        tendered: '99.00',
       });
 
       expect(res.status).toBe(201);
@@ -1377,6 +1427,24 @@ describe('split payment (O9 Tier 3)', () => {
     await prisma.product.update({ where: { id: productId }, data: { stock: quantity } });
   }
 
+  it('refuses a cash split leg that records no tendered amount (URG-007)', async () => {
+    const product = await makeProduct({ sku: `${RUN}-TENDER-2`, price: '20.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const res = await sellSplit({
+      lines: [{ productId: product.id, quantity: 1 }],
+      splitPayments: [
+        // The cash leg hands notes over and must record them; the card leg
+        // legitimately has nothing to record.
+        { method: 'cash', amount: '10.00' },
+        { method: 'card', amount: '10.00' },
+      ],
+    });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/cash received/i);
+  });
+
   it('writes one Payment row per entry', async () => {
     const product = await makeProduct({ sku: `${RUN}-SPLIT-1`, price: '20.00', stock: 5 });
     await stockAt(product.id, 5);
@@ -1384,7 +1452,7 @@ describe('split payment (O9 Tier 3)', () => {
     const res = await sellSplit({
       lines: [{ productId: product.id, quantity: 1 }],
       splitPayments: [
-        { method: 'cash', amount: '10.00' },
+        { method: 'cash', amount: '10.00', tendered: '10.00' },
         { method: 'card', amount: '10.00' },
       ],
     });
@@ -1408,7 +1476,8 @@ describe('split payment (O9 Tier 3)', () => {
     const res = await sellSplit({
       lines: [{ productId: product.id, quantity: 1 }],
       splitPayments: [
-        { method: 'cash', amount: '10.00' },
+        // The cash leg records what was handed over (URG-007).
+        { method: 'cash', amount: '10.00', tendered: '10.00' },
         { method: 'card', amount: '10.00' },
       ],
     });
