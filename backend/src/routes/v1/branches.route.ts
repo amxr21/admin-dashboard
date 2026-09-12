@@ -3,6 +3,13 @@ import { StaffRole } from '@prisma/client';
 import { z } from 'zod';
 
 import { AppError } from '../../errors/AppError.js';
+import {
+  isBusinessType,
+  isCanonicalCountry,
+  isCanonicalCurrency,
+  isCanonicalTimezone,
+} from '../../lib/canonical-values.js';
+import { checkTaxId } from '../../lib/tax-id.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea, requireRole } from '../../middleware/authorize.js';
 import { effectiveRole, withBranchContext } from '../../middleware/branch-context.js';
@@ -142,21 +149,117 @@ branchesRouter.get(
  * opened a branch and started attributing revenue to it is not.
  * ───────────────────────────────────────────────────────────────────── */
 
-const businessSchema = z.object({
-  name: z.string().trim().min(1).max(160),
-  kind: z.string().trim().max(60).nullish(),
-  legalName: z.string().trim().max(200).nullish(),
-  taxId: z.string().trim().max(60).nullish(),
-  email: z.string().trim().email().max(255).nullish(),
-  phone: z.string().trim().max(40).nullish(),
-  addressLine: z.string().trim().max(255).nullish(),
-  city: z.string().trim().max(120).nullish(),
-  country: z.string().trim().length(2).nullish(),
-  currency: z.string().trim().length(3).nullish(),
-  timezone: z.string().trim().max(64).nullish(),
-  logoUrl: z.string().trim().max(512).nullish(),
-  isActive: z.boolean().optional(),
-});
+/**
+ * URG-016/017/018/021 — membership, not just shape.
+ *
+ * The previous rules accepted any 2- or 3-character string, so "ZZ" and "XYZ"
+ * stored cleanly and only failed later at the point a currency was formatted
+ * or a shift was resolved against a zone. A select on the client is a
+ * convenience; this endpoint is reachable directly, so the catalogue is
+ * enforced here.
+ *
+ * Each refusal names its own field, so the form can mark the right control
+ * rather than showing one generic "invalid request".
+ */
+const businessFields = z
+  .object({
+    name: z.string().trim().min(1).max(160),
+    kind: z
+      .string()
+      .trim()
+      .max(60)
+      .refine((value) => isBusinessType(value), 'Choose a business type from the list')
+      .nullish(),
+    /** Required when `kind` is OTHER — see the superRefine below. */
+    kindNote: z.string().trim().max(200).nullish(),
+    legalName: z.string().trim().max(200).nullish(),
+    taxId: z.string().trim().max(60).nullish(),
+    email: z.string().trim().email().max(255).nullish(),
+    phone: z.string().trim().max(40).nullish(),
+    addressLine: z.string().trim().max(255).nullish(),
+    city: z.string().trim().max(120).nullish(),
+    country: z
+      .string()
+      .trim()
+      .length(2)
+      .refine(isCanonicalCountry, 'Choose a country from the list')
+      .nullish(),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .refine(isCanonicalCurrency, 'Choose a currency from the list')
+      .nullish(),
+    timezone: z
+      .string()
+      .trim()
+      .max(64)
+      .refine(isCanonicalTimezone, 'Choose a time zone from the list')
+      .nullish(),
+    logoUrl: z.string().trim().max(512).nullish(),
+    isActive: z.boolean().optional(),
+  });
+
+/**
+ * Cross-field rules, shared by the create and update schemas.
+ *
+ * Extracted rather than chained, because `.superRefine()` produces a
+ * `ZodEffects` and `.partial()` refuses to operate on one — so the PATCH path
+ * cannot simply narrow the POST schema. Writing the rules twice instead would
+ * be the URG-009/010 mistake again: a guard that exists on one caller and not
+ * the other is a way AROUND the rule, not a smaller version of it.
+ */
+function refineBusiness(
+  value: {
+    taxId?: string | null;
+    country?: string | null;
+    kind?: string | null;
+    kindNote?: string | null;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  // URG-023 — a tax id's rule depends on `country`, a SIBLING field, so it
+  // cannot live in a per-field `.refine` (which sees only its own value).
+  // An unknown jurisdiction accepts anything: refusing a legitimate foreign
+  // identifier would block an owner from saving their own business, and this
+  // value is printed on an invoice rather than used to compute anything.
+  //
+  // On a PATCH that omits `country`, this sees `undefined` and accepts. The
+  // stored country is applied in `updateBusiness`, which is the only place
+  // that knows it.
+  const tax = checkTaxId(value.taxId, value.country);
+  if (!tax.ok) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['taxId'],
+      message: tax.hint ?? 'Check this tax registration number',
+    });
+  }
+
+  // Same contract as the refund/cancellation reasons: OTHER on its own
+  // records that the catalogue was insufficient and nothing more, so the
+  // note is the entire point of the escape hatch.
+  const note = value.kindNote?.trim();
+  if (value.kind === 'OTHER' && !note) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['kindNote'],
+      message: 'Describe the business type',
+    });
+  }
+  if (value.kind && value.kind !== 'OTHER' && note) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['kindNote'],
+      message: 'A type note only applies to "Other"',
+    });
+  }
+}
+
+const businessSchema = businessFields.superRefine(refineBusiness);
+
+/** Every field optional, with the SAME cross-field rules as a create. */
+const businessPatchSchema = businessFields.partial().superRefine(refineBusiness);
 
 /** The fields a branch write accepts, on top of `detailSchema`. */
 const branchCreateSchema = detailSchema.extend({
@@ -242,7 +345,7 @@ branchesRouter.patch(
   withBranchContext,
   requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
   async (req, res) => {
-    const parsed = businessSchema.partial().safeParse(req.body);
+    const parsed = businessPatchSchema.safeParse(req.body);
 
     if (!parsed.success) {
       throw AppError.badRequest('Invalid business details', parsed.error.flatten());

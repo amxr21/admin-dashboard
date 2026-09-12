@@ -44,6 +44,7 @@ import { canAccessArea, type StaffRole } from '@/config/areas';
 import { useAuth } from '@/hooks/useAuth';
 import { useUrlState } from '@/hooks/useUrlState';
 import { useTableDensity } from '@/hooks/useTableDensity';
+import { useResourceFieldLabel } from '@/hooks/useResourceFieldLabel';
 import { useColumnVisibility } from '@/hooks/useColumnVisibility';
 import { gsap } from '@/lib/gsap';
 import { DURATION, EASE, DISTANCE, STAGGER_TOTAL_MAX } from '@/lib/motion-tokens';
@@ -94,6 +95,7 @@ interface ResourceTableProps {
 
 export function ResourceTable({ schema }: ResourceTableProps) {
   const t = useTranslations('resource');
+  const fieldLabel = useResourceFieldLabel(schema.resource);
   const tAudit = useTranslations('audit');
   const tTable = useTranslations('table');
   const translateError = useTranslatedApiError();
@@ -625,7 +627,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
 
   const allDataColumns: Column<ResourceRow>[] = listFields(schema).map((field) => ({
     id: field.name,
-    header: field.label,
+    header: fieldLabel(field),
     // Numeric values are end-aligned so digits line up column-wise.
     align: field.type === 'money' || field.type === 'number' ? 'end' : 'start',
     cell: (row) => (
@@ -833,7 +835,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
                       // description match returns nothing.
                       placeholder={t('search.placeholder', {
                         fields: searchableFields(schema)
-                          .map((field) => field.label)
+                          .map(fieldLabel)
                           .join(', '),
                       })}
                       className="ps-9"
@@ -873,7 +875,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
 
           {enumFilters.map((field) => (
             <div key={field.name} className="w-44 space-y-2">
-              <Label htmlFor={`filter-${field.name}`}>{field.label}</Label>
+              <Label htmlFor={`filter-${field.name}`}>{fieldLabel(field)}</Label>
               <Select
                 value={filters[field.name] ?? ALL}
                 onValueChange={(value) => {
@@ -902,7 +904,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
 
           {booleanFilters.map((field) => (
             <div key={field.name} className="w-44 space-y-2">
-              <Label htmlFor={`filter-${field.name}`}>{field.label}</Label>
+              <Label htmlFor={`filter-${field.name}`}>{fieldLabel(field)}</Label>
               <Select
                 value={filters[field.name] ?? ALL}
                 onValueChange={(value) => {
@@ -926,7 +928,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
 
           {relationFilters.map((field) => (
             <div key={field.name} className="w-44 space-y-2">
-              <Label htmlFor={`filter-${field.name}`}>{field.label}</Label>
+              <Label htmlFor={`filter-${field.name}`}>{fieldLabel(field)}</Label>
               <Select
                 value={filters[field.name] ?? ALL}
                 onValueChange={(value) => {

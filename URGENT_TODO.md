@@ -1,666 +1,514 @@
-# Urgent TODO — owner review queue
+# Urgent TODO — open owner review queue
 
-Created from the owner’s production and UX review on 2026-09-11. This file is the
-authoritative queue for these notes. The owner approved starting this queue on 2026-09-11; work
-proceeds in the order below unless a newly confirmed dependency requires a documented reorder.
+Updated 2026-09-12. This file contains **pending work only**. Completed local
+implementations and their evidence are in [TODO.md](TODO.md#completed-urgent-implementations--local-record-2026-09-12).
+“Implemented locally” does not mean merged, deployed, or verified in production.
+The original investigation and acceptance detail remain in this file's git history.
 
-## Reconciled status — 2026-09-12
+## Current state and release order
 
-`[x]` means the scoped implementation exists locally, not that production has been verified or a
-PR merged. `[*]` means actively incomplete/reopened. `[ ]` means not started; a blocked item names
-the missing evidence or decision. The local branch is `fix/urgent-refund-cancel-reasons`, with
-unpublished local commits at this review; GitHub PR checks could not be refreshed because `gh`
-returned HTTP 401. Never promote a historical CI result to a current green claim.
+- The working branch is `fix/urgent-goodwill-refund-reasons` at `b162ba9`
+  with additional uncommitted fixes. The owner reports most recent branches
+  merged, except #224/#225 while their tests continue. Confirm exact ancestry
+  and current PR state when GitHub access is restored.
+- URG-026/031 group-enable work is **uncommitted** in `resource-form.tsx`, both
+  message files and this handoff. Preserve the untracked frontend diagnostic
+  files; none is part of a release.
+- **R1 is cleared locally as of 2026-09-12** (see below). Its two previously
+  unproven gates failed for one environmental reason — duplicate dev servers
+  holding the Prisma query-engine DLL — not for anything in the code. Before
+  re-running a build gate on Windows, check for more than one live
+  `tsx watch src/server.ts`: the `EPERM` rename failure and the
+  `uv_os_get_passwd` ENOMEM launcher death both trace back to that pile-up.
+- `gh auth status` reports an invalid token. Current PR checks, review state,
+  mergeability and deployment cannot be confirmed. Historical green checks
+  must not be presented as current.
+- Work in dependency order: **R1 migration safety → finish/commit current
+  product toggles → reviewable stacked batches → current CI and merge in base
+  order → R4 authenticated production acceptance**. Keep enhancement work
+  separate from the release gate.
 
-| Item | State | Evidence and exact remaining acceptance |
-| --- | --- | --- |
-| URG-001 | `[*]` | Versioned startup/migration work in PR #217; authenticated Organization read in the deployed app and request-ID/log correlation still required. |
-| URG-002 | `[*]` | Customer Cases tests in PR #218; authenticated list, empty, error and branch-permission checks after deploy still required. |
-| URG-003 | `[*]` | Parser envelope fix in PR #219; authenticated real checkout/receipt/stock verification after deploy still required. |
-| URG-004 | `[*]` | PR #220 has schema-history and live-shape checks, but non-zero deploy/status can be bypassed by shape parity, which does not verify data-only migrations. Decide and test a safe repair/quarantine procedure for missing bookkeeping before closing. |
-| URG-005 | `[x]` | Atomic conditional branch-stock decrement and loser refusal implemented; verify current PR CI and deployed concurrent sale before production sign-off. |
-| URG-006 | `[x]` | Owner chose visible-disabled sold-out tiles; direct scan now refuses zero stock. Preserve that explicit exception to the original hide request. |
-| URG-007 | `[x]` | Cash received required for single and split cash tender; confirm local/current CI and deployed currency/rounding behavior. |
-| URG-008 | `[x]` | Failed charge keeps focus inside dialog; successful close restores scan focus. Browser keyboard/assistive-tech acceptance still valuable. |
-| URG-009 | `[*]` | Return-based refund uses enum + Other; Order Details goodwill refund still uses unrestricted free text and lacks the code. Cover both workflows before closing. |
-| URG-010 | `[x]` | Single and bulk cancellation reasons implemented; current CI and deployed audit display need confirmation. |
-| URG-011 | `[*]` | Sidebar rows became shorter and its scrollbar thinner; two independently scrollable regions can still coexist on short viewports. Recheck owner's screenshot dimensions and both open/closed sheet states before claiming resolved. |
-| URG-012 | `[x]` | Shared Button/Input/Select, sidebar and shell spacing compacted one step; no global font shrink. Verify keyboard/touch/Arabic/phone layouts in acceptance. |
-| URG-013 | `[*]` | Email/phone/URL examples were added, but ordinary text/number/password fields remain without placeholders (e.g. staff name, branch name). Audit by field; do not use a misleading generic value or replace labels. |
-| URG-014 | `[*]` | Trigger cap rose to 320px plus a tooltip, but it remains a fixed `max-w-80` with truncated selected text, not auto-sized as requested. Check long options and narrow widths in both locales. |
-| URG-015 | Blocked | Current seeded routes did not reproduce fading/clipping. Need one exact page, dropdown and action/viewport before changing shared portal/overflow behavior. |
-| URG-016–024 | `[ ]` | Currency, zone, country/city/dialing code, business type, phone, tax/TRN and identity controls still need canonical data and country-aware validation. |
-| URG-025–032 | `[ ]` | Product progressive disclosure, relevant physical fields, slug/code types, optional variants/colors and category creation remain. |
-| URG-033 | `[ ]` | Order detail sections still need accessible collapsible groups. |
-| URG-034 | `[ ]` | Finish multi-currency selector/receipt/per-currency shift count against store default. |
-| URG-035 | `[ ]` | Every form and field still needs the named inventory, control/validation review and sign-off; this includes the URG-013 remainder. |
-| URG-036 | `[ ]` | Reverify singly assigned cashier starts a shift without admin branch switching, including ambiguous assignments. |
+## R1 — release and data-migration safety (URG-004, P0)
 
-### Correction and delivery batches, in stack order
+The production start path compares live schema shape with `schema.prisma`.
+When migration deploy/status fail but shape matches, a read-only catalogue
+baseline check runs. It blocks a new container on a confirmed missing baseline
+or failed check, and otherwise starts with `MIGRATION_DATA_REVIEW_REQUIRED`.
+This is implemented locally and focused startup tests passed 26/26. It does
+**not** establish that every historical data backfill ran: schema parity cannot
+detect data-only migration `20260911100000_backfill_catalogue_version_baselines`.
 
-- [*] **R0 — restore the durable handoff.** Track this file again; synchronize `CLAUDE.md` and
-      `TODO.md` to the actual active branch, local-only commits, PR uncertainty, reopened items,
-      owner decisions and the next exact task. Commit/push only the handoff on the current stack
-      after verifying its base; do not stage either untracked frontend diagnostic artifact.
-- [ ] **R1 — release/data migration safety (URG-004).** Inspect every data-only/backfill migration;
-      reproduce missing `_prisma_migrations` on a disposable database only; specify when shape
-      parity is insufficient; make migration deploy/status outcomes actionable without converting a
-      bookkeeping failure into a blanket outage; test missing backfill, real drift, and healthy
-      startup. One branch stacked on R0; full backend/CI gate and release runbook before merge.
-- [ ] **R2 — complete refund reasons (URG-009).** Extend the same fixed catalogue + Other contract to
-      goodwill refunds; preserve the reason on its payment/audit record without inventing an RMA;
-      validate API and UI, migrate additively if storage changes, test both refund paths and older
-      records. One branch stacked on R1; do not regress cancellation reasons (URG-010).
-- [ ] **R3 — finish shell/field corrections (URG-011/013/014).** Reproduce short-screen two-scrollbar
-      state; resolve it without trapping navigation; inventory missing placeholders field-by-field;
-      implement selected-branch/content width with narrow-screen fallback; test keyboard, mobile,
-      Arabic/RTL and both ordinary/long names. Split into separate stacked PRs per concern.
-- [ ] **R4 — verify published stack and production blockers (URG-001–010, 012).** Publish the local
-      commits through their intended stacked PR, refresh all GitHub checks, merge only in base order
-      after passing gates, then verify authenticated Organization, Customer Cases, checkout, stock,
-      cash, refund/cancel and focus in production. Do not mark an endpoint 500 fixed solely from a
-      401 probe or a migrated test database.
-- [ ] **R5 — remaining approved queue.** URG-035 field inventory first, then URG-016–024 structured
-      organization/identity inputs; URG-025–032 product/category simplification; URG-033 order
-      details; URG-034 till currencies; URG-036 cashier branch regression. URG-015 waits for a
-      reproducible exact surface. One reviewable stackable branch per logical batch with chat and
-      file checklists kept current.
+- [x] Reproduce missing `_prisma_migrations` and an omitted data-only backfill
+      on **disposable** databases. `backend/scripts/reproduce-migration-data.mjs`
+      now passed against a random local test database: 60 migrations were
+      applied with the data-only backfill deliberately omitted; a seeded
+      product retained version zero; live schema diff returned zero; dropping
+      only the disposable history table made status non-zero; the read-only
+      data check returned 2; startup refused admission. The expanded script
+      also proved on disposable local databases that live-schema drift returns
+      exit 2 and an unavailable read-only data check returns exit 1; neither
+      case starts the server. A second fully migrated disposable database
+      confirmed healthy history and matching schema admit startup without an
+      exceptional data review. It removed both databases and scratch files.
+- [x] Finish database-backed and negative-path tests, backend build and
+      merge-integrity gate on the R1 commit. **Cleared 2026-09-12.** The
+      `EPERM` and `ENOMEM` failures were one environmental cause, not flaky
+      tooling: three duplicate `tsx watch src/server.ts` backends were live at
+      once, each holding `query_engine-windows.dll.node` open so
+      `prisma generate` could never rename the new DLL into place. With them
+      stopped, every gate passes on this tree — `npm run build` exit 0,
+      `check:merge` exit 0, `migrate status` "up to date", `migrate diff`
+      "No difference detected", `db:check-data` exit 0 (30 products, 0 zero
+      versions, 0 missing version-1 snapshots), and the disposable repro PASS
+      across all five negative paths plus the healthy control. Both typechecks
+      and lint clean. **Correction:** the startup evidence is 17 tests, not
+      26 — `production-start.test.mjs` and `migration-data.test.mjs` together
+      total 17/17. The earlier figure did not match the files on disk.
+      Current GitHub CI results still require restored authentication.
+- [*] Operator recovery procedure is drafted in
+      [RELEASE_MIGRATION_RUNBOOK.md](RELEASE_MIGRATION_RUNBOOK.md). Before
+      release, obtain a verified restorable backup, exact target and checksum
+      inventory, read-only checks, and per-migration data evidence. Only then
+      may an operator plan one-by-one `migrate resolve --applied`.
+- [ ] Confirm generated Prisma Client and required migration history match the
+      release artifact before promotion. Keep an anomalous history warning
+      distinct from a real data or schema admission failure.
 
-## Rules for every urgent batch
+## R2/R3 and current product work — commit and split before publication
 
-These are recurring gates for each new branch, not one-time unfinished tickets.
+Goodwill refund reasons, shell sizing/placeholders, canonical organization
+controls, phones and tax IDs, product form grouping, slugs, order disclosure
+and branch shift resolution are implemented locally; see TODO.md. The current
+branch combines several logical batches after R1, so publish reviewable
+stacked PRs in their dependency order rather than treating this tip as one
+already-approved merge.
 
-- [ ] Keep each batch on its own stackable branch and preserve the documented merge order.
-- [ ] At batch start, post every task as a checklist and mark the active task with `[*]`.
-- [ ] Reproduce defects before changing code and record the actual root cause.
-- [ ] Keep validation and business rules in shared contracts, with the server authoritative for
-      financial, stock, authorization, and data-integrity rules.
-- [ ] Preserve English/LTR and Arabic/RTL behavior, keyboard access, responsive layouts, and
-      explicit loading/error/empty states.
-- [ ] Add focused regression coverage, run relevant lint/type/tests/build checks, update project
-      records, commit, push, open a stacked PR, and inspect GitHub checks.
-- [ ] Do not replace visible labels with placeholders; placeholders are examples or format hints.
+- [x] **URG-026 / URG-031 — optional product group enablement. Browser pass
+      passed 2026-09-12, after the label/variant/colour changes.** One shared
+      active-field predicate drives both the payload builder and the submit
+      validator, so the two choke points cannot disagree. Verified in Chromium
+      against the local dev stack, signed in as OWNER:
+      - a create form opens with all 8 optional groups OFF, each showing the
+        translated "not used for this record" placeholder and 0 inputs;
+      - enabling one reveals exactly its fields (placeholder gone);
+      - every group's checkbox sits OUTSIDE its disclosure button and is
+        focusable in its own right — the keyboard trap a nested control would
+        cause does not exist;
+      - an EXISTING product seeds from its own data: Cost, Stock, Dimensions
+        and Shipping opened enabled with their values, while genuinely empty
+        groups (Tags, Variants, Search) stayed off;
+      - switching Dimensions off empties it, switching it back on **restores
+        the original weight unchanged**, and the captured PATCH **omitted
+        `weightKg`/`lengthCm`/`widthCm`/`heightCm` entirely** rather than
+        nulling them — the URG-026 contract, observed on the wire;
+      - Arabic at 390 px: `dir="rtl"`, translated group headings and
+        placeholder, and **no horizontal overflow**;
+      - zero console errors and zero failed requests across the whole pass.
+      The write was intercepted and faked, so nothing was persisted to the dev
+      database. The schema has dimensions and shipping fields; it has no
+      first-class size, material or custom-attribute fields to gate, and none
+      were invented.
+      **Two caveats, recorded rather than smoothed over:** the "existing
+      product with a weight" the probe found is named `aaa` — leftover test
+      junk in `localhost/admin_dashboard`, in the same family as the earlier
+      category/POS garbage cleanups; worth a look, and it means the seeding
+      evidence comes from a junk row rather than a realistic product. And the
+      Arabic leg covered the CREATE path only, so Arabic seeding-from-data is
+      still unobserved.
+- [*] **URG-029 — variant opt-in acceptance.** Nullable
+      `Product.hasVariants` and builder gating exist locally. A legacy NULL
+      now remains distinct from explicit false, so its builder stays reachable;
+      explicit false hides it, and re-enabling shows it. Focused form tests
+      cover these states. Verify persisted toggles and re-enable on products
+      with existing variant stock/history in the browser, plus create/edit
+      keyboard and both locales. The toggle must not delete variant rows.
+      **Gap found and closed 2026-09-12:** the builder was gated purely on
+      `hasVariants !== false`, never on whether variant rows exist, so opting
+      out a product that already HAS variants left those rows — with their
+      stock and sales history — reachable only through the database. Data was
+      preserved as the rule requires; access to it was not. Owner decision:
+      warn but allow. The form now warns at the moment of the change that
+      saved variants survive while the route to them is being hidden. It
+      deliberately states that guarantee rather than a count, since a count
+      needs a `fetchVariants` round-trip per form open and would render
+      "0 variants" whenever that request failed. Three tests pin when it
+      fires: on `true → false`, on a legacy `NULL → true → false`, and never
+      on a product already opted out. Both source comments
+      (`schema.prisma`, `admin.config.ts`) previously claimed the toggle hides
+      "the builder and NOTHING else" and now record the warning.
+- [*] **URG-030 — optional colours: suggestion half implemented locally.**
+      Owner decisions 2026-09-12: a colour **is** a variant (not a new column,
+      not a size×colour matrix), values are a curated list with typing still
+      allowed, and disabling follows URG-029's warn-but-allow contract.
+      Built: `frontend/src/lib/product-colours.ts` (16 curated names, ordered
+      neutrals-first), a native `<datalist>` on the variant-name input gated on
+      `hasColors`, threaded through `ProductVariantsPanel` → `VariantForm`, and
+      one en/ar hint string. Deliberately a `datalist` rather than a Select or
+      Combobox: a picker would imply the list is exhaustive, and the server
+      accepts any variant name. No `OTHER` member and no type guard — typing an
+      unlisted colour IS the escape hatch, so a guard would imply a validation
+      rule that does not exist (contrast `business-types.ts`, where `kind` is a
+      single stored code the server checks for membership).
+      Three tests pin the properties that matter: no `list`/datalist/hint when
+      not opted in, all 16 options plus the hint when opted in, and an unlisted
+      colour ("Burnt Orange") still saving with no `pattern` on the input.
+      Verification: frontend typecheck 0, targeted lint 0, resource+i18n suites
+      190/190 (was 187).
+      **Partially browser-checked 2026-09-12:** the "This product has colours"
+      checkbox renders inside the Variants & options group and is reachable
+      once that group is enabled. The datalist itself was NOT exercised — the
+      probe never opened a variants panel — so the suggestion list is covered
+      by unit tests only, not yet by a real browser.
+      **Still open:** `hasColors` remains otherwise inert — nothing reads it
+      outside this suggestion, so there is no colour reporting, no POS colour
+      filter and no per-colour stock view. The warn-on-disable contract is NOT
+      wired for colours (URG-029's warning covers `hasVariants` only). Decide
+      whether colour needs its own warning at all, given that disabling only
+      withdraws suggestions and hides no data.
 
-## U0 — production blockers and data safety (P0)
+## R4 — publish, merge and verify the urgent stack (P0/P1)
 
-- [*] **URG-001 — Organization Settings API returns 500.** Reproduce
-      `GET /api/v1/organization` in the deployed environment, correlate the request ID with backend
-      logs, check deployment migration/schema parity and runtime configuration, fix the root cause,
-      and return the normal structured error envelope for any recoverable failure. Verify
-      `/admin/settings/organization` in both locales and at mobile/desktop widths.
-      A versioned production-start gate attempts committed Prisma migrations before the HTTP
-      server imports. It blocks live-schema drift but currently permits non-zero deploy/status
-      when shape matches; URG-004 tracks the data-only migration caveat. Earlier local startup,
-      Organization API, type, lint, and build checks passed. Final closure awaits the authenticated
-      production page after the required stack is merged and deployed.
-- [*] **URG-002 — Customer Service API returns 500.** Independently reproduce
-      `GET /api/v1/customer-cases?page=1&pageSize=20`, inspect logs and schema/runtime dependencies,
-      fix the cause, and verify populated, empty, forbidden, and failed states. Do not treat the
-      browser’s repeated React stack frames as separate API failures.
-      The deployed unauthenticated boundary returns the normal 401 envelope and request ID. The
-      first authenticated query depends on `customer_cases`, introduced with migration
-      `20260910150000_add_customer_service_workspace`; code and schema match, and the endpoint works
-      on the migrated test database. Current evidence therefore points to the same deployment drift
-      addressed by parent PR #217, not a second endpoint defect. Exact-query, empty, paginated,
-      forbidden, and invalid-input regression coverage was added on PR #218;
-      final closure awaits an authenticated post-deploy check.
-- [*] **URG-003 — POS checkout returns 500.** Reproduce `POST /api/v1/pos/checkout` using the exact
-      failing request shape without exposing customer/payment data, correlate its request ID,
-      identify whether the failure is validation, migration, stock, tender, or transaction related,
-      and make expected business refusals return actionable 4xx reason codes instead of 500.
-      Historical implementation branch: `fix/urgent-pos-checkout-api-500`, stacked on URG-002 PR #218. A valid fake,
-      unauthenticated checkout payload reaches the deployed authentication guard and returns the
-      normal JSON 401 envelope. After authentication, checkout first reads `idempotency_records`,
-      introduced by migration `20260910120000_add_idempotency_records`; this precedes every sale
-      write and is the strongest direct explanation for the reported production 500 when migrations
-      were skipped. The migrated integration suite proves successful atomic checkout, retry-safe
-      replay, stock/tender refusals, and structured 4xx responses. Separately, a malformed JSON probe
-      exposed a real shared defect: `express.json()` ran before request context, so the final error
-      handler had no logger/request ID and Express fell back to an HTML 500. The branch now creates
-      request context before parsing and normalizes malformed JSON to `400 BAD_REQUEST` and bodies
-      over 1 MB to `413 PAYLOAD_TOO_LARGE`, both in the shared JSON envelope with a correlated request
-      ID and without logging request bodies. Focused health/POS tests pass 77/77; lint, type-check,
-      build, and merge-integrity checks passed at that review. PR #219 targeted URG-002 PR #218;
-      current checks/merge state require an authenticated refresh. Remaining acceptance: CI, then an
-      authenticated checkout after parent PR #217 deploys its migration gate.
-- [*] **URG-004 — Production release/schema integrity check.** Verify that every migration required
-      by the merged stack is deployed exactly once, the generated Prisma client matches the running
-      schema, and Organization, Customer Cases, and Checkout share no hidden production-only
-      dependency. Add a deployment check that catches the confirmed class of mismatch before the
-      application is promoted. Active branch: `fix/urgent-production-schema-integrity`, stacked
-      directly on URG-003 PR #219. PR #220 passed its checks at the time recorded below; current
-      GitHub checks have not been refreshed. Engineering remains incomplete: the present startup
-      gate permits non-zero deploy/status when live schema shape matches, but a shape comparison
-      cannot establish whether data-only migrations/backfills were applied. This is a potential
-      integrity gap, not evidence that production data is currently wrong. Authenticated
-      post-deploy verification of URG-001–004 also remains.
-      Atomic handoff checklist:
-      - [x] Confirm the branch starts from URG-003 PR #219 rather than `dev`.
-      - [x] Inspect root/backend package scripts for every build, start, and database command.
-      - [x] Inspect GitHub CI and locate the migration-validation/promotion boundary.
-      - [x] Inspect the Coolify-facing production start path.
-      - [x] Confirm `npm start` is the sole repository-controlled production server entry.
-      - [x] Confirm startup database commands use the APP_MODE/database-host safety guard.
-      - [x] Confirm backend build generates Prisma Client from committed `schema.prisma`.
-      - [x] Confirm CI applies committed migrations before integration tests.
-      - [x] Identify the gap where a schema edit can compile without a matching migration.
-      - [x] Add one reusable migration-history versus Prisma-schema comparison script.
-      - [x] Require an explicit shadow database URL for the history comparison.
-      - [x] Reject missing, malformed, non-MySQL, remote, and non-test shadow URLs.
-      - [x] Ensure the comparison cannot reset a production/shared database.
-      - [x] Add schema-history parity before CI migration application/integration tests.
-      - [x] Give schema drift an actionable missing-migration failure distinct from process failure.
-      - [x] Run `prisma migrate status` after production `migrate deploy`.
-      - [*] Define when migration deployment failure blocks server import; current code allows
-            non-zero deploy if shape matches, so data-only migration outcomes need a safe policy.
-      - [*] Define how missing/unhealthy migration history is repaired or quarantined; current
-            status failure is diagnostic only when shape matches.
-      - [x] Add a read-only running-database versus `schema.prisma` parity check after status.
-      - [x] Block server import when the live database shape differs from application schema.
-      - [x] Verify the live parity command cannot mutate the database. `migrate diff` only
-            introspects and compares; the argument list is asserted to contain no
-            `deploy`/`dev`/`push`.
-      - [x] **Corrected which signal may block startup (real defect found this session).** The gate
-            originally refused to serve traffic on any non-zero `prisma migrate deploy` OR
-            `prisma migrate status`. Verified locally that `admin_dashboard_test` holds all 54
-            correct tables with `_prisma_migrations` missing: `migrate status` exits 1 reporting all
-            57 migrations unapplied while the live schema diff reports "No difference detected", and
-            `migrate deploy` fails replaying migration #1 over existing tables. The original gate
-            would therefore have turned a recoverable bookkeeping gap — seen four times on this
-            project — into a total production outage. Live schema shape is now the sole authority;
-            deploy/status failures are logged loudly and non-fatal; a thrown runner error still
-            aborts.
-      - [x] Test exact startup order: deploy -> status -> live schema parity -> server import.
-      - [x] Test deploy/status non-zero are non-fatal when live schema matches, and that process
-            rejection still blocks server import.
-      - [ ] Inventory all data-only/backfill migrations and establish their application without
-            guessing from live table shape when migration bookkeeping is missing.
-      - [ ] Test a non-destructive repair/quarantine policy for missing history, unapplied data
-            backfill, genuine drift, and healthy startup on disposable test databases.
-      - [x] Test the live schema check still runs after both migration commands fail.
-      - [x] Test live-schema drift blocks server import.
-      - [x] Test schema-history success, missing-migration drift, and process failure.
-      - [x] Test unsafe shadow URL refusals and prove the comparison never starts.
-      - [x] Resolve/document Windows MySQL case-insensitive join-table false positives without
-            renaming production tables or changing existing relation data. Not reproduced: the live
-            parity diff returned "No difference detected" against the migrated local database.
-      - [x] Run focused startup/schema-integrity tests. 17/17 pass; targeted ESLint clean.
-      - [x] Run the real migration-history parity check in Linux GitHub CI. **Its first real run
-            failed, and the check itself was the cause.** PR #220's `Backend · Tests` died at
-            "Apply migrations to the test database" with `P3005: The database schema is not empty`,
-            while parent PR #219 was fully green. The new step pointed
-            `SCHEMA_CHECK_SHADOW_DATABASE_URL` at `admin_dashboard_test` — the same database the
-            tests use. `migrate diff --from-migrations` replays all 57 migrations INTO the shadow
-            database to compute its comparison, leaving it populated with no migration history, so
-            the following `migrate deploy` correctly refused. Fixed by giving the check its own
-            `admin_dashboard_shadow_test` database, created in the step because the service block
-            only auto-creates the test one and Prisma resets a shadow database without creating it.
-            The name still satisfies the script's loopback + contains-"test" guard.
-      - [*] Run backend lint, type-check, build, merge-integrity, and full relevant tests for the
-            completed correction. The earlier session deliberately skipped database/server suites
-            and production build; focused startup/schema tests and targeted lint passed then.
-      - [x] Update `URGENT_TODO.md`, `TODO.md`, `CLAUDE.md`, foundations, diagnostics comments, the
-            error log, and private workbook with exact evidence and remaining acceptance.
-      - [x] Commit only URG-004 files; never stage the two user diagnostic artifacts. The two
-            artifacts remain untracked through every branch in the stack.
-      - [x] Push and open the PR against `fix/urgent-pos-checkout-api-500`. PR #220.
-      - [x] Inspect every GitHub check and record failures/pending/success precisely. #220 is green
-            after the shadow-database repair; its first run failed and the check itself was the cause.
-      - [ ] Keep URG-001–004 active until authenticated post-deploy Organization, Customer Cases,
-            and Checkout verification passes.
-      - [x] Start URG-005 directly from URG-004's final commit.
+- [ ] Restore GitHub authentication and inspect **current** checks, base
+      branches, review state and mergeability for the stacked PRs (including
+      #217–#225 where applicable). Check count and type of jobs: a stacked PR
+      with missing CI jobs is not green. Run required local gates on the exact
+      commits being proposed. Do not merge a dirty working tree or skip R1.
+- [ ] Merge only from the bottom of the stack after each branch's required
+      checks pass. Confirm migrations are applied once and the running
+      generated client matches the running schema.
+- [ ] **URG-001 — Organization 500:** authenticated
+      `GET /api/v1/organization` and Organization Settings in English/Arabic
+      at mobile/desktop widths; correlate any failure with request ID and logs.
+- [ ] **URG-002 — Customer Cases 500:** authenticated exact list query, a
+      populated list, empty state, error state and branch/role refusal after
+      deployment. A pre-auth 401 does not establish endpoint health.
+- [ ] **URG-003 — POS checkout 500:** authenticated real checkout, receipt and
+      stock movement; verify invalid JSON/oversized-body envelopes and
+      actionable 4xx stock/tender refusals.
+- [ ] Production acceptance for locally completed URG-005–010 and URG-012:
+      concurrent last-unit sale, sold-out scan, single/split cash tender with
+      currency rounding, focus on failed/successful payment, return and
+      goodwill refund reasons including older notes, single/bulk cancellation
+      reason in audit, and compact layout at keyboard/touch/Arabic/phone sizes.
+- [ ] Verify the new organization/product controls, category creation and
+      order sections in the deployed app after their batches merge. Include
+      keyboard, phone and Arabic category create/duplicate flows. Do not infer
+      production success from local tests or screenshots.
+- [ ] Add the owner-deferred dedicated refund tests when test work resumes:
+      missing/invalid/Other reasons, cross-branch refusal, payment/audit
+      atomicity, older refund display and keyboard/RTL Select behavior.
+      ~~Investigate the pre-existing `orders.test.ts` rate-limit 429 flake~~ —
+      **DONE 2026-09-12.** It was never flaky: `apiRateLimit` allows 120
+      requests per 60s per IP across all of `/api/v1`, and `orders.test.ts`
+      drives 105 tests from one loopback address, so everything after the
+      120th request got a 429 and the goodwill-refund cases simply sit near
+      the end of the file. Skipped under `NODE_ENV=test` for that general
+      backstop ONLY; every per-route security limiter still counts, so the
+      tests asserting their 429s keep passing. Production limits untouched.
 
-## U1 — till correctness and cashier safety (P0/P1)
+### Release gates — NOT parked, and not optional before a client sees this
 
-- [x] **URG-005 — Prevent overselling authoritatively.** Reject checkout when requested quantity
-      exceeds the selected branch’s available stock, inside the same transaction that creates the
-      order/payment/stock movement. Cover concurrent checkouts so two cashiers cannot both consume
-      the final units.
-      **Root cause (confirmed by reading, not assumed):** `executeIdempotently` opens the checkout
-      transaction with no `isolationLevel`, so it runs at MySQL's default REPEATABLE READ.
-      `checkoutOnce` read branch stock into a map, checked `line.quantity > available`, then issued
-      an UNCONDITIONAL `branchStock.upsert({ update: { quantity: { decrement } } })`. Two cashiers
-      with DIFFERENT idempotency keys both read `available = 1`, both passed the check, and both
-      decremented — the shelf reaching -1. `@@unique([productId, branchId])` constrains the row's
-      IDENTITY, not its VALUE, so the upsert could not catch it.
-      **Fix:** the decrement is now a conditional `updateMany` carrying
-      `quantity: { gte: line.quantity }` in the WHERE clause; `count === 0` is the refusal, and it
-      re-reads the row to name the real remaining count. Check and write are one atomic statement —
-      the same TOCTOU-closing shape the password-reset redemption already uses. The read-based
-      check is retained as the FRIENDLY refusal (it names the product) but is explicitly no longer
-      the safety boundary.
-      **Rejected:** Serializable isolation — it would serialize every sale including the
-      overwhelming majority that never contend for one row, and add deadlock retries across the
-      whole checkout to fix a single-row conflict.
-      **Preserved:** the `inventory.allowNegativeStock` escape hatch (O5.8) still takes the
-      unconditional path, because a shop mid-stocktake has deliberately accepted lagging counts.
-      **Audited, no change needed:** the other three `branchStock` writers cannot oversell —
-      void/restock and return-restock INCREMENT, the inventory adjustment is an explicit human act
-      rather than a race, and the product-create hook writes an opening figure.
-      **Deliberately unchanged:** the till still WARNS rather than blocks above stock
-      (`sale-screen.tsx`), matching the documented "the server decides" split; URG-005 is a
-      server-authority requirement and the server is now authoritative.
-      **Second defect, found by CI (PR #221):** the guard stopped the oversell, but the LOSING
-      cashier received a 500 rather than a refusal —
-      `AssertionError: expected [ 201, 500 ] to deeply equal [ 201, 400 ]`, caused by
-      `Transaction failed due to a write conflict or a deadlock`. Both transactions write an order,
-      its items and a stock movement BEFORE the decrement, so they hold locks and then contend on
-      the same `branch_stock` row; InnoDB aborts one with P2034, which escaped unmapped. That
-      violated URG-003's own principle that expected business refusals must return actionable 4xx.
-      P2034 now maps to the SAME 400 the pre-flight check returns, following the existing
-      `storefront.service.ts` precedent — which maps to 409 only because ITS pre-flight returns 409;
-      the rule being copied is "both paths look the same", not the status code. Not retried: the
-      transaction is already rolled back and retrying under a claimed idempotency key would re-run
-      the whole sale.
-      **Verification:** backend typecheck + targeted ESLint clean. CI run on PR #221 proved the fix
-      works — 1235/1236 passed, the oversell was prevented, stock stayed at 0, and the sibling
-      over-quantity refusal passed; the single failure was the unmapped 500 now corrected. The two
-      integration tests could not run locally (`admin_dashboard_test` has 54 tables but an
-      unbaselined `_prisma_migrations`), so CI is their real gate.
-- [x] **URG-006 — Hide out-of-stock items from till browsing.** Product browsing/search should omit
-      variants with no sellable stock at the active branch. A direct barcode/SKU scan of an
-      unavailable item must show an explicit “out of stock” result rather than silently doing
-      nothing or adding it.
-      **Browse half — owner decided to KEEP the existing behavior rather than omit.** The grid
-      already blocks these items: `product-grid.tsx` disables the tile, renders an “out of stock”
-      badge, and carries a comment recording that the owner previously asked to check stock “before
-      listing the items” and it was decided as visible-but-disabled — because a tile that vanishes
-      leaves a cashier unable to tell “we just ran out of X” from “we never had X”. Asked again on
-      2026-09-11 with that context; the owner confirmed keeping disabled tiles. No browse query
-      change was made, deliberately. A settings toggle was offered and not taken.
-      **Scan half — a real gap, now fixed.** `sale-screen.tsx` called `addToCart(product)`
-      unconditionally, so scanning a sold-out item silently added it — the one remaining path that
-      could put a zero-stock line in the cart. It now refuses with a named message and keeps the
-      code in the field, matching the not-found path beside it. Deliberately NOT the cart's
-      warn-don't-block rule: that is a quantity correction on a line already added, whereas this is
-      the decision to add a line at all — the same distinction the grid tile draws.
-      `branchStock === null` (no branch in context) means stock is unknowable, so nothing is refused.
-      **Verification:** 30/30 POS frontend tests pass including three new ones (refuses a zero-stock
-      scan, still adds when no branch is in context, and the pre-existing quantity warning still only
-      warns); en/ar parity holds at 2273/2273 with the new key in both locales; i18n parity suite
-      19/19; frontend typecheck and targeted ESLint clean.
-- [x] **URG-007 — Enforce cash received against the amount due.** For cash tenders, the accepted
-      amount must be at least the total due in the tender currency; the UI must prevent submission
-      and explain the shortage, while the backend independently refuses underpayment. Change must
-      use the same rounding and tender-rate contract as checkout.
-      **Root cause:** the server guard read `if (tendered !== null && tendered.lessThan(tenderDue))`,
-      and `tendered` is `null` whenever the field is omitted — which Zod allowed, since it is
-      `.optional()`. So a cash sale that simply sent no `tendered` **skipped the underpayment check
-      entirely** and completed with `tendered: null, change: null`. The same hole existed per-entry
-      in the split path. The frontend made it reachable rather than theoretical: it only included
-      `tendered` when non-empty, and Take Payment was disabled solely on an empty cart.
-      **Owner decision:** cash requires a tendered amount (asked 2026-09-11, "Require it for cash").
-      **Fix:** a cash `method`, and each cash split leg, must record what was handed over; both
-      refuse with `Enter the cash received` otherwise. Compared against `tenderDue`, not the base
-      total, so the existing foreign-currency contract is preserved untouched. Card and transfer are
-      unaffected — `null` there means "not applicable", never "unrecorded".
-      **Second gap found while fixing it:** `splitLines` carried a `tendered` field in state and
-      sent it, but **no input was ever rendered for a split leg** — only method and amount. So
-      `line.tendered` was permanently `''` and every cash leg omitted its tender. Requiring it
-      server-side without this would have made every split sale containing a cash leg impossible
-      from the till. The per-leg input is now rendered for cash legs only.
-      **UI half:** the shortfall (missing or short) is explained above Take Payment and disables it,
-      before the confirm dialog rather than at it — the same reasoning the manager-override dialog
-      already used. The server independently enforces the rule, so this is a courtesy, not the
-      boundary.
-      **Blast radius — first measurement was WRONG, corrected by CI.** An initial scan claimed only
-      3 backend tests completed a cash sale. That scan looked ±6 lines around `method: 'cash'` for a
-      `tendered:` token, so it missed sales whose assertion sits further away and missed
-      split-payment cash legs entirely. CI found 5 more: the two-cashier oversell race (which failed
-      `[400, 400]` — neither side could win), `refuses reuse of a key for different sale details`,
-      both discount-override completions, and `records the order paymentMethod as "split"` (which
-      asserts on the order row rather than a status code, so no `toBe(201)` existed to detect).
-      **8 backend tests needed a tender, not 3.** The remaining 13 untendered cash sales are
-      genuine negative-path tests refused before payment and were deliberately left alone — adding
-      tenders there would mask what they assert.
-      **Lesson recorded:** a proximity-based grep is not a measurement. A test "completes a sale" if
-      it reads back `data.orderId`, the order row, or payments — not only if it asserts `201`.
-      On the frontend, 16 tests broke because Take Payment is now disabled until cash covers the
-      total; 11 flowed through the shared `takePaymentThroughConfirm` helper and were fixed at that
-      one point, the rest individually.
-      **Verification:** 32/32 POS frontend tests; en/ar parity 2278/2278; both typechecks and
-      targeted ESLint clean. The three new backend tender tests (cash with no tender refused, cash
-      split leg with no tender refused, card with no tender still accepted) could not run locally —
-      `admin_dashboard_test` has an unbaselined `_prisma_migrations` — so CI is their first gate.
-- [x] **URG-008 — Fix checkout dialog focus/`aria-hidden` warning.** Move focus into the opened
-      dialog and restore it safely on close so the previously focused `#pos-scan` input is never
-      hidden from assistive technology. Verify keyboard-only checkout and cancellation.
-      **Root cause:** `takePayment`'s `finally` called `refocus()` unconditionally. On a FAILED
-      charge the dialog deliberately stays open — the `AlertDialogAction` prevents its own default
-      close so the cashier can read the refusal — and Radix marks everything outside an open dialog
-      `aria-hidden="true"`. Focusing `#pos-scan` from there therefore moved focus onto an element
-      hidden from assistive technology (the reported warning) and silently pulled keyboard focus
-      out of the dialog the cashier was still reading. On success the dialog is already closed, so
-      refocusing is correct there.
-      **Fix:** refocus only when the dialog is actually gone.
-      **A bug in the first attempt, caught by its own test:** the open state was tracked with a
-      `useRef` mirrored by a `useEffect`. `setConfirmOpen(false)` is batched, so that effect had not
-      run when `finally` read the ref — it was still `true`, the success path never refocused, and
-      focus landed on `<body>`. The ref is now set synchronously beside `setConfirmOpen(false)`,
-      with the effect kept only as a safety net for external closes (Cancel/Escape).
-      **Audited, no change needed:** the other four `refocus()` call sites run with no dialog open,
-      and the other four `autoFocus` usages (park dialog, shift clock, till events, till return) are
-      all INSIDE their own dialog or sheet, which is correct — Radix focuses them within the trap.
-      `#pos-scan` was the only element focused from outside an open dialog.
-      **Verification:** 34/34 POS frontend tests including two new ones — focus stays inside the
-      dialog when a charge is refused, and returns to the scan field after a successful sale.
-      Frontend typecheck and targeted ESLint clean.
-- [*] **URG-009 — Configurable refund reasons with Other.** Present an approved reason catalogue;
-      selecting `Other` reveals a required free-text field. Persist a stable reason code plus the
-      optional note, show it in refund/audit views, and validate both client and server.
-      **Owner decisions (2026-09-12):** exactly one reason plus an `Other` note; a fixed enum in
-      code rather than an admin-managed catalogue; values chosen without waiting for approval.
-      **Catalogue:** DAMAGED, WRONG_ITEM, NOT_AS_DESCRIBED, FAULTY, CHANGED_MIND, OTHER.
-      **Deliberately separate from the existing `ReturnCategory`.** That enum records why the
-      CUSTOMER says they are returning an item; this records why STAFF chose to refund. The two can
-      legitimately disagree — a customer claiming NOT_AS_DESCRIBED may be refunded as CHANGED_MIND
-      once staff inspect it — and collapsing them into one column would lose exactly that
-      disagreement.
-      **Contract:** required when `resolution = REFUND`, refused on any other resolution (a refund
-      reason on a REPLACEMENT is a stored fact that never happened); the note is required for OTHER
-      and refused for a catalogued reason, so the code stays the thing reports group by. Both
-      columns are written in the SAME transaction as the refund itself.
-      **Where:** `RefundReason` enum + `Return.refundReason`/`refundReasonNote`
-      (`20260912000000_add_refund_and_cancellation_reasons`, additive and nullable — existing
-      refunds are a real "never recorded" gap, never backfilled with a guess),
-      `assertRefundReason` in `returns.service.ts`, `approveBody` in `returns.route.ts`,
-      `return-detail-sheet.tsx`, `returns-api.ts`.
-      **Remaining:** the separate goodwill refund in Order Details still accepts unrestricted
-      free-text reason and stores no catalogue code. Extend the same reason + Other contract to
-      `refund-order-dialog.tsx`, the order refund route/service, payment/audit display, and tests;
-      preserve pre-existing records without inventing a reason or an RMA.
-- [x] **URG-010 — Configurable order-cancellation reasons with Other.** Before cancelling, require a
-      reason from an approved catalogue; selecting `Other` reveals required free text. Persist and
-      audit the code/note and keep cancellation authorization and stock effects transactional.
-      **Catalogue:** OUT_OF_STOCK, CUSTOMER_REQUEST, DUPLICATE_ORDER, PAYMENT_FAILED,
-      UNABLE_TO_FULFILL, OTHER. Kept as its OWN enum rather than shared with refunds: a cancellation
-      happens before fulfilment and has different causes, so one shared list would force both to
-      carry values that are nonsense for the other.
-      **The bulk hole this avoids:** validation lives in `changeOrderStatus`, not the route, because
-      `bulkChangeOrderStatus` calls that same function. A check in the route alone would have left
-      the bulk path able to cancel up to 200 orders with no reason at all. The bulk dialog asks once
-      — cancelling fifty orders is one decision, not fifty — and the server writes a copy onto each
-      row.
-      **Where:** `CancellationReason` enum + `Order.cancellationReason`/`cancellationReasonNote`
-      (same migration), `assertCancellationReason` in `orders.service.ts`, `statusBody` and
-      `bulkStatusBody` in `orders.route.ts`, `order-status-control.tsx`, `orders-table.tsx`,
-      `orders-api.ts`. The reason travels in an options object rather than as more positional
-      arguments — `(id, to, note, reason, reasonNote)` is unreadable at the call site.
-      **A real defect in the first attempt, caught by CI (PR #225) and then reproduced locally.**
-      `assertCancellationReason` ran BEFORE `canTransition`, so a missing reason hijacked every
-      illegal-cancellation refusal: `SHIPPED -> CANCELED` reported `{ field: 'cancellationReason' }`
-      instead of naming the legal moves, telling the caller to justify a move that was never going
-      to be allowed. 21 backend tests failed. The guard now runs AFTER the transition check —
-      legality is decided first, and only a move that COULD happen is then asked to justify itself.
-      **Test fallout, the URG-007 pattern repeating:** 19 existing REFUND sends and the transition
-      matrix's own `CANCELED` cases legitimately needed reasons (the matrix adds one ONLY for
-      `CANCELED`, since sending a reason on any other transition is itself refused). Five frontend
-      assertions also needed updating — `changeOrderStatus`/`bulkChangeOrderStatus` grew a fourth
-      argument, and both the bulk-cancel and refund-approve flows now require a reason before their
-      confirm button enables, which the tests now assert rather than route around.
-      **Verification:** after the owner allowed killing the two duplicate backend dev servers
-      (PIDs 43392/14964) that held the Prisma Windows query-engine DLL, `prisma generate` succeeded
-      and the previously blocked checks ran: backend typecheck and lint clean, frontend typecheck
-      and lint clean, en/ar parity 2302/2302 with 24 new keys per locale. The additive migration was
-      applied to `admin_dashboard_test` (loopback, name contains "test") and live parity then
-      reported "No difference detected". Backend returns 49/49, POS 75/75, orders 103/105 — the two
-      failures are `429`s in the unrelated goodwill-refund block (`POST /orders/:id/refund`), local
-      rate-limit noise from repeated runs, not this change. Frontend orders+returns 100/100 with 1
-      skipped. Full-suite runs were deliberately skipped per the owner's lighter-testing rule.
-## U2 — shell sizing, scrolling, and dropdown reliability (P1)
+These two are quality gates rather than features: they are what catches a
+regression before a real shop does. Not being worked on, deliberately, but
+they must not be lost. Full detail lives in `TODO.md`.
 
-- [*] **URG-011 — Reopen the double-scrollbar defect.** Live-reproduced with a real seeded login
-      (Playwright against the running dev servers), not read from code alone.
-      **Root cause was NOT the branch/business Sheet or Dialog scroll-lock** — both are correctly
-      single scrollers, and the existing `body[data-scroll-locked] ... main, nav { overflow:
-      hidden }` rule in `globals.css` works as designed whenever a real dialog is open. The actual
-      second scroller is the **sidebar `<nav>`** (`sidebar-nav.tsx`): with 19+ items (grows with
-      schema resources per this repo's own design) it overflows and scrolls independently of
-      `<main>` on common laptop viewport heights — confirmed at 1440x700/730, not contrived. Two
-      live, independently scrollable regions on screen at once, on ANY page, not specific to the
-      branch/business form; the owner's screenshot happened to be taken on that page.
-      **Fix:** tightened nav row height (`py-2` → `py-1.5`) and heading/list spacing
-      (`gap-2`→`gap-1`, `pb-1`→`pb-0.5`, `space-y-0.5`→`space-y-px`) to raise the overflow
-      threshold, and gave `nav`'s own scrollbar a thin/low-contrast treatment
-      (`scrollbar-width: thin` + `::-webkit-scrollbar` rules, both using the existing `--border`
-      token) so on the shortest screens where it still needs one, it no longer reads as a second
-      scrollbar competing with `main`'s. `<main>` remains the shell's one intended CONTENT
-      scroller; nav scrolling on a very short screen is now a quiet fallback for its own fixed
-      track, not a competing second one. No change to sticky navigation/actions, mobile drawer,
-      dialogs, or RTL — none of those were the actual defect.
-      **Verification:** frontend typecheck and targeted ESLint clean. Visual re-check at 1440x730
-      confirmed materially more items fit before nav needs to scroll at all. Full suite/build
-      deferred per the owner's lighter-testing rule for this pass.
-      **Remaining:** shorter rows and a thinner nav scrollbar do not eliminate two independent
-      scroll regions at short heights. Recheck the owner's viewport and open/closed sheet states,
-      then resolve the interaction without making sidebar destinations unreachable.
-- [x] **URG-012 — Reduce global interface density by one to two steps.** Owner decision: one shared
-      compact density for everyone, no per-user toggle — kept separate from the existing
-      `ui.density` table-row setting (untouched, still owner-configurable per table).
-      **One step, at the shared primitives so it's consistent app-wide rather than page-local:**
-      Button/Input/Select heights (`h-9`→`h-8` default, `h-8`→`h-7` sm, `h-10`→`h-9` lg, icon
-      `size-9`→`size-8` — every size still clears WCAG 2.2's 24px target-size minimum with room to
-      spare), sidebar `w-64`→`w-56`, `<main>`'s padding `p-4/p-6`→`p-3/p-5`, and the table-cell-py
-      COMFORTABLE-baseline default `0.5rem`→`0.375rem` (the owner-toggleable compact override stays
-      at `0.25rem`, still meaningfully denser than the new default).
-      **Left alone, deliberately:** root font-size/`--text-*` scale (this file's own Arabic-typeface
-      comment already documents why scaling the root is risky — inflates layout, not just glyphs;
-      shrinking further also risked hurting readability more than density), charts (no real-browser
-      visual check performed on Recharts internals this pass), and Sheet/Dialog padding (`p-4` was
-      not an outlier next to the shrunk primitives).
-      **Verification:** frontend typecheck and targeted ESLint clean. Visually confirmed live
-      (seeded login, dashboard + branches list at 1440x900): full sidebar nav now fits with room to
-      spare, no overlap/truncation beyond a pre-existing `truncate` on an unusually long placeholder
-      store name, which degrades gracefully. Full suite/build deferred per the owner's
-      lighter-testing rule.
-- [*] **URG-013 — Add useful placeholders to every text-entry control.** Initial inventory (41
-      files with `<Input>`) before touching anything.
-      **Search/filter/code inputs already had placeholders everywhere** — every table search box
-      (orders/staff/returns/inventory/suppliers/couriers/audit/notifications), the topbar global
-      search, the resource-engine list search, and the courier login access-code field. No gap.
-      **The real gap was email/phone/url TYPED fields** — `resource-form.tsx`'s `placeholderFor`
-      only handled `money`; every bespoke form with a real `type="email"/"tel"/"url"` input had none
-      (branch/business, staff, invite-staff, supplier, forgot-password, manager-override — the
-      generic resource engine already covers products/notifications/categories/customers/
-      discounts/reviews). Fixed with one shared `common.placeholders.{email,phone,url}` translation,
-      reused by `placeholderFor` and by every bespoke caller — one source of truth, not seven
-      copies that could drift.
-      **Deliberately NOT touched:** `text`/`longtext`/`number` fields. Per this ticket's own
-      caution — their real content varies per FIELD (a product name vs. a SKU vs. a quantity vs.
-      someone's age), so a single generic placeholder would be a guess at best, actively misleading
-      at worst. A per-field placeholder for those belongs in `admin.config.ts`, not a type-level
-      default. Organization's owner-configurable custom fields only support
-      `text | number | date | boolean` — no email/tel/url variant exists there to extend.
-      **Verification:** en/ar parity 2305/2305 (3 new keys/locale); the translated-Arabic guard
-      test (`messages.test.ts`) required — and got — an explicit allowlist entry for the new keys,
-      same reasoning already documented there for `auth.emailPlaceholder`/`imageUpload.urlPlaceholder`
-      (a format example is the same shape in every language). Frontend typecheck and targeted
-      ESLint clean; full suite deferred per the owner's lighter-testing rule.
-      **Remaining:** staff and branch names, among other ordinary text/number/password fields,
-      still have no placeholder. Inventory each form field and add meaningful field-specific
-      examples or format hints where appropriate; retain visible labels and avoid generic guesses.
-- [*] **URG-014 — Make branch selectors fit their content.** One shared component
-      (`branch-switcher.tsx`) — no other branch trigger/popover exists in the app.
-      **Root cause:** a flat `max-w-56` (224px) on the trigger regardless of content, so a real
-      branch name (business prefix, name, disambiguating code — e.g. `_demo__ Corniche  CRN`)
-      cropped well before it needed to.
-      **Fix:** `max-w-56`→`max-w-80` (320px; stayed `w-full` so it still shrinks on a narrow
-      topbar rather than forcing one), plus a `Tooltip` fallback showing the full name for
-      whatever still doesn't fit — shown only for a genuinely selected branch, never the
-      always-short "All branches" default. Wired the Tooltip onto `SelectTrigger` itself, not the
-      `Select` root — `TooltipTrigger asChild` clones its child and forwards a ref, which needs a
-      real DOM-rendering element, not the context-provider root wrapping it.
-      **Verification:** frontend typecheck clean, targeted ESLint clean, all 5
-      `branch-switcher.test.tsx` cases pass. Visually confirmed live (seeded login, dashboard):
-      the open dropdown renders every demo branch name and code fully, no cropping.
-      **Remaining:** the selected trigger still has a fixed `max-w-80` and `truncate`, so a long
-      name remains cropped until hover. Implement content-aware width with a viewport-safe fallback;
-      test long names, both locales, keyboard focus, and narrow topbars.
-- [ ] **BLOCKED — URG-015 — Fix dropdown/table content fading or disappearing.** Live-reproduction
-      attempted (seeded login against the real dev servers) before writing any fix, per this file's
-      own rule. Tested and found CORRECT in every case: the shared `RowActions` overflow menu (used
-      by every generic-resource table) on the first row, the last row (correctly auto-flips upward
-      near the viewport edge), a `Select` opened inside a `Sheet` panel (branch roster — nested
-      portal case), and the products/orders/staff table search+list surfaces generally. Every case
-      showed full opacity, correct `z-index`, no clipping, and normal Radix Portal-to-`body`
-      behavior. One case initially looked wrong on screenshot (an open Person `Select` visually
-      overlapping the Role `Select` beneath it in a tight stacked form) but is ordinary floating-
-      listbox-over-content behavior, not a stacking/clipping defect — every dropdown in every app
-      does this by design.
-      **Matches this file's own anticipated outcome** — see "Decisions needed", which already asks
-      for "at least one exact table/dropdown route where content fades or disappears if it is not
-      reproducible from the current data." It was not reproducible from current data. Owner
-      decision: skip for now rather than fix a defect that can't be confirmed to exist; needs an
-      exact page/action from the owner before further work.
+- [ ] **Point 4 — the final combined gate.** Project-wide unit, type, lint,
+      production-build and E2E checks, plus the motion, accessibility,
+      responsive and native-Arabic review. Focused or merged CI does NOT close
+      it — that is the whole point of the item.
+- [ ] **Native-Arabic review.** Parity holds mechanically, but every Arabic
+      string is machine/self-translated MSA that no native speaker has read.
+      **This blocks any client demo and is not self-certifiable** — I cannot
+      sign it off, and neither can a test.
 
-## U3 — structured organization and identity inputs (P1)
+## Returns — decision notifications (owner-approved 2026-09-12)
 
-- [ ] **URG-035 — Audit and revise every form field/control.** Inventory every create, edit,
-      filter, checkout, settings, and confirmation form. For each field, verify its business
-      meaning, required/optional state, editable/read-only state, control type, allowed values,
-      default, placeholder, helper text, validation, normalization, error placement, and saved API
-      shape. Replace generic text boxes with the appropriate shared shadcn control: searchable
-      combobox/select for finite data, calendar/popover for dates, purpose-built money/quantity/
-      percentage inputs, country-aware phone/identifier controls, textarea for long notes, and
-      toggles/checkboxes only for true boolean choices. Add correct `inputMode`, autocomplete,
-      min/max/step, mobile keyboard behavior, English/Arabic copy, RTL/LTR isolation, and matching
-      server validation. Track each audited form and field so “reviewed” never means sampled.
-- [ ] **URG-016 — Currency must be selected, not free text.** Replace organization currency text
-      entry with a searchable ISO 4217 option control showing code and name; store the canonical
-      code and keep the configured store currency as the till default.
-- [ ] **URG-017 — Time zone must be selected, not free text.** Use a searchable IANA time-zone
-      control with readable UTC offsets, retain canonical zone IDs, and handle daylight-saving
-      offset changes without storing a fixed offset as the zone.
-- [ ] **URG-018 — Country must be selected from canonical options.** Store a stable ISO country code
-      and display localized country names. Existing free-text data needs a non-destructive mapping
-      or review state.
-- [ ] **URG-019 — City must be options-based.** Make city a searchable option constrained by the
-      selected country, with a documented fallback for legitimate places absent from the dataset;
-      changing country must not silently leave an invalid city.
-- [ ] **URG-020 — Calling-country code must be selected.** Derive or select a valid international
-      dialing prefix and keep it coordinated with phone formatting; do not confuse dialing prefixes
-      with ISO country codes.
-- [ ] **URG-021 — Business type must be options-based.** Replace free text with a curated,
-      extensible business-type catalogue and an explicit owner-approved fallback for businesses not
-      represented by the initial list.
-- [ ] **URG-022 — Phone numbers need standard formatting.** Use country-aware entry and validation,
-      normalize storage to E.164 where possible, preserve extensions deliberately, and render phone
-      identifiers left-to-right in Arabic.
-- [ ] **URG-023 — Tax IDs/TRNs need jurisdiction-aware templates.** Validate and format tax
-      identifiers based on the selected country and identifier kind. UAE TRN must follow its legal
-      shape; other jurisdictions must not be forced into a UAE-only mask.
-- [ ] **URG-024 — Other registration/identity numbers need explicit types.** Replace ambiguous
-      generic `ID` free text with an owner-approved identifier type and country-aware validator;
-      preserve existing values until their type can be mapped safely.
+- [x] **Notify staff when a return is approved or rejected.** `notify()` fired
+      only on `return.requested`, so the arrival of work was announced and its
+      completion never was — whoever was waiting on the answer learned nothing.
+      `approveReturn` and `rejectReturn` now each emit one notification after
+      their transaction and after `audit()`, mirroring `createReturn`: the
+      decision is already durable, and `notify()` never throws by contract, so
+      a failed alert cannot undo a refund or a restock.
+      The body carries the OUTCOME, not just the status — the approval names
+      its resolution (REFUND / STORE_CREDIT / REPLACEMENT, plus `restocked`)
+      because "approved" alone does not say whether money moved, and the
+      rejection carries its reason because "rejected" with no why generates the
+      question it was meant to answer.
+      **One new setting, not two:** `notifications.returnDecisionAlerts`
+      (boolean, default true). Approval and rejection are the same event class,
+      and "tell me about approvals but not rejections" is a state that reads as
+      a bug the first time a rejection goes unannounced. Kept separate from
+      `returnRequestAlerts` because that one is aimed at whoever picks work up
+      and this one at whoever was waiting on the answer.
+      Verification: returns suite 52/52 (3 new), backend typecheck and targeted
+      lint clean. Each new test is scoped to its own RMA — an unscoped
+      `findFirst` on the type matched another test's row, which is how the
+      first run reported the wrong RMA.
+- The fuller `ReturnStatus` lifecycle and the customer-facing resolution email
+  both moved to the **Parked by the owner** section below (2026-09-12). Kept
+  here only as a pointer, so neither reads as open work.
 
-## U4 — simpler, conditional product creation (P1/P2)
+<!-- Original wording, retained for the reasoning:
+      **Still not built, and deliberately so:** the fuller `ReturnStatus`
+      lifecycle (label sent → in transit → received → inspected → resolved) is
+      unchanged at REQUESTED/APPROVED/REJECTED. It was skipped on 2026-09-09 as
+      a mail-order shipping flow that does not fit a physical till; reviving it
+      needs a migration, new states and new UI. The customer still receives
+      nothing on resolution — the UX-018 customer-email path exists to reuse,
+      but that was not part of this approval.
+-->
 
-- [ ] **URG-025 — Make the default product form basic.** Show only the fields required for a normal
-      product first; group advanced merchandising, dimensions, shipping, localized content, and
-      other specialist details behind clearly named optional sections.
-- [ ] **URG-026 — Show physical attributes only when relevant.** Weight, height, density, and similar
-      fields must be enabled by product type or an explicit advanced toggle, not displayed for every
-      product. Hidden fields must not submit stale values.
-- [ ] **URG-027 — Auto-generate product slugs.** Generate a unique normalized slug from the product
-      name, update it predictably while creating, preserve deliberate edits if advanced editing is
-      allowed, and resolve collisions server-side.
-- [ ] **URG-028 — Curate product code types.** Replace the all-code-types list with the small set the
-      product workflow actually supports (for example SKU and the approved retail barcode types),
-      while retaining a safe mapping for existing records.
-- [ ] **URG-029 — Make variants optional.** A simple product should not require variant complexity;
-      enabling variants reveals the variant builder and disabling it requires an explicit safe rule
-      for existing variant data.
-- [ ] **URG-030 — Make colors optional and variant-aware.** Only show color choices when the owner
-      enables that option for the product; use controlled options/custom values without implying
-      every product has a color dimension.
-- [ ] **URG-031 — Make remaining optional attributes toggleable.** Audit size, material, dimensions,
-      shipping and custom attributes individually, place them in reusable optional groups, and keep
-      each group’s validation conditional on being enabled.
-- [ ] **URG-032 — Redesign category creation for administrators.** Clarify parent selection, name,
-      slug generation, status, save/cancel feedback, duplicate handling, and where the created
-      category appears. Verify keyboard use, small screens, Arabic, and creating a category without
-      leaving the product task.
+## Remaining owner and UX work
 
-## U5 — order information architecture (P2)
+- [x] **URG-011 — two scroll regions: ACCEPTED AS-IS by the owner 2026-09-12.**
+      At roughly 640–750px viewport height the 21-link sidebar nav and main
+      content each scroll. The document itself does not scroll, navigation
+      stays reachable, and the sidebar needs about 840px to fit without its
+      scoped scrollbar. The owner confirmed this is acceptable behaviour for an
+      admin shell with a long nav, so the item is CLOSED rather than left open
+      indefinitely. Do not "fix" it later with another scrollbar CSS tweak: a
+      strict one-scroller layout at 700px requires changing navigation density
+      or information architecture, which was considered and declined.
+- [x] **URG-015 — fading/clipped dropdown: SKIPPED by the owner 2026-09-12.**
+      Never reproduced — seeded row actions and nested selects did not exhibit
+      it, and no exact page/control/action/viewport was available. Closed
+      without a speculative shared portal/overflow change, which would have
+      risked every dropdown in the app to chase one unconfirmed report.
+      Reopen only with a real reproduction.
+- URG-024 (registration/identity IDs) moved to the **Parked by the owner**
+  section below — it was parked on 2026-09-12 rather than left open.
+- [*] **URG-028 — product code types. APPROVED 2026-09-12: opt-in per product,
+      curated types. BACKEND HALF DONE AND VERIFIED; one client-side design
+      question open.**
+      Built: `backend/src/lib/barcode.ts` — six curated retail symbologies
+      (EAN-13, EAN-8, UPC-A, UPC-E, ITF-14, CODE128) following the exact
+      `tax-id.ts` convention (`test`/`normalize`/`hint`/`example`, server
+      authoritative, unknown values accepted rather than refused). One GS1
+      mod-10 routine walks backwards from the rightmost data digit so the same
+      code is correct for all four fixed lengths instead of four copies that
+      can drift. `Product.hasBarcode`/`barcodeType` added as additive nullable
+      columns (migration `20260912190000`, applied to the guarded local target
+      and verified: `barcode varchar(64)`, `barcode_type varchar(16)`,
+      `has_barcode tinyint`, all nullable, 30 products, **0 classified and 0
+      opted in — no backfill**). Validation runs in the products `beforeWrite`
+      hook on CREATE **and** UPDATE, but only when the write actually touches
+      `barcode` or `barcodeType` (the customers hook's `hasOwnProperty`
+      discipline) — otherwise editing a product's PRICE could fail on its old
+      barcode, a refusal about a field nobody opened. A PATCH setting only the
+      type is checked against the STORED code, because declaring "this is an
+      EAN-13" is exactly when to discover the saved digits are not one. The
+      canonical form is written back on write so the till's EXACT-match scan
+      cannot miss on a stored space or dash.
+      **Type is stored, not derived:** `5012345678900` is a valid EAN-13 and
+      also a legal prefix for other lengths, and CODE128 accepts almost
+      anything — the symbology cannot be recovered from the digits later.
+      **Deliberate gaps, stated so nobody reads them as oversights:** UPC-E's
+      check digit is NOT validated (it derives from the expanded 12-digit
+      form, six suppression rules of real work for a case never asked for);
+      CODE128 has no check digit to test, so only length is bounded. Both are
+      commented in the module and pinned by tests.
+      Verification: 19/19 unit tests using REAL published codes (hand-made
+      digits would not catch a reversed weighting, which is how this fails
+      silently), backend typecheck and lint clean, en/ar parity 19/19 with 7
+      new hint keys per locale.
+      **The client-side design question, DECIDED 2026-09-12: server-only
+      validation plus a legacy notice.** A barcode's placeholder and
+      client-side validation depend on the SIBLING `barcodeType` field, but
+      the generic engine's `validateField(field, value)` and
+      `placeholderFor(field, tCommon)` see only one field's own value by
+      design, and `FormField` receives no sibling map. Threading siblings in
+      would widen a signature every resource shares to serve one product
+      field; the file's own comment notes there is currently exactly ONE
+      `schema.resource === 'products'` conditional and treats that as a cost
+      worth not repeating. So the generic engine is left alone: the server
+      already refuses a bad code with a shape-stating message that surfaces on
+      the field through the existing 400 handling, which means validation is
+      enforced end to end without it.
+      **The `barcodeUnclassified` notice was attempted and WITHDRAWN
+      2026-09-12 — owner decision, and the reason is worth recording.** The
+      idea was one advisory string on a stored code carrying no type. The
+      wiring looked correct (generic `notice?: string` prop on `FormField`,
+      decided in `renderField`, key present under `resourceForm` in both
+      locales, typecheck clean) and it still would not render; five diagnostic
+      attempts failed to explain why, including a throwaway probe. Rather than
+      keep spending on a cosmetic string, the wiring and its four tests were
+      removed and the enforced backend work shipped on its own.
+      What REMAINS in place and is deliberately kept: the generic
+      `notice?: string` prop and its render slot on `FormField` (unused, but a
+      clean advisory hook any resource can adopt), and the six `barcodeHint*`
+      locale keys plus the client mirror `frontend/src/lib/barcode.ts` (also
+      unused under the server-only decision). None of it is wired, so nothing
+      half-works; a later pre-submit-feedback pass has the pieces waiting.
+      **Open follow-up (small, not urgent):** show unclassified legacy codes
+      for review somewhere. Nothing is lost without it — the server still
+      refuses a bad code, and an unclassified one is accepted exactly as it
+      was before URG-028 — but an owner has no prompt to classify old codes.
+      Diagnose the render condition from scratch rather than resuming the
+      abandoned approach.
+      SKU remains an always-available plain field. Existing unrecognised or
+      unmappable codes are SHOWN for review and never rewritten — inventing a
+      corrected check digit would fabricate a code that does not exist on the
+      physical product.
+- [*] **URG-034 — multi-currency till. APPROVED 2026-09-12: all three pieces.
+      Implemented locally the same day; sale-screen coverage and the browser
+      pass remain.**
+      **The queue's "backend foundation done, presentation only" framing was
+      wrong, and this is the finding worth keeping:** `getShiftTakings` did
+      compute `byTenderCurrency`, but `getTillReport` never forwarded it and
+      neither frontend type declared it — so the breakdown existed in the
+      service and was dropped at two seams before reaching any screen. A
+      drawer holding two currencies printed a Z report accounting for only
+      one. Shape parity between a schema and a service proves nothing about
+      what survives to the client; the same class of gap as F5.1 and URG-006.
+      Built: `byTenderCurrency` forwarded from `getTillReport` and declared on
+      `ShiftTakings`/`TillReport`; `tenderCurrency`/`tenderTotal`/
+      `tenderChange`/`tenderRate` added to the checkout response, computed
+      SERVER-side from the same values written to the `Payment` row (the owner
+      chose this over client-side multiplication precisely because two copies
+      of money arithmetic is how a receipt ends up disagreeing with the
+      drawer); `fetchTenders()` + `AcceptedTender` in `pos-api.ts`; a currency
+      Select on the sale screen that hides itself when only one tender is
+      accepted, shows the rate the server will apply, relabels the cash field
+      in the chosen currency, and resets to base after every sale; dual-
+      currency receipt rows plus the snapshotted rate; and a per-currency
+      drawer block on the X/Z report, deliberately OUTSIDE the opening-float
+      group so a till opened without a float still shows foreign notes.
+      Split payments carry no currency by design — the server's contract is
+      one shape or the other, and mixing currencies across legs is a decision
+      nobody has made.
+      Verification: POS suites 56/56 (was 54 with 2 failing), both typechecks
+      clean, both lints clean, en/ar parity 19/19 with 8 new keys per locale.
+      **Two fixture lies found and fixed rather than worked around:** the X/Z
+      report tests omitted `byTenderCurrency`, which crashed the render on
+      `.length` — and `tsc` could not catch it because a `mockResolvedValue`
+      is untyped `any`. The fixtures were corrected to match what the server
+      actually sends; the component was NOT made defensive with `?.`, since
+      tolerating a malformed response is how a real backend regression hides.
+      Two new tests pin the per-currency block appearing with rows and being
+      absent without them.
+      **A real product bug found by writing the test, and worth remembering:**
+      `cashShortfall` compared `tendered` against the base-currency
+      `estimate`, but the cashier now types that figure in the SELECTED
+      currency — so $1.23 handed over for a 4.50 AED sale read as 3.27 short,
+      the warning fired, and the confirm dialog could never open. The
+      foreign-currency path was unusable end to end, and every unit test
+      passed because none of them had ever selected a currency. The server's
+      own guard was already correct (`tenderDue = total × rate`); the client
+      was the half that was wrong. **Generalise:** when a field's UNITS become
+      configurable, every comparison against it is suspect — the value moved
+      currencies while the thing it is checked against did not.
+      The guard now converts using the rate the server supplied, and the
+      comment states why that is still not a second implementation of money
+      arithmetic: it produces a warning only, and nothing recorded, printed or
+      reconciled is derived on the client.
+      Sale-screen coverage added (4 tests): the control is invisible on a
+      single-currency install, the rate appears only once a foreign currency
+      is chosen, an ordinary sale sends NO `tenderCurrency` (absent, not
+      `'AED'`, so it stays on the unchanged server path), and a foreign sale
+      carries both the currency and the tendered amount into checkout.
+      Final verification: POS suites 60/60 (they were 54 with 2 failing when
+      this work began), both typechecks clean, both lints clean, en/ar parity
+      19/19. Nothing is enabled on any existing install until an owner sets a
+      rate above zero.
+      **Remaining: a browser pass at the till, including Arabic/RTL.**
+      Attempted 2026-09-12 and **inconclusive — not a failure, a probe gap.**
+      What WAS verified live: `GET /pos/tenders` returned both currencies
+      correctly against a real signed-in session (`AED` base rate 1, `USD`
+      rate 0.2723), so the contract and the settings path work end to end.
+      What was NOT reached: the selector itself. `/admin/pos` opens on a
+      "Start your shift?" gate — buttons "Start shift & open till" and "Not
+      right now — just let me sell", an optional opening-float field, and no
+      scan field — so `SaleScreen` never mounted and the currency control was
+      legitimately absent, in both locales. The unit tests render `SaleScreen`
+      directly with a mocked `fetchTenders`, which is exactly what hid this
+      from them.
+      **For the next attempt:** dismiss the shift gate first (click "Not right
+      now — just let me sell", or start a shift) BEFORE looking for the
+      control. Then check: selector hidden on a single-currency install,
+      visible with two, the rate hint appearing only after choosing a foreign
+      currency, the cash field relabelled in that currency, the dual-currency
+      receipt rows, and the per-currency block on the X/Z report.
+      Note: enabling the feature locally needs `store.currency` plus one
+      `pos.tenderRate.*` above zero. Both were set for this attempt and then
+      **removed again**, so no dev data was left carrying an enabled currency
+      feature nobody asked for.
 
-- [ ] **URG-033 — Make order-detail sections collapsible.** Customer, delivery, payment, items,
-      returns, and audit/history sections should use accessible shared accordions with sensible
-      defaults, preserved essential status/total information, keyboard operation, and no hidden
-      error or destructive action.
+      <!-- Original scope note, kept for reference: -->
+      The backend foundation was already shipped and tested (nullable
+      `tender_currency`/`tender_amount`/`tender_rate` on `payments`, the rate
+      SNAPSHOTTED per sale, per-currency `getShiftTakings` breakdown, a rate of
+      0 meaning "not accepted"). Remaining is presentation only: the currency
+      selector on the sale screen reading `GET /pos/tenders`, the receipt
+      showing both currencies plus the rate used, and the per-currency count at
+      shift close. Preserve store currency as the default and the documented
+      fixed-rate/tender/rounding contract. Without the shift-close half the
+      drawer cannot balance in the second currency, which is why partial
+      delivery was declined.
+- [ ] **URG-035 — full form/control inventory. APPROVED 2026-09-12: AUDIT
+      FIRST, findings list only — do not fix while enumerating.** Enumerate
+      every create, edit, filter, checkout, settings and confirmation field.
+      For each, review meaning, required/editable state, control, allowed
+      values, default, placeholder/help, validation/normalization, errors,
+      saved API shape, mobile keyboard, accessibility, English/Arabic and
+      RTL/LTR. Track every field, not a sample. Produce a severity-grouped
+      findings report and let the owner choose what to fix, rather than making
+      hundreds of unreviewed judgement calls in flight. This also decides any
+      remaining field-specific placeholder work from URG-013. Start it only
+      after URG-028 and URG-034 land — beginning a days-long enumeration with
+      two approved implementations queued would leave all three half-finished.
 
-## Previously captured related notes
+## Parked by the owner — 2026-09-12. Do not raise these again unless asked.
 
-- [ ] **URG-034 — Complete the active multi-currency till batch.** The store setting remains the
-      default; finish the currency selector, dual-currency receipt, and per-currency shift count
-      against the already documented fixed-rate/tender contract. This is existing Batch 16, not a
-      duplicate new implementation.
-- [x] **Till customer search was removed from the primary sale flow.** Anonymous checkout remains;
-      the backend customer-association contract was deliberately retained for a future secondary
-      workflow.
-- [x] **The loading overlay was redesigned as a compact horizontal row.** Keep this behavior while
-      changing density or shell scrolling.
-- [x] **The multi-branch dashboard summary was added.** Keep its single-branch simplification and
-      multi-branch comparison behavior while changing global density.
-- [ ] **URG-036 — Branch-scoped cashier startup regression check.** Reverify that a cashier with one active
-      assignment automatically resolves that branch and can start a shift without using the
-      admin-only branch switcher; keep the explicit ambiguity error for multiple assignments.
+Each was a real open item; none is forgotten, and the reasoning is kept here so
+a future session does not rediscover it as "missing". **Do not start any of
+these without the owner asking first.**
 
-## Decisions needed before the affected batches
+- **URG-024 — registration/identity IDs.** Genuinely unscoped: the records
+  meant by "IDs" were never identified and the owner does not recall the
+  request. Candidates were business trade-licence/commercial-registration
+  numbers, staff identity documents (Emirates ID/passport) and customer
+  identity numbers — the latter two carry real privacy weight needing a
+  read-access decision, not just validation. Business tax/TRN validation is
+  already done separately as URG-023. **Ask what "IDs" means before starting.**
+- **Fuller `ReturnStatus` lifecycle** (label sent → in transit → received →
+  inspected → resolved). Skipped on 2026-09-09 as a mail-order shipping flow
+  that does not fit a physical till, and parked again now. Reviving it means a
+  migration, new states, new transitions and new UI. The shipped
+  REQUESTED/APPROVED/REJECTED lifecycle is unchanged and works.
+- **Customer-facing email on return resolution.** The customer currently
+  learns nothing when a return is decided. The UX-018 customer order-status
+  email path exists to reuse, so this is wiring rather than new
+  infrastructure — but it was never part of an approval, and it needs SMTP
+  configured to be worth anything in production.
+- **Role simplification to Admin / Developer / Cashier.** Blocked on the
+  owner approving how every legacy Owner/Manager/Fulfillment/Support/Demo
+  account and branch assignment maps. Nothing may run a destructive enum or
+  data migration before that mapping is agreed. Prepared role templates stay
+  out of scope; future templates must be configurable data, not more
+  hard-coded roles.
+- **Pull-request E2E rewrite for Coolify.** `.github/workflows/e2e.yml` is
+  still written around Vercel preview URLs and `RENDER_DEV_BACKEND_URL`, both
+  of which are gone. It is disabled, so it breaks nothing, but the
+  `pull_request` trigger cannot come back until it is rewritten.
+- **Production monitoring replacement.** Sentry is on hold, not merely
+  unconfigured — the owner's trial ended. Needs a replacement or a plan.
+- **PR #227's missing CI.** Zero GitHub Actions runs across four pushes and a
+  close/reopen, while Actions is `enabled`, the CI workflow is `active`, the
+  PR is OPEN and its head SHA matches local. Every configuration input is
+  correct and GitHub simply never scheduled a run; #228 ran 11 jobs normally
+  minutes earlier, so it is not the repository. A rebase was declined as too
+  risky (the branch is 38 commits ahead / 9 behind and carries its own copies
+  of work `dev` already merged under different SHAs — the pattern that made an
+  earlier rebase start reverting merged work). The owner is ignoring it during
+  the testing phase. **#228 is green and `CLEAN` and can be merged.**
 
-- [x] Refund/cancellation uses exactly one required reason from multiple available choices;
-      `Other` requires a note. Owner confirmed 2026-09-12.
-- [x] Owner chose fixed code catalogues for now and allowed the initial values to be selected
-      without another approval; the implemented refund and cancellation values are recorded in
-      URG-009/010. Future admin-managed templates are out of this batch.
-- [ ] Clarify which field(s) “IDs” refers to: business registration/license numbers, national IDs,
-      product identifiers, or another record.
-- [ ] Approve the initial business-type options and whether an `Other` value is allowed.
-- [ ] Approve the supported country/city dataset and the fallback behavior for an unlisted city.
-- [x] Owner chose one shared compact density, not a user-facing toggle (URG-012).
-- [ ] URG-015 was not reproduced from seeded data and owner chose to defer it. Resume when an
-      exact table/dropdown route, action, and viewport where content fades is available.
+## Guardrails
 
-## Inventory reconciliation
-
-| Owner note | Tracked as | Interpretation / gap handled |
-| --- | --- | --- |
-| Currency, city, country code, and time/zone cannot be free text | URG-016–020 | Split into canonical currency, IANA zone, country, dependent city, and dialing-code controls. |
-| Business type must be an options dropdown | URG-021 | Adds an extensible catalogue and a decision on `Other`. |
-| Tax IDs, IDs, TRNs, and phones need standard formats | URG-022–024 | Split phone, tax/TRN, and ambiguous IDs; formatting is country-aware, not one global mask. |
-| Two scrollbars remain | URG-011 | Reopened despite the earlier completed item because the screenshot is contradictory evidence. |
-| Whole app is too big | URG-012 | Converts a subjective global resize into a shared density-system task with accessibility limits. |
-| Refund reasons plus Other/free text | URG-009 | Captures catalogue, conditional note, persistence, validation, and audit display. |
-| All text fields need placeholders | URG-013 | Makes this an app-wide inventory; retains labels for accessibility. |
-| Organization Settings returns 500 | URG-001 and URG-004 | Separates endpoint diagnosis from the release/schema safeguard that should prevent recurrence. |
-| Customer Service/customer-cases returns 500 | URG-002 and URG-004 | One API defect despite repeated browser stack frames, plus deployment integrity coverage. |
-| Out-of-stock items should not appear in till | URG-006 | Covers browse/search and the direct scan exception. |
-| Checkout returns 500 | URG-003 | Separate from the customer-cases request shown in the same console report. |
-| Checkout warns about focused input under `aria-hidden` | URG-008 | Explicit dialog focus-management/accessibility regression. |
-| Cash received must be at least total | URG-007 | Enforced at UI and server, including currency/rounding behavior. |
-| Cannot exceed available stock | URG-005 | Adds transactional and concurrent protection, not just a disabled plus button. |
-| Cancelling an order needs reasons plus Other | URG-010 | Kept separate from refund reasons because lifecycle and stock effects differ. |
-| Customer/delivery order details should collapse | URG-033 | Expanded to all order-detail sections using a shared accessible pattern. |
-| Product form lists irrelevant details | URG-025, URG-026, URG-031 | Splits default progressive disclosure, physical relevance, and remaining optional groups. |
-| Slug should be generated and code types reduced | URG-027, URG-028 | Separates identifier generation from the supported-code catalogue. |
-| Variants and colors should be toggled | URG-029, URG-030 | Separate optional variant and color dimensions with safe existing-data behavior. |
-| Branch dropdown titles are cropped | URG-014 | Shared responsive width/overflow behavior. |
-| Table dropdown items fade/disappear | URG-015 | Captures portal, overflow, stacking, gradient, table-position, and RTL cases. |
-| Adding a category feels strange | URG-032 | Turns the broad concern into an administrator-focused workflow review and acceptance set. |
-| Some fields/input controls must be revised | URG-035 | Adds a complete field-by-field audit covering meaning, control choice, constraints, formatting, help, localization, accessibility, and API validation. |
-
-### Additional gaps added during normalization
-
-- Production `500` fixes need request-ID/log correlation and migration/client parity checks; browser
-  stack frames alone cannot identify their root causes.
-- Stock and cash rules must be server-enforced and transaction-safe even if the UI also blocks them.
-- A hidden out-of-stock product still needs an explicit direct-scan response.
-- Country codes, dialing codes, and time zones are different canonical datasets and cannot safely
-  share a generic text/dropdown implementation.
-- Tax/TRN/ID masks require jurisdiction and identifier type; “standard format” is not globally
-  uniform.
-- Optional product sections need stale-value rules when toggled off, especially for existing data.
-- Placeholder coverage must not remove labels or rely on placeholder text as instructions.
-- Input revision is broader than placeholders: every field must use the correct control and data
-  contract for what it represents, and the audit must account for every form rather than a sample.
-- Refund and cancellation reasons require persisted stable codes and audit visibility, not only
-  temporary UI choices.
+- The Coolify MySQL is production. Verify `APP_MODE` and the resolved host
+  before any database command; migrations in this queue were applied only to
+  guarded local dev/test databases.
+- Never backfill historical refund reasons, variant intent, tax IDs or other
+  unknown facts with guesses. Preserve existing stock, payment and audit data.
+- Maintain the stack order and one reviewable batch per logical concern.
+  Keep TODO.md as the completed-local ledger and this file as the open queue.

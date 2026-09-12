@@ -122,29 +122,16 @@ export async function createReturn(input: CreateReturnInput): Promise<ReturnDeta
 }
 
 /**
- * Why a refund was GIVEN (URG-009) — mirrors the backend enum. Declared here
- * rather than imported so the client keeps no Prisma dependency.
+ * Why a refund was GIVEN (URG-009) — mirrors the backend enum through a
+ * frontend-only shared contract, with no Prisma dependency in the client.
  *
  * Distinct from the requester's own return `category`: that is why the customer
  * says they are sending it back, this is why staff chose to refund. They can
  * legitimately disagree.
  */
-export type RefundReason =
-  | 'DAMAGED'
-  | 'WRONG_ITEM'
-  | 'NOT_AS_DESCRIBED'
-  | 'FAULTY'
-  | 'CHANGED_MIND'
-  | 'OTHER';
-
-export const REFUND_REASONS: RefundReason[] = [
-  'DAMAGED',
-  'WRONG_ITEM',
-  'NOT_AS_DESCRIBED',
-  'FAULTY',
-  'CHANGED_MIND',
-  'OTHER',
-];
+export { REFUND_REASONS } from './refund-reasons';
+export type { RefundReason } from './refund-reasons';
+import type { RefundReason } from './refund-reasons';
 
 export interface ApproveReturnInput {
   resolution: Exclude<ReturnResolution, 'NONE'>;

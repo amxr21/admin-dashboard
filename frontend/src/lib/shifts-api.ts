@@ -164,8 +164,25 @@ export async function fetchShiftSummary(id: string): Promise<ShiftSummary> {
   return apiFetch<ShiftSummary>(`/shifts/${id}/summary`);
 }
 
+/**
+ * Foreign cash in the drawer, counted in its OWN units (URG-034).
+ *
+ * Never converted into the store currency: the owner's rule is that a
+ * shortfall must stay distinguishable from the rate moving during the shift,
+ * and one combined "expected" figure makes those two indistinguishable.
+ * `expected` is what should physically remain — taken minus change given
+ * back, both in this currency.
+ */
+export interface TenderCurrencyTakings {
+  currency: string;
+  expected: string;
+}
+
 export interface ShiftTakings {
   byMethod: { method: string; total: string }[];
+  /** Empty on the overwhelming majority of installs — nothing is accepted
+   *  beyond the store currency until a rate is configured above zero. */
+  byTenderCurrency: TenderCurrencyTakings[];
   /** Raw cash SALES only — card takings never were in the drawer, and this
    *  does NOT account for a cash drop or payout since (O9 Tier 4). For
    *  "what should physically be in the drawer right now", read
@@ -245,6 +262,9 @@ export async function fetchTillEvents(shiftId: string): Promise<TillEvent[]> {
 export interface TillReport {
   shift: Shift;
   byMethod: { method: string; total: string }[];
+  /** Per-currency foreign cash (URG-034) — see `TenderCurrencyTakings`. Each
+   *  currency is counted separately at close rather than converted. */
+  byTenderCurrency: TenderCurrencyTakings[];
   cash: string;
   expectedCash: string;
   noSaleCount: number;

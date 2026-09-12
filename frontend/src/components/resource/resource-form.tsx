@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
+import { Link } from '@/i18n/navigation';
 import { TriangleAlert } from 'lucide-react';
 
 import {
@@ -15,6 +16,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { CollapsibleSection } from '@/components/ui/collapsible-section';
 import { DatePicker } from '@/components/ui/date-picker';
 import { ImageUploadField } from '@/components/image-upload-field';
 import { Input } from '@/components/ui/input';
@@ -33,6 +35,7 @@ import {
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { StickyFormBar } from '@/components/ui/sticky-form-bar';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { useResourceFieldLabel } from '@/hooks/useResourceFieldLabel';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api';
@@ -112,7 +115,12 @@ interface ResourceFormProps {
  * place (`toPayload`) rather than scattered through onChange handlers.
  */
 function toFormValue(field: FieldConfig, row: ResourceRow | null): FormValue {
-  if (field.type === 'boolean') return Boolean(row?.[field.name] ?? false);
+  // Legacy products predate the opt-in flag. Keep their NULL distinct from an
+  // explicit false so the existing variants builder remains reachable until
+  // staff choose otherwise. The empty sentinel is omitted from an unchanged
+  // PATCH and converts to false only after an explicit checkbox change.
+  if (field.name === 'hasVariants' && row && row.hasVariants == null) return '';
+  if (field.type === 'boolean') return Boolean(row ? row[field.name] : (field.defaultValue ?? false));
 
   if (field.type === 'multiRelation') {
     const raw = row?.[field.name];
@@ -247,11 +255,79 @@ export function ResourceForm({
   onSaved,
 }: ResourceFormProps) {
   const t = useTranslations('resourceForm');
+  // Separate binding: `t` above is scoped to `resourceForm`, but the group
+  // headings are resource vocabulary shared with the table, so they live under
+  // `resource.fieldGroups`.
+  const tGroups = useTranslations('resource.fieldGroups');
+  const fieldLabel = useResourceFieldLabel(schema.resource);
   const translateError = useTranslatedApiError();
   const { editPanelMode } = useAppSettings();
 
   const fields = useMemo(() => formFields(schema), [schema]);
+
+  /**
+   * URG-025 — progressive disclosure. Fields with no `group` render in the
+   * default body; the rest collect into named sections in FIRST-APPEARANCE
+   * order, so the config file's ordering stays the source of truth rather than
+   * an alphabetical sort nobody chose.
+   */
+  const ungroupedFields = useMemo(() => fields.filter((field) => !field.group), [fields]);
+
+  const fieldGroups = useMemo(() => {
+    const byGroup = new Map<string, typeof fields>();
+    for (const field of fields) {
+      if (!field.group) continue;
+      const existing = byGroup.get(field.group);
+      if (existing) existing.push(field);
+      else byGroup.set(field.group, [field]);
+    }
+    return [...byGroup.entries()];
+  }, [fields]);
+
   const isEdit = row !== null;
+
+  /**
+   * Which optional groups are switched on (URG-026/031).
+   *
+   * Seeded from the DATA rather than from a stored preference: a product that
+   * already has a weight is self-evidently physical, so its Dimensions group
+   * opens enabled. One with none starts off, which is the whole point — a
+   * simple product should never have to answer them.
+   *
+   * Deriving it this way needs no schema change, unlike `hasVariants`. That
+   * one required a column precisely because it records an INTENT with no data
+   * behind it yet ("I want variants, none added"); a group with no values and
+   * no intent is simply off.
+   */
+  const [enabledGroups, setEnabledGroups] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const seeded: Record<string, boolean> = {};
+    for (const field of formFields(schema)) {
+      if (!field.group) continue;
+      const value = toFormValue(field, row);
+      const filled = Array.isArray(value)
+        ? value.length > 0
+        : typeof value === 'boolean'
+          ? value
+          : String(value).trim() !== '';
+      seeded[field.group] = (seeded[field.group] ?? false) || filled;
+    }
+    setEnabledGroups(seeded);
+  }, [schema, row]);
+
+  /**
+   * One predicate, used by BOTH the payload builder and the submit validator.
+   *
+   * URG-026 requires that a disabled group's fields never submit stale values,
+   * and URG-031 that their validation is conditional on being enabled. Those
+   * are the same question asked at two choke points, and answering it twice is
+   * how the two paths would quietly disagree.
+   */
+  const isFieldActive = useCallback(
+    (field: FieldConfig): boolean => !field.group || enabledGroups[field.group] === true,
+    [enabledGroups],
+  );
 
   // Snapshot of what each field held when the form opened — used only to
   // decide whether a `changeWarning` field's value has actually changed
@@ -378,10 +454,69 @@ export function ResourceForm({
     [t],
   );
 
+  /**
+   * One field row. Extracted (URG-025) so the default body and every grouped
+   * section render fields identically — duplicating this block per section is
+   * how the two paths would quietly drift apart.
+   */
+  function renderField(field: FieldConfig) {
+    return (
+      <FormField
+        key={field.name}
+        field={field}
+        label={fieldLabel(field)}
+        value={values[field.name] ?? ''}
+        originalValue={isEdit ? (originalValues[field.name] ?? '') : ''}
+        error={fieldErrors[field.name]}
+        options={relationOptions[field.name] ?? []}
+        resourceFolder={schema.resource}
+        onRefreshOptions={schema.resource === 'products' && field.name === 'categoryId'
+          ? () => {
+              void fetchRelationOptions(schema.resource, field.name)
+                .then((options) => {
+                  setRelationOptions((current) => ({ ...current, [field.name]: options }));
+                })
+                .catch((caught: unknown) => setFormError(translateError(caught)));
+            }
+          : undefined}
+        onChange={(value) => setValue(field.name, value)}
+        onBlur={() => {
+          // A blank REQUIRED field left empty is deliberately not flagged
+          // here — a fresh create form's untouched fields are all blank by
+          // definition, and tabbing through them (focus → blur, never
+          // typing) would light up every required field red before the user
+          // has done anything wrong. Submit still catches a genuinely empty
+          // required field; blur only catches a WRONG value in a field that
+          // has content — a malformed email, an unparseable date — which is
+          // unambiguously a mistake worth surfacing early.
+          const current = values[field.name] ?? '';
+          if (String(current).trim() === '') return;
+
+          const message = validateField(field, current);
+          setFieldErrors((prev) => {
+            if (message === null) {
+              if (!(field.name in prev)) return prev;
+              const { [field.name]: _removed, ...rest } = prev;
+              return rest;
+            }
+            return { ...prev, [field.name]: message };
+          });
+        }}
+      />
+    );
+  }
+
   function buildPayload(): ResourceRow {
     const payload: ResourceRow = {};
 
     for (const field of fields) {
+      // URG-026 — a disabled group's fields never reach the payload, so a
+      // value typed before the group was switched off cannot be submitted as
+      // if it were still intended. Per the owner's decision this OMITS them
+      // rather than nulling them: anything already stored stays stored, since
+      // a UI toggle must not destroy data. Re-enabling shows it unchanged.
+      if (!isFieldActive(field)) continue;
+
       const value = values[field.name] ?? '';
 
       // On edit, send only what changed. It keeps the audit surface small, and
@@ -448,6 +583,11 @@ export function ResourceForm({
 
     const errors: Record<string, string> = {};
     for (const field of fields) {
+      // URG-031 — each group's validation is conditional on being enabled. A
+      // required or format rule inside a switched-off group must not block a
+      // save for a product that legitimately has no dimensions at all.
+      if (!isFieldActive(field)) continue;
+
       const message = validateField(field, values[field.name] ?? '');
       if (message) errors[field.name] = message;
     }
@@ -560,41 +700,65 @@ export function ResourceForm({
           {/* The one scrolling region. `-mx-1 px-1` keeps focus rings on the
               inputs from being clipped by the overflow container. */}
           <div className="-mx-1 min-h-0 flex-1 space-y-4 overflow-y-auto px-1">
-            {fields.map((field) => (
-              <FormField
-                key={field.name}
-                field={field}
-                value={values[field.name] ?? ''}
-                originalValue={isEdit ? (originalValues[field.name] ?? '') : ''}
-                error={fieldErrors[field.name]}
-                options={relationOptions[field.name] ?? []}
-                resourceFolder={schema.resource}
-                onChange={(value) => setValue(field.name, value)}
-                onBlur={() => {
-                  // A blank REQUIRED field left empty is deliberately not
-                  // flagged here — a fresh create form's untouched fields
-                  // are all blank by definition, and tabbing through them
-                  // (focus → blur, never typing) would light up every
-                  // required field red before the user has done anything
-                  // wrong. Submit still catches a genuinely empty required
-                  // field; blur only catches a WRONG value in a field that
-                  // has content — a malformed email, an unparseable date —
-                  // which is unambiguously a mistake worth surfacing early.
-                  const current = values[field.name] ?? '';
-                  if (String(current).trim() === '') return;
+            {ungroupedFields.map(renderField)}
 
-                  const message = validateField(field, current);
-                  setFieldErrors((prev) => {
-                    if (message === null) {
-                      if (!(field.name in prev)) return prev;
-                      const { [field.name]: _removed, ...rest } = prev;
-                      return rest;
-                    }
-                    return { ...prev, [field.name]: message };
-                  });
-                }}
-              />
-            ))}
+            {/*
+              URG-025 — progressive disclosure. Specialist fields collect into
+              named sections instead of sitting between Name and Price with the
+              same visual weight.
+
+              Each heading starts expanded so its purpose is discoverable;
+              optional fields inside stay disabled until the adjacent switch
+              is turned on. Existing populated groups start enabled.
+            */}
+            {fieldGroups.map(([groupKey, groupFields]) => {
+              const enabled = enabledGroups[groupKey] === true;
+              const groupCheckboxId = `resource-group-${schema.resource}-${groupKey}`;
+              return (
+                <CollapsibleSection
+                  key={groupKey}
+                  title={tGroups(groupKey)}
+                  aside={String(groupFields.length)}
+                  bodyClassName="space-y-4 p-4"
+                  /* Sibling of the heading button, never inside it — see the
+                     `action` slot's own comment on why nesting would break
+                     keyboard access. */
+                  action={
+                    <Label
+                      htmlFor={groupCheckboxId}
+                      className="flex min-h-11 min-w-11 items-center justify-center rounded-md hover:bg-accent/50"
+                    >
+                      <Checkbox
+                        id={groupCheckboxId}
+                        checked={enabled}
+                        aria-label={t('enableGroup', { group: tGroups(groupKey) })}
+                        onCheckedChange={(next) => {
+                          setEnabledGroups((current) => ({
+                            ...current,
+                            [groupKey]: next === true,
+                          }));
+                          // Switching a group off must not leave its stale
+                          // errors on screen: those fields no longer validate.
+                          if (next !== true) {
+                            setFieldErrors((current) => {
+                              const rest = { ...current };
+                              for (const field of groupFields) delete rest[field.name];
+                              return rest;
+                            });
+                          }
+                        }}
+                      />
+                    </Label>
+                  }
+                >
+                  {enabled ? (
+                    groupFields.map(renderField)
+                  ) : (
+                    <p className="text-muted-foreground text-sm">{t('groupDisabled')}</p>
+                  )}
+                </CollapsibleSection>
+              );
+            })}
 
             <MarginSummary
               schema={schema}
@@ -614,15 +778,24 @@ export function ResourceForm({
                   >
                     {t('manageLocalizedContent')}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!isEdit}
-                    onClick={() => setVariantsPanelOpen(true)}
-                  >
-                    {t('manageVariants')}
-                  </Button>
+                  {/* URG-029 — hidden unless this product opts into variants.
+                      `hasVariants === false` is an explicit "no"; NULL means
+                      the owner was never asked, and those products keep the
+                      button so nothing that worked before disappears. Turning
+                      it off hides the BUILDER only: existing variant rows keep
+                      their stock and sales history, per the owner's rule that
+                      a UI toggle must never destroy data. */}
+                  {values.hasVariants !== false ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!isEdit}
+                      onClick={() => setVariantsPanelOpen(true)}
+                    >
+                      {t('manageVariants')}
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="outline"
@@ -711,6 +884,11 @@ export function ResourceForm({
           productName={String(row.name ?? '')}
           open={variantsPanelOpen}
           onOpenChange={setVariantsPanelOpen}
+          /* URG-030 — colour is a variant NAME, not a new dimension, so
+             opting in changes nothing structural: it only suggests the
+             curated spellings while naming one. Read from live form state so
+             ticking the box offers them immediately, without a save. */
+          suggestColours={values.hasColors === true}
         />
         <ProductGalleryPanel
           productId={String(row.id)}
@@ -743,6 +921,7 @@ export function ResourceForm({
 
 interface FormFieldProps {
   field: FieldConfig;
+  label: string;
   value: FormValue;
   /** What this field held when the form opened. Only meaningful for
    *  `changeWarning` fields — empty string on create, where there is
@@ -755,6 +934,21 @@ interface FormFieldProps {
    *  the backend falls back to a generic one for anything it doesn't
    *  recognise, so this never needs to stay in sync with that allowlist. */
   resourceFolder: string;
+  /**
+   * An advisory note about this field's CURRENT value, decided by the caller.
+   *
+   * Generic on purpose (URG-028). A barcode's meaning depends on its sibling
+   * `barcodeType`, and this component only ever sees one field's own value —
+   * so the decision is made in `renderField`, which has the whole form's
+   * values, and arrives here as finished text. The alternative was widening
+   * `validateField`/`placeholderFor` to take sibling values, which would
+   * change a signature every resource shares to serve one product field.
+   *
+   * Not an error: it never blocks a save. Suppressed while a real error is
+   * showing, since a validation failure is the more urgent message.
+   */
+  notice?: string | undefined;
+  onRefreshOptions?: () => void;
   onChange: (value: FormValue) => void;
   /** Runs `validateField` for THIS field only — never on boolean/
    *  multiRelation controls, which have no such control on the underlying
@@ -767,11 +961,14 @@ interface FormFieldProps {
 /** One labelled control, chosen by the field's SEMANTIC type. */
 function FormField({
   field,
+  label,
   value,
   originalValue,
   error,
   options,
   resourceFolder,
+  notice,
+  onRefreshOptions,
   onChange,
   onBlur,
 }: FormFieldProps) {
@@ -791,6 +988,24 @@ function FormField({
     String(originalValue).trim() !== '' &&
     String(value) !== String(originalValue);
 
+  /**
+   * URG-029 — opting a product OUT of variants hides its builder, and the
+   * variant rows behind it, while leaving every row's stock and sales history
+   * intact in the database. That is the owner's rule ("a toggle must never
+   * destroy data") working as intended, but silently losing the only route to
+   * real rows is its own surprise, so say so at the moment of the change.
+   *
+   * Deliberately states the guarantee rather than a count: the count would
+   * need a `fetchVariants` round-trip per form open, for one field, and a
+   * warning that renders "0 variants" whenever that request failed would be
+   * worse than one that never counts. `originalValue !== false` covers both a
+   * previous `true` and a legacy NULL — turning either off is the transition
+   * worth warning about; a product that was already opted out has nothing to
+   * lose access to.
+   */
+  const showVariantOptOutWarning =
+    field.name === 'hasVariants' && originalValue !== false && value === false;
+
   // aria-describedby only when there IS a message — pointing at an element
   // that doesn't exist makes some screen readers announce nothing at all.
   const aria = {
@@ -808,7 +1023,7 @@ function FormField({
             onCheckedChange={(checked) => onChange(checked === true)}
             {...aria}
           />
-          <Label htmlFor={id}>{field.label}</Label>
+          <Label htmlFor={id}>{label}</Label>
         </div>
       );
     }
@@ -862,6 +1077,7 @@ function FormField({
           : options;
 
       return (
+        <>
         <Select
           // Radix reserves the empty string for "no selection", so an explicit
           // clear needs a sentinel of its own. Without one, an optional enum
@@ -884,6 +1100,19 @@ function FormField({
             ))}
           </SelectContent>
         </Select>
+        {onRefreshOptions ? (
+          <div className="flex flex-wrap gap-2">
+            <Button asChild type="button" variant="link" size="sm" className="min-h-11 px-0">
+              <Link href="/admin/r/categories" target="_blank" rel="noopener noreferrer">
+                {t('createCategory')}
+              </Link>
+            </Button>
+            <Button type="button" variant="ghost" size="sm" className="min-h-11" onClick={onRefreshOptions}>
+              {t('refreshCategories')}
+            </Button>
+          </div>
+        ) : null}
+        </>
       );
     }
 
@@ -946,7 +1175,7 @@ function FormField({
     <div className="space-y-2">
       {field.type === 'boolean' ? null : (
         <Label htmlFor={id} id={`${id}-label`}>
-          {field.label}
+          {label}
           {field.required ? (
             <span className="text-destructive ms-1" aria-hidden>
               *
@@ -967,6 +1196,23 @@ function FormField({
         <p className="text-muted-foreground flex items-start gap-1.5 text-sm">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           {field.changeWarning}
+        </p>
+      ) : null}
+
+      {!error && showVariantOptOutWarning ? (
+        <p className="text-muted-foreground flex items-start gap-1.5 text-sm">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          {t('variantOptOutWarning')}
+        </p>
+      ) : null}
+
+      {/* A caller-supplied note about THIS field's stored value — see the
+          `notice` prop's own comment on why it is generic rather than a
+          second product-specific branch in here. */}
+      {!error && notice ? (
+        <p className="text-muted-foreground flex items-start gap-1.5 text-sm">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          {notice}
         </p>
       ) : null}
     </div>

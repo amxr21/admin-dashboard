@@ -8,6 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -20,6 +27,7 @@ import {
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { refundOrder, type OrderDetail } from '@/lib/orders-api';
+import { REFUND_REASONS, type RefundReason } from '@/lib/refund-reasons';
 
 /**
  * A goodwill refund (B4.10) — money handed back with no return behind it.
@@ -45,22 +53,26 @@ interface RefundOrderDialogProps {
 
 export function RefundOrderDialog({ order, open, onOpenChange, onRefunded }: RefundOrderDialogProps) {
   const t = useTranslations('orders.refund');
+  const tReturn = useTranslations('returns.detail');
   const translateError = useTranslatedApiError();
 
   const [amount, setAmount] = useState('');
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState<RefundReason | ''>('');
+  const [reasonNote, setReasonNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
     setAmount('');
     setReason('');
+    setReasonNote('');
     setError(null);
   }
 
   const amountValue = Number(amount);
   const isValid =
-    amount.trim() !== '' && Number.isFinite(amountValue) && amountValue > 0 && reason.trim() !== '';
+    amount.trim() !== '' && Number.isFinite(amountValue) && amountValue > 0 &&
+    reason !== '' && (reason !== 'OTHER' || reasonNote.trim() !== '');
 
   async function submit() {
     if (!isValid) return;
@@ -69,7 +81,12 @@ export function RefundOrderDialog({ order, open, onOpenChange, onRefunded }: Ref
     setError(null);
 
     try {
-      const updated = await refundOrder(order.id, { amount, reason: reason.trim() });
+      if (!reason) return;
+      const updated = await refundOrder(order.id, {
+        amount,
+        refundReason: reason,
+        ...(reason === 'OTHER' ? { refundReasonNote: reasonNote.trim() } : {}),
+      });
       toast.success(t('done', { amount }));
       onRefunded(updated);
       reset();
@@ -116,21 +133,48 @@ export function RefundOrderDialog({ order, open, onOpenChange, onRefunded }: Ref
               inputMode="decimal"
               className="force-ltr"
               value={amount}
+              placeholder="0.00"
               onChange={(event) => setAmount(event.target.value)}
               disabled={isSaving}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="refund-reason">{t('reasonLabel')}</Label>
-            <Textarea
-              id="refund-reason"
+            <Label htmlFor="refund-reason">{t('refundReasonLabel')}</Label>
+            <Select
               value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              placeholder={t('reasonPlaceholder')}
+              onValueChange={(value) => {
+                setReason(value as RefundReason);
+                setReasonNote('');
+              }}
               disabled={isSaving}
-            />
+            >
+              <SelectTrigger id="refund-reason" className="w-full">
+                <SelectValue placeholder={t('refundReasonPlaceholder')} />
+              </SelectTrigger>
+              <SelectContent>
+                {REFUND_REASONS.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {tReturn(`refundReasons.${item}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+
+          {reason === 'OTHER' ? (
+            <div className="space-y-2">
+              <Label htmlFor="refund-reason-note">{t('refundReasonNoteLabel')}</Label>
+              <Textarea
+                id="refund-reason-note"
+                value={reasonNote}
+                onChange={(event) => setReasonNote(event.target.value)}
+                placeholder={t('refundReasonNotePlaceholder')}
+                maxLength={500}
+                disabled={isSaving}
+              />
+            </div>
+          ) : null}
         </div>
 
         <AlertDialogFooter>

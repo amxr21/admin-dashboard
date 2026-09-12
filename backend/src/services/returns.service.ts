@@ -18,6 +18,7 @@ import { getSettingValue } from './settings.service.js';
 import { ASSIGNMENT_ON_ORDER_STATUS, canTransition } from '../config/orders.config.js';
 
 import { defaultBranchId } from './inventory.service.js';
+import { assertRefundReason } from './refund-reason.js';
 /**
  * Returns / RMA — the one thing the resource engine cannot express, for the
  * same reason orders is bespoke: approving a return is a PROCEDURE (validate
@@ -411,41 +412,18 @@ export interface ApproveReturnInput {
  * why they are sending it back, this says why staff chose to refund. They can
  * legitimately disagree, and that disagreement is worth keeping.
  */
-function assertRefundReason(input: ApproveReturnInput) {
-  if (input.resolution !== ReturnResolution.REFUND) {
-    if (input.refundReason !== undefined) {
-      throw AppError.badRequest('A refund reason only applies to a refund', {
-        field: 'refundReason',
-      });
-    }
-    return;
-  }
-
-  if (!input.refundReason) {
-    throw AppError.badRequest('Choose why this refund is being given', {
-      field: 'refundReason',
-    });
-  }
-
-  // The code is what reports group by; the note is what a human reads. OTHER
-  // without it would record "something else" and nothing more.
-  if (input.refundReason === RefundReason.OTHER) {
-    if (!input.refundReasonNote?.trim()) {
-      throw AppError.badRequest('Describe the refund reason', { field: 'refundReasonNote' });
-    }
-  } else if (input.refundReasonNote?.trim()) {
-    throw AppError.badRequest('A reason note only applies to "Other"', {
-      field: 'refundReasonNote',
-    });
-  }
-}
-
 export async function approveReturn(id: string, input: ApproveReturnInput, req: Request) {
   if (input.resolution === ReturnResolution.REFUND && !input.refundAmount) {
     throw AppError.badRequest('Enter a refund amount', { field: 'refundAmount' });
   }
 
-  assertRefundReason(input);
+  if (input.resolution === ReturnResolution.REFUND) {
+    assertRefundReason(input);
+  } else if (input.refundReason !== undefined) {
+    throw AppError.badRequest('A refund reason only applies to a refund', {
+      field: 'refundReason',
+    });
+  }
 
   // Declared outside the transaction so the audit call below can read what
   // was actually applied — the transaction only WRITES it.
@@ -733,7 +711,35 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
     },
   });
 
-  return serialiseReturn(id);
+  const approved = await serialiseReturn(id);
+
+  /**
+   * A return was DECIDED. Until now `notify()` fired only when one was
+   * requested, so whoever was waiting on the answer learned nothing — the
+   * request alert announced the work arriving and nothing announced it being
+   * finished.
+   *
+   * After the transaction and after `audit`, mirroring `createReturn`: the
+   * decision is already durable, so a notification failure cannot undo it.
+   * `notify()` never throws by contract (same discipline as `audit()`), which
+   * is what makes calling it outside the transaction safe rather than sloppy.
+   *
+   * The resolution is in the body because "approved" alone does not say
+   * whether money moved, went to store credit, or shipped a replacement —
+   * which is the first thing anyone reading this actually needs.
+   */
+  if (await getSettingValue('notifications.returnDecisionAlerts')) {
+    notify({
+      type: 'return.approved',
+      title: `Return approved — ${approved.rmaNumber}`,
+      body: `${approved.order.orderNumber} · ${input.resolution}${
+        input.restock ? ' · restocked' : ''
+      }`,
+      link: '/admin/returns',
+    });
+  }
+
+  return approved;
 }
 
 export async function rejectReturn(id: string, rejectionReason: string, req: Request) {
@@ -768,5 +774,20 @@ export async function rejectReturn(id: string, rejectionReason: string, req: Req
     },
   });
 
-  return serialiseReturn(id);
+  const rejected = await serialiseReturn(id);
+
+  // Same gate and same placement as the approval above — a refusal is a
+  // decision too, and the one people chase. The reason is IN the body rather
+  // than left to the detail page: "rejected" without a why is the message
+  // that generates the follow-up question it was meant to answer.
+  if (await getSettingValue('notifications.returnDecisionAlerts')) {
+    notify({
+      type: 'return.rejected',
+      title: `Return rejected — ${rejected.rmaNumber}`,
+      body: `${rejected.order.orderNumber} · ${rejectionReason}`,
+      link: '/admin/returns',
+    });
+  }
+
+  return rejected;
 }

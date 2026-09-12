@@ -108,13 +108,23 @@ export function BranchSwitcher() {
       </div>, document.body,
     ) : null}
     {/*
-      URG-014 — was a flat `max-w-56` (224px) regardless of content, so a
-      longer branch name (a business prefix, a real name, a disambiguating
-      code) cropped well before it needed to. `max-w-56` -> `max-w-80`
-      (320px) gives real names room; `w-full` still lets it shrink on a
-      narrow topbar rather than force one. The Tooltip is the ticket's own
-      required fallback for whatever still doesn't fit — shown only for a
-      genuinely selected branch, never for the always-short "All branches".
+      URG-014 — sized to its content, not to a fixed cap.
+
+      History: a flat `max-w-56` (224px) cropped real names; raising it to
+      `max-w-80` with `w-full` only moved the cap, because `w-full` makes the
+      trigger claim its whole track and `truncate` then clips inside it. A
+      short name ("Downtown") reserved the same 320px as a long one, and a
+      long one was still cut at 320px — capped-and-clipped either way, which
+      is what the ticket objected to.
+
+      Now: `w-auto` lets the trigger be exactly as wide as its label, so short
+      names stop reserving space they don't use and long names grow until they
+      genuinely need help. `max-w-[min(20rem,100%)]` keeps the 320px ceiling
+      AND yields to a narrow topbar — the ticket's required narrow-screen
+      fallback — and `min-w-0` lets it actually shrink rather than overflow.
+      `truncate` and the Tooltip remain for whatever still doesn't fit at
+      320px; the Tooltip shows only for a genuinely selected branch, never for
+      the always-short "All branches".
     */}
     <Select value={active ?? 'all'} onValueChange={choose} disabled={isSwitching}>
       {/* TooltipTrigger asChild clones its child and forwards a ref, which
@@ -123,7 +133,7 @@ export function BranchSwitcher() {
       <Tooltip>
         <TooltipTrigger asChild>
           <SelectTrigger
-            className="h-8 w-full max-w-80 text-sm"
+            className="h-8 w-auto min-w-0 max-w-[min(20rem,100%)] text-sm"
             aria-label={t('switcherLabel')}
           >
             <SelectValue>

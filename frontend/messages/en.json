@@ -24,8 +24,22 @@
     "placeholders": {
       "email": "name@example.com",
       "phone": "+1 555 123 4567",
-      "url": "https://example.com"
-    }
+      "url": "https://example.com",
+      "personName": "e.g. Sarah Haddad",
+      "branchName": "e.g. Downtown",
+      "branchCode": "e.g. DT-01",
+      "addressLine": "e.g. 12 Al Wasl Road, Shop 3",
+      "city": "e.g. Dubai",
+      "legalName": "e.g. Haddad Trading LLC",
+      "taxId": "e.g. 100123456700003"
+    },
+    "combobox": {
+      "search": "Search…",
+      "empty": "No matches",
+      "none": "Not set"
+    },
+    "phoneInvalid": "That does not look like a valid phone number for the selected country.",
+    "phoneInvalidNoCountry": "That does not look like a valid international phone number."
   },
   "language": {
     "label": "Language",
@@ -321,7 +335,16 @@
           "title": "Brand",
           "hint": "The logo shown on this business's invoices and letterhead."
         }
-      }
+      },
+      "kindNoteLabel": "Describe the business type",
+      "kindNotePlaceholder": "e.g. Cloud kitchen",
+      "kindPlaceholder": "Choose a type",
+      "kindLegacyReview": "Stored as \"{value}\" before types were standardized. Choose the closest match to update it.",
+      "chooseCountry": "Choose a country",
+      "chooseCurrency": "Choose a currency",
+      "chooseTimezone": "Choose a time zone",
+      "taxIdHintAE": "A UAE TRN is 15 digits.",
+      "taxIdHintSA": "A Saudi VAT number is 15 digits."
     },
     "roster": {
       "title": "Who works at {name}",
@@ -586,10 +609,10 @@
       "description": "Your device looks offline, or the server is briefly unavailable. Check your connection and try again."
     },
     "forbidden": {
-  "title": "You don't have access to this",
-  "description": "Your account role doesn’t include this area. If you think it should, ask an owner to update your permissions.",
-  "descriptionWithArea": "Your account role doesn’t include {area}. If you think it should, ask an owner to update your permissions."
-}
+      "title": "You don't have access to this",
+      "description": "Your account role doesn’t include this area. If you think it should, ask an owner to update your permissions.",
+      "descriptionWithArea": "Your account role doesn’t include {area}. If you think it should, ask an owner to update your permissions."
+    }
   },
   "resource": {
     "yes": "Yes",
@@ -657,6 +680,78 @@
       "confirmImport": "{count, plural, one {Import # row} other {Import # rows}}",
       "importing": "Importing…",
       "close": "Close"
+    },
+    "barcodeHintEAN13": "An EAN-13 is 13 digits, and the last digit must match its check digit.",
+    "barcodeHintEAN8": "An EAN-8 is 8 digits, and the last digit must match its check digit.",
+    "barcodeHintUPCA": "A UPC-A is 12 digits, and the last digit must match its check digit.",
+    "barcodeHintUPCE": "A UPC-E is 8 digits.",
+    "barcodeHintITF14": "An ITF-14 is 14 digits, and the last digit must match its check digit.",
+    "barcodeHintCODE128": "A CODE128 label can hold up to 48 characters.",
+    "fieldLabels": {
+      "id": "ID",
+      "imageUrl": "Image",
+      "name": "Name",
+      "sku": "SKU",
+      "description": "Description",
+      "price": "Price",
+      "cost": "Cost",
+      "stock": "Stock",
+      "lowStockThreshold": "Low stock alert at",
+      "storageLocation": "Stored at",
+      "categoryId": "Category",
+      "tags": "Tags",
+      "hasVariants": "This product has variants",
+      "hasColors": "This product has colours",
+      "status": "Status",
+      "barcode": "Barcode (EAN/UPC)",
+      "weightKg": "Weight (kg)",
+      "lengthCm": "Length (cm)",
+      "widthCm": "Width (cm)",
+      "heightCm": "Height (cm)",
+      "hsCode": "HS code",
+      "countryOfOrigin": "Country of origin",
+      "slug": "Slug",
+      "metaTitle": "Meta title",
+      "metaDescription": "Meta description",
+      "createdAt": "Created",
+      "type": "Type",
+      "title": "Title",
+      "body": "Body",
+      "link": "Link",
+      "isRead": "Read",
+      "parentId": "Parent category",
+      "isActive": "Active",
+      "email": "Email",
+      "phone": "Phone",
+      "city": "City",
+      "country": "Country",
+      "internalNotes": "Internal notes",
+      "code": "Code",
+      "value": "Value",
+      "maxUses": "Max uses",
+      "usedCount": "Used",
+      "expiresAt": "Expires",
+      "scope": "Scope",
+      "categories": "Categories (used only when Scope = Category)",
+      "products": "Products (used only when Scope = Product)",
+      "customers": "Customers (used only when Scope = Customer)",
+      "rating": "Rating",
+      "productId": "Product"
+    },
+    "fieldLabelOverrides": {
+      "reviews": {
+        "body": "Comment"
+      }
+    },
+    "fieldGroups": {
+      "pricing": "Cost & margin",
+      "identifiers": "Codes & identifiers",
+      "inventory": "Stock settings",
+      "physical": "Dimensions & weight",
+      "shipping": "Shipping & customs",
+      "seo": "Search & links",
+      "organisation": "Tags & organisation",
+      "options": "Variants & options"
     }
   },
   "placeholder": {
@@ -723,6 +818,8 @@
     "cancel": "Cancel",
     "choose": "Choose…",
     "manageVariants": "Manage variants",
+    "createCategory": "Create a category in a new tab",
+    "refreshCategories": "Refresh categories",
     "manageGallery": "Manage gallery",
     "manageLocalizedContent": "Localized content",
     "viewHistory": "Version history",
@@ -743,7 +840,11 @@
       "confirm": "Discard",
       "cancel": "Keep editing"
     },
-    "none": "— None —"
+    "none": "— None —",
+    "enableGroup": "Use {group}",
+    "groupDisabled": "Not used for this record. Switch it on to fill these in.",
+    "barcodeUnclassified": "Saved before barcode types were recorded. Choose the type that matches this code so it can be checked.",
+    "variantOptOutWarning": "Any variants already saved keep their stock and sales history, but this hides the builder that reaches them. Switch this back on to manage them again."
   },
   "datePicker": {
     "choose": "Pick a date",
@@ -761,7 +862,10 @@
       "body": "Money handed back with no return — nothing needs to come back for this. Capped at what remains paid on this order.",
       "amountLabel": "Amount",
       "reasonLabel": "Reason",
-      "reasonPlaceholder": "e.g. arrived late, price-matched a competitor",
+      "refundReasonLabel": "Why is this refund being given?",
+      "refundReasonPlaceholder": "Choose a reason",
+      "refundReasonNoteLabel": "Describe the reason",
+      "refundReasonNotePlaceholder": "e.g. price-matched a competitor",
       "cancel": "Cancel",
       "confirm": "Refund",
       "saving": "Refunding…",
@@ -1020,28 +1124,63 @@
     "total": "{count, plural, one {# supplier} other {# suppliers}}",
     "emptyTitle": "No suppliers match this view",
     "emptyBody": "Add a supplier or remove the current filters.",
-    "search": { "label": "Search suppliers", "placeholder": "Name, contact, email, or phone" },
-    "columns": { "name": "Supplier", "contact": "Contact", "products": "Products", "receipts": "Receipts", "lastReceived": "Last received", "status": "Status", "actions": "Actions" },
-    "actions": { "create": "New supplier", "edit": "Edit", "deactivate": "Deactivate", "reactivate": "Reactivate" },
-    "notice": { "saved": "Supplier saved.", "deactivated": "Supplier deactivated.", "reactivated": "Supplier reactivated." },
+    "search": {
+      "label": "Search suppliers",
+      "placeholder": "Name, contact, email, or phone"
+    },
+    "columns": {
+      "name": "Supplier",
+      "contact": "Contact",
+      "products": "Products",
+      "receipts": "Receipts",
+      "lastReceived": "Last received",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "actions": {
+      "create": "New supplier",
+      "edit": "Edit",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate"
+    },
+    "notice": {
+      "saved": "Supplier saved.",
+      "deactivated": "Supplier deactivated.",
+      "reactivated": "Supplier reactivated."
+    },
     "form": {
-      "createTitle": "New supplier", "editTitle": "Edit supplier",
+      "createTitle": "New supplier",
+      "editTitle": "Edit supplier",
       "description": "Keep only the contact details needed to receive and reorder stock.",
-      "name": "Supplier name", "email": "Email", "phone": "Phone", "contactName": "Contact person", "note": "Note",
-      "nameRequired": "Supplier name is required.", "saveFailed": "Could not save supplier",
-      "cancel": "Cancel", "save": "Save supplier", "saving": "Saving…"
+      "name": "Supplier name",
+      "email": "Email",
+      "phone": "Phone",
+      "contactName": "Contact person",
+      "note": "Note",
+      "nameRequired": "Supplier name is required.",
+      "saveFailed": "Could not save supplier",
+      "cancel": "Cancel",
+      "save": "Save supplier",
+      "saving": "Saving…"
     },
     "outreach": {
       "title": "Email supplier — {product}",
       "description": "Choose a supplier from this product's receiving history, then review the message before sending.",
-      "supplier": "Supplier", "subject": "Subject", "message": "Message",
+      "supplier": "Supplier",
+      "subject": "Subject",
+      "message": "Message",
       "defaultSubject": "Restock request: {product}",
       "defaultMessage": "Hello,\n\nWe currently have {stock} units of {product} in stock. Please confirm availability and expected delivery timing for a restock.\n\nThank you.",
       "editableHint": "This message is a starting point. Review quantities and details before sending.",
-      "loading": "Loading suppliers", "sendFailed": "Email was not sent",
-      "noHistoryTitle": "No supplier history for this product", "noHistoryBody": "Receive this product from a supplier first so the relationship is recorded.",
-      "noEmailTitle": "No supplier can be emailed", "noEmailBody": "Add an email address to an active supplier in the directory, then try again.",
-      "cancel": "Cancel", "send": "Send email", "sending": "Sending…"
+      "loading": "Loading suppliers",
+      "sendFailed": "Email was not sent",
+      "noHistoryTitle": "No supplier history for this product",
+      "noHistoryBody": "Receive this product from a supplier first so the relationship is recorded.",
+      "noEmailTitle": "No supplier can be emailed",
+      "noEmailBody": "Add an email address to an active supplier in the directory, then try again.",
+      "cancel": "Cancel",
+      "send": "Send email",
+      "sending": "Sending…"
     }
   },
   "stockReason": {
@@ -1057,6 +1196,7 @@
     "subtitle": "Own price, stock and SKU per variant. Inventory only — not yet part of any checkout.",
     "empty": "No variants yet.",
     "name": "Name",
+    "colourHint": "Common colour names are suggested. Type any other colour if none fit.",
     "sku": "SKU",
     "price": "Price",
     "stock": "{count, plural, one {# in stock} other {# in stock}}",
@@ -2784,6 +2924,8 @@
       "expectedInDrawer": "Expected in drawer",
       "counted": "Counted",
       "variance": "Variance",
+      "foreignCash": "Other currencies in drawer",
+      "foreignCashHint": "Counted separately, in its own notes — not converted.",
       "noSaleOpens": "No-sale opens",
       "printedAt": "Printed {time}"
     }
@@ -2865,6 +3007,10 @@
       "transfer": "Transfer"
     },
     "tendered": "Cash received",
+    "tenderCurrency": "Paid in",
+    "tenderCurrencyBase": "{currency} (store currency)",
+    "tenderedInCurrency": "Cash received ({currency})",
+    "tenderRateHint": "1 store currency = {rate} {currency}",
     "takePayment": "Take payment",
     "taking": "Taking payment…",
     "sold": "Sale complete — {total}",
@@ -2890,6 +3036,9 @@
       "paidBy": "Paid by",
       "tendered": "Cash",
       "change": "Change",
+      "tenderTotal": "TOTAL ({currency})",
+      "tenderChange": "Change ({currency})",
+      "tenderRate": "Rate applied",
       "thanks": "Thank you"
     },
     "printReceipt": "Print receipt",
@@ -3032,5 +3181,25 @@
     "yes": "Yes",
     "no": "No",
     "noFields": "No custom fields yet. Add them in the Custom fields tab."
+  },
+  "businessTypes": {
+    "RESTAURANT": "Restaurant",
+    "CAFE": "Cafe",
+    "BAKERY": "Bakery",
+    "FOOD_TRUCK": "Food truck",
+    "GROCERY": "Grocery",
+    "SUPERMARKET": "Supermarket",
+    "PHARMACY": "Pharmacy",
+    "CLOTHING": "Clothing",
+    "ELECTRONICS": "Electronics",
+    "FURNITURE": "Furniture",
+    "JEWELLERY": "Jewellery",
+    "BOOKSTORE": "Bookstore",
+    "SALON": "Salon",
+    "BARBERSHOP": "Barbershop",
+    "SPA": "Spa",
+    "GYM": "Gym",
+    "LAUNDRY": "Laundry",
+    "OTHER": "Other"
   }
 }

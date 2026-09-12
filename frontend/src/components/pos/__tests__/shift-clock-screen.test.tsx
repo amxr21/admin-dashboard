@@ -76,6 +76,11 @@ describe('the X/Z report', () => {
     fetchTillReport.mockResolvedValue({
       shift: makeShift(),
       byMethod: [{ method: 'cash', total: '25.00' }],
+      // URG-034 — the server always sends this (empty when the till accepts
+      // only the store currency). Omitting it here crashed the render on
+      // `.length`, and `tsc` could not catch it because a `mockResolvedValue`
+      // is untyped `any` — the fixture, not the component, was the lie.
+      byTenderCurrency: [],
       cash: '25.00',
       expectedCash: '25.00',
       noSaleCount: 0,
@@ -99,7 +104,12 @@ describe('the X/Z report', () => {
     // `shift` to null on success, so the report fetch must use an id
     // captured BEFORE that happens.
     fetchMyShift.mockResolvedValue(makeShift());
-    fetchShiftTakings.mockResolvedValue({ byMethod: [], cash: '0.00', expectedCash: '100.00' });
+    fetchShiftTakings.mockResolvedValue({
+      byMethod: [],
+      byTenderCurrency: [],
+      cash: '0.00',
+      expectedCash: '100.00',
+    });
     closeTill.mockResolvedValue({
       shift: makeShift({ endedAt: new Date().toISOString() }),
       expected: '100.00',
@@ -109,6 +119,7 @@ describe('the X/Z report', () => {
     fetchTillReport.mockResolvedValue({
       shift: makeShift({ endedAt: new Date().toISOString(), closingCount: '100.00' }),
       byMethod: [],
+      byTenderCurrency: [],
       cash: '0.00',
       expectedCash: '100.00',
       noSaleCount: 0,
@@ -131,5 +142,66 @@ describe('the X/Z report', () => {
       expect(fetchTillReport).toHaveBeenCalledWith('s1');
     });
     expect(await screen.findByText(/z report/i)).toBeInTheDocument();
+  });
+
+  /**
+   * URG-034 — foreign cash on the X/Z report.
+   *
+   * The two tests above only prove the report renders; neither would notice
+   * the per-currency section being absent, which is how the backend's own
+   * `byTenderCurrency` sat computed-but-dropped for a whole release. These
+   * pin both directions: present when the drawer holds another currency,
+   * and gone entirely when it does not.
+   */
+  it('lists foreign cash per currency, in its own units', async () => {
+    fetchMyShift.mockResolvedValue(makeShift());
+    fetchTillReport.mockResolvedValue({
+      shift: makeShift(),
+      byMethod: [{ method: 'cash', total: '100.00' }],
+      byTenderCurrency: [
+        { currency: 'USD', expected: '27.50' },
+        { currency: 'EUR', expected: '10.00' },
+      ],
+      cash: '100.00',
+      expectedCash: '100.00',
+      noSaleCount: 0,
+      cashDropTotal: '0.00',
+      payoutTotal: '0.00',
+      events: [],
+      isFinal: false,
+    });
+
+    render(<ShiftClockScreen />);
+    await userEvent.click(await screen.findByRole('button', { name: /view x report/i }));
+
+    expect(await screen.findByText(/other currencies in drawer/i)).toBeInTheDocument();
+    expect(screen.getByText('USD')).toBeInTheDocument();
+    expect(screen.getByText('27.50')).toBeInTheDocument();
+    expect(screen.getByText('EUR')).toBeInTheDocument();
+    // Stated on the report itself: converting these into one expected figure
+    // would make a real shortfall indistinguishable from the rate moving.
+    expect(screen.getByText(/not converted/i)).toBeInTheDocument();
+  });
+
+  it('shows no foreign-cash section when the till took only store currency', async () => {
+    fetchMyShift.mockResolvedValue(makeShift());
+    fetchTillReport.mockResolvedValue({
+      shift: makeShift(),
+      byMethod: [{ method: 'cash', total: '25.00' }],
+      byTenderCurrency: [],
+      cash: '25.00',
+      expectedCash: '25.00',
+      noSaleCount: 0,
+      cashDropTotal: '0.00',
+      payoutTotal: '0.00',
+      events: [],
+      isFinal: false,
+    });
+
+    render(<ShiftClockScreen />);
+    await userEvent.click(await screen.findByRole('button', { name: /view x report/i }));
+
+    await screen.findByText(/x report \(mid-shift\)/i);
+    expect(screen.queryByText(/other currencies in drawer/i)).not.toBeInTheDocument();
   });
 });
