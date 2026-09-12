@@ -42,11 +42,13 @@ import {
   browseProducts,
   checkout,
   discardParkedSale,
+  fetchTenders,
   listParkedSales,
   parkSale,
   resumeParkedSale,
   scanProduct,
   voidSale,
+  type AcceptedTender,
   type ParkedSale,
   type CheckoutInput,
 } from '@/lib/pos-api';
@@ -87,6 +89,17 @@ import type { ReturnResolution } from '@/lib/returns-api';
  * the shared receipt math (O5.4). Two implementations of the same arithmetic
  * is precisely how a receipt ends up disagreeing with an invoice by a cent.
  */
+
+/**
+ * Sentinel for "the store's own currency" in the tender Select (URG-034).
+ *
+ * Radix reserves the empty string for "no selection" and refuses it on an
+ * item, so the default option needs a value that is not `''` — the same
+ * reason `resource-form.tsx` carries its own `NONE` constant. Mapped back to
+ * `''` before it reaches state, so nothing downstream ever sees this string
+ * and an ordinary sale still sends no `tenderCurrency` at all.
+ */
+const BASE_TENDER = '__base__';
 
 /**
  * Everything a cart line actually reads (O9.10) — deliberately narrower than
@@ -194,6 +207,23 @@ export function SaleScreen() {
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [parkLabel, setParkLabel] = useState('');
   const [parkDialogOpen, setParkDialogOpen] = useState(false);
+  /**
+   * URG-034 — which currencies this till accepts, and which one the customer
+   * is paying in right now.
+   *
+   * The server is the authority on both the list and the rate (`GET
+   * /pos/tenders`): the rate shown on screen has to be the rate the server
+   * will actually apply, and two copies of that arithmetic is how a receipt
+   * ends up disagreeing with the drawer.
+   *
+   * An install that configured nothing gets exactly ONE entry — its own
+   * currency — so the control hides itself and the till behaves precisely as
+   * it did before any of this existed. `tenderCurrency` stays empty for the
+   * base currency rather than holding the code, so an ordinary sale sends no
+   * `tenderCurrency` at all and takes the unchanged server path.
+   */
+  const [acceptedTenders, setAcceptedTenders] = useState<AcceptedTender[]>([]);
+  const [tenderCurrency, setTenderCurrency] = useState('');
   const scanField = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -205,6 +235,31 @@ export function SaleScreen() {
         // refresh (after the next park) corrects it.
       });
   }, []);
+
+  useEffect(() => {
+    fetchTenders()
+      .then(setAcceptedTenders)
+      .catch(() => {
+        // Left empty on purpose: the selector renders only when more than one
+        // currency came back, so a failed load degrades to the store currency
+        // — today's behaviour — rather than blocking the till. Refusing to
+        // sell because a currency list did not load would be far worse than
+        // not offering a second currency for one shift.
+      });
+  }, []);
+
+  /** The store's own currency, for labelling the default option. */
+  const baseTender = useMemo(
+    () => acceptedTenders.find((entry) => entry.isBase) ?? null,
+    [acceptedTenders],
+  );
+
+  /** The rate the server will apply to the chosen currency, shown beside the
+   *  control so the cashier can sanity-check it before charging. */
+  const activeTender = useMemo(
+    () => acceptedTenders.find((entry) => entry.currency === tenderCurrency) ?? null,
+    [acceptedTenders, tenderCurrency],
+  );
 
 
   /** Display only — see the note at the top of this file. */
@@ -480,6 +535,19 @@ export function SaleScreen() {
    * server, which is why a rounding edge can only ever cost a refusal the
    * cashier can see and correct, never a silently accepted short payment.
    *
+   * ─── URG-034: COMPARED IN THE CURRENCY BEING HANDED OVER ─────────────
+   * `tendered` is typed in the SELECTED currency, so comparing it against the
+   * base-currency estimate made a correct foreign payment read as short —
+   * $1.23 against a 4.50 AED sale looked 3.27 short, the warning fired, and
+   * the confirm dialog could never open. The foreign-currency path was
+   * unusable end to end because of it.
+   *
+   * The rate comes from the server (`GET /pos/tenders`), and this figure is
+   * only ever a WARNING — `pos.service.ts` recomputes `tenderDue` itself and
+   * owns the refusal. That is what keeps this from being a second
+   * implementation of money arithmetic in the sense that matters: nothing
+   * recorded, printed or reconciled is derived here.
+   *
    * `null` means nothing to say; a string is the message to show.
    */
   const cashShortfall = useMemo(() => {
@@ -506,9 +574,15 @@ export function SaleScreen() {
     if (method !== 'cash') return null;
     if (tendered.trim() === '') return t('tenderedMissing');
 
-    const short = Number(estimate) - (Number(tendered) || 0);
+    // What is owed IN THE CURRENCY BEING HANDED OVER. No selection means the
+    // store currency and the estimate stands unchanged.
+    const due = activeTender
+      ? Number(estimate) * Number(activeTender.rate)
+      : Number(estimate);
+
+    const short = due - (Number(tendered) || 0);
     return short > 0 ? t('tenderedShort', { short: short.toFixed(2) }) : null;
-  }, [lines, isSplitting, splitLines, method, tendered, estimate, t]);
+  }, [lines, isSplitting, splitLines, method, tendered, estimate, activeTender, t]);
 
   async function takePayment() {
     if (lines.length === 0 || isSelling) return;
@@ -540,6 +614,12 @@ export function SaleScreen() {
               ...(method === 'card' && reference.trim() !== ''
                 ? { reference: reference.trim() }
                 : {}),
+              /* URG-034 — omitted entirely for the store currency, so an
+                 ordinary sale takes the exact same server path it always
+                 did. Split payments deliberately carry no currency: the
+                 server's own contract is one shape or the other, and mixing
+                 currencies across legs is not a decision anyone has made. */
+              ...(tenderCurrency !== '' ? { tenderCurrency } : {}),
             }),
         ...(overrideToken ? { overrideToken } : {}),
         ...(pendingExchangeReturnId ? { exchangeReturnId: pendingExchangeReturnId } : {}),
@@ -569,12 +649,23 @@ export function SaleScreen() {
         method,
         tendered: method === 'cash' && tendered.trim() !== '' ? tendered.trim() : null,
         change: result.change,
+        /* Straight from the server's response — never recomputed here. All
+           null on a base-currency sale, which is what keeps the receipt
+           identical to before for the overwhelming majority. */
+        tenderCurrency: result.tenderCurrency,
+        tenderTotal: result.tenderTotal,
+        tenderChange: result.tenderChange,
+        tenderRate: result.tenderRate,
       });
       setLastSaleOrderId(result.orderId);
       toast.success(t('sold', { total: result.total }));
 
       setLines([]);
       setTendered('');
+      /* Back to the store currency for the next customer: carrying a foreign
+         selection forward is how the following sale gets recorded in the
+         wrong money without anyone choosing it. */
+      setTenderCurrency('');
       setReference('');
       setIsSplitting(false);
       setSplitLines([
@@ -971,9 +1062,69 @@ export function SaleScreen() {
               </Select>
             </div>
 
+            {/*
+              URG-034 — only when this till accepts more than one currency.
+              `fetchTenders` always returns the store's own, so a single entry
+              means nothing was configured and a control with one choice would
+              be pure noise.
+
+              Placed before the cash field on purpose: the currency decides
+              what the "cash received" figure MEANS, so choosing it second
+              would invite the cashier to type dirhams and then relabel them
+              as dollars.
+            */}
+            {acceptedTenders.length > 1 ? (
+              <div className="space-y-2">
+                <Label htmlFor="pos-tender-currency">{t('tenderCurrency')}</Label>
+                <Select
+                  value={tenderCurrency === '' ? BASE_TENDER : tenderCurrency}
+                  onValueChange={(next) =>
+                    setTenderCurrency(next === BASE_TENDER ? '' : next)
+                  }
+                >
+                  <SelectTrigger id="pos-tender-currency">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* The base currency is the sentinel, not its own code:
+                        sending no `tenderCurrency` keeps an ordinary sale on
+                        the unchanged server path. */}
+                    <SelectItem value={BASE_TENDER}>
+                      {baseTender
+                        ? t('tenderCurrencyBase', { currency: baseTender.currency })
+                        : t('tenderCurrency')}
+                    </SelectItem>
+                    {acceptedTenders
+                      .filter((entry) => !entry.isBase)
+                      .map((entry) => (
+                        <SelectItem key={entry.currency} value={entry.currency}>
+                          {entry.currency}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {/* The rate the SERVER will apply. Shown because a
+                    wrong-direction rate is silently wrong rather than
+                    obviously broken — the same reason every rate setting
+                    spells out "per 1 store currency". */}
+                {activeTender ? (
+                  <p className="text-muted-foreground text-xs">
+                    {t('tenderRateHint', {
+                      currency: activeTender.currency,
+                      rate: activeTender.rate,
+                    })}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             {method === 'cash' ? (
               <div className="space-y-2">
-                <Label htmlFor="pos-tendered">{t('tendered')}</Label>
+                <Label htmlFor="pos-tendered">
+                  {tenderCurrency === ''
+                    ? t('tendered')
+                    : t('tenderedInCurrency', { currency: tenderCurrency })}
+                </Label>
                 <Input
                   id="pos-tendered"
                   value={tendered}

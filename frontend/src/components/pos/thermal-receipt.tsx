@@ -44,6 +44,20 @@ export interface ReceiptData {
   tendered: string | null;
   change: string | null;
   cashier?: string | undefined;
+  /**
+   * URG-034 — the foreign-currency half of the receipt, all null on a
+   * base-currency sale.
+   *
+   * Taken verbatim from the checkout response, never recomputed here: the
+   * printed copy has to match what the drawer recorded, and the rate is
+   * included because a customer paying in another currency is entitled to see
+   * the conversion they were charged at — and a reprint must show the rate of
+   * the SALE, not today's.
+   */
+  tenderCurrency?: string | null;
+  tenderTotal?: string | null;
+  tenderChange?: string | null;
+  tenderRate?: string | null;
 }
 
 /** 58mm is the common small roll; 80mm is the wider one. */
@@ -152,6 +166,43 @@ export function ThermalReceipt({
                 <td>{t('change')}</td>
                 <td className="text-end">{data.change}</td>
               </tr>
+            ) : null}
+
+            {/*
+              URG-034 — the foreign-currency half, printed only when the
+              customer actually paid in another currency.
+
+              The rate is on the receipt deliberately: someone paying in a
+              second currency is entitled to see the conversion they were
+              charged at, and because it is SNAPSHOTTED per sale, a reprint
+              months later still shows the rate of that sale rather than
+              today's. The figures come straight from the checkout response —
+              nothing here multiplies anything.
+            */}
+            {data.tenderCurrency ? (
+              <>
+                <tr>
+                  <td colSpan={2} className="pt-1">
+                    <hr className="border-dashed border-black" />
+                  </td>
+                </tr>
+                <tr className="font-bold">
+                  <td>{t('tenderTotal', { currency: data.tenderCurrency })}</td>
+                  <td className="text-end">{data.tenderTotal}</td>
+                </tr>
+                {data.tenderChange !== null && data.tenderChange !== undefined ? (
+                  <tr>
+                    <td>{t('tenderChange', { currency: data.tenderCurrency })}</td>
+                    <td className="text-end">{data.tenderChange}</td>
+                  </tr>
+                ) : null}
+                {data.tenderRate ? (
+                  <tr>
+                    <td>{t('tenderRate')}</td>
+                    <td className="text-end">{data.tenderRate}</td>
+                  </tr>
+                ) : null}
+              </>
             ) : null}
           </tbody>
         </table>

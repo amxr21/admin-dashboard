@@ -234,34 +234,123 @@ already-approved merge.
 
 ## Remaining owner and UX work
 
-- [ ] **URG-011 — two scroll regions: owner decision.** At roughly 640–750px
-      viewport height, the 21-link sidebar nav and main content both scroll.
-      The document itself does not scroll, navigation is reachable, and the
-      sidebar needs about 840px to fit without its scoped scrollbar. Confirm
-      whether this behavior is acceptable. A strict one-scroller layout at
-      700px requires changing navigation density or information architecture,
-      not another small scrollbar CSS adjustment.
-- [ ] **URG-015 — fading/clipped dropdown:** deferred until one exact page,
-      dropdown/table control, action and viewport reproduces the reported
-      behavior. Seeded row actions and nested selects did not reproduce it;
-      avoid a speculative shared portal/overflow change.
-- [ ] **URG-024 — registration/identity IDs:** identify the specific records
-      meant by “IDs,” then choose identifier types, country-aware validation
-      and non-destructive treatment of existing values. Do not apply a single
-      UAE-only mask to unrelated identifiers.
-- [ ] **URG-028 — product code types:** SKU remains available; make barcode
-      opt-in per product, curate the supported retail barcode types, and show
-      legacy/unmappable codes for review without rewriting them.
-- [ ] **URG-034 — multi-currency till:** finish currency selector, dual-currency
-      receipt and per-currency shift count. Preserve store currency as default
-      and the already documented fixed-rate, tender and rounding contract.
-- [ ] **URG-035 — full form/control inventory:** enumerate every create,
-      edit, filter, checkout, settings and confirmation field. For each,
-      review meaning, required/editable state, control, allowed values,
-      default, placeholder/help, validation/normalization, errors, saved
-      API shape, mobile keyboard, accessibility, English/Arabic and RTL/LTR.
-      Track every field, not a sample. This also decides any remaining
-      field-specific placeholder work from URG-013.
+- [x] **URG-011 — two scroll regions: ACCEPTED AS-IS by the owner 2026-09-12.**
+      At roughly 640–750px viewport height the 21-link sidebar nav and main
+      content each scroll. The document itself does not scroll, navigation
+      stays reachable, and the sidebar needs about 840px to fit without its
+      scoped scrollbar. The owner confirmed this is acceptable behaviour for an
+      admin shell with a long nav, so the item is CLOSED rather than left open
+      indefinitely. Do not "fix" it later with another scrollbar CSS tweak: a
+      strict one-scroller layout at 700px requires changing navigation density
+      or information architecture, which was considered and declined.
+- [x] **URG-015 — fading/clipped dropdown: SKIPPED by the owner 2026-09-12.**
+      Never reproduced — seeded row actions and nested selects did not exhibit
+      it, and no exact page/control/action/viewport was available. Closed
+      without a speculative shared portal/overflow change, which would have
+      risked every dropdown in the app to chase one unconfirmed report.
+      Reopen only with a real reproduction.
+- [ ] **URG-024 — registration/identity IDs: DEFERRED by the owner 2026-09-12**
+      ("leave it for later, I don't remember this"). Genuinely unscoped: the
+      records meant by "IDs" were never identified. Do NOT guess — candidates
+      were business trade-licence/commercial-registration numbers, staff
+      identity documents (Emirates ID/passport) and customer identity numbers,
+      and the latter two carry real privacy weight needing a read-access
+      decision, not just validation. Business tax/TRN validation is already
+      done separately as URG-023. Ask again before starting.
+- [ ] **URG-028 — product code types. APPROVED 2026-09-12: opt-in per product,
+      curated types.** A "this product has a barcode" switch in the same shape
+      as the variants/colours toggles, then a type picker limited to real
+      retail symbologies (EAN-13, EAN-8, UPC-A, UPC-E, ITF-14, CODE128) with
+      per-type check-digit validation. SKU remains an always-available plain
+      field. Existing unrecognised or unmappable codes are SHOWN for review and
+      never rewritten — inventing a corrected check digit would fabricate a
+      code that does not exist on the physical product.
+- [*] **URG-034 — multi-currency till. APPROVED 2026-09-12: all three pieces.
+      Implemented locally the same day; sale-screen coverage and the browser
+      pass remain.**
+      **The queue's "backend foundation done, presentation only" framing was
+      wrong, and this is the finding worth keeping:** `getShiftTakings` did
+      compute `byTenderCurrency`, but `getTillReport` never forwarded it and
+      neither frontend type declared it — so the breakdown existed in the
+      service and was dropped at two seams before reaching any screen. A
+      drawer holding two currencies printed a Z report accounting for only
+      one. Shape parity between a schema and a service proves nothing about
+      what survives to the client; the same class of gap as F5.1 and URG-006.
+      Built: `byTenderCurrency` forwarded from `getTillReport` and declared on
+      `ShiftTakings`/`TillReport`; `tenderCurrency`/`tenderTotal`/
+      `tenderChange`/`tenderRate` added to the checkout response, computed
+      SERVER-side from the same values written to the `Payment` row (the owner
+      chose this over client-side multiplication precisely because two copies
+      of money arithmetic is how a receipt ends up disagreeing with the
+      drawer); `fetchTenders()` + `AcceptedTender` in `pos-api.ts`; a currency
+      Select on the sale screen that hides itself when only one tender is
+      accepted, shows the rate the server will apply, relabels the cash field
+      in the chosen currency, and resets to base after every sale; dual-
+      currency receipt rows plus the snapshotted rate; and a per-currency
+      drawer block on the X/Z report, deliberately OUTSIDE the opening-float
+      group so a till opened without a float still shows foreign notes.
+      Split payments carry no currency by design — the server's contract is
+      one shape or the other, and mixing currencies across legs is a decision
+      nobody has made.
+      Verification: POS suites 56/56 (was 54 with 2 failing), both typechecks
+      clean, both lints clean, en/ar parity 19/19 with 8 new keys per locale.
+      **Two fixture lies found and fixed rather than worked around:** the X/Z
+      report tests omitted `byTenderCurrency`, which crashed the render on
+      `.length` — and `tsc` could not catch it because a `mockResolvedValue`
+      is untyped `any`. The fixtures were corrected to match what the server
+      actually sends; the component was NOT made defensive with `?.`, since
+      tolerating a malformed response is how a real backend regression hides.
+      Two new tests pin the per-currency block appearing with rows and being
+      absent without them.
+      **A real product bug found by writing the test, and worth remembering:**
+      `cashShortfall` compared `tendered` against the base-currency
+      `estimate`, but the cashier now types that figure in the SELECTED
+      currency — so $1.23 handed over for a 4.50 AED sale read as 3.27 short,
+      the warning fired, and the confirm dialog could never open. The
+      foreign-currency path was unusable end to end, and every unit test
+      passed because none of them had ever selected a currency. The server's
+      own guard was already correct (`tenderDue = total × rate`); the client
+      was the half that was wrong. **Generalise:** when a field's UNITS become
+      configurable, every comparison against it is suspect — the value moved
+      currencies while the thing it is checked against did not.
+      The guard now converts using the rate the server supplied, and the
+      comment states why that is still not a second implementation of money
+      arithmetic: it produces a warning only, and nothing recorded, printed or
+      reconciled is derived on the client.
+      Sale-screen coverage added (4 tests): the control is invisible on a
+      single-currency install, the rate appears only once a foreign currency
+      is chosen, an ordinary sale sends NO `tenderCurrency` (absent, not
+      `'AED'`, so it stays on the unchanged server path), and a foreign sale
+      carries both the currency and the tendered amount into checkout.
+      Final verification: POS suites 60/60 (they were 54 with 2 failing when
+      this work began), both typechecks clean, both lints clean, en/ar parity
+      19/19. Nothing is enabled on any existing install until an owner sets a
+      rate above zero.
+      **Remaining:** a browser pass at the till, including Arabic/RTL.
+
+      <!-- Original scope note, kept for reference: -->
+      The backend foundation was already shipped and tested (nullable
+      `tender_currency`/`tender_amount`/`tender_rate` on `payments`, the rate
+      SNAPSHOTTED per sale, per-currency `getShiftTakings` breakdown, a rate of
+      0 meaning "not accepted"). Remaining is presentation only: the currency
+      selector on the sale screen reading `GET /pos/tenders`, the receipt
+      showing both currencies plus the rate used, and the per-currency count at
+      shift close. Preserve store currency as the default and the documented
+      fixed-rate/tender/rounding contract. Without the shift-close half the
+      drawer cannot balance in the second currency, which is why partial
+      delivery was declined.
+- [ ] **URG-035 — full form/control inventory. APPROVED 2026-09-12: AUDIT
+      FIRST, findings list only — do not fix while enumerating.** Enumerate
+      every create, edit, filter, checkout, settings and confirmation field.
+      For each, review meaning, required/editable state, control, allowed
+      values, default, placeholder/help, validation/normalization, errors,
+      saved API shape, mobile keyboard, accessibility, English/Arabic and
+      RTL/LTR. Track every field, not a sample. Produce a severity-grouped
+      findings report and let the owner choose what to fix, rather than making
+      hundreds of unreviewed judgement calls in flight. This also decides any
+      remaining field-specific placeholder work from URG-013. Start it only
+      after URG-028 and URG-034 land — beginning a days-long enumeration with
+      two approved implementations queued would leave all three half-finished.
 
 ## Guardrails
 

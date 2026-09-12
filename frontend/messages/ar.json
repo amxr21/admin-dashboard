@@ -2917,6 +2917,8 @@
       "expectedInDrawer": "المتوقع في الدرج",
       "counted": "المعدود",
       "variance": "الفارق",
+      "foreignCash": "عملات أخرى في الدرج",
+      "foreignCashHint": "تُعَد منفصلة بعملتها نفسها — دون تحويل.",
       "noSaleOpens": "فتحات بلا بيع",
       "printedAt": "طُبع في {time}"
     }
@@ -2998,6 +3000,10 @@
       "transfer": "تحويل"
     },
     "tendered": "المبلغ المستلم",
+    "tenderCurrency": "الدفع بعملة",
+    "tenderCurrencyBase": "{currency} (عملة المتجر)",
+    "tenderedInCurrency": "المبلغ المستلم ({currency})",
+    "tenderRateHint": "وحدة واحدة من عملة المتجر = {rate} {currency}",
     "takePayment": "استلام الدفع",
     "taking": "جارٍ استلام الدفع…",
     "sold": "تمت عملية البيع — {total}",
@@ -3023,6 +3029,9 @@
       "paidBy": "طريقة الدفع",
       "tendered": "المبلغ المستلم",
       "change": "الباقي",
+      "tenderTotal": "الإجمالي ({currency})",
+      "tenderChange": "الباقي ({currency})",
+      "tenderRate": "سعر الصرف المطبَّق",
       "thanks": "شكرًا لكم"
     },
     "printReceipt": "طباعة الإيصال",

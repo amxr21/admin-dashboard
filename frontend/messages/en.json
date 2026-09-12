@@ -2917,6 +2917,8 @@
       "expectedInDrawer": "Expected in drawer",
       "counted": "Counted",
       "variance": "Variance",
+      "foreignCash": "Other currencies in drawer",
+      "foreignCashHint": "Counted separately, in its own notes — not converted.",
       "noSaleOpens": "No-sale opens",
       "printedAt": "Printed {time}"
     }
@@ -2998,6 +3000,10 @@
       "transfer": "Transfer"
     },
     "tendered": "Cash received",
+    "tenderCurrency": "Paid in",
+    "tenderCurrencyBase": "{currency} (store currency)",
+    "tenderedInCurrency": "Cash received ({currency})",
+    "tenderRateHint": "1 store currency = {rate} {currency}",
     "takePayment": "Take payment",
     "taking": "Taking payment…",
     "sold": "Sale complete — {total}",
@@ -3023,6 +3029,9 @@
       "paidBy": "Paid by",
       "tendered": "Cash",
       "change": "Change",
+      "tenderTotal": "TOTAL ({currency})",
+      "tenderChange": "Change ({currency})",
+      "tenderRate": "Rate applied",
       "thanks": "Thank you"
     },
     "printReceipt": "Print receipt",
