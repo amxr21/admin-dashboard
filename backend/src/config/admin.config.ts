@@ -70,6 +70,8 @@ export interface FieldConfig {
   /** Editable in the create/edit form. Defaults to true. */
   inForm?: boolean;
   required?: boolean;
+  /** Create-form default for booleans, matching the model default. */
+  defaultValue?: boolean;
   /** Included in the `search` query. Only index-backed columns belong here. */
   searchable?: boolean;
   sortable?: boolean;
@@ -93,9 +95,9 @@ export interface FieldConfig {
    * The value is a translation key under `resource.fieldGroups`, not prose —
    * the heading is localized like every other label.
    *
-   * A grouped field is NOT conditional: it still submits and still validates.
-   * This only stops a 24-field product form giving dimensions and SEO the same
-   * weight as name and price.
+   * Product groups are optionally enabled in the form. Disabled groups are
+   * omitted from client validation and payloads; the server still validates
+   * every field it receives.
    */
   group?: string;
 }
@@ -203,7 +205,10 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
        *
        * Turning either off hides the builder and NOTHING else — existing
        * variant rows keep their stock and sales history, per the owner's
-       * decision that a UI toggle must not destroy data.
+       * decision that a UI toggle must not destroy data. Because that also
+       * hides the only route to those rows, the form warns as the change is
+       * made rather than letting real variants quietly become unreachable
+       * (URG-029).
        */
       { name: 'hasVariants', label: 'This product has variants', type: 'boolean', inList: false, group: 'options' },
       { name: 'hasColors', label: 'This product has colours', type: 'boolean', inList: false, group: 'options' },
@@ -321,7 +326,7 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         type: 'relation',
         relation: { resource: 'categories', labelField: 'name' },
       },
-      { name: 'isActive', label: 'Active', type: 'boolean', sortable: true },
+      { name: 'isActive', label: 'Active', type: 'boolean', defaultValue: true, sortable: true },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],
   },
@@ -392,7 +397,7 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       { name: 'value', label: 'Value', type: 'money', required: true, sortable: true },
       { name: 'maxUses', label: 'Max uses', type: 'number' },
       { name: 'usedCount', label: 'Used', type: 'number', readOnly: true, sortable: true },
-      { name: 'isActive', label: 'Active', type: 'boolean', sortable: true },
+      { name: 'isActive', label: 'Active', type: 'boolean', defaultValue: true, sortable: true },
       { name: 'expiresAt', label: 'Expires', type: 'datetime', sortable: true },
       {
         name: 'scope',

@@ -810,9 +810,10 @@ model Product {
   ///
   /// NULL means "the owner has not said", deliberately distinct from an
   /// explicit false: a product created before these existed has not opted out,
-  /// it was never asked. A product that already HAS variants is treated as
-  /// enabled regardless, so turning the flag off never hides real rows — the
-  /// owner's rule is that a UI toggle must not destroy stock or sales history.
+  /// it was never asked. Turning the flag off hides the variant builder but
+  /// preserves existing variant rows, stock and sales history — so the form
+  /// warns at the moment of opting out that saved variants survive while the
+  /// only route to them is being hidden (URG-029).
   hasVariants Boolean? @map("has_variants")
   hasColors   Boolean? @map("has_colors")
 
