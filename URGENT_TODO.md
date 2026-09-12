@@ -83,15 +83,38 @@ branch combines several logical batches after R1, so publish reviewable
 stacked PRs in their dependency order rather than treating this tip as one
 already-approved merge.
 
-- [*] **URG-026 / URG-031 — optional product group enablement (active).**
-      Group switches, shared active-field predicate, stale-value omission and
-      conditional validation are coded but uncommitted. Earlier browser checks
-      covered new/existing products, disabled payload omission, re-enable and
-      Arabic phone layout; focused form tests, typecheck and lint pass. Repeat
-      the browser pass after the newest label/variant changes, then commit and
-      run the exact-commit gate. The schema has dimensions and shipping fields;
-      it has no first-class size, material or custom-attribute fields to gate.
-      Do not invent those fields as part of this toggle fix.
+- [x] **URG-026 / URG-031 — optional product group enablement. Browser pass
+      passed 2026-09-12, after the label/variant/colour changes.** One shared
+      active-field predicate drives both the payload builder and the submit
+      validator, so the two choke points cannot disagree. Verified in Chromium
+      against the local dev stack, signed in as OWNER:
+      - a create form opens with all 8 optional groups OFF, each showing the
+        translated "not used for this record" placeholder and 0 inputs;
+      - enabling one reveals exactly its fields (placeholder gone);
+      - every group's checkbox sits OUTSIDE its disclosure button and is
+        focusable in its own right — the keyboard trap a nested control would
+        cause does not exist;
+      - an EXISTING product seeds from its own data: Cost, Stock, Dimensions
+        and Shipping opened enabled with their values, while genuinely empty
+        groups (Tags, Variants, Search) stayed off;
+      - switching Dimensions off empties it, switching it back on **restores
+        the original weight unchanged**, and the captured PATCH **omitted
+        `weightKg`/`lengthCm`/`widthCm`/`heightCm` entirely** rather than
+        nulling them — the URG-026 contract, observed on the wire;
+      - Arabic at 390 px: `dir="rtl"`, translated group headings and
+        placeholder, and **no horizontal overflow**;
+      - zero console errors and zero failed requests across the whole pass.
+      The write was intercepted and faked, so nothing was persisted to the dev
+      database. The schema has dimensions and shipping fields; it has no
+      first-class size, material or custom-attribute fields to gate, and none
+      were invented.
+      **Two caveats, recorded rather than smoothed over:** the "existing
+      product with a weight" the probe found is named `aaa` — leftover test
+      junk in `localhost/admin_dashboard`, in the same family as the earlier
+      category/POS garbage cleanups; worth a look, and it means the seeding
+      evidence comes from a junk row rather than a realistic product. And the
+      Arabic leg covered the CREATE path only, so Arabic seeding-from-data is
+      still unobserved.
 - [*] **URG-029 — variant opt-in acceptance.** Nullable
       `Product.hasVariants` and builder gating exist locally. A legacy NULL
       now remains distinct from explicit false, so its builder stays reachable;
@@ -131,12 +154,17 @@ already-approved merge.
       colour ("Burnt Orange") still saving with no `pattern` on the input.
       Verification: frontend typecheck 0, targeted lint 0, resource+i18n suites
       190/190 (was 187).
+      **Partially browser-checked 2026-09-12:** the "This product has colours"
+      checkbox renders inside the Variants & options group and is reachable
+      once that group is enabled. The datalist itself was NOT exercised — the
+      probe never opened a variants panel — so the suggestion list is covered
+      by unit tests only, not yet by a real browser.
       **Still open:** `hasColors` remains otherwise inert — nothing reads it
       outside this suggestion, so there is no colour reporting, no POS colour
-      filter and no per-colour stock view. No browser pass has run, and the
-      warn-on-disable contract is NOT yet wired for colours (URG-029's warning
-      covers `hasVariants` only). Decide whether colour needs its own warning
-      at all, given that disabling only withdraws suggestions and hides no data.
+      filter and no per-colour stock view. The warn-on-disable contract is NOT
+      wired for colours (URG-029's warning covers `hasVariants` only). Decide
+      whether colour needs its own warning at all, given that disabling only
+      withdraws suggestions and hides no data.
 
 ## R4 — publish, merge and verify the urgent stack (P0/P1)
 
