@@ -542,7 +542,18 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   for it, so it was permanently empty — requiring it server-side alone would have made every split
   sale with a cash leg impossible. **Check that the client can actually satisfy a contract before
   tightening it.**
-- **Next step**: URG-008 (checkout dialog focus / `aria-hidden`), continuing the U1 queue.
+- **The URG-008 finding worth remembering**: a `finally` block that restores focus runs on BOTH the
+  success and failure paths, but the failure path deliberately leaves the dialog open — and Radix
+  marks everything outside an open dialog `aria-hidden="true"`. So the "always tidy up focus" reflex
+  put focus on a hidden element and dragged the user out of the dialog they were reading. **Focus
+  restoration belongs to the close, not to the operation.** Second lesson from the same task: a
+  `useRef` mirrored by a `useEffect` is NOT readable immediately after the `setState` it mirrors —
+  React batches the update, the effect has not run, and code in the same `finally` reads the stale
+  value. When a ref must be accurate across an await in the same function, set it synchronously at
+  the point of change and keep the effect only for changes made elsewhere.
+- **Next step**: URG-009 (configurable refund reasons with Other), continuing the U1 queue. **It and
+  URG-010 both need owner decisions first** — the open questions are already listed at the bottom of
+  `URGENT_TODO.md`: one reason or several, and whether the catalogues are fixed or admin-configurable.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.

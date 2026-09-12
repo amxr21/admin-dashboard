@@ -475,6 +475,54 @@ describe('taking payment', () => {
     expect(screen.getAllByText('Flat white').length).toBeGreaterThan(0);
   });
 
+  it('keeps focus inside the dialog when a charge is refused (URG-008)', async () => {
+    // The dialog stays open on a refusal, and Radix marks everything outside
+    // it aria-hidden. Pulling focus back to the scan field therefore put focus
+    // on an element hidden from assistive technology, and took the cashier out
+    // of the dialog they were still reading.
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockRejectedValue(
+      new ApiError(400, 'BAD_REQUEST', 'Only 2 of Flat white left at this branch'),
+    );
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+    await takePaymentThroughConfirm();
+
+    await screen.findByRole('alert');
+
+    expect(screen.getByLabelText(/scan or type a code/i)).not.toHaveFocus();
+    expect(document.activeElement).not.toBe(null);
+    // Focus is still within the open dialog, not stranded on the page behind.
+    expect(screen.getByRole('alertdialog')).toContainElement(
+      document.activeElement as HTMLElement,
+    );
+  });
+
+  it('returns focus to the scan field after a successful sale (URG-008)', async () => {
+    // The other half of the same rule: once the dialog is gone the scan field
+    // is visible again, and the next thing a cashier does is scan.
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({
+      orderId: 'o1',
+      orderNumber: 'POS-1',
+      subtotal: '4.50',
+      taxAmount: '0.00',
+      total: '4.50',
+      change: null,
+    });
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+    await takePaymentThroughConfirm();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/scan or type a code/i)).toHaveFocus();
+    });
+  });
+
   it('cannot take payment on an empty cart', async () => {
     render(<SaleScreen />);
 
