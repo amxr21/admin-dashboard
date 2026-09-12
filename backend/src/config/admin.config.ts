@@ -196,6 +196,17 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         relation: { resource: 'tags', labelField: 'name' },
         group: 'organisation',
       },
+      /**
+       * URG-029/030 — per-product opt-in for the variant and colour
+       * dimensions. Grouped with the other options rather than sitting in the
+       * default body: a simple product should never have to answer them.
+       *
+       * Turning either off hides the builder and NOTHING else — existing
+       * variant rows keep their stock and sales history, per the owner's
+       * decision that a UI toggle must not destroy data.
+       */
+      { name: 'hasVariants', label: 'This product has variants', type: 'boolean', inList: false, group: 'options' },
+      { name: 'hasColors', label: 'This product has colours', type: 'boolean', inList: false, group: 'options' },
       {
         name: 'status',
         label: 'Status',

@@ -1008,6 +1008,39 @@ These are recurring gates for each new branch, not one-time unfinished tickets.
 - [ ] **URG-028 — Curate product code types.** Replace the all-code-types list with the small set the
       product workflow actually supports (for example SKU and the approved retail barcode types),
       while retaining a safe mapping for existing records.
+      **URG-029/030 progress 2026-09-12.** Added nullable `Product.hasVariants`/`hasColors`
+      (migration `20260912180000`, applied to dev AND test, both columns confirmed via
+      `information_schema`). NULL means "never asked", distinct from an explicit false; a product
+      that already HAS variants counts as enabled, so no existing row changes behaviour and the
+      owner's "a toggle must never destroy data" rule holds.
+      `CollapsibleSection` gained an `action` slot for the group-enable switch — rendered as a
+      SIBLING of the toggle button, because a button nested inside a button is invalid HTML and
+      the inner control would be unreachable by keyboard.
+      **Correction to an earlier note in this file:** the commit message for `bb924dc` says the
+      Prisma client was not regenerated. That was wrong — the EPERM only broke the DLL *rename*;
+      the TypeScript client did regenerate (89 `hasVariants` references, written 17:09) and the
+      backend typechecks against it. The stale-types concern in that message does not apply.
+      Both flags are now exposed through `admin.config.ts` in a new `options` group, and the
+      **Manage variants button is gated on `hasVariants !== false`**: an explicit false hides the
+      builder, while NULL (never asked) keeps it, so nothing that worked before disappears.
+      Hiding the builder never touches variant rows — their stock and sales history survive.
+      Verified in a browser, both locales: eight group headings render translated with no raw
+      keys leaked, both toggles appear under "Variants & options" / "الخيارات والتنويعات", zero
+      console errors. Typecheck/lint clean; 149/149 resource suites, 50/50 resource-form.
+      **Still open for URG-030**: `hasColors` is stored and toggleable but nothing consumes it
+      yet — there is no colour dimension in the product model to reveal.
+
+      **A REAL BILINGUAL GAP, pre-existing and system-wide — flagged for an owner decision, not
+      fixed here.** Every `admin.config.ts` field label is rendered RAW (`{field.label}`, seven
+      call sites across `resource-form.tsx` and `resource-table.tsx`), so all ~24 product field
+      labels are English-only in Arabic: "Low stock alert at", "HS code", "Meta title" and
+      "Barcode" are all absent from `ar.json`. The group HEADINGS added in URG-025 are translation
+      keys and do resolve, which makes the mismatch newly visible — a correctly translated
+      "الخيارات والتنويعات" heading sitting above an untranslated "This product has variants".
+      This predates URG-025/029, but those tickets added two new labels into the gap. Closing it
+      means a field-label translation layer across the whole resource engine (config carries keys
+      rather than prose, or a `resource.fields.*` lookup with an English fallback) — a change to
+      every resource, and too large to slip into this batch unannounced.
 - [ ] **URG-029 — Make variants optional.** A simple product should not require variant complexity;
       enabling variants reveals the variant builder and disabling it requires an explicit safe rule
       for existing variant data.

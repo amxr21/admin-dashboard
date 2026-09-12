@@ -669,15 +669,24 @@ export function ResourceForm({
                   >
                     {t('manageLocalizedContent')}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!isEdit}
-                    onClick={() => setVariantsPanelOpen(true)}
-                  >
-                    {t('manageVariants')}
-                  </Button>
+                  {/* URG-029 — hidden unless this product opts into variants.
+                      `hasVariants === false` is an explicit "no"; NULL means
+                      the owner was never asked, and those products keep the
+                      button so nothing that worked before disappears. Turning
+                      it off hides the BUILDER only: existing variant rows keep
+                      their stock and sales history, per the owner's rule that
+                      a UI toggle must never destroy data. */}
+                  {values.hasVariants !== false ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!isEdit}
+                      onClick={() => setVariantsPanelOpen(true)}
+                    >
+                      {t('manageVariants')}
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="outline"
