@@ -475,7 +475,12 @@ describe("the gap group B documented, now closed", () => {
     await request(app)
       .patch(`/api/v1/orders/${orderId}/status`)
       .set(auth(ownerToken))
-      .send({ to: OrderStatus.CANCELED });
+      // URG-010 made a reason REQUIRED to cancel, and the guard runs before
+      // the transaction that propagates to the assignment — so without one
+      // this request 400s, the order never moves, and the courier keeps the
+      // job. That is the contract working, not a courier bug: this test was
+      // simply never updated alongside orders.test.ts and returns.test.ts.
+      .send({ to: OrderStatus.CANCELED, cancellationReason: 'CUSTOMER_REQUEST' });
 
     const assignment = await prisma.deliveryAssignment.findUnique({ where: { orderId } });
     expect(assignment?.status).toBe(DeliveryStatus.CANCELED);
