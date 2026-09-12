@@ -711,7 +711,35 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
     },
   });
 
-  return serialiseReturn(id);
+  const approved = await serialiseReturn(id);
+
+  /**
+   * A return was DECIDED. Until now `notify()` fired only when one was
+   * requested, so whoever was waiting on the answer learned nothing — the
+   * request alert announced the work arriving and nothing announced it being
+   * finished.
+   *
+   * After the transaction and after `audit`, mirroring `createReturn`: the
+   * decision is already durable, so a notification failure cannot undo it.
+   * `notify()` never throws by contract (same discipline as `audit()`), which
+   * is what makes calling it outside the transaction safe rather than sloppy.
+   *
+   * The resolution is in the body because "approved" alone does not say
+   * whether money moved, went to store credit, or shipped a replacement —
+   * which is the first thing anyone reading this actually needs.
+   */
+  if (await getSettingValue('notifications.returnDecisionAlerts')) {
+    notify({
+      type: 'return.approved',
+      title: `Return approved — ${approved.rmaNumber}`,
+      body: `${approved.order.orderNumber} · ${input.resolution}${
+        input.restock ? ' · restocked' : ''
+      }`,
+      link: '/admin/returns',
+    });
+  }
+
+  return approved;
 }
 
 export async function rejectReturn(id: string, rejectionReason: string, req: Request) {
@@ -746,5 +774,20 @@ export async function rejectReturn(id: string, rejectionReason: string, req: Req
     },
   });
 
-  return serialiseReturn(id);
+  const rejected = await serialiseReturn(id);
+
+  // Same gate and same placement as the approval above — a refusal is a
+  // decision too, and the one people chase. The reason is IN the body rather
+  // than left to the detail page: "rejected" without a why is the message
+  // that generates the follow-up question it was meant to answer.
+  if (await getSettingValue('notifications.returnDecisionAlerts')) {
+    notify({
+      type: 'return.rejected',
+      title: `Return rejected — ${rejected.rmaNumber}`,
+      body: `${rejected.order.orderNumber} · ${rejectionReason}`,
+      link: '/admin/returns',
+    });
+  }
+
+  return rejected;
 }

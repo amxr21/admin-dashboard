@@ -200,6 +200,38 @@ already-approved merge.
       Investigate the pre-existing `orders.test.ts` rate-limit 429 flake as
       test infrastructure, without weakening production rate limiting.
 
+## Returns — decision notifications (owner-approved 2026-09-12)
+
+- [x] **Notify staff when a return is approved or rejected.** `notify()` fired
+      only on `return.requested`, so the arrival of work was announced and its
+      completion never was — whoever was waiting on the answer learned nothing.
+      `approveReturn` and `rejectReturn` now each emit one notification after
+      their transaction and after `audit()`, mirroring `createReturn`: the
+      decision is already durable, and `notify()` never throws by contract, so
+      a failed alert cannot undo a refund or a restock.
+      The body carries the OUTCOME, not just the status — the approval names
+      its resolution (REFUND / STORE_CREDIT / REPLACEMENT, plus `restocked`)
+      because "approved" alone does not say whether money moved, and the
+      rejection carries its reason because "rejected" with no why generates the
+      question it was meant to answer.
+      **One new setting, not two:** `notifications.returnDecisionAlerts`
+      (boolean, default true). Approval and rejection are the same event class,
+      and "tell me about approvals but not rejections" is a state that reads as
+      a bug the first time a rejection goes unannounced. Kept separate from
+      `returnRequestAlerts` because that one is aimed at whoever picks work up
+      and this one at whoever was waiting on the answer.
+      Verification: returns suite 52/52 (3 new), backend typecheck and targeted
+      lint clean. Each new test is scoped to its own RMA — an unscoped
+      `findFirst` on the type matched another test's row, which is how the
+      first run reported the wrong RMA.
+- [ ] **Still not built, and deliberately so:** the fuller `ReturnStatus`
+      lifecycle (label sent → in transit → received → inspected → resolved) is
+      unchanged at REQUESTED/APPROVED/REJECTED. It was skipped on 2026-09-09 as
+      a mail-order shipping flow that does not fit a physical till; reviving it
+      needs a migration, new states and new UI. The customer still receives
+      nothing on resolution — the UX-018 customer-email path exists to reuse,
+      but that was not part of this approval.
+
 ## Remaining owner and UX work
 
 - [ ] **URG-011 — two scroll regions: owner decision.** At roughly 640–750px
