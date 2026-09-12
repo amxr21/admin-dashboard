@@ -39,6 +39,7 @@ export interface FieldConfig {
   inList?: boolean;
   inForm?: boolean;
   required?: boolean;
+  defaultValue?: boolean;
   searchable?: boolean;
   sortable?: boolean;
   readOnly?: boolean;
@@ -55,9 +56,8 @@ export interface FieldConfig {
    * The value is a translation key under `resource.fieldGroups`, not prose —
    * the section heading has to be localized like every other label.
    *
-   * A grouped field is NOT conditional: it still submits, still validates, and
-   * is one click away. This only stops a 24-field product form presenting
-   * dimensions and SEO with the same weight as name and price.
+   * Product groups can be disabled in the form. Disabled groups are omitted
+   * from client validation and payloads; the server validates received fields.
    */
   group?: string;
 }
