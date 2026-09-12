@@ -62,6 +62,10 @@ export class AppError extends Error {
     return new AppError(409, 'CONFLICT', message, details);
   }
 
+  static payloadTooLarge(message = 'Request body is too large'): AppError {
+    return new AppError(413, 'PAYLOAD_TOO_LARGE', message);
+  }
+
   /** The system refused a write on purpose, not because anything is broken. */
   static serviceUnavailable(message: string): AppError {
     return new AppError(503, 'SERVICE_UNAVAILABLE', message);

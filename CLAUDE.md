@@ -486,27 +486,60 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **Active branch**: `fix/configuration-readiness-localization`, stacked after Batch 10 and the
-  documentation checkpoint. Two pre-existing untracked diagnostic artifacts
-  (`frontend/branch-sheet-open.png` and `frontend/scroll-check.mjs`) remain intentionally untouched.
-- **Completed in the correction stack**: Batch 10 hardened forgot-password privacy and abuse
-  controls. Batch 11 now derives diagnostics email readiness from the delivery service's exact
-  SMTP + enabled-setting + sender-address contract and returns stable codes localized by the
-  English/Arabic clients; no secret-bearing response fields were added.
-- **Next step**: publish Batch 11, then implement the real permission-aware staff-detail workspace
-  in Batch 12. Decide separately whether the future Admin role may view the non-secret
-  configuration reference. After the ordered correction/UX batches, proceed to **point 4**: the final
-  combined unit/type/lint/build/E2E, motion, accessibility, responsive, and native-Arabic gate.
-- **Blockers**: the production-safe mapping from legacy Owner/Manager/Fulfillment/Support/Demo to
-  Admin/Developer/Cashier is not approved. Production Sentry remains on hold after the trial ended,
-  and pull-request E2E remains disabled until its retired Vercel/Render target is redesigned for
-  Coolify.
-- **Context to remember**: do not add prepared roles now; future templates must be configurable.
-  Keep all corrections reusable, scalable, and clean. Do not claim UX-034 complete merely because
-  Staff links to the Branch roster. Do not start or close point 4 on focused test evidence alone.
-  Four additional owner ideas are recorded in `TODO.md` for later discussion, not implementation:
-  settings-defaulted multi-currency till tender, reconsidering till customer search, a compact
-  horizontal loading-overlay redesign, and a conditional multi-branch dashboard summary.
+- **Active branch**: `fix/urgent-production-schema-integrity`, stacked directly on URG-003 PR #219. Two
+  pre-existing untracked diagnostic artifacts (`frontend/branch-sheet-open.png` and
+  `frontend/scroll-check.mjs`) remain intentionally untouched.
+- **In progress**: URG-004 release/schema integrity. The audit is complete and its fix is implemented
+  locally. URG-003 PR #219 is open against URG-002 PR #218 and mergeable; its CI continues while work
+  proceeds.
+- **The URG-004 finding worth remembering**: the startup gate as first written blocked the HTTP
+  server on any non-zero `prisma migrate deploy` *or* `prisma migrate status`. That conflates
+  migration BOOKKEEPING with schema CORRECTNESS, and the two diverge exactly when
+  `_prisma_migrations` is lost while real tables survive — which has now happened four times on this
+  project. Verified locally: `admin_dashboard_test` holds all 54 correct tables with no
+  `_prisma_migrations`, so `migrate status` exits 1 calling all 57 migrations unapplied while the
+  live schema diff reports "No difference detected", and `migrate deploy` fails replaying migration
+  #1 over existing tables. The gate meant to stop a drift-induced 500 on some endpoints would
+  instead have caused a total outage that is far harder to diagnose. **A deployment gate must block
+  on the condition that actually breaks requests, never on a proxy for it** — and the failure a gate
+  can itself cause has to be weighed against the failure it prevents. The running-database vs
+  `schema.prisma` comparison (`migrate diff`, read-only: it cannot write, and the argument list is
+  asserted to contain no `deploy`/`dev`/`push`) is now the sole authority; deploy/status failures are
+  logged loudly and non-fatal; a *thrown* runner error still aborts, since a crashed process is no
+  evidence the schema is healthy.
+- **The URG-005 finding worth remembering**: POS checkout could oversell under concurrency. The
+  transaction runs at MySQL's default REPEATABLE READ (`executeIdempotently` sets no
+  `isolationLevel`), and `checkoutOnce` read stock into a map, checked it, then decremented
+  UNCONDITIONALLY. Two cashiers with different idempotency keys both read `available = 1`, both
+  passed, both decremented, and the shelf went to -1. **A unique constraint guards a row's IDENTITY,
+  never its VALUE** — `@@unique([productId, branchId])` could not catch this, and no amount of
+  re-reading before the write can. Fixed by moving the condition INTO the write:
+  `updateMany({ where: { quantity: { gte: n } }, data: { decrement: n } })`, with `count === 0` as
+  the refusal — the same TOCTOU-closing idiom as the password-reset redemption. Serializable
+  isolation was rejected as it would serialize every non-contending sale. **Generalise**: any
+  check-then-write on a shared counter is a race unless the check is part of the write statement.
+  The `inventory.allowNegativeStock` escape hatch (O5.8) deliberately keeps the unconditional path.
+- **The URG-005 follow-on worth remembering**: closing the oversell race ADDED a contention point,
+  and its expected losing path was unmapped — the cashier who lost got a 500 (`P2034`, write
+  conflict/deadlock) instead of a refusal. **A concurrency guard is only half-finished until the
+  loser's outcome is mapped**; ask what the loser sees. P2034 now maps to the same 400 the
+  pre-flight check returns. The `storefront.service.ts` precedent maps it to 409 — copy its RULE
+  ("both paths look the same"), not its status code, which differs because that surface's
+  pre-flight differs.
+- **URG-006 outcome**: the browse half was already satisfied by an earlier deliberate decision —
+  `product-grid.tsx` shows sold-out items as disabled tiles with a badge rather than hiding them,
+  so a cashier can tell "we just ran out" from "we never had it". The owner reconfirmed that on
+  2026-09-11 rather than switching to omission. Only the SCAN path was a real gap: it added
+  zero-stock items silently, and now refuses. Before "fixing" something the queue describes as
+  missing, check whether it was built and decided differently on purpose.
+- **Next step**: URG-007 (enforce cash received against the amount due), continuing the U1 queue.
+- **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
+  Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
+  production Sentry remains on hold; pull-request E2E still targets retired hosting.
+- **Context to remember**: `URGENT_TODO.md` is owner-approved and now outranks enhancement work.
+  Preserve the one-task-at-a-time chat checklist and stack branches in that file's order. Keep the
+  role model headed toward Admin/Developer/Cashier without adding templates. Never claim a 500 is
+  fixed from local tests alone, and do not run point 4 until the urgent queue reaches its gate.
 
 ### Historical context retained below
 

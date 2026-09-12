@@ -235,6 +235,34 @@ describe('building a sale', () => {
     });
   });
 
+  it('refuses to add a scanned product the branch has none of (URG-006)', async () => {
+    // Unlike the quantity warning below, this BLOCKS — adding a line at all is
+    // a different decision from correcting the quantity of one already added,
+    // and the grid draws the same distinction by disabling the tile.
+    scanProduct.mockResolvedValue(makeProduct({ branchStock: 0 }));
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+
+    expect(
+      await screen.findByText(/flat white is out of stock at this branch/i),
+    ).toBeInTheDocument();
+    // No cart line, so no quantity control for it exists.
+    expect(
+      screen.queryByRole('button', { name: /one more flat white/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('still adds a scanned product when no branch is in context', async () => {
+    // null means stock is unknowable here, not that it is zero.
+    scanProduct.mockResolvedValue(makeProduct({ branchStock: null }));
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+
+    expect(await screen.findByText('Flat white')).toBeInTheDocument();
+  });
+
   it('warns when the quantity exceeds branch stock, without blocking', async () => {
     // A warning, not a block: the cashier is holding the item, and the SERVER
     // decides whether the sale is allowed (O5.8).

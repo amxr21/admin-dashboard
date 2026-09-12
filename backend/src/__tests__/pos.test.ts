@@ -463,6 +463,59 @@ describe('taking a sale (O5.7, O5.8)', () => {
     expect(stock?.quantity).toBe(3);
   });
 
+  it('lets only one of two simultaneous cashiers take the last units', async () => {
+    // DISTINCT idempotency keys on purpose — two different sales, not one
+    // retried. A shared key would exercise the replay path (covered above)
+    // and prove nothing about stock.
+    const product = await makeProduct({ sku: `${RUN}-OVERSELL-RACE`, price: '9.00', stock: 2 });
+    await stockAt(product.id, 2);
+
+    const body = { lines: [{ productId: product.id, quantity: 2 }], method: 'cash' };
+
+    const [left, right] = await Promise.all([sell(body), sell(body)]);
+
+    const statuses = [left.status, right.status].sort();
+    expect(statuses).toEqual([201, 400]);
+
+    const refused = left.status === 400 ? left : right;
+    /**
+     * EITHER refusal is correct, and which one fires is timing-dependent.
+     *
+     * The loser is refused by the conditional decrement finding no rows
+     * ("Only N of X left at this branch"), OR by InnoDB aborting it as a
+     * deadlock first ("X just sold out at this branch") — both transactions
+     * already hold locks from the order/items/movement writes before they
+     * contend on the stock row. Asserting only the first made this test fail
+     * whenever the database resolved the race the other way.
+     */
+    expect(JSON.stringify(refused.body)).toMatch(/left at this branch|just sold out/);
+
+    // The shelf must never go negative, and exactly one sale may exist.
+    const [stock, movements] = await Promise.all([
+      prisma.branchStock.findUnique({
+        where: { productId_branchId: { productId: product.id, branchId } },
+      }),
+      prisma.stockMovement.count({ where: { productId: product.id, reason: 'SOLD' } }),
+    ]);
+
+    expect(stock?.quantity).toBe(0);
+    expect(movements).toBe(1);
+  });
+
+  it('refuses a sale larger than the units on the shelf', async () => {
+    const product = await makeProduct({ sku: `${RUN}-OVERSELL-ONE`, price: '4.00', stock: 1 });
+    await stockAt(product.id, 1);
+
+    const res = await sell({ lines: [{ productId: product.id, quantity: 3 }], method: 'cash' });
+
+    expect(res.status).toBe(400);
+
+    const stock = await prisma.branchStock.findUnique({
+      where: { productId_branchId: { productId: product.id, branchId } },
+    });
+    expect(stock?.quantity).toBe(1);
+  });
+
   it('serializes simultaneous submissions carrying the same key', async () => {
     const product = await makeProduct({ sku: `${RUN}-IDEM-RACE`, price: '7.00', stock: 5 });
     await stockAt(product.id, 5);

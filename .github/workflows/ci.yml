@@ -223,6 +223,25 @@ jobs:
       # any test imports it, before a single test runs.
       - run: pnpm --filter ./backend db:generate
 
+      - name: Verify migration history matches Prisma schema
+        working-directory: backend
+        env:
+          # A SEPARATE database from admin_dashboard_test, and the separation is
+          # load-bearing. `migrate diff --from-migrations` replays all committed
+          # migrations INTO the shadow database to compute the comparison, which
+          # leaves it populated but with no migration history. Pointing this at
+          # the test database made the next step fail with P3005 ("schema is not
+          # empty") — the safeguard breaking the very promotion it guards.
+          # Prisma resets the shadow database's contents but does not create it,
+          # and the service block only auto-creates admin_dashboard_test, so it
+          # is created here. The name still contains "test" and is loopback, so
+          # the script's own refusal guard accepts it.
+          SCHEMA_CHECK_SHADOW_DATABASE_URL: mysql://root:test@127.0.0.1:3306/admin_dashboard_shadow_test
+        run: |
+          mysql -h 127.0.0.1 -P 3306 -u root -ptest \
+            -e "CREATE DATABASE IF NOT EXISTS admin_dashboard_shadow_test;"
+          pnpm check:schema
+
       - name: Apply migrations to the test database
         working-directory: backend
         env:

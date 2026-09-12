@@ -578,6 +578,11 @@ async function checkoutOnce(
          * mid-stocktake, or one whose counts are known to lag, must not have
          * its till stop working over bookkeeping. Hence the setting, and hence
          * its default.
+         *
+         * This read-based check is the FRIENDLY refusal — it names the product
+         * and the real remaining count, which the atomic guard at the
+         * decrement below cannot do as helpfully. It is not the safety
+         * boundary: see the conditional decrement for why.
          */
         throw AppError.badRequest(
           `Only ${String(available)} of ${product.name} left at this branch`,
@@ -675,11 +680,98 @@ async function checkoutOnce(
         },
       });
 
-      await tx.branchStock.upsert({
-        where: { productId_branchId: { productId: line.productId, branchId } },
-        create: { productId: line.productId, branchId, quantity: -line.quantity },
-        update: { quantity: { decrement: line.quantity } },
-      });
+      /**
+       * URG-005 — the real oversell boundary.
+       *
+       * The read-based check above cannot hold: this transaction runs at
+       * MySQL's default REPEATABLE READ (see `executeIdempotently`), so two
+       * cashiers selling the last unit each read `available = 1`, each pass
+       * that check, and each reach this decrement. `@@unique([productId,
+       * branchId])` constrains the row's IDENTITY, not its VALUE, so an
+       * unconditional `decrement` commits both and the shelf goes to -1.
+       *
+       * Putting the quantity condition in the WHERE clause makes the check and
+       * the write one atomic statement — the same TOCTOU-closing shape the
+       * password-reset redemption uses. The loser updates 0 rows and is
+       * refused, so the units cannot be sold twice.
+       *
+       * Serializable isolation was rejected: it would serialize every sale,
+       * including the overwhelming majority that never contend for one row,
+       * and add deadlock retries across the whole checkout to fix a conflict
+       * that belongs to a single row.
+       */
+      if (allowNegative) {
+        // The deliberate mid-stocktake escape hatch (O5.8) — counts are known
+        // to lag here, so going negative is the accepted outcome, not a race.
+        await tx.branchStock.upsert({
+          where: { productId_branchId: { productId: line.productId, branchId } },
+          create: { productId: line.productId, branchId, quantity: -line.quantity },
+          update: { quantity: { decrement: line.quantity } },
+        });
+      } else {
+        let claimed: { count: number };
+
+        try {
+          claimed = await tx.branchStock.updateMany({
+            where: {
+              productId: line.productId,
+              branchId,
+              // The whole point: only decrement if the units are still there.
+              quantity: { gte: line.quantity },
+            },
+            data: { quantity: { decrement: line.quantity } },
+          });
+        } catch (err) {
+          /**
+           * P2034 — write conflict / deadlock, the EXPECTED way to lose this
+           * race rather than a bug. Both transactions have already written an
+           * order, its items and a stock movement before reaching here, so
+           * they hold locks and then contend on this one `branch_stock` row;
+           * InnoDB aborts one of them.
+           *
+           * Left unmapped it reaches the cashier as a generic 500 and Sentry
+           * as an incident, which is wrong on both counts — nothing is broken,
+           * somebody else simply got there first. Mapped to the SAME 400 the
+           * pre-flight check above returns, so both ways of losing the last
+           * units look identical to the till. This mirrors the storefront's
+           * P2034 branch, which maps to 409 because ITS pre-flight returns
+           * 409; the rule being copied is "both paths look the same", not the
+           * particular status code.
+           *
+           * Not retried: the transaction is already rolled back, and retrying
+           * inside a claimed idempotency key would re-run the whole sale. A
+           * clean refusal the cashier can simply repeat is the safer answer.
+           *
+           * The true remaining count cannot be re-read here — the transaction
+           * is aborted — so this message stays general while the `count === 0`
+           * refusal below keeps naming the exact figure.
+           */
+          if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2034') {
+            throw err;
+          }
+
+          throw AppError.badRequest(
+            `${byId.get(line.productId)?.name ?? 'That product'} just sold out at this branch`,
+            { field: 'quantity', productId: line.productId },
+          );
+        }
+
+        if (claimed.count === 0) {
+          // Either another sale took the units between the read above and
+          // here, or this product has no stock row at this branch at all.
+          // Both mean the same thing to the cashier: it is not on the shelf.
+          const current = await tx.branchStock.findUnique({
+            where: { productId_branchId: { productId: line.productId, branchId } },
+            select: { quantity: true },
+          });
+          const remaining = current?.quantity ?? 0;
+
+          throw AppError.badRequest(
+            `Only ${String(remaining)} of ${byId.get(line.productId)?.name ?? 'that product'} left at this branch`,
+            { field: 'quantity', productId: line.productId, available: remaining },
+          );
+        }
+      }
 
       await tx.product.update({
         where: { id: line.productId },
