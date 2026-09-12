@@ -100,6 +100,11 @@ export interface FieldConfig {
    * every field it receives.
    */
   group?: string;
+  /**
+   * Older CSV templates may carry a previous human label. These aliases are
+   * read on import only; templates still emit the current `label`.
+   */
+  importAliases?: readonly string[];
 }
 
 export interface ResourceConfig {
@@ -259,6 +264,7 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         inList: false,
         searchable: true,
         group: 'identifiers',
+        importAliases: ['Barcode (EAN/UPC)'],
       },
       { name: 'weightKg', label: 'Weight (kg)', type: 'number', inList: false, group: 'physical' },
       { name: 'lengthCm', label: 'Length (cm)', type: 'number', inList: false, group: 'physical' },

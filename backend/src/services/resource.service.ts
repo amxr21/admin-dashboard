@@ -991,6 +991,17 @@ export interface ImportResult extends ImportPreview {
  *  reserve. */
 const MULTI_VALUE_SEPARATOR = ';';
 
+function importCellForField(
+  row: Record<string, string>,
+  field: FieldConfig,
+): string | undefined {
+  for (const header of [field.label, ...(field.importAliases ?? [])]) {
+    if (Object.prototype.hasOwnProperty.call(row, header)) return row[header];
+  }
+
+  return undefined;
+}
+
 /** Builds `label -> id` (case-insensitive) for every relation/multiRelation
  *  field an import might reference, in ONE query per target table rather
  *  than one per cell — a 500-row import of a resource with two relation
@@ -1041,9 +1052,10 @@ function csvRowToBody(
   const body: Record<string, unknown> = {};
 
   for (const field of writableFields(config)) {
-    if (!Object.prototype.hasOwnProperty.call(row, field.label)) continue;
+    const cell = importCellForField(row, field);
+    if (cell === undefined) continue;
 
-    const raw = row[field.label]?.trim() ?? '';
+    const raw = cell.trim();
 
     if (raw === '') {
       // An empty cell means "not provided" for a create, same as an absent
