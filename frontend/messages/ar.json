@@ -24,7 +24,14 @@
     "placeholders": {
       "email": "name@example.com",
       "phone": "+1 555 123 4567",
-      "url": "https://example.com"
+      "url": "https://example.com",
+      "personName": "مثال: سارة حداد",
+      "branchName": "مثال: وسط المدينة",
+      "branchCode": "مثال: DT-01",
+      "addressLine": "مثال: شارع الوصل 12، محل 3",
+      "city": "مثال: دبي",
+      "legalName": "مثال: حداد للتجارة ذ.م.م",
+      "taxId": "مثال: 100123456700003"
     }
   },
   "language": {

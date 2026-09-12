@@ -241,10 +241,62 @@ returned HTTP 401. Never promote a historical CI result to a current green claim
       misread column absence because `mysql` isn't on PATH here, not because the columns were
       actually missing. The prior R1 branch is still local/incomplete; preserve the parent commit
       and stacked merge order.
-- [ ] **R3 — finish shell/field corrections (URG-011/013/014).** Reproduce short-screen two-scrollbar
+- [*] **R3 — finish shell/field corrections (URG-011/013/014).** Reproduce short-screen two-scrollbar
       state; resolve it without trapping navigation; inventory missing placeholders field-by-field;
       implement selected-branch/content width with narrow-screen fallback; test keyboard, mobile,
       Arabic/RTL and both ordinary/long names. Split into separate stacked PRs per concern.
+      R3 progress (2026-09-12, Claude, on `fix/urgent-goodwill-refund-reasons` — R2 committed at
+      `17f5b6f`/`7e5041c`; split into per-concern branches before publishing):
+      - [x] **URG-011 REPRODUCED, then measured — recommend closing with evidence, NOT a code
+            change.** Live probe (authenticated, `/admin/orders`, OWNER = the widest nav):
+            two scrollers genuinely coexist at viewport heights 640/700/750 — `<nav>` overflows
+            by 484/140/90px alongside `<main>` — and resolve to a single scroller only at ~900px.
+            So the earlier spacing trim raised the threshold without eliminating the second
+            scroller on common laptop heights, exactly as the ticket suspected.
+            **But the measurement changes the conclusion**: the nav's content height is a CONSTANT
+            768px (21 links x 32px + 5 group headings), independent of viewport. Its available
+            track is viewport - 56px brand row - 16px aside padding. It therefore overflows for
+            any viewport under roughly 840px and nothing about spacing changes that: closing the
+            gap would mean shrinking the 32px rows or removing nav groups, both worse for a
+            21-destination admin than a scoped scroller. `sidebar-nav.tsx`'s own comment already
+            says `overflow-y-auto` is a deliberate fallback "for a genuinely short screen" — a
+            700px laptop IS that screen, and the fallback is doing its job. The document itself
+            never scrolls (`documentScrolls: false` at every height), so navigation is not
+            trapped and `<main>` remains the single content scroller. Recommend the owner accept
+            this as correct behaviour; if they still want one scroller at 700px, that is a
+            product decision about cutting nav items, not a CSS fix.
+      - [x] **URG-013 placeholders — audited field-by-field and implemented (English + Arabic).**
+            Inventory of every text input that lacked one: staff `name`; branch `name`, `code`,
+            `addressLine`, `city`; business `legalName`, `taxId`, `addressLine`, `city`.
+            Added seven new keys to the EXISTING `common.placeholders` (beside email/phone/url)
+            rather than per-form copies, and replaced the hard-coded per-field ternaries in
+            `branch-sheet.tsx` and `business-form.tsx` with one lookup map each.
+            **Deliberately left without a placeholder, with reasons**: staff `password` (an
+            example password is actively harmful, and the field already carries a min-length
+            hint); business `name` (required, first, and its label already says "Business name");
+            and `kind`/`country`/`currency`/`timezone` — those are canonical option sets that
+            URG-016–024 converts to Selects, so hinting a free-text format now would teach a
+            shape the control is about to stop accepting. Per the ticket: no misleading generic
+            value, and no placeholder used as a substitute for a label.
+            en/ar parity 2323/2323, frontend typecheck and lint clean.
+      - [x] **URG-014 branch switcher — implemented and measured.** Was `w-full max-w-80`, which
+            made the trigger claim its whole track regardless of label length, so a short name
+            reserved the same 320px as a long one and a long one was still clipped at the cap —
+            capped-and-clipped either way, which is what the ticket objected to. Now
+            `w-auto min-w-0 max-w-[min(20rem,100%)]`: sized to content, still capped at 320px,
+            and yielding on a narrow topbar (the ticket's required fallback). `truncate` + the
+            Tooltip stay for anything longer than the cap.
+            Live measurements (branch switcher targeted by its `aria-label`, both locales, real
+            seeded names 15–26 chars):
+              - "All branches" / "كل الفروع": 156px / 128px — a short label no longer reserves 320px.
+              - "__demo__ Al Quoz Warehouse" (26 chars): 271px / 279px, under the cap, `clipped:false`.
+              - At 700px and 380px viewports it shrinks to 242px / 263px, `withinViewport:true`.
+            Frontend typecheck and lint clean.
+            **Probe correction worth keeping**: the first measurement run targeted
+            `[data-slot="select-trigger"]` unscoped, which matches THREE controls in the shell and
+            silently measured the view-as-role switcher instead (its options came back as roles,
+            not branches). Arabic then failed on a strict-mode violation, which is what exposed
+            it. Any future shell-widget probe must scope by `aria-label`, not by slot alone.
 - [ ] **R4 — verify published stack and production blockers (URG-001–010, 012).** Publish the local
       commits through their intended stacked PR, refresh all GitHub checks, merge only in base order
       after passing gates, then verify authenticated Organization, Customer Cases, checkout, stock,

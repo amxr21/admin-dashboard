@@ -48,6 +48,17 @@ interface BranchSheetProps {
 
 const TEXT_FIELDS = ['name', 'code', 'addressLine', 'city', 'phone'] as const;
 
+/** URG-013 — a worked example per field, not one generic hint. Keys live in
+ *  `common.placeholders` beside the existing email/phone/url so there is one
+ *  place a shared example lives, rather than a per-form copy of the same idea. */
+const BRANCH_PLACEHOLDERS: Partial<Record<(typeof TEXT_FIELDS)[number], string>> = {
+  name: 'placeholders.branchName',
+  code: 'placeholders.branchCode',
+  addressLine: 'placeholders.addressLine',
+  city: 'placeholders.city',
+  phone: 'placeholders.phone',
+};
+
 type Values = Record<string, string>;
 
 function initial(branch: BranchRow | null): Values {
@@ -186,7 +197,7 @@ export function BranchSheet({
               <Input
                 id={`branch-${field}`}
                 type={field === 'phone' ? 'tel' : 'text'}
-                placeholder={field === 'phone' ? tCommon('placeholders.phone') : undefined}
+                placeholder={BRANCH_PLACEHOLDERS[field] ? tCommon(BRANCH_PLACEHOLDERS[field]) : undefined}
                 value={values[field] ?? ''}
                 onChange={(event) => set(field, event.target.value)}
                 aria-invalid={field === 'name' && nameError ? true : undefined}

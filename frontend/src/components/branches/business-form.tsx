@@ -72,6 +72,26 @@ const FIELDS = [
  *  column a two-up grid gives it. */
 const WIDE_FIELDS = new Set(['name', 'legalName', 'addressLine']);
 
+/**
+ * URG-013 — a worked example per field, sharing `common.placeholders` with the
+ * branch and staff forms rather than restating the same examples per form.
+ *
+ * `name` is deliberately absent: the label already says "Business name" and the
+ * field is required and first, so an example adds nothing. `kind`, `country`,
+ * `currency` and `timezone` are absent on purpose too — those are canonical
+ * option sets that URG-016–024 turns into Selects, and hinting a free-text
+ * format now would teach a shape the control is about to stop accepting.
+ */
+const BUSINESS_PLACEHOLDERS: Record<string, string | undefined> = {
+  legalName: 'placeholders.legalName',
+  taxId: 'placeholders.taxId',
+  email: 'placeholders.email',
+  phone: 'placeholders.phone',
+  addressLine: 'placeholders.addressLine',
+  city: 'placeholders.city',
+  logoUrl: 'placeholders.url',
+};
+
 type Values = Record<string, string>;
 
 function initial(business: BusinessSummary | null): Values {
@@ -231,11 +251,7 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
                   id={`business-${field}`}
                   type={field === 'email' ? 'email' : field === 'phone' ? 'tel' : 'text'}
                   placeholder={
-                    field === 'email'
-                      ? tCommon('placeholders.email')
-                      : field === 'phone'
-                        ? tCommon('placeholders.phone')
-                        : undefined
+                    BUSINESS_PLACEHOLDERS[field] ? tCommon(BUSINESS_PLACEHOLDERS[field]) : undefined
                   }
                   value={values[field] ?? ''}
                   onChange={(event) => set(field, event.target.value)}

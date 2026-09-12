@@ -234,6 +234,7 @@ export function StaffSheet({
             <Input
               id="staff-name"
               type="text"
+              placeholder={tCommon('placeholders.personName')}
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
