@@ -486,12 +486,14 @@ from one list and never linked to directly) is where "judge per-surface" actuall
 keep — don't resolve the ambiguity by picking whichever is less code to wire up.
 
 ## Current work
-- **Active branch**: `fix/urgent-production-schema-integrity`, stacked directly on URG-003 PR #219. Two
+- **Active branch**: `fix/urgent-refund-cancel-reasons`, currently six local commits ahead of its
+  recorded upstream at the 2026-09-12 review. PR #225 is the latest named stacked PR. Two
   pre-existing untracked diagnostic artifacts (`frontend/branch-sheet-open.png` and
   `frontend/scroll-check.mjs`) remain intentionally untouched.
-- **In progress**: URG-004 release/schema integrity. The audit is complete and its fix is implemented
-  locally. URG-003 PR #219 is open against URG-002 PR #218 and mergeable; its CI continues while work
-  proceeds.
+- **In progress**: R0 handoff reconciliation in `URGENT_TODO.md`; URG-004, URG-009, URG-011,
+  URG-013 and URG-014 were reopened after review of implementation against the owner's full
+  acceptance request. `gh` returned HTTP 401, so current PR checks/merge state cannot be asserted
+  from the earlier green reports. Do not infer production deployment from local commits.
 - **The URG-004 finding worth remembering**: the startup gate as first written blocked the HTTP
   server on any non-zero `prisma migrate deploy` *or* `prisma migrate status`. That conflates
   migration BOOKKEEPING with schema CORRECTNESS, and the two diverge exactly when
@@ -504,9 +506,10 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   on the condition that actually breaks requests, never on a proxy for it** — and the failure a gate
   can itself cause has to be weighed against the failure it prevents. The running-database vs
   `schema.prisma` comparison (`migrate diff`, read-only: it cannot write, and the argument list is
-  asserted to contain no `deploy`/`dev`/`push`) is now the sole authority; deploy/status failures are
-  logged loudly and non-fatal; a *thrown* runner error still aborts, since a crashed process is no
-  evidence the schema is healthy.
+  asserted to contain no `deploy`/`dev`/`push`) currently controls admission; deploy/status failures
+  are logged loudly and non-fatal; a *thrown* runner error still aborts. **Correction:** shape parity
+  cannot prove a data-only/backfill migration ran. URG-004 remains open for a safe
+  repair/quarantine policy and tests, without turning missing bookkeeping into a blanket outage.
 - **The URG-005 finding worth remembering**: POS checkout could oversell under concurrency. The
   transaction runs at MySQL's default REPEATABLE READ (`executeIdempotently` sets no
   `isolationLevel`), and `checkoutOnce` read stock into a map, checked it, then decremented
@@ -562,7 +565,11 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   cancellation catalogues apart.
 - **Owner decisions 2026-09-12**: reason catalogues are exactly one value plus an `Other` note,
   fixed enums in code (not admin-configurable), values chosen without waiting for approval.
-- **Next step**: URG-011 (reopen the double-scrollbar defect), starting section U2.
+- **Next step**: finish and commit R0 tracked handoff on the current branch without staging either
+  diagnostic artifact; publish the local stack after checks/credentials permit. Then create a
+  stackable URG-004 migration-data-integrity branch and inventory data-only migrations before a
+  production policy change. Subsequent R2/R3/R4/R5 tasks and merge order are explicit in
+  `URGENT_TODO.md`.
 - **Blockers**: final URG-001/URG-002 verification needs PR #217 merged/deployed and an authenticated
   Owner/Developer session. The production-safe legacy-role migration mapping remains unapproved;
   production Sentry remains on hold; pull-request E2E still targets retired hosting.
