@@ -257,14 +257,78 @@ already-approved merge.
       and the latter two carry real privacy weight needing a read-access
       decision, not just validation. Business tax/TRN validation is already
       done separately as URG-023. Ask again before starting.
-- [ ] **URG-028 — product code types. APPROVED 2026-09-12: opt-in per product,
-      curated types.** A "this product has a barcode" switch in the same shape
-      as the variants/colours toggles, then a type picker limited to real
-      retail symbologies (EAN-13, EAN-8, UPC-A, UPC-E, ITF-14, CODE128) with
-      per-type check-digit validation. SKU remains an always-available plain
-      field. Existing unrecognised or unmappable codes are SHOWN for review and
-      never rewritten — inventing a corrected check digit would fabricate a
-      code that does not exist on the physical product.
+- [*] **URG-028 — product code types. APPROVED 2026-09-12: opt-in per product,
+      curated types. BACKEND HALF DONE AND VERIFIED; one client-side design
+      question open.**
+      Built: `backend/src/lib/barcode.ts` — six curated retail symbologies
+      (EAN-13, EAN-8, UPC-A, UPC-E, ITF-14, CODE128) following the exact
+      `tax-id.ts` convention (`test`/`normalize`/`hint`/`example`, server
+      authoritative, unknown values accepted rather than refused). One GS1
+      mod-10 routine walks backwards from the rightmost data digit so the same
+      code is correct for all four fixed lengths instead of four copies that
+      can drift. `Product.hasBarcode`/`barcodeType` added as additive nullable
+      columns (migration `20260912190000`, applied to the guarded local target
+      and verified: `barcode varchar(64)`, `barcode_type varchar(16)`,
+      `has_barcode tinyint`, all nullable, 30 products, **0 classified and 0
+      opted in — no backfill**). Validation runs in the products `beforeWrite`
+      hook on CREATE **and** UPDATE, but only when the write actually touches
+      `barcode` or `barcodeType` (the customers hook's `hasOwnProperty`
+      discipline) — otherwise editing a product's PRICE could fail on its old
+      barcode, a refusal about a field nobody opened. A PATCH setting only the
+      type is checked against the STORED code, because declaring "this is an
+      EAN-13" is exactly when to discover the saved digits are not one. The
+      canonical form is written back on write so the till's EXACT-match scan
+      cannot miss on a stored space or dash.
+      **Type is stored, not derived:** `5012345678900` is a valid EAN-13 and
+      also a legal prefix for other lengths, and CODE128 accepts almost
+      anything — the symbology cannot be recovered from the digits later.
+      **Deliberate gaps, stated so nobody reads them as oversights:** UPC-E's
+      check digit is NOT validated (it derives from the expanded 12-digit
+      form, six suppression rules of real work for a case never asked for);
+      CODE128 has no check digit to test, so only length is bounded. Both are
+      commented in the module and pinned by tests.
+      Verification: 19/19 unit tests using REAL published codes (hand-made
+      digits would not catch a reversed weighting, which is how this fails
+      silently), backend typecheck and lint clean, en/ar parity 19/19 with 7
+      new hint keys per locale.
+      **The client-side design question, DECIDED 2026-09-12: server-only
+      validation plus a legacy notice.** A barcode's placeholder and
+      client-side validation depend on the SIBLING `barcodeType` field, but
+      the generic engine's `validateField(field, value)` and
+      `placeholderFor(field, tCommon)` see only one field's own value by
+      design, and `FormField` receives no sibling map. Threading siblings in
+      would widen a signature every resource shares to serve one product
+      field; the file's own comment notes there is currently exactly ONE
+      `schema.resource === 'products'` conditional and treats that as a cost
+      worth not repeating. So the generic engine is left alone: the server
+      already refuses a bad code with a shape-stating message that surfaces on
+      the field through the existing 400 handling, which means validation is
+      enforced end to end without it.
+      **The `barcodeUnclassified` notice was attempted and WITHDRAWN
+      2026-09-12 — owner decision, and the reason is worth recording.** The
+      idea was one advisory string on a stored code carrying no type. The
+      wiring looked correct (generic `notice?: string` prop on `FormField`,
+      decided in `renderField`, key present under `resourceForm` in both
+      locales, typecheck clean) and it still would not render; five diagnostic
+      attempts failed to explain why, including a throwaway probe. Rather than
+      keep spending on a cosmetic string, the wiring and its four tests were
+      removed and the enforced backend work shipped on its own.
+      What REMAINS in place and is deliberately kept: the generic
+      `notice?: string` prop and its render slot on `FormField` (unused, but a
+      clean advisory hook any resource can adopt), and the six `barcodeHint*`
+      locale keys plus the client mirror `frontend/src/lib/barcode.ts` (also
+      unused under the server-only decision). None of it is wired, so nothing
+      half-works; a later pre-submit-feedback pass has the pieces waiting.
+      **Open follow-up (small, not urgent):** show unclassified legacy codes
+      for review somewhere. Nothing is lost without it — the server still
+      refuses a bad code, and an unclassified one is accepted exactly as it
+      was before URG-028 — but an owner has no prompt to classify old codes.
+      Diagnose the render condition from scratch rather than resuming the
+      abandoned approach.
+      SKU remains an always-available plain field. Existing unrecognised or
+      unmappable codes are SHOWN for review and never rewritten — inventing a
+      corrected check digit would fabricate a code that does not exist on the
+      physical product.
 - [*] **URG-034 — multi-currency till. APPROVED 2026-09-12: all three pieces.
       Implemented locally the same day; sale-screen coverage and the browser
       pass remain.**

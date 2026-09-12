@@ -934,6 +934,20 @@ interface FormFieldProps {
    *  the backend falls back to a generic one for anything it doesn't
    *  recognise, so this never needs to stay in sync with that allowlist. */
   resourceFolder: string;
+  /**
+   * An advisory note about this field's CURRENT value, decided by the caller.
+   *
+   * Generic on purpose (URG-028). A barcode's meaning depends on its sibling
+   * `barcodeType`, and this component only ever sees one field's own value —
+   * so the decision is made in `renderField`, which has the whole form's
+   * values, and arrives here as finished text. The alternative was widening
+   * `validateField`/`placeholderFor` to take sibling values, which would
+   * change a signature every resource shares to serve one product field.
+   *
+   * Not an error: it never blocks a save. Suppressed while a real error is
+   * showing, since a validation failure is the more urgent message.
+   */
+  notice?: string | undefined;
   onRefreshOptions?: () => void;
   onChange: (value: FormValue) => void;
   /** Runs `validateField` for THIS field only — never on boolean/
@@ -953,6 +967,7 @@ function FormField({
   error,
   options,
   resourceFolder,
+  notice,
   onRefreshOptions,
   onChange,
   onBlur,
@@ -1188,6 +1203,16 @@ function FormField({
         <p className="text-muted-foreground flex items-start gap-1.5 text-sm">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           {t('variantOptOutWarning')}
+        </p>
+      ) : null}
+
+      {/* A caller-supplied note about THIS field's stored value — see the
+          `notice` prop's own comment on why it is generic rather than a
+          second product-specific branch in here. */}
+      {!error && notice ? (
+        <p className="text-muted-foreground flex items-start gap-1.5 text-sm">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          {notice}
         </p>
       ) : null}
     </div>

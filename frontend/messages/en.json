@@ -681,6 +681,12 @@
       "importing": "Importing…",
       "close": "Close"
     },
+    "barcodeHintEAN13": "An EAN-13 is 13 digits, and the last digit must match its check digit.",
+    "barcodeHintEAN8": "An EAN-8 is 8 digits, and the last digit must match its check digit.",
+    "barcodeHintUPCA": "A UPC-A is 12 digits, and the last digit must match its check digit.",
+    "barcodeHintUPCE": "A UPC-E is 8 digits.",
+    "barcodeHintITF14": "An ITF-14 is 14 digits, and the last digit must match its check digit.",
+    "barcodeHintCODE128": "A CODE128 label can hold up to 48 characters.",
     "fieldLabels": {
       "id": "ID",
       "imageUrl": "Image",
@@ -837,6 +843,7 @@
     "none": "— None —",
     "enableGroup": "Use {group}",
     "groupDisabled": "Not used for this record. Switch it on to fill these in.",
+    "barcodeUnclassified": "Saved before barcode types were recorded. Choose the type that matches this code so it can be checked.",
     "variantOptOutWarning": "Any variants already saved keep their stock and sales history, but this hides the builder that reaches them. Switch this back on to manage them again."
   },
   "datePicker": {

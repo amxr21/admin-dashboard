@@ -817,6 +817,24 @@ model Product {
   hasVariants Boolean? @map("has_variants")
   hasColors   Boolean? @map("has_colors")
 
+  /// Per-product opt-in for a barcode, and which symbology it is (URG-028).
+  ///
+  /// NULL `hasBarcode` means "never asked", the same three-state contract as
+  /// the flags above: a product created before this existed has not opted out.
+  ///
+  /// `barcodeType` is STORED rather than derived because it cannot be
+  /// recovered from the digits — `5012345678900` is a valid EAN-13 and also a
+  /// legal prefix for other lengths, and CODE128 accepts almost anything. It
+  /// stays NULL on every row that predates this column, which is precisely
+  /// what makes those codes "unclassified, shown for review" rather than
+  /// retroactively invalid.
+  ///
+  /// Deliberately NOT an enum: the retail symbology list is expected to grow
+  /// (see `lib/barcode.ts`), and an enum would make each addition a migration.
+  /// Same reasoning as `Business.kind`.
+  hasBarcode  Boolean? @map("has_barcode")
+  barcodeType String?  @map("barcode_type") @db.VarChar(16)
+
   categoryId String?   @map("category_id")
   /// SetNull, not Cascade — deleting a category must never delete products.
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)

@@ -5,6 +5,7 @@ import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { logger } from '../logger.js';
 import { defaultBranchId } from './inventory.service.js';
+import { checkBarcode } from '../lib/barcode.js';
 import { normalizePhone } from '../lib/phone.js';
 import { uniqueSlug } from '../lib/slug.js';
 import { recordCatalogueVersion } from './product-catalogue-version.service.js';
@@ -226,6 +227,64 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
      * always wins over generation.
      */
     beforeWrite: async (data: Record<string, unknown>, id: string | null): Promise<void> => {
+      /**
+       * URG-028 — check the barcode against its declared symbology.
+       *
+       * Runs on CREATE AND UPDATE, unlike the slug generation below: a
+       * mistyped check digit is just as wrong on an edit, and unlike a slug
+       * there is no redirect history making a later change delicate.
+       *
+       * ─── ONLY WHEN THE WRITE ACTUALLY TOUCHES THESE FIELDS ───────────
+       * `Product.barcode` predates this feature, so rows hold codes nobody
+       * classified. Validating unconditionally would mean editing a product's
+       * PRICE could fail on its old barcode — a refusal about a field the
+       * user never opened. Same `hasOwnProperty` discipline as the customers
+       * hook: absent means "not part of this write", which is different from
+       * present-and-empty.
+       *
+       * A PATCH that sets only the type is checked against the STORED code,
+       * because declaring "this is an EAN-13" is exactly the moment to find
+       * out the saved digits are not one.
+       */
+      const touchesBarcode =
+        Object.prototype.hasOwnProperty.call(data, 'barcode') ||
+        Object.prototype.hasOwnProperty.call(data, 'barcodeType');
+
+      if (touchesBarcode) {
+        let code = typeof data.barcode === 'string' ? data.barcode : null;
+        let type = typeof data.barcodeType === 'string' ? data.barcodeType : null;
+
+        // Fill in whichever half this write did not carry, from the row as it
+        // stands — a partial update still has to be judged as a whole.
+        if (id !== null && (code === null || type === null)) {
+          const stored = await prisma.product.findUnique({
+            where: { id },
+            select: { barcode: true, barcodeType: true },
+          });
+          if (!Object.prototype.hasOwnProperty.call(data, 'barcode')) {
+            code = stored?.barcode ?? null;
+          }
+          if (!Object.prototype.hasOwnProperty.call(data, 'barcodeType')) {
+            type = stored?.barcodeType ?? null;
+          }
+        }
+
+        const checked = checkBarcode(code, type);
+
+        if (!checked.ok) {
+          throw AppError.badRequest(checked.hint ?? 'That barcode does not match its type', {
+            field: 'barcode',
+          });
+        }
+
+        // Write back the canonical form so the till's EXACT-match scan cannot
+        // miss on a stored space or dash. Only when this write supplied it —
+        // never reformatting a stored value the user did not touch.
+        if (Object.prototype.hasOwnProperty.call(data, 'barcode') && checked.value !== '') {
+          data.barcode = checked.value;
+        }
+      }
+
       if (id !== null) return; // Update: never rewrite an existing slug.
 
       const existing = typeof data.slug === 'string' ? data.slug.trim() : '';

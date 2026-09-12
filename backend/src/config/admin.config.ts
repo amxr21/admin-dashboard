@@ -223,9 +223,38 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       // catalogue table isn't where anyone scans for these, and most rows
       // won't have them filled in yet (same "not yet tracked" framing as
       // `cost`, not a required-fields regression).
+      /**
+       * URG-028 — a barcode is opt-in per product, and says which symbology
+       * it is.
+       *
+       * Grouped with the other codes, and `hasBarcode` sits FIRST so the
+       * switch reads before the fields it governs. A shop selling unpackaged
+       * goods (a bakery, a cafe) never prints one, and the toggle is what
+       * stops the form asking them for it.
+       *
+       * The type is a plain enum field rather than free text: the point of
+       * declaring it is that `lib/barcode.ts` can then check the digits, and
+       * an unconstrained string would defeat that. Legacy rows hold NULL,
+       * which that module treats as "unclassified, accept as-is".
+       */
+      {
+        name: 'hasBarcode',
+        label: 'This product has a barcode',
+        type: 'boolean',
+        inList: false,
+        group: 'identifiers',
+      },
+      {
+        name: 'barcodeType',
+        label: 'Barcode type',
+        type: 'enum',
+        options: ['EAN13', 'EAN8', 'UPCA', 'UPCE', 'ITF14', 'CODE128'],
+        inList: false,
+        group: 'identifiers',
+      },
       {
         name: 'barcode',
-        label: 'Barcode (EAN/UPC)',
+        label: 'Barcode',
         type: 'text',
         inList: false,
         searchable: true,
