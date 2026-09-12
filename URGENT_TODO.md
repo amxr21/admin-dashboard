@@ -390,7 +390,28 @@ already-approved merge.
       this work began), both typechecks clean, both lints clean, en/ar parity
       19/19. Nothing is enabled on any existing install until an owner sets a
       rate above zero.
-      **Remaining:** a browser pass at the till, including Arabic/RTL.
+      **Remaining: a browser pass at the till, including Arabic/RTL.**
+      Attempted 2026-09-12 and **inconclusive — not a failure, a probe gap.**
+      What WAS verified live: `GET /pos/tenders` returned both currencies
+      correctly against a real signed-in session (`AED` base rate 1, `USD`
+      rate 0.2723), so the contract and the settings path work end to end.
+      What was NOT reached: the selector itself. `/admin/pos` opens on a
+      "Start your shift?" gate — buttons "Start shift & open till" and "Not
+      right now — just let me sell", an optional opening-float field, and no
+      scan field — so `SaleScreen` never mounted and the currency control was
+      legitimately absent, in both locales. The unit tests render `SaleScreen`
+      directly with a mocked `fetchTenders`, which is exactly what hid this
+      from them.
+      **For the next attempt:** dismiss the shift gate first (click "Not right
+      now — just let me sell", or start a shift) BEFORE looking for the
+      control. Then check: selector hidden on a single-currency install,
+      visible with two, the rate hint appearing only after choosing a foreign
+      currency, the cash field relabelled in that currency, the dual-currency
+      receipt rows, and the per-currency block on the X/Z report.
+      Note: enabling the feature locally needs `store.currency` plus one
+      `pos.tenderRate.*` above zero. Both were set for this attempt and then
+      **removed again**, so no dev data was left carrying an enabled currency
+      feature nobody asked for.
 
       <!-- Original scope note, kept for reference: -->
       The backend foundation was already shipped and tested (nullable
