@@ -17,7 +17,7 @@ export const SETUP_FEATURES: readonly SetupFeatureDefinition[] = [
   { key: 'pos', area: 'orders', canDisable: true, dependsOn: ['orders', 'inventory'], routes: ['/admin/pos'], dataCheck: 'order' },
   { key: 'orders', area: 'orders', canDisable: true, dependsOn: [], routes: ['/admin/orders'], dataCheck: 'order' },
   { key: 'inventory', area: 'inventory', canDisable: true, dependsOn: [], routes: ['/admin/inventory'], dataCheck: 'stockMovement' },
-  { key: 'suppliers', area: 'inventory', canDisable: true, dependsOn: ['inventory'], routes: ['/admin/r/suppliers'], dataCheck: 'supplier' },
+  { key: 'suppliers', area: 'inventory', canDisable: true, dependsOn: ['inventory'], routes: ['/admin/inventory/suppliers'], dataCheck: 'supplier' },
   { key: 'delivery', area: 'delivery', canDisable: true, dependsOn: ['orders'], routes: ['/admin/delivery'], dataCheck: 'deliveryAssignment' },
   { key: 'returns', area: 'returns', canDisable: true, dependsOn: ['orders'], routes: ['/admin/returns'], dataCheck: 'return' },
   { key: 'reports', area: 'reports', canDisable: true, dependsOn: [], routes: ['/admin/reports'] },

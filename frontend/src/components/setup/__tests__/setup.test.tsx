@@ -47,11 +47,14 @@ describe('business setup', () => {
     expect(screen.getByRole('checkbox', { name: 'Delivery' })).not.toBeChecked();
     await user.click(screen.getByRole('checkbox', { name: 'Delivery' }));
     await user.click(screen.getByRole('button', { name: 'Next' }));
-    expect(screen.getByLabelText('Products')).toHaveValue('Menu items');
-    for (let i = 0; i < 3; i++) await user.click(screen.getByRole('button', { name: 'Next' }));
+    // The `names` step is gone; its label inputs now live in Review. Walk
+    // products → people → operations (2 Next clicks), then Review.
+    for (let i = 0; i < 2; i++) await user.click(screen.getByRole('button', { name: 'Next' }));
     await user.click(screen.getByRole('button', { name: 'Review changes' }));
     expect(await screen.findByText('Hidden sections')).toBeInTheDocument();
-    expect(screen.getByText('Menu items')).toBeInTheDocument();
+    // The Cafe preset renamed Products → "Menu items"; the editable label
+    // input carrying that value now appears in Review.
+    expect(screen.getByLabelText('Products')).toHaveValue('Menu items');
     expect(screen.getByText(/Returns has existing data/)).toBeInTheDocument();
     expect(mocks.apply).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Apply setup' }));

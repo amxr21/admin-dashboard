@@ -5,6 +5,140 @@
 > acceptance remain open until verified. The owner-approved urgent queue takes priority
 > over enhancement batches.
 
+## Current work — setup wizard + follow-ups (owner-directed 2026-09-13)
+
+Ordered. Task 1 first, reviewed before Task 2 starts. Tasks 3 and 4 are investigations,
+not yet scheduled — do not start them without the owner asking.
+
+### Task 1 — Setup wizard UX overhaul (settings-only)
+
+Owner decisions 2026-09-13: keep the wizard **configuration-only** (no create-a-product /
+create-a-branch steps — those stay on their own pages); mirror new copy into machine-translated
+`ar.json` pending native review. Deliver the low-risk half first (trim + polish + suppliers fix),
+show it working, then the rest.
+
+- [ ] **Trim:** remove the `names` step as a standalone screen (its default is blank, so the
+      expected action is "do nothing"). Fold optional label edits into the Review step. **8 → 7
+      steps.** `frontend/src/components/setup/setup-wizard.tsx`.
+- [ ] **Suppliers feature-gate fix (bundled correctness bug).** `features.suppliers.enabled` gates
+      `/admin/r/suppliers`, which does not exist — the real page is `/admin/inventory/suppliers`
+      (used everywhere else, incl. `search.service.ts:179` and the inventory-table link). So
+      toggling suppliers in the wizard currently hides nothing. Repoint the path in
+      `backend/src/config/setup-features.config.ts:20` and `frontend/src/lib/setup-visibility.ts:7`.
+      `setup-config.test.ts` does NOT assert routes against real pages, so no test fights this.
+- [ ] **Polish — business type:** show a live "this preset turns on X · new products get Y" summary
+      under the Select, so the template's effect is visible at the moment of choosing rather than
+      discovered by walking the next steps. (`setupTemplate` already computes it server-side.)
+- [ ] **Polish — defaults:** split the flat 13-field grid. Currency / tax / low-stock always
+      visible; the five foreign-currency tender rates behind one collapsed "Accept foreign currency
+      at the till" disclosure (most shops leave them at 0).
+- [ ] **Polish — welcome:** a returning owner sees "Last configured {date} · {type}" instead of the
+      first-timer copy (`setup.completedAt` is already returned by `readSetup`). Add a plain "you can
+      run this again later from Settings" so skipping reads as safe, not final.
+- [ ] **Polish — progress:** replace the slash-separated text stepper (`setup-wizard.tsx:114`) with a
+      real progress indicator (step N of 7, completed states).
+- [ ] **Polish — review:** add human-consequence lines ("Cashiers stop seeing Returns after their
+      next sign-in"), reusing the `existingData` warnings `previewSetup` already computes.
+- [ ] **Tests + i18n:** update the existing 12 frontend / 29 backend setup cases for the new step
+      list; add coverage for the suppliers-path fix; keep en/ar parity.
+
+### Task 2 — Order details on shift operations — DONE 2026-09-13 (code complete, verified)
+
+All three surfaces built. `Order` has no `shiftId`; orders reach a shift THROUGH `Payment.shiftId`,
+so every count goes through payments. Reads inherit the own-vs-`staff` rule already on the routes.
+
+- [x] **Sales count + total taken per open shift.** `listShifts` returns `salesCount` (DISTINCT
+      orders, not payment rows — a split payment is one sale) and `taken` (store-currency, net of
+      refunds since payments are signed), via `shiftActivity()` — two grouped queries per page, not
+      an N+1. Two columns ("Sales", "Taken") on `ShiftsTable`. Added a first `shifts-table.test.tsx`
+      (the component had NO coverage — the columns could have been deleted green).
+- [x] **Order breakdown on the X/Z till report.** `getTillReport` → `shiftSales()` adds `salesCount`
+      (EXCLUDING voids — a Z report is financial), `averageSale` (non-void take ÷ non-void count,
+      divide guarded), `voidCount`. `voidSale` writes a `method:'void'` payment, so voids are
+      detected by that. New "Sales summary" block on `till-report-view.tsx`; voids shown only when > 0.
+- [x] **Recent orders list per shift.** `getShiftSummary` → `shiftOrders()` adds `sales` (distinct
+      orders paid on the shift, newest first, capped 30, order #/time/total/status). New "Sales this
+      shift" section on `ShiftSummarySheet`, each row links to its order; a voided order shows a
+      CANCELED badge rather than being hidden.
+- Verified: backend tsc 0, frontend tsc 0, backend shifts 52/52, 5 frontend shift suites 17/17,
+      eslint clean on every touched file, en/ar parity 2596/2596. Browser check deferred to the
+      owner (same as Task 1).
+
+### Task 3 — Fix POS return lifecycle + double-refund (owner-approved 2026-09-13; AFTER Tasks 1 & 2)
+
+**Sequencing (owner, 2026-09-13):** finish the wizard (Task 1) first, then Task 2, then this.
+**Approach for BUG A DECIDED by the owner:** take the **smallest change — allow `CONFIRMED →
+RETURNED`** in the transition table so the till return sheet works immediately. The owner
+**accepted the known risk**: `RETURNED` will then mean two things (a delivered order that came
+back, and a counter sale that was returned). Do NOT build a separate POS-returnable terminal state.
+When implementing, check every reader of the transition table / `RETURNED` status
+(reports, delivery `ASSIGNMENT_ON_ORDER_STATUS`, dashboards) still behaves correctly with a
+`CONFIRMED`-origin return, since a POS return has no delivery assignment to move.
+
+
+
+The owner questioned why refund, cancel and return are three separate concepts with three separate
+reason catalogues. Finding so far:
+
+- The three **actions** are genuinely distinct (cancel = before fulfilment; return = physical goods
+  back after delivery; refund = money back, possibly with no goods). That part is defensible.
+- The three **reason catalogues** being fully independent is the questionable, accretion-grown part
+  (URG-009/010 + goodwill, one ticket at a time). Worth investigating one shared reason vocabulary
+  with a few action-specific entries.
+- **BUG A — walk-in return is non-functional (found 2026-09-13, high value).** The till return
+  sheet (`till-return-sheet.tsx`, O9.7) calls `createReturn` → `approveReturn`, and BOTH call
+  `canTransition(order.status, 'RETURNED')` (`returns.service.ts:267` and `:470`). The transition
+  table (`orders.config.ts:26`) only reaches `RETURNED` from `SHIPPED`/`DELIVERED`. A POS sale is
+  created `CONFIRMED` and never moves (`pos.service.ts:629`). So `canTransition('CONFIRMED',
+  'RETURNED')` is FALSE — a cashier processing a walk-in return gets a **400 "an order that is
+  confirmed cannot have a return requested against it"** at the first call. The whole polished till
+  return/exchange flow cannot complete for the most common physical-shop case. **Root cause:** the
+  order state machine models a mail-order delivery lifecycle (placed → shipped → delivered → then
+  returnable); the till was bolted on without teaching the state machine that an over-the-counter
+  `CONFIRMED` sale is returnable. Needs an owner decision on the right lifecycle for POS sales (e.g.
+  allow `CONFIRMED → RETURNED`, or give POS sales a distinct terminal-sold state that is returnable)
+  before touching the table — it affects reports and delivery too.
+- **BUG B — refund-then-cancel double-books money.** `refundOrder` writes a `goodwill-refund`
+  payment and **does not change status**, so a `CONFIRMED` sale stays `CONFIRMED` and can still be
+  CANCELED afterwards. Nothing stops refund-then-cancel on the same sale, booking the money back
+  twice on paper (the cancel reversal + the explicit refund). Potential real double-refund path.
+#### BUG A + BUG B — DONE 2026-09-13 (code complete, verified)
+
+- [x] **BUG A — walk-in return works.** `orders.config.ts`: `CONFIRMED → RETURNED` added, with the
+      accepted-ambiguity note. Closed a hole the change exposed: `changeOrderStatus` now refuses a
+      direct flip to RETURNED (it must go through `approveReturn`, which moves money+stock) — this
+      hole pre-dated the change (dropdown SHIPPED/DELIVERED → RETURNED already skipped the returns
+      flow). `order-status-control.tsx` filters RETURNED from the dropdown. Assignment write was
+      already guarded for a missing assignment, so a POS return (no delivery) is safe.
+      Pinned: a new returns test walks CONFIRMED → request → approve(STORE_CREDIT) → RETURNED; the
+      transition matrix now encodes "RETURNED refused on the status endpoint". returns 53/53,
+      orders+pos 182/182.
+- [x] **BUG B — no refund-then-cancel double-book.** `voidSale` refuses a sale that already carries
+      a `goodwill-refund` payment; `refundOrder` refuses a CANCELED/RETURNED order (state, not just
+      the netPaid cap). Both directions pinned with tests asserting no `void` row is written and the
+      order stays CONFIRMED. orders+pos 182/182.
+
+#### Reason-catalogue merge — INVESTIGATION COMPLETE 2026-09-13, recommendation for the owner
+
+Quantified the overlap across the three enums (`ReturnCategory`, `RefundReason`,
+`CancellationReason`):
+
+- **`ReturnCategory` (why the customer returns) and `RefundReason` (why staff refunded) share 3 of
+  ~6 values** — DAMAGED, WRONG_ITEM, NOT_AS_DESCRIBED — plus OTHER. This is the pair that reads as
+  duplication. But the schema's own comments argue they are kept separate ON PURPOSE: the customer's
+  stated reason and staff's decided reason can legitimately disagree (a customer claims
+  NOT_AS_DESCRIBED; staff inspect and refund as CHANGED_MIND), and merging destroys that signal.
+- **`CancellationReason` shares NOTHING except OTHER** (OUT_OF_STOCK, PAYMENT_FAILED,
+  DUPLICATE_ORDER, UNABLE_TO_FULFILL, CUSTOMER_REQUEST). It is a genuinely different axis —
+  pre-fulfilment operational reasons — and should stay wholly separate.
+
+**Recommendation:** do NOT merge into one catalogue. The owner's "why are these different" instinct
+is right that Return-vs-Refund *overlap*, but they are two honest viewpoints on the same event, not
+an accident. The low-cost improvement, if any: extract the 3 shared values into a shared const the
+two enums are BUILT from (so DAMAGED means the same thing and can't drift), while each keeps its own
+extra members — a refactor for consistency, not a data migration. Cancellation stays untouched.
+**Owner decision needed** before any change; nothing done inline (touches enums + recorded data).
+
 ## Completed urgent implementations — local record, 2026-09-12
 
 These entries moved from `URGENT_TODO.md` because their scoped implementation or agreed
@@ -40,9 +174,28 @@ that production has been verified. The remaining release and acceptance checks s
 | URG-038 | Branch phone examples and validation use the inherited business country, with international fallback when absent. | Business summary already supplies the country; frontend typecheck and targeted lint pass. |
 | URG-032 | Category create keeps parent selection and server cycle/depth refusal, generates a unique slug, defaults Active correctly, and refreshes the list. Product form can open category creation in another tab and refresh choices without losing its draft. | Focused form tests 56/56, both typechecks and targeted lint pass; real create/duplicate, keyboard, phone and Arabic acceptance remain in R4. |
 
-Open items remain in the urgent queue: URG-001–004, 011, 015, 024,
-026, 028–031, 034 and 035. URG-029/030 have local components but
-do not yet meet their full acceptance criteria.
+### Moved from the urgent queue — 2026-09-13
+
+Verified against the tree rather than the checkbox: every commit named below is an ancestor of
+`feat/business-setup-wizard` (`e19a470`). The urgent file's header calling this work "uncommitted"
+was the stale claim, not the items themselves.
+
+| Item | Completed local outcome | Evidence / boundary |
+| --- | --- | --- |
+| URG-011 | Two scroll regions at ~640–750px viewport height **accepted as-is by the owner** 2026-09-12. The document itself does not scroll and navigation stays reachable. | Closed by owner decision, not by a fix. Do not "solve" it later with another scrollbar tweak — a strict one-scroller layout at 700px needs different nav density or IA, which was considered and declined. |
+| URG-015 | Fading/clipped dropdown **skipped by the owner** 2026-09-12. Never reproduced across seeded row actions or nested selects. | Closed without a speculative shared portal/overflow change, which would have risked every dropdown to chase one unconfirmed report. Reopen only with a real reproduction. |
+| URG-026 / URG-031 | Optional product-group enablement. One shared active-field predicate drives both the payload builder and the submit validator, so the two choke points cannot disagree. Disabled groups omit their fields from the payload entirely rather than nulling them. | `929a39b`, closed on browser evidence in `c902d5c`. Chromium pass as OWNER: 8 groups off by default, per-group checkbox outside its disclosure button (no keyboard trap), existing products seed from their own data, PATCH omits disabled fields on the wire, Arabic at 390px with no horizontal overflow, zero console errors. Writes were intercepted — nothing persisted. |
+| URG-028 | Opt-in per-product barcodes with six curated symbologies (EAN-13/8, UPC-A/E, ITF-14, CODE128) and one GS1 mod-10 routine. Validation runs in the products `beforeWrite` hook on create and update, but only when the write touches `barcode`/`barcodeType`. Canonical form written back so the till's exact-match scan cannot miss on a stored space or dash. | `58bc1b1`; migration `20260912190000` applied to the guarded local target — 30 products, 0 classified, 0 opted in, no backfill. 19/19 unit tests using real published codes. UPC-E check digit and CODE128 length-only bounds are deliberate, commented gaps. Client-side validation was decided **server-only**; the `barcodeUnclassified` notice was attempted and withdrawn. |
+| URG-029 | Variant opt-in. Nullable `Product.hasVariants`; a legacy NULL stays distinct from explicit false. Owner decision **warn but allow**: the form warns at the moment of the change that saved variants survive while the route to them is hidden. | `b162ba9`, columns in `bb924dc`. Three tests pin when the warning fires — on `true → false`, on `NULL → true → false`, and never on a product already opted out. States the guarantee rather than a count, since a count needs a per-open `fetchVariants` round-trip and would render "0 variants" whenever it failed. |
+| URG-030 | Optional colours as a curated 16-name `<datalist>` suggestion on the variant-name input, gated on `hasColors`. A colour **is** a variant — not a new column, not a size×colour matrix. | Wired at `resource-form.tsx:899` → `product-variants-panel.tsx`. Deliberately a datalist, not a Select: the server accepts any variant name, so a picker would imply an exhaustive list. Typing an unlisted colour IS the escape hatch. Resource+i18n suites 190/190. |
+| URG-034 | Multi-currency till, all three pieces. `byTenderCurrency` forwarded from `getTillReport` and declared on both frontend types; server-computed tender fields on the checkout response; currency Select that hides on single-currency installs; dual-currency receipt rows; per-currency drawer block on X/Z. | `470d864`; POS suites 60/60 (were 54 with 2 failing). Nothing is enabled until an owner sets a rate above zero. **The finding worth keeping:** the queue's "backend done, presentation only" framing was wrong — the breakdown existed in the service and was dropped at two seams before reaching any screen. |
+| Returns decisions | `approveReturn`/`rejectReturn` each emit one notification after their transaction and after `audit()`. The body carries the OUTCOME, not just the status. One setting (`notifications.returnDecisionAlerts`), not two. | Returns suite 52/52 (3 new). Each new test scoped to its own RMA — an unscoped `findFirst` matched another test's row, which is how the first run reported the wrong RMA. |
+| Rate-limit flake | The `orders.test.ts` 429 was **never flaky**: `apiRateLimit` allows 120 requests/60s/IP across all of `/api/v1` and the file drives 105 tests from one loopback address. | `dadcd1a`. Skipped under `NODE_ENV=test` for that general backstop ONLY; every per-route security limiter still counts, so tests asserting their 429s keep passing. Production limits untouched. |
+
+Still open in the urgent queue: **URG-001–004** (production 500s and migration safety),
+**URG-035** (form/control inventory audit), plus the R4 publish/merge/acceptance gates and the two
+release gates (point 4, native-Arabic review). URG-024 and the fuller `ReturnStatus` lifecycle are
+**parked by the owner**, not open.
 
 ## Technical UX delivery plan — owner direction, 2026-09-10
 
