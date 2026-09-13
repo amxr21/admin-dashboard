@@ -102,6 +102,7 @@ function groupByPrefix(
   const buckets = new Map<GroupId, Setting[]>();
 
   for (const setting of settings) {
+    if (setting.setupOnly) continue;
     const id: GroupId = SETTINGS_GROUPS.find((group) => group.match(setting.key))?.id ?? 'other';
     const bucket = buckets.get(id);
     if (bucket) bucket.push(setting);

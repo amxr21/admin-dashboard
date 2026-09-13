@@ -1,4 +1,162 @@
 {
+  "setup": {
+    "title": "Business setup",
+    "scope": "Applies to all businesses and branches in this installation.",
+    "intro": "Choose recommended features for your business, then adjust them to suit your work. Setup is optional.",
+    "rerun": "You can run setup again from Settings at any time.",
+    "preserve": "Hidden features keep all their existing data. Enabling them again restores access through navigation.",
+    "ownerOnly": "Only an owner or developer can run business setup.",
+    "loading": "Loading business setup…",
+    "empty": "No setup templates are available.",
+    "retry": "Retry",
+    "done": "Setup preferences saved",
+    "settings": "Back to Settings",
+    "stepsLabel": "Setup steps",
+    "steps": {
+      "entry": "Welcome",
+      "business": "Business type",
+      "features": "Features",
+      "names": "Names",
+      "products": "Catalogue",
+      "people": "People and permissions",
+      "operations": "Defaults",
+      "review": "Review"
+    },
+    "businessType": "Business type",
+    "loadTemplate": "Load recommendations",
+    "recommendations": "Templates preselect features and new-product preferences. You can change every recommendation. Existing permissions are kept unless you edit them.",
+    "requiredBy": "Required by: {features}",
+    "alwaysEnabled": "Always available so you can navigate and change setup.",
+    "displayOnly": "Names change display labels only. Leave a name empty to use the built-in translation.",
+    "catalogueHelp": "These preferences preselect options when creating a product. Existing products are unchanged.",
+    "catalogueExtensions": "Stock locations and supplier cost remain available in product forms. Serial numbers and expiry fields are outside this setup.",
+    "operationsHelp": "Currency changes formatting; it does not convert existing prices. Tax is a percentage. Tender rates are units of the tender currency per 1 store currency; 0 disables that tender. Return window 0 means no time limit.",
+    "branchHelp": "Create or edit branches and warehouses from Settings after applying setup. Existing branch-level currency overrides still apply.",
+    "permissionsHelp": "Only checked permission edits are applied. Hiding a feature does not revoke access permissions. Other areas keep their current grants; role assignments and hierarchy stay unchanged.",
+    "lockedRole": "Owners and developers always retain full access.",
+    "permissionsUnchanged": "No role permission changes.",
+    "enabled": "Enabled",
+    "hidden": "Off",
+    "enabledFeatures": "Enabled sections",
+    "disabledFeatures": "Hidden sections",
+    "none": "None",
+    "grant": "Grant",
+    "revoke": "Revoke",
+    "back": "Back",
+    "skip": "Skip for now",
+    "start": "Start setup",
+    "next": "Next",
+    "reviewAction": "Review changes",
+    "apply": "Apply setup",
+    "cancel": "Return to Settings",
+    "skipped": "Setup skipped. Your feature choices are unchanged.",
+    "saved": "Business setup applied.",
+    "disabledTitle": "This feature is not enabled for this business setup",
+    "disabledOwner": "You can enable this feature in Business setup. Existing data is retained.",
+    "disabledStaff": "Contact an owner to enable this feature. Existing data is retained.",
+    "recommended": {
+      "menu": "Menu items",
+      "tickets": "Tickets",
+      "team": "Team"
+    },
+    "warnings": {
+      "existingData": "{feature} has existing data. Hiding it keeps that data; enable the feature again to use it.",
+      "dependencyEnabled": "{feature} stays enabled because another selected feature requires it."
+    },
+    "roles": {
+      "DEVELOPER": "Developer",
+      "OWNER": "Owner",
+      "MANAGER": "Manager",
+      "FULFILLMENT": "Fulfillment",
+      "CASHIER": "Cashier",
+      "SUPPORT": "Support",
+      "DEMO": "Demo (read-only)"
+    },
+    "areas": {
+      "orders": "Orders",
+      "products": "Products",
+      "inventory": "Inventory",
+      "customers": "Customers",
+      "categories": "Categories",
+      "discounts": "Discounts",
+      "reviews": "Reviews",
+      "delivery": "Delivery",
+      "returns": "Returns",
+      "reports": "Reports",
+      "settings": "Settings",
+      "staff": "Staff",
+      "shifts": "Shift approvals"
+    },
+    "defaults": {
+      "products_defaultHasVariants": "New products have variants",
+      "products_defaultHasColors": "New products have colours",
+      "products_defaultHasBarcode": "New products have barcodes",
+      "store_currency": "Store currency",
+      "store_taxRate": "Tax / VAT (%)",
+      "returns_windowDays": "Return window (days; 0 = no limit)",
+      "inventory_lowStockThreshold": "Low-stock threshold",
+      "pos_maxCashierDiscountPercent": "Maximum cashier discount (%)",
+      "pos_tenderRate_AED": "AED per 1 store currency (0 = off)",
+      "pos_tenderRate_SAR": "SAR per 1 store currency (0 = off)",
+      "pos_tenderRate_USD": "USD per 1 store currency (0 = off)",
+      "pos_tenderRate_EUR": "EUR per 1 store currency (0 = off)",
+      "pos_tenderRate_GBP": "GBP per 1 store currency (0 = off)"
+    },
+    "features": {
+      "dashboard": {
+        "title": "Dashboard",
+        "description": "Business overview and summaries."
+      },
+      "pos": {
+        "title": "Point of sale",
+        "description": "Till, checkout, and shift clock. Requires orders and inventory."
+      },
+      "orders": {
+        "title": "Orders",
+        "description": "Sales orders and their history."
+      },
+      "inventory": {
+        "title": "Inventory",
+        "description": "Stock movements, receiving, and low-stock views."
+      },
+      "suppliers": {
+        "title": "Suppliers",
+        "description": "Supplier directory and restock outreach."
+      },
+      "delivery": {
+        "title": "Delivery",
+        "description": "Couriers and delivery assignments."
+      },
+      "returns": {
+        "title": "Returns",
+        "description": "Return requests and refunds."
+      },
+      "reports": {
+        "title": "Reports",
+        "description": "Sales and operational reporting."
+      },
+      "scheduledReports": {
+        "title": "Scheduled reports",
+        "description": "Scheduled report configuration. Existing schedules keep running."
+      },
+      "customerCases": {
+        "title": "Customer cases",
+        "description": "Customer support cases and follow-up."
+      },
+      "staff": {
+        "title": "Staff",
+        "description": "Staff, permissions, and shift management screens."
+      },
+      "branches": {
+        "title": "Branches",
+        "description": "Business, branch, and organization settings screens."
+      },
+      "settings": {
+        "title": "Settings",
+        "description": "Preferences and the entry to rerun setup."
+      }
+    }
+  },
   "common": {
     "appName": "admin-dashboard",
     "save": "Save",
@@ -1788,6 +1946,10 @@
     },
     "features": {
       "title": "Business and feature setup",
+      "setup": {
+        "title": "Business setup",
+        "description": "Choose recommended features, names and defaults, or rerun setup."
+      },
       "businesses": {
         "title": "Businesses and branches",
         "description": "Edit business details, shops, warehouses and branch assignments."
