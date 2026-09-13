@@ -73,7 +73,13 @@ export function OrderStatusControl({
   const reasonIncomplete =
     isCanceling && (!cancellationReason || (needsReasonNote && !cancellationReasonNote.trim()));
 
-  if (nextStatuses.length === 0) {
+  // RETURNED is handled by the returns flow (Request return), never as a bare
+  // status flip — the server refuses it here too. Filtered out so the dropdown
+  // never offers a button that would 400; if it were the only remaining move,
+  // this surface correctly reads as terminal.
+  const selectableStatuses = nextStatuses.filter((next) => next !== 'RETURNED');
+
+  if (selectableStatuses.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
         {t('terminal', { status: tStatus(status) })}
@@ -122,7 +128,7 @@ export function OrderStatusControl({
               <SelectValue placeholder={t('placeholder')} />
             </SelectTrigger>
             <SelectContent>
-              {nextStatuses.map((next) => (
+              {selectableStatuses.map((next) => (
                 <SelectItem key={next} value={next}>
                   {tStatus(next)}
                 </SelectItem>

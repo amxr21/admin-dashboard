@@ -1047,7 +1047,7 @@ export async function voidSale(orderId: string, actorId: string, req: Request) {
       status: true,
       branchId: true,
       items: { select: { productId: true, quantity: true } },
-      payments: { select: { id: true, amount: true } },
+      payments: { select: { id: true, amount: true, method: true } },
     },
   });
 
@@ -1062,6 +1062,27 @@ export async function voidSale(orderId: string, actorId: string, req: Request) {
   if (order.status !== OrderStatus.CONFIRMED) {
     throw AppError.badRequest(
       `Only a CONFIRMED sale can be voided (this one is ${order.status})`,
+      { field: 'status' },
+    );
+  }
+
+  /**
+   * BUG B — a sale that already carries a goodwill refund cannot ALSO be
+   * voided.
+   *
+   * `refundOrder` leaves the order CONFIRMED (a goodwill refund is money back
+   * on a sale that DID happen, not a status change), so without this guard a
+   * refunded sale was still voidable. The two are incoherent together: a void
+   * says "this sale never happened, reverse everything" while the refund is an
+   * acknowledged partial money-return on a sale that stands. Combining them
+   * booked the money back twice — the refund paid the customer, and the void
+   * then reversed the original payment on top. Refuse the void; a fully
+   * refunded sale is already made whole, and a partial one is a refund
+   * decision, not a candidate for erasure.
+   */
+  if (order.payments.some((payment) => payment.method.toLowerCase() === 'goodwill-refund')) {
+    throw AppError.badRequest(
+      'This sale has already been refunded and cannot be voided. Use a return if goods are coming back.',
       { field: 'status' },
     );
   }

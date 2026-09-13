@@ -642,6 +642,27 @@ export async function changeOrderStatus(id: string, input: ChangeStatusInput) {
   }
 
   /**
+   * RETURNED is reachable ONLY through the returns flow (`approveReturn`),
+   * never as a bare status flip here.
+   *
+   * A return moves money and stock: it records the returned items, caps and
+   * issues the refund, and optionally restocks — none of which a direct status
+   * change does. `approveReturn` calls `canTransition(..., 'RETURNED')` itself,
+   * so the transition table still permits it there; this guard blocks only the
+   * order-status path (the admin dropdown, the bulk endpoint), which would
+   * otherwise mark an order RETURNED with no Return record, no refund and no
+   * restock. This closes a hole that pre-dated CONFIRMED → RETURNED (a dropdown
+   * SHIPPED/DELIVERED → RETURNED already skipped the returns flow); adding the
+   * POS transition made closing it necessary rather than merely tidy.
+   */
+  if (input.to === OrderStatus.RETURNED) {
+    throw AppError.badRequest('Process a return through the returns flow, not a status change', {
+      field: 'to',
+      allowed: nextStatuses(current.status).filter((status) => status !== OrderStatus.RETURNED),
+    });
+  }
+
+  /**
    * AFTER the transition check, deliberately.
    *
    * Running it first made a missing reason hijack every illegal-cancellation
@@ -847,6 +868,7 @@ export async function refundOrder(
       where: { id: orderId },
       select: {
         id: true,
+        status: true,
         branchId: true,
         total: true,
         payments: { select: { amount: true } },
@@ -855,6 +877,21 @@ export async function refundOrder(
 
     if (!order || (req.branchId && order.branchId !== req.branchId)) {
       throw AppError.notFound('Order not found');
+    }
+
+    /**
+     * BUG B (other direction) — no goodwill refund on a sale that was already
+     * undone. A CANCELED order was voided (its payments reversed) and a
+     * RETURNED order went through the returns flow (which issues its own
+     * refund). The `netPaid` cap below would already refuse most of these
+     * arithmetically, but state is the honest reason: refunding an order that
+     * no longer stands is not a cap edge case, it is a category error.
+     */
+    if (order.status === OrderStatus.CANCELED || order.status === OrderStatus.RETURNED) {
+      throw AppError.badRequest(
+        `A ${order.status.toLowerCase()} order cannot be refunded here`,
+        { field: 'status' },
+      );
     }
 
     const netPaid = order.payments.reduce(
