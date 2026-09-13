@@ -192,6 +192,31 @@ describe('creating a return', () => {
     expect((res.body as ErrorBody).error.message).toMatch(/cannot have a return requested/i);
   });
 
+  it('allows a return on a CONFIRMED point-of-sale order (walk-in return)', async () => {
+    // BUG A: a POS sale is created CONFIRMED and never ships, so before
+    // CONFIRMED -> RETURNED was allowed, the till return sheet 400'd on the
+    // most common physical return. This walks the full request-then-approve
+    // path the till drives, and asserts the order actually reaches RETURNED.
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.CONFIRMED);
+
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'brought it back to the counter', items: [{ orderItemId, quantity: 1 }] });
+    expect(created.status).toBe(201);
+    const id = (created.body as ReturnBody).data.return.id;
+
+    // STORE_CREDIT needs no refund reason, keeping this focused on the lifecycle.
+    const approved = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'STORE_CREDIT', restock: true });
+    expect(approved.status).toBe(200);
+
+    const after = await prisma.order.findUnique({ where: { id: orderId } });
+    expect(after?.status).toBe(OrderStatus.RETURNED);
+  });
+
   it('refuses an item that does not belong to the order', async () => {
     const { orderId } = await makeOrder(OrderStatus.DELIVERED);
     const other = await makeOrder(OrderStatus.DELIVERED);

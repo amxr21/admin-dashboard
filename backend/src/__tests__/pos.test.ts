@@ -1316,6 +1316,41 @@ describe('voiding a sale at the till (O9 Tier 3)', () => {
     expect(total.toFixed(2)).toBe('0.00');
   });
 
+  it('refuses to void a sale that was already refunded (BUG B — no double refund)', async () => {
+    // A goodwill refund leaves the order CONFIRMED, so before this guard the
+    // sale was still voidable — the refund paid the customer and the void then
+    // reversed the original payment on top, booking the money back twice.
+    const product = await makeProduct({ sku: `${RUN}-VOID-REFUND`, price: '10.00', stock: 5 });
+    await stockAt(product.id, 5);
+
+    const sale = await request(app)
+      .post('/api/v1/pos/checkout')
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
+      .send({ lines: [{ productId: product.id, quantity: 1 }], method: 'cash', tendered: '10.00' });
+    const orderId = (sale.body as { data: { orderId: string } }).data.orderId;
+
+    const refund = await request(app)
+      .post(`/api/v1/orders/${orderId}/refund`)
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
+      .send({ amount: '10.00', refundReason: 'CHANGED_MIND' });
+    expect(refund.status).toBe(200);
+
+    const res = await voidSaleAs(orderId);
+    expect(res.status).toBe(400);
+    expect((res.body as { error: { message: string } }).error.message).toMatch(/already been refunded/i);
+
+    // The sale still stands (not double-reversed): only the two payment rows
+    // from the sale and its refund exist — no 'void' reversal was written.
+    const [order, payments] = await Promise.all([
+      prisma.order.findUnique({ where: { id: orderId } }),
+      prisma.payment.findMany({ where: { orderId } }),
+    ]);
+    expect(order?.status).toBe('CONFIRMED');
+    expect(payments.some((p) => p.method === 'void')).toBe(false);
+  });
+
   it('records a stock movement explaining the void', async () => {
     const product = await makeProduct({ sku: `${RUN}-VOID-2`, price: '5.00', stock: 3 });
     await stockAt(product.id, 3);

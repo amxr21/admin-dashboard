@@ -62,6 +62,8 @@ function makeShift(overrides: Partial<Shift> = {}): Shift {
     openingFloat: '100.00',
     closingCount: null,
     variance: null,
+    salesCount: 0,
+    taken: '0.00',
     ...overrides,
   };
 }
@@ -86,6 +88,9 @@ describe('the X/Z report', () => {
       noSaleCount: 0,
       cashDropTotal: '0.00',
       payoutTotal: '0.00',
+      salesCount: 0,
+      averageSale: '0.00',
+      voidCount: 0,
       events: [],
       isFinal: false,
     });
@@ -125,6 +130,9 @@ describe('the X/Z report', () => {
       noSaleCount: 0,
       cashDropTotal: '0.00',
       payoutTotal: '0.00',
+      salesCount: 0,
+      averageSale: '0.00',
+      voidCount: 0,
       events: [],
       isFinal: true,
     });
@@ -167,6 +175,9 @@ describe('the X/Z report', () => {
       noSaleCount: 0,
       cashDropTotal: '0.00',
       payoutTotal: '0.00',
+      salesCount: 0,
+      averageSale: '0.00',
+      voidCount: 0,
       events: [],
       isFinal: false,
     });
@@ -194,6 +205,9 @@ describe('the X/Z report', () => {
       noSaleCount: 0,
       cashDropTotal: '0.00',
       payoutTotal: '0.00',
+      salesCount: 0,
+      averageSale: '0.00',
+      voidCount: 0,
       events: [],
       isFinal: false,
     });
