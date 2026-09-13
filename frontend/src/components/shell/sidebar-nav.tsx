@@ -24,6 +24,7 @@ import { useNavCounts } from '@/hooks/useNavCounts';
 import { NavPendingIndicator } from '@/components/shell/nav-pending-indicator';
 import { getDirection } from '@/i18n/routing';
 import { cn } from '@/lib/utils';
+import { isSetupPathEnabled } from '@/lib/setup-visibility';
 
 /**
  * Which nav item each live count belongs to, by href. A map rather than a
@@ -57,6 +58,7 @@ interface SidebarNavProps {
 }
 
 export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavProps) {
+  const { enabledFeatures } = useAppSettings();
   const t = useTranslations('nav');
   const pathname = usePathname();
   const { resources } = useResourceSchema();
@@ -149,7 +151,7 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
         // Hide whole groups the role cannot reach, rather than leaving an
         // empty heading behind.
         const visible = group.items.filter(
-          (item) => !item.area || canAccessArea(role, item.area),
+          (item) => (!item.area || canAccessArea(role, item.area)) && isSetupPathEnabled(item.href, enabledFeatures),
         );
         if (visible.length === 0) return null;
 

@@ -1,4 +1,4 @@
-import { StaffRole } from '@prisma/client';
+import { StaffRole, type Prisma } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
@@ -120,7 +120,7 @@ export async function listRolePermissions() {
  * and applying a diff computed against a stale page is how an area nobody
  * touched gets removed.
  */
-export async function setRoleAreas(role: StaffRole, areas: string[], actorId: string) {
+export async function setRoleAreas(role: StaffRole, areas: string[], actorId: string, tx?: Prisma.TransactionClient) {
   if (isLockedRole(role)) {
     throw AppError.badRequest(
       'Owners and developers always keep full access and cannot be changed',
@@ -139,13 +139,13 @@ export async function setRoleAreas(role: StaffRole, areas: string[], actorId: st
   const before = await resolveAreas(role);
   const next = [...new Set(areas)] as Area[];
 
-  await prisma.rolePermission.upsert({
+  await (tx ?? prisma).rolePermission.upsert({
     where: { role },
     create: { role, areas: next, updatedById: actorId },
     update: { areas: next, updatedById: actorId },
   });
 
-  clearRolePermissionCache();
+  if (!tx) clearRolePermissionCache();
 
   return { before: [...before], after: next };
 }

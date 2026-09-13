@@ -31,6 +31,8 @@ import { useAppSettings } from '@/components/providers/settings-provider';
 import { useSidebarCollapse } from '@/hooks/useSidebarCollapse';
 import { usePathname } from '@/i18n/navigation';
 import { cn } from '@/lib/utils';
+import { SetupFeatureGate } from '@/components/setup/setup-feature-gate';
+import { SetupPrompt } from '@/components/setup/setup-prompt';
 
 /**
  * The dashboard chrome: sidebar, topbar, content area.
@@ -350,7 +352,10 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
           ) : blockedByRealRole && currentArea ? (
             <Forbidden area={currentArea} />
           ) : (
-            children
+            <SetupFeatureGate pathname={pathname} role={effectiveRole}>
+              {pathname === '/admin' ? <SetupPrompt role={effectiveRole} /> : null}
+              {children}
+            </SetupFeatureGate>
           )}
         </main>
       </div>

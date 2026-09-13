@@ -23,6 +23,15 @@ import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { fetchOwnSessions, revokeOwnSession, type SessionSummary } from '@/lib/auth-api';
 
 /**
+ * Mirrors `MAX_CONCURRENT_SESSIONS` in the backend's session.service.ts, which
+ * is the authority — it is what actually refuses a fifth sign-in. Copied
+ * rather than imported because nothing in `backend/` is reachable from this
+ * bundle; this value only ever shapes a sentence, so a drift would misstate
+ * the limit on screen without ever letting an extra device in.
+ */
+const MAX_CONCURRENT_SESSIONS = 4;
+
+/**
  * "Sessions & devices" — every device this account is currently signed in
  * on, with a per-session "sign out" that leaves every other one untouched.
  *
@@ -100,6 +109,13 @@ export function SessionsPanel() {
           </h2>
         </div>
         <p className="text-muted-foreground text-sm">{t('description')}</p>
+        {/* The cap is stated HERE, where the devices are listed, rather than
+            only in the refusal at sign-in — someone who has to free a slot is
+            already on this screen, and a limit first met as an error is a
+            limit nobody could plan around. */}
+        <p className="text-muted-foreground text-sm">
+          {t('limitNote', { limit: MAX_CONCURRENT_SESSIONS })}
+        </p>
       </div>
 
       <div className="bg-card/50 space-y-2 rounded-lg border p-4">

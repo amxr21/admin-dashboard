@@ -11,6 +11,7 @@ import {
   settingKeys,
   validateSetting,
   type SettingKey,
+  type SettingDefinition,
 } from '../../config/settings.config.js';
 
 /**
@@ -46,6 +47,7 @@ async function readAll() {
     return {
       key,
       label: definition.label,
+      ...('setupOnly' in definition ? { setupOnly: definition.setupOnly } : {}),
       ...('description' in definition ? { description: definition.description } : {}),
       type: definition.type,
       ...('options' in definition ? { options: definition.options } : {}),
@@ -99,6 +101,10 @@ settingsRouter.patch('/settings', authenticate, withBranchContext, requireArea('
       continue;
     }
 
+    if ((SETTINGS[key] as SettingDefinition).setupOnly) {
+      errors[key] = 'Use Business setup to change this setting';
+      continue;
+    }
     const result = validateSetting(key, value);
 
     if (result.ok) {

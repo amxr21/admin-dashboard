@@ -14,6 +14,7 @@ import { apiFetch } from '@/lib/api';
 export type SettingType = 'string' | 'boolean' | 'number' | 'enum' | 'color';
 
 export interface Setting {
+  setupOnly?: boolean;
   key: string;
   label: string;
   description?: string;

@@ -45,6 +45,9 @@ export interface FieldConfig {
   readOnly?: boolean;
   options?: string[];
   relation?: { resource: string; labelField: string };
+  /** Per-field example text from `admin.config.ts`. Overrides the type-level
+   *  default in `placeholderFor` — see that function's own comment. */
+  placeholder?: string;
   /** Shown when an existing non-empty value is being changed, never on
    *  first-time entry or create. See admin.config.ts's own comment. */
   changeWarning?: string;
@@ -185,12 +188,32 @@ export async function fetchRelationOptions(
  * response header names the real filename, which is why the fallback below is
  * only ever a backstop.
  */
+export interface ExportOptions
+  extends Pick<ResourceListParams, 'search' | 'sort' | 'dir' | 'filters'> {
+  /**
+   * Restrict to a window on one date field. All three travel together —
+   * `dateField` names WHICH column (a resource can have several), and the
+   * server rejects a field it has not declared as a date.
+   */
+  dateField?: string;
+  /** `YYYY-MM-DD`. Inclusive of the whole named day at both ends. */
+  dateFrom?: string;
+  dateTo?: string;
+  /**
+   * Field names to include as columns. Omitted means EVERY exportable column,
+   * which is both the historical behaviour and the right default — an export
+   * that silently dropped columns because a picker defaulted to none would be
+   * a data-loss bug wearing a feature's clothes.
+   */
+  columns?: string[];
+}
+
 export async function exportResourceCsv(
   resource: string,
-  params: Pick<ResourceListParams, 'search' | 'sort' | 'dir' | 'filters'> = {},
+  params: ExportOptions = {},
 ): Promise<void> {
   const query = new URLSearchParams();
-  const { filters, ...controls } = params;
+  const { filters, columns, ...controls } = params;
 
   for (const [key, value] of Object.entries(controls)) {
     if (value !== undefined && value !== null && value !== '') {
@@ -200,6 +223,9 @@ export async function exportResourceCsv(
   for (const [key, value] of Object.entries(filters ?? {})) {
     if (value !== '') query.set(key, value);
   }
+  // One repeated key rather than a comma-joined list: a field name containing
+  // a comma would be unsplittable, and `getAll` needs no escaping rules.
+  for (const column of columns ?? []) query.append('columns', column);
 
   await apiDownload(`/r/${resource}/export?${query.toString()}`, `${resource}.csv`);
 }
