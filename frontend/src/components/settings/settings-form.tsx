@@ -306,6 +306,13 @@ export function SettingsForm() {
               <p className="text-muted-foreground text-sm">
                 {t(`groups.${group.id}.description`)}
               </p>
+              {group.id === 'notifications' ? (
+                <div className="text-muted-foreground space-y-1 text-sm">
+                  <p>{t('groups.notifications.sharedInbox')}</p>
+                  <p>{t('groups.notifications.refresh')}</p>
+                  <p>{t('groups.notifications.emailDelivery')}</p>
+                </div>
+              ) : null}
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

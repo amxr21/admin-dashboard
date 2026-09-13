@@ -1,4 +1,6 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { AppError } from '../errors/AppError.js';
 
 /**
  * Sessions & devices.
@@ -21,6 +23,42 @@ import { prisma } from '../db/prisma.js';
 
 const MAX_USER_AGENT_LENGTH = 255;
 
+/**
+ * How many devices one account may be signed in on at once.
+ *
+ * The owner's decision: the FIFTH sign-in is REFUSED rather than silently
+ * evicting the oldest device. Evicting is friendlier to whoever is signing in
+ * and worse for everyone else — a shared account would quietly sign someone
+ * else out mid-shift, at a till, with no explanation on the device that lost
+ * its session.
+ */
+export const MAX_CONCURRENT_SESSIONS = 4;
+
+/**
+ * ─── WHY "LIVE" IS NOT JUST `revokedAt: null` ────────────────────────
+ * There is no `expiresAt` column: a row is written at login and only ever
+ * updated by a revoke or a heartbeat, while the TOKEN it belongs to expires on
+ * its own after `security.sessionTimeoutMinutes` (see `signToken`). So a row
+ * for a token that died weeks ago still reads as live here.
+ *
+ * That is harmless for LISTING (a stale row is one extra line a person can
+ * sign out by hand) and dangerous for COUNTING: a cap that counts dead rows
+ * locks the account out permanently after four sign-ins, since nothing ever
+ * clears them. Whoever hits it is, by definition, the person who cannot sign
+ * in to clear it.
+ *
+ * So the cap counts only sessions whose token could still be valid —
+ * `createdAt` newer than the configured timeout. Derived rather than stored:
+ * a column would need a migration AND would be wrong the moment an owner
+ * shortens the timeout, whereas the cutoff is computed from the live setting
+ * on every check. Expiry is NOT enforced here (the JWT's own `exp` already
+ * does that, and duplicating it would be a second source of truth) — this
+ * only decides which rows occupy one of the four slots.
+ */
+function expiryCutoff(sessionTimeoutMinutes: number): Date {
+  return new Date(Date.now() - sessionTimeoutMinutes * 60_000);
+}
+
 /** How stale `lastSeenAt` may be before a request bothers updating it.
  * Writing on every single authenticated request would turn "list my
  * sessions" into a write-heavy endpoint for precision nobody needs down to
@@ -30,6 +68,86 @@ const LAST_SEEN_UPDATE_INTERVAL_MS = 5 * 60_000;
 export interface SessionContext {
   userAgent?: string | null | undefined;
   ip?: string | null | undefined;
+}
+
+/** One occupied slot, as named on the refusal so a person can tell which
+ *  device to sign out. Deliberately the same two facts the Sessions panel
+ *  already shows — nothing here is new information about the account. */
+export interface OccupiedSlot {
+  userAgent: string | null;
+  lastSeenAt: string;
+}
+
+/**
+ * Refuse a fifth concurrent sign-in.
+ *
+ * Called from the login paths BEFORE a token is minted — a session row created
+ * and then rejected would leave a slot occupied by a login that never
+ * completed, which is the lockout this whole function exists to avoid.
+ *
+ * ─── WHY THIS THROWS RATHER THAN RETURNING A BOOLEAN ─────────────────
+ * The refusal has to name the occupied devices, and the only place that list
+ * is known is here. A boolean would make every caller re-query for it.
+ *
+ * The `reason` code is what the UI branches on — `SESSION_LIMIT_REACHED`,
+ * stable and translated client-side, the same contract the branch-conflict
+ * codes already use (see `useTranslatedApiError`). The message itself stays
+ * English for the log and for any client that does not know the code.
+ */
+export async function assertSessionCapacity(
+  userId: string,
+  sessionTimeoutMinutes: number,
+  client: Pick<Prisma.TransactionClient, 'session'> = prisma,
+): Promise<void> {
+  const live = await client.session.findMany({
+    where: {
+      userId,
+      revokedAt: null,
+      // See `expiryCutoff` — a row older than the timeout belongs to a token
+      // that can no longer authenticate, so it holds no slot.
+      createdAt: { gt: expiryCutoff(sessionTimeoutMinutes) },
+    },
+    orderBy: { lastSeenAt: 'desc' },
+    select: { userAgent: true, lastSeenAt: true },
+  });
+
+  if (live.length < MAX_CONCURRENT_SESSIONS) return;
+
+  const devices: OccupiedSlot[] = live.map((row) => ({
+    userAgent: row.userAgent,
+    lastSeenAt: row.lastSeenAt.toISOString(),
+  }));
+
+  throw AppError.forbidden(
+    `This account is already signed in on ${String(MAX_CONCURRENT_SESSIONS)} devices. Sign one out to continue.`,
+    { reason: 'SESSION_LIMIT_REACHED', limit: MAX_CONCURRENT_SESSIONS, devices },
+  );
+}
+
+/** Serialize the count and insert on the user's row. A rejected sign-in
+ * rolls back its login metadata along with the session attempt. */
+export async function createLoginSession(
+  userId: string,
+  sessionTimeoutMinutes: number,
+  context: SessionContext = {},
+) {
+  return prisma.$transaction(async (tx) => {
+    // The update holds the user-row lock until commit, serializing sign-ins.
+    const user = await tx.user.update({
+      where: { id: userId },
+      data: { lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null },
+    });
+    await assertSessionCapacity(userId, sessionTimeoutMinutes, tx);
+    const session = await tx.session.create({
+      data: {
+        userId,
+        userAgent: context.userAgent ? context.userAgent.slice(0, MAX_USER_AGENT_LENGTH) : null,
+        ip: context.ip ?? null,
+      },
+      select: { id: true },
+    });
+    return { user, session };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 }
 
 /**

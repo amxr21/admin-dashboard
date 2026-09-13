@@ -74,7 +74,8 @@
         "BRANCH_REQUIRED_MULTIPLE_BUSINESSES": "Choose the branch where you are working, then start the shift again.",
         "BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS": "Your account is assigned to more than one branch. Choose today's branch, or ask a manager which one to use.",
         "NO_ACTIVE_BRANCH": "No active branch is available for this shift. Ask an owner to configure or assign one.",
-        "BRANCH_NOT_FOUND": "That branch is no longer available. Choose another branch and try again."
+        "BRANCH_NOT_FOUND": "That branch is no longer available. Choose another branch and try again.",
+        "SESSION_LIMIT_REACHED": "This account is already signed in on {limit} devices. Sign out of one of them, then try again."
       }
     },
     "readOnlyDemo": {
@@ -132,7 +133,8 @@
       "backupHint": "Lost your device? A backup code works here too.",
       "verify": "Verify",
       "startOver": "Use a different account"
-    }
+    },
+    "sessionLimitReached": "This account is already signed in on the maximum number of devices. Sign out on one of them first — you can do that from Settings on any device that is still signed in."
   },
   "courier": {
     "login": {
@@ -1536,7 +1538,10 @@
       },
       "notifications": {
         "title": "Notifications",
-        "description": "Which events alert the team."
+        "description": "Which events alert the team.",
+        "sharedInbox": "Alerts appear in one shared staff inbox. Reading or dismissing an alert changes it for everyone with access.",
+        "refresh": "The bell checks for new alerts every 30 seconds and when you return to this tab.",
+        "emailDelivery": "Email alerts also go to the store support address when email is enabled, a sender address is set, and server SMTP is configured."
       },
       "email": {
         "title": "Email",
@@ -1608,7 +1613,8 @@
         "description": "This device will need to sign in again. Every other device stays signed in.",
         "cancel": "Cancel",
         "action": "Sign out"
-      }
+      },
+      "limitNote": "Up to {limit} devices can be signed in at once. Sign one out here to make room for another."
     },
     "apiKeys": {
       "title": "API keys",
@@ -1723,19 +1729,37 @@
       "title": "Data",
       "description": "Export any resource you can access as a CSV file.",
       "exportTitle": "Export centre",
-      "exportDescription": "Choose a resource and download every row you have access to as CSV.",
-      "resourceLabel": "Resource",
+      "exportDescription": "Pick what to export. Each resource downloads as its own CSV file.",
+      "resourceLabel": "What to export",
       "export": "Export CSV",
       "exporting": "Exporting…",
       "exported": "{resource} exported.",
       "historyTitle": "Recent exports",
       "historyEmpty": "No exports yet.",
       "unknownActor": "Unknown",
-      "retry": "Retry"
+      "retry": "Retry",
+      "selectAllResources": "Select all",
+      "clearResources": "Clear",
+      "noResourceSelected": "Choose at least one resource to export.",
+      "selectedCount": "{count, plural, =0 {Nothing selected} one {# resource selected} other {# resources selected}}",
+      "columnsTitle": "Columns",
+      "columnsDescription": "Leave every column ticked to export the whole record.",
+      "columnsAll": "All columns",
+      "columnsFor": "Columns in {resource}",
+      "columnsSelected": "{count} of {total} columns",
+      "columnsNoneWarning": "At least one column has to stay ticked.",
+      "dateTitle": "Date range",
+      "dateDescription": "Optional. Limits rows to a window on the date field you choose.",
+      "dateFieldLabel": "Date field",
+      "dateFieldNone": "No date limit",
+      "dateUnavailable": "This resource has no date field to filter on.",
+      "exportMultiple": "Export {count} files",
+      "exportedMultiple": "{count} files exported.",
+      "exportFailedFor": "Couldn’t export {resource}."
     },
     "policies": {
       "title": "Policies",
-      "description": "Return, privacy, terms, and shipping policy text — per locale, versioned.",
+      "description": "The return, privacy, terms and shipping text customers read. Each language is saved separately, and every publish keeps the previous version.",
       "types": {
         "RETURN": "Return policy",
         "PRIVACY": "Privacy policy",
@@ -1749,7 +1773,7 @@
       "historyEmpty": "No versions yet.",
       "current": "Current",
       "revert": "Revert",
-      "contentPlaceholder": "Write the policy text…",
+      "contentPlaceholder": "Write what customers should know — for example, how many days they have to return something, and who pays return postage.",
       "publish": "Publish",
       "publishing": "Publishing…",
       "published": "Policy published.",

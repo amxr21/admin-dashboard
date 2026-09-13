@@ -1248,6 +1248,12 @@ function inputType(field: FieldConfig): string {
  * `admin.config.ts`, not here.
  */
 function placeholderFor(field: FieldConfig, tCommon: ReturnType<typeof useTranslations<'common'>>): string | undefined {
+  // A field that declares its own example wins over the type-level default —
+  // it is strictly more specific, and it is the ONLY way to give a `text`
+  // field a useful placeholder (see the `placeholder` comment in
+  // admin.config.ts for why those cannot be typed at this level).
+  if (field.placeholder) return field.placeholder;
+
   switch (field.type) {
     case 'money':
       return '0.00';
