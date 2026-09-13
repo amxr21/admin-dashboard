@@ -54,6 +54,15 @@ export interface Shift {
   closingCount: string | null;
   /** Negative is short, positive is over. Null until the till is closed. */
   variance: string | null;
+
+  /**
+   * Sales made during this shift (Task 2). `salesCount` is DISTINCT orders,
+   * not payment rows — a split payment is one sale. `taken` is money taken in
+   * the store currency (2dp string), net of refunds since payments are signed.
+   * On an open shift these are live "so far" figures.
+   */
+  salesCount: number;
+  taken: string;
 }
 
 /** My open shift, or null. */
@@ -157,6 +166,18 @@ export interface ShiftSummary {
     entity: string;
     entityId: string | null;
     createdAt: string;
+  }[];
+  /**
+   * The orders rung up during the shift (Task 2), newest first, capped at 30.
+   * A voided order keeps its row with status CANCELED rather than vanishing.
+   * `total` is a 2dp string; `status` is the order's own status string.
+   */
+  sales: {
+    id: string;
+    orderNumber: string;
+    total: string;
+    status: string;
+    placedAt: string;
   }[];
 }
 
@@ -270,6 +291,15 @@ export interface TillReport {
   noSaleCount: number;
   cashDropTotal: string;
   payoutTotal: string;
+  /**
+   * Order-level breakdown (Task 2). `salesCount` EXCLUDES voided orders (a Z
+   * report is financial, so a void is not a sale); `voidCount` reports those
+   * separately. `averageSale` is the non-void take over the non-void count,
+   * '0.00' when there were no sales.
+   */
+  salesCount: number;
+  averageSale: string;
+  voidCount: number;
   events: TillEvent[];
   isFinal: boolean;
 }

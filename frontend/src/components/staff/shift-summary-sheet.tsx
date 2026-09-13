@@ -5,6 +5,8 @@ import { useFormatter, useTranslations } from 'next-intl';
 
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import { Link } from '@/i18n/navigation';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { fetchShiftSummary, type Shift, type ShiftSummary } from '@/lib/shifts-api';
@@ -107,6 +109,39 @@ export function ShiftSummarySheet({ shift, open, onOpenChange }: ShiftSummaryShe
                 {/* Stated, not implied: a low count is not a lazy shift. */}
                 <p className="text-muted-foreground mt-2 text-xs">{t('changesCaveat')}</p>
               </div>
+
+              {/* The actual orders rung up (Task 2) — the concrete "what was
+                  sold", above the audit-derived activity below. Each links to
+                  its order; a voided sale shows its CANCELED status rather than
+                  being hidden. */}
+              {summary.sales.length > 0 ? (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-medium">{t('salesHeading')}</h3>
+                  <ul className="divide-y rounded-lg border">
+                    {summary.sales.map((order) => (
+                      <li key={order.id} className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
+                        <div className="min-w-0">
+                          <Link
+                            href={`/admin/orders/${order.id}`}
+                            className="hover:text-primary force-ltr truncate font-medium underline-offset-2 hover:underline"
+                          >
+                            {order.orderNumber}
+                          </Link>
+                          <time className="text-muted-foreground block text-xs" dateTime={order.placedAt}>
+                            {formatter.dateTime(new Date(order.placedAt), 'short')}
+                          </time>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          {order.status === 'CANCELED' ? (
+                            <Badge variant="destructive">{t('voided')}</Badge>
+                          ) : null}
+                          <span className="tabular-nums">{order.total}</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               {summary.byAction.length > 0 ? (
                 <div className="space-y-2">

@@ -44,6 +44,8 @@ function makeShift(overrides: Partial<Shift> = {}): Shift {
     openingFloat: null,
     closingCount: null,
     variance: null,
+    salesCount: 0,
+    taken: '0.00',
     ...overrides,
   };
 }

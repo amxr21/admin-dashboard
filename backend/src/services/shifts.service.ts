@@ -474,12 +474,97 @@ export async function listShifts(params: ShiftListParams) {
     prisma.shift.count({ where }),
   ]);
 
+  const activity = await shiftActivity(rows.map((row) => row.id));
+
   return {
-    shifts: rows.map(serialise),
+    shifts: rows.map((row) => ({ ...serialise(row), ...(activity.get(row.id) ?? EMPTY_ACTIVITY) })),
     total,
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+const EMPTY_ACTIVITY = { salesCount: 0, taken: '0.00' } as const;
+
+/**
+ * Sales count and money taken for a PAGE of shifts, in two grouped queries
+ * rather than a takings call per row.
+ *
+ * ─── SALES COUNT IS DISTINCT ORDERS, NOT PAYMENT ROWS ────────────────
+ * A split payment is two `Payment` rows for one sale, so counting rows would
+ * report two sales for one. `Order` has no `shiftId` — an order reaches a
+ * shift THROUGH its payments (`Payment.shiftId`) — so distinct `orderId` per
+ * shift is the honest count. Deduped in JS over a bounded set: at most one
+ * page of shifts (<= MAX_PAGE_SIZE) times a shift's own payments, so this is
+ * not the N+1 that a per-shift takings fetch would be.
+ *
+ * `taken` sums `Payment.amount` (the STORE-currency value), the same field
+ * `getShiftTakings` reconciles — foreign-currency tender is counted at close,
+ * not here, so this stays one comparable unit across every row.
+ */
+async function shiftActivity(shiftIds: string[]): Promise<Map<string, { salesCount: number; taken: string }>> {
+  const result = new Map<string, { salesCount: number; taken: string }>();
+  if (shiftIds.length === 0) return result;
+
+  const [totals, lines] = await Promise.all([
+    prisma.payment.groupBy({ by: ['shiftId'], where: { shiftId: { in: shiftIds } }, _sum: { amount: true } }),
+    prisma.payment.findMany({ where: { shiftId: { in: shiftIds } }, select: { shiftId: true, orderId: true } }),
+  ]);
+
+  const takenByShift = new Map(totals.map((row) => [row.shiftId, (row._sum.amount ?? new Prisma.Decimal(0)).toFixed(2)]));
+  const ordersByShift = new Map<string, Set<string>>();
+  for (const line of lines) {
+    if (line.shiftId === null) continue;
+    const set = ordersByShift.get(line.shiftId) ?? new Set<string>();
+    set.add(line.orderId);
+    ordersByShift.set(line.shiftId, set);
+  }
+
+  for (const id of shiftIds) {
+    result.set(id, { salesCount: ordersByShift.get(id)?.size ?? 0, taken: takenByShift.get(id) ?? '0.00' });
+  }
+  return result;
+}
+
+/**
+ * Order-level breakdown for ONE shift's X/Z report: sales count, average sale,
+ * void count.
+ *
+ * ─── VOIDS ARE SEPARATED, UNLIKE THE OPEN-SHIFT COUNT ────────────────
+ * `voidSale` writes a reversing `Payment` with `method: 'void'` on the shift
+ * (see pos.service.ts). On the FLOOR view (listShifts) a voided sale still
+ * counts as one sale rung up — that is the honest "what happened". On the Z
+ * report, which is a financial summary, a voided order is NOT a sale: it is
+ * excluded from `salesCount` and reported as `voidCount` instead. `averageSale`
+ * is the non-void take divided by the non-void sale count.
+ *
+ * ─── NET OF VOIDS AND REFUNDS ────────────────────────────────────────
+ * `amount` is signed, so summing the non-void payments of a non-void order
+ * already nets any partial refund. A void order's rows are dropped whole.
+ */
+async function shiftSales(shiftId: string): Promise<{ salesCount: number; averageSale: string; voidCount: number }> {
+  const rows = await prisma.payment.findMany({
+    where: { shiftId },
+    select: { orderId: true, method: true, amount: true },
+  });
+
+  const voidedOrders = new Set(rows.filter((row) => row.method.toLowerCase() === 'void').map((row) => row.orderId));
+  const saleOrders = new Set<string>();
+  let net = new Prisma.Decimal(0);
+  for (const row of rows) {
+    if (voidedOrders.has(row.orderId)) continue; // a voided order is not a sale on this report
+    saleOrders.add(row.orderId);
+    net = net.add(row.amount);
+  }
+
+  const salesCount = saleOrders.size;
+  return {
+    salesCount,
+    // Guard the divide: no sales means no average, reported as 0.00 rather
+    // than a NaN or a divide-by-zero.
+    averageSale: salesCount === 0 ? '0.00' : net.div(salesCount).toFixed(2),
+    voidCount: voidedOrders.size,
   };
 }
 
@@ -537,6 +622,8 @@ export async function getShiftSummary(shiftId: string) {
     take: 10,
   });
 
+  const sales = await shiftOrders(shiftId);
+
   return {
     shift: serialise(shift),
     /** Total audited writes in the window. Reads are not audited, so this is
@@ -548,7 +635,46 @@ export async function getShiftSummary(shiftId: string) {
       ...entry,
       createdAt: entry.createdAt.toISOString(),
     })),
+    /** The actual orders rung up during the shift (Task 2), newest first. */
+    sales,
   };
+}
+
+/**
+ * The orders sold during a shift, newest first, for the summary sheet.
+ *
+ * ─── ORDERS REACH A SHIFT THROUGH PAYMENTS ───────────────────────────
+ * `Order` has no `shiftId`; a sale is tied to a shift by its `Payment` rows.
+ * So this finds the distinct orders paid on the shift, then reads each order's
+ * own fields. A voided order keeps its row (status CANCELED) and is shown as
+ * such rather than hidden — a cashier reviewing the shift should see the void
+ * happened, not a gap.
+ *
+ * Capped: a till summary is a recent-activity view, not an export. The count
+ * lives on the X/Z report (`shiftSales`) for the exact figure.
+ */
+async function shiftOrders(shiftId: string) {
+  const payments = await prisma.payment.findMany({
+    where: { shiftId },
+    select: { orderId: true },
+  });
+  const orderIds = [...new Set(payments.map((row) => row.orderId))];
+  if (orderIds.length === 0) return [];
+
+  const orders = await prisma.order.findMany({
+    where: { id: { in: orderIds } },
+    orderBy: { placedAt: 'desc' },
+    take: 30,
+    select: { id: true, orderNumber: true, total: true, status: true, placedAt: true },
+  });
+
+  return orders.map((order) => ({
+    id: order.id,
+    orderNumber: order.orderNumber,
+    total: order.total.toFixed(2),
+    status: order.status,
+    placedAt: order.placedAt.toISOString(),
+  }));
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -816,6 +942,8 @@ export async function getTillReport(shiftId: string) {
       .reduce((sum, row) => sum.add(row.amount ?? '0'), new Prisma.Decimal(0))
       .toFixed(2);
 
+  const sales = await shiftSales(shiftId);
+
   return {
     shift: serialise(shift),
     byMethod: takings.byMethod,
@@ -841,6 +969,12 @@ export async function getTillReport(shiftId: string) {
     noSaleCount,
     cashDropTotal: sumAmounts(cashDrops),
     payoutTotal: sumAmounts(payouts),
+    // Order-level breakdown (Task 2): how many sales, their average, and how
+    // many were voided — the till report showed money by method but never
+    // "how many sales was that".
+    salesCount: sales.salesCount,
+    averageSale: sales.averageSale,
+    voidCount: sales.voidCount,
     events,
     /** Only meaningful once the shift is actually closed — null on an X
      *  report taken mid-shift, since `closeTill` has not run yet. */

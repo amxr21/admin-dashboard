@@ -71,6 +71,26 @@ export function TillReportView({ report }: { report: TillReport }) {
           )}
         </div>
 
+        {/* Order-level breakdown (Task 2) — how many sales the money above was,
+            their average, and voids. Voids shown only when there were any. */}
+        <div className="border-t border-dashed pt-2">
+          <p className="font-semibold">{t('salesSummary')}</p>
+          <div className="flex justify-between">
+            <span>{t('salesCount')}</span>
+            <span className="tabular-nums">{report.salesCount}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>{t('averageSale')}</span>
+            <span className="tabular-nums">{report.averageSale}</span>
+          </div>
+          {report.voidCount > 0 ? (
+            <div className="flex justify-between">
+              <span>{t('voids')}</span>
+              <span className="tabular-nums">{report.voidCount}</span>
+            </div>
+          ) : null}
+        </div>
+
         {shift.openingFloat !== null ? (
           <div className="border-t border-dashed pt-2">
             <div className="flex justify-between">
