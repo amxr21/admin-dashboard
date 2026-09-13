@@ -6,7 +6,10 @@ import { env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { getSettingValue } from './settings.service.js';
-import { createSession, type SessionContext } from './session.service.js';
+import {
+  createLoginSession,
+  type SessionContext,
+} from './session.service.js';
 import { canAccessAreaResolved } from './role-permissions.service.js';
 // Namespaced: this file's own `verifyLoginCode` (the login-flow step) and
 // two-factor.service.ts's `verifyLoginCode` (the raw code check) are
@@ -298,18 +301,13 @@ export async function login(
     return { twoFactorRequired: true, pendingToken: signPending2faToken(user.id) };
   }
 
-  const updated = await prisma.user.update({
-    where: { id: user.id },
-    // Successful login clears the lockout state — otherwise a user who failed
-    // four times and then succeeded stays one mistake away from a lockout.
-    data: { lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null },
-  });
-
   // Read live rather than cached: a shortened timeout should take effect on
   // the very next login, not wait for a process restart.
   const sessionTimeoutMinutes = await getSettingValue('security.sessionTimeoutMinutes');
 
-  const session = await createSession(user.id, sessionContext);
+  const { user: updated, session } = await createLoginSession(
+    user.id, Number(sessionTimeoutMinutes), sessionContext,
+  );
 
   return {
     token: signToken(updated, `${String(sessionTimeoutMinutes)}m`, session.id),
@@ -504,13 +502,11 @@ export async function verifyLoginCode(
     throw AppError.badRequest('That code is incorrect', { field: 'code' });
   }
 
-  const updated = await prisma.user.update({
-    where: { id: user.id },
-    data: { lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null },
-  });
-
   const sessionTimeoutMinutes = await getSettingValue('security.sessionTimeoutMinutes');
-  const session = await createSession(user.id, sessionContext);
+
+  const { user: updated, session } = await createLoginSession(
+    user.id, Number(sessionTimeoutMinutes), sessionContext,
+  );
 
   return {
     token: signToken(updated, `${String(sessionTimeoutMinutes)}m`, session.id),

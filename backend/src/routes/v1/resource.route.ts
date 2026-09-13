@@ -143,11 +143,27 @@ resourceRouter.get('/r/:resource/export', authenticate, withBranchContext, async
   await guardArea(req);
   const config = requireResource(String(req.params.resource));
 
-  const { search, sort, dir, ...rest } = req.query;
+  /**
+   * The range and column keys are destructured OUT of the filter bag on
+   * purpose: everything left over is treated as a field filter, and
+   * `buildWhere` rejects any key the config does not declare. Leaving them in
+   * would make `dateFrom` a 400 ("Cannot filter by dateFrom") rather than a
+   * date window.
+   */
+  const { search, sort, dir, dateField, dateFrom, dateTo, columns: rawColumns, ...rest } = req.query;
+  if ((dateFrom !== undefined || dateTo !== undefined) && typeof dateField !== 'string') {
+    throw AppError.badRequest('A date field is required for a date range', { field: 'dateField' });
+  }
   const filters: Record<string, string> = {};
   for (const [key, value] of Object.entries(rest)) {
     if (typeof value === 'string') filters[key] = value;
   }
+
+  // `columns` may appear more than once (one key per field), so it arrives as
+  // a string or an array depending on how many were sent.
+  const requestedColumns = (
+    Array.isArray(rawColumns) ? rawColumns : rawColumns === undefined ? [] : [rawColumns]
+  ).filter((value): value is string => typeof value === 'string');
 
   const locale = productLocaleFromHeader(req.get('accept-language'));
   const localizedIds = config.resource === 'products'
@@ -158,6 +174,15 @@ resourceRouter.get('/r/:resource/export', authenticate, withBranchContext, async
     sort: typeof sort === 'string' ? sort : undefined,
     dir: dir === 'asc' ? 'asc' : dir === 'desc' ? 'desc' : undefined,
     filters,
+    ...(typeof dateField === 'string'
+      ? {
+          dateRange: {
+            field: dateField,
+            from: typeof dateFrom === 'string' ? dateFrom : undefined,
+            to: typeof dateTo === 'string' ? dateTo : undefined,
+          },
+        }
+      : {}),
     extraSearchConditions: localizedIds.length > 0 ? [{ id: { in: localizedIds } }] : undefined,
   });
   const rows = config.resource === 'products'
@@ -168,16 +193,53 @@ resourceRouter.get('/r/:resource/export', authenticate, withBranchContext, async
     : exportResult.rows;
   const { truncated } = exportResult;
 
+  /**
+   * An empty selection means EVERY exportable column — the historical
+   * behaviour, and the only safe default: a picker that defaulted to nothing
+   * would quietly hand back a file missing the data somebody asked for.
+   *
+   * An unknown column name is refused rather than ignored, same rule as an
+   * unknown filter key: silently dropping it returns a file that looks like it
+   * honoured the request.
+   *
+   * Validated BEFORE `audit()` — a refused export must not leave a success
+   * entry in the trail describing a file nobody ever received.
+   */
+  const exportable = config.fields.filter((field) => field.type !== 'multiRelation');
+
+  for (const requested of requestedColumns) {
+    if (!exportable.some((field) => field.name === requested)) {
+      throw AppError.badRequest(`Cannot export a column named "${requested}"`, {
+        field: 'columns',
+        value: requested,
+      });
+    }
+  }
+
   audit(req, {
     action: `${config.resource}.export`,
     entity: config.resource,
-    changes: { rowCount: rows.length, truncated, filters },
+    // The date window and column subset are recorded alongside the filters:
+    // all three narrow the file, so a trail carrying only `filters` would show
+    // a row count a reviewer could not account for.
+    changes: {
+      rowCount: rows.length,
+      truncated,
+      filters,
+      ...(typeof dateField === 'string'
+        ? { dateRange: { field: dateField, from: dateFrom ?? null, to: dateTo ?? null } }
+        : {}),
+      ...(requestedColumns.length > 0 ? { columns: requestedColumns } : {}),
+    },
   });
 
   res.set('X-Export-Truncated', String(truncated));
 
-  const columns = config.fields
-    .filter((field) => field.type !== 'multiRelation')
+  const columns = (
+    requestedColumns.length > 0
+      ? exportable.filter((field) => requestedColumns.includes(field.name))
+      : exportable
+  )
     .map((field) => ({
       header: field.label,
       value: (row: Record<string, unknown>) => {

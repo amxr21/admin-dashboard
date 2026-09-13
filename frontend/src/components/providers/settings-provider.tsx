@@ -14,6 +14,8 @@ import { applyAppearance, cacheAppearance, readAppearance } from '@/lib/apply-ap
 import { fetchSettings } from '@/lib/settings-api';
 import { fetchBrand, type ResolvedBrand } from '@/lib/branches-api';
 import { readBranchId } from '@/lib/auth-storage';
+import { SETUP_FEATURE_KEYS } from '@/lib/setup-api';
+import type { EnabledFeatures } from '@/lib/setup-visibility';
 
 /**
  * Fetches the settings registry and shares it — same reasoning as
@@ -55,6 +57,10 @@ import { readBranchId } from '@/lib/auth-storage';
 type Value = string | boolean | number;
 
 interface SettingsContextValue {
+  enabledFeatures: EnabledFeatures;
+  setupCompletedAt: string;
+  setupSkippedAt: string;
+  productDefaults: Partial<Record<'hasVariants' | 'hasColors' | 'hasBarcode', boolean>>;
   isLoading: boolean;
   tablePageSize: number;
   /** The live `security.minPasswordLength`. Exposed so password forms inside
@@ -128,6 +134,10 @@ const BRAND_DEFAULTS = {
 };
 
 const DEFAULT_VALUE: SettingsContextValue = {
+  enabledFeatures: {},
+  setupCompletedAt: '',
+  setupSkippedAt: '',
+  productDefaults: {},
   isLoading: true,
   tablePageSize: 20,
   // Mirrors `settings.config.ts`'s declared default, used only until the real
@@ -269,7 +279,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   // One `labels.nav.<key>` setting per relabelable nav item — see
   // settings.config.ts's own "Labels" section for the full list and why an
   // empty string means "not overridden" rather than a real label.
-  const NAV_LABEL_KEYS = ['staff', 'orders', 'delivery', 'inventory', 'returns', 'reports'];
+  const NAV_LABEL_KEYS = ['products', 'staff', 'orders', 'delivery', 'inventory', 'returns', 'reports'];
   const navLabels = Object.fromEntries(
     NAV_LABEL_KEYS.map((key) => [key, String(effective[`labels.nav.${key}`] ?? '')]).filter(
       ([, label]) => label !== '',
@@ -277,6 +287,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
 
   const value: SettingsContextValue = {
+    enabledFeatures: Object.fromEntries(SETUP_FEATURE_KEYS.map(key => [key, byKey[`features.${key}.enabled`] !== false])),
+    setupCompletedAt: String(byKey['setup.completedAt'] ?? ''),
+    setupSkippedAt: String(byKey['setup.skippedAt'] ?? ''),
+    productDefaults: byKey['setup.completedAt'] ? {
+      hasVariants: byKey['products.defaultHasVariants'] === true,
+      hasColors: byKey['products.defaultHasColors'] === true,
+      hasBarcode: byKey['products.defaultHasBarcode'] === true,
+    } : {},
     isLoading,
     tablePageSize: Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20,
     minPasswordLength:

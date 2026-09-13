@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
+import { toast } from 'sonner';
 
 import { render, screen, waitFor } from '@/test/render';
 import { DataExportPanel } from '../data-export-panel';
@@ -20,6 +21,8 @@ import type { ResourceSchema } from '@/lib/resource-api';
 const fetchSchema = vi.hoisted(() => vi.fn());
 const exportResourceCsv = vi.hoisted(() => vi.fn());
 const fetchAudit = vi.hoisted(() => vi.fn());
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 vi.mock('@/lib/resource-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/resource-api')>();
@@ -93,7 +96,10 @@ describe('DataExportPanel — export centre', () => {
     await screen.findByText('Products');
     await userEvent.click(screen.getByRole('button', { name: /export csv/i }));
 
-    await waitFor(() => expect(exportResourceCsv).toHaveBeenCalledWith('products'));
+    // An untouched picker sends NO narrowing options — the server treats an
+    // absent column list as every column and an absent date field as no
+    // window, so the default export is byte-for-byte what it always was.
+    await waitFor(() => expect(exportResourceCsv).toHaveBeenCalledWith('products', {}));
   });
 
   it('refreshes history after a successful export', async () => {
@@ -103,6 +109,70 @@ describe('DataExportPanel — export centre', () => {
     await userEvent.click(screen.getByRole('button', { name: /export csv/i }));
 
     await waitFor(() => expect(fetchAudit).toHaveBeenCalledTimes(2));
+  });
+
+  it('sends only the ticked columns once one is unticked', async () => {
+    fetchSchema.mockResolvedValue([
+      makeResource({
+        fields: [
+          { name: 'name', label: 'Name', type: 'text' },
+          { name: 'sku', label: 'SKU', type: 'text' },
+        ],
+      }),
+    ]);
+
+    render(<DataExportPanel />);
+
+    await userEvent.click(await screen.findByLabelText('SKU'));
+    await userEvent.click(screen.getByRole('button', { name: /export csv/i }));
+
+    await waitFor(() =>
+      expect(exportResourceCsv).toHaveBeenCalledWith('products', { columns: ['name'] }),
+    );
+  });
+
+  it('refuses to export when every column of a resource is unticked', async () => {
+    fetchSchema.mockResolvedValue([
+      makeResource({ fields: [{ name: 'name', label: 'Name', type: 'text' }] }),
+    ]);
+
+    render(<DataExportPanel />);
+
+    await userEvent.click(await screen.findByLabelText('Name'));
+
+    expect(screen.getByRole('button', { name: /export csv/i })).toBeDisabled();
+    expect(exportResourceCsv).not.toHaveBeenCalled();
+  });
+
+  it('exports one file per selected resource', async () => {
+    fetchSchema.mockResolvedValue([
+      makeResource({ resource: 'products', label: 'Products' }),
+      makeResource({ resource: 'categories', label: 'Categories' }),
+    ]);
+
+    render(<DataExportPanel />);
+
+    await userEvent.click(await screen.findByLabelText('Categories'));
+    await userEvent.click(screen.getByRole('button', { name: /export 2 files/i }));
+
+    await waitFor(() => expect(exportResourceCsv).toHaveBeenCalledTimes(2));
+    expect(exportResourceCsv).toHaveBeenCalledWith('products', {});
+    expect(exportResourceCsv).toHaveBeenCalledWith('categories', {});
+  });
+
+  it('names the file that succeeded when an earlier selected export failed', async () => {
+    fetchSchema.mockResolvedValue([
+      makeResource({ resource: 'products', label: 'Products' }),
+      makeResource({ resource: 'categories', label: 'Categories' }),
+    ]);
+    exportResourceCsv.mockRejectedValueOnce(new Error('download failed'));
+
+    render(<DataExportPanel />);
+    await userEvent.click(await screen.findByLabelText('Categories'));
+    await userEvent.click(screen.getByRole('button', { name: /export 2 files/i }));
+
+    await waitFor(() => expect(exportResourceCsv).toHaveBeenCalledTimes(2));
+    expect(toast.success).toHaveBeenCalledWith('Categories exported.');
   });
 });
 

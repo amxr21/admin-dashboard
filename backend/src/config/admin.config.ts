@@ -77,6 +77,21 @@ export interface FieldConfig {
   sortable?: boolean;
   /** Never writable, regardless of `inForm`. */
   readOnly?: boolean;
+  /**
+   * Example text shown in an empty input.
+   *
+   * Lives HERE rather than in the frontend's `placeholderFor` because the
+   * useful example depends on the FIELD, not its type: "SKU" and "Meta title"
+   * are both `text`, and no single string is true for both. `placeholderFor`
+   * still supplies the type-level defaults (email/phone/url/money) that ARE
+   * true everywhere — this only overrides them for a specific field.
+   *
+   * A placeholder is an EXAMPLE, never an instruction and never a stand-in
+   * for the label: it disappears the moment someone types, so anything a
+   * person still needs to see while filling the field belongs in the label
+   * or a hint instead.
+   */
+  placeholder?: string;
   /** For `enum`. The engine rejects any value not in this list. */
   options?: readonly string[];
   relation?: RelationSpec;
@@ -139,12 +154,12 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
     fields: [
       { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
       { name: 'imageUrl', label: 'Image', type: 'image' },
-      { name: 'name', label: 'Name', type: 'text', required: true, searchable: true, sortable: true },
+      { name: 'name', label: 'Name', type: 'text', required: true, searchable: true, sortable: true, placeholder: 'e.g. Black cotton T-shirt' },
       // URG-025/028 — SKU is the identifier every product gets, so it stays
       // reachable, but it is not one of the six fields needed to list a
       // sellable product. Grouped with the other codes rather than sitting
       // between Name and Description.
-      { name: 'sku', label: 'SKU', type: 'text', searchable: true, group: 'identifiers' },
+      { name: 'sku', label: 'SKU', type: 'text', searchable: true, group: 'identifiers', placeholder: 'e.g. TSH-BLK-M' },
       // Excluded from the list view: a TEXT column makes rows unreadable and
       // is not what anyone scans a catalogue for.
       // URG-025 — not one of the six fields needed to list a sellable product.
@@ -185,6 +200,7 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         type: 'text',
         inList: false,
         group: 'inventory',
+        placeholder: 'e.g. Aisle 3, shelf B',
       },
       {
         name: 'categoryId',
@@ -265,18 +281,20 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         searchable: true,
         group: 'identifiers',
         importAliases: ['Barcode (EAN/UPC)'],
+        placeholder: 'e.g. 5901234123457',
       },
       { name: 'weightKg', label: 'Weight (kg)', type: 'number', inList: false, group: 'physical' },
       { name: 'lengthCm', label: 'Length (cm)', type: 'number', inList: false, group: 'physical' },
       { name: 'widthCm', label: 'Width (cm)', type: 'number', inList: false, group: 'physical' },
       { name: 'heightCm', label: 'Height (cm)', type: 'number', inList: false, group: 'physical' },
-      { name: 'hsCode', label: 'HS code', type: 'text', inList: false, group: 'shipping' },
+      { name: 'hsCode', label: 'HS code', type: 'text', inList: false, group: 'shipping', placeholder: 'e.g. 6109.10' },
       {
         name: 'countryOfOrigin',
         label: 'Country of origin',
         type: 'text',
         inList: false,
         group: 'shipping',
+        placeholder: 'e.g. India',
       },
       // SEO block. `slug` is never auto-derived from `name` on write — see
       // the schema comment on Product.slug — a user types it, so changing it
@@ -425,7 +443,7 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
     permissions: { create: true, update: true, delete: true },
     fields: [
       { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
-      { name: 'code', label: 'Code', type: 'text', required: true, searchable: true, sortable: true },
+      { name: 'code', label: 'Code', type: 'text', required: true, searchable: true, sortable: true, placeholder: 'e.g. SUMMER25' },
       { name: 'type', label: 'Type', type: 'enum', options: ['PERCENT', 'FIXED'], required: true, sortable: true },
       // PERCENT stores the percentage itself (10.00 = 10%); FIXED stores a
       // money amount. Same Decimal(10,2) either way, so the same string rule.

@@ -18,6 +18,8 @@
 export type SettingType = 'string' | 'boolean' | 'number' | 'enum' | 'color';
 
 export interface SettingDefinition {
+  /** Managed exclusively through the owner-only setup transaction. */
+  setupOnly?: boolean;
   type: SettingType;
   /** Returned when no row exists, so a fresh install has working values. */
   default: string | boolean | number;
@@ -50,6 +52,26 @@ export const ACCENT_COLOR_PALETTE = [
 ] as const;
 
 export const SETTINGS = {
+  'features.dashboard.enabled': { type: 'boolean', default: true, area: 'settings', label: 'dashboard', setupOnly: true },
+  'features.pos.enabled': { type: 'boolean', default: true, area: 'settings', label: 'pos', setupOnly: true },
+  'features.orders.enabled': { type: 'boolean', default: true, area: 'settings', label: 'orders', setupOnly: true },
+  'features.inventory.enabled': { type: 'boolean', default: true, area: 'settings', label: 'inventory', setupOnly: true },
+  'features.suppliers.enabled': { type: 'boolean', default: true, area: 'settings', label: 'suppliers', setupOnly: true },
+  'features.delivery.enabled': { type: 'boolean', default: true, area: 'settings', label: 'delivery', setupOnly: true },
+  'features.returns.enabled': { type: 'boolean', default: true, area: 'settings', label: 'returns', setupOnly: true },
+  'features.reports.enabled': { type: 'boolean', default: true, area: 'settings', label: 'reports', setupOnly: true },
+  'features.scheduledReports.enabled': { type: 'boolean', default: true, area: 'settings', label: 'scheduledReports', setupOnly: true },
+  'features.customerCases.enabled': { type: 'boolean', default: true, area: 'settings', label: 'customerCases', setupOnly: true },
+  'features.staff.enabled': { type: 'boolean', default: true, area: 'settings', label: 'staff', setupOnly: true },
+  'features.branches.enabled': { type: 'boolean', default: true, area: 'settings', label: 'branches', setupOnly: true },
+  'features.settings.enabled': { type: 'boolean', default: true, area: 'settings', label: 'settings', setupOnly: true },
+  'setup.completedAt': { type: 'string', default: '', area: 'settings', label: 'completedAt', max: 60, setupOnly: true },
+  'setup.skippedAt': { type: 'string', default: '', area: 'settings', label: 'skippedAt', max: 60, setupOnly: true },
+  'setup.businessType': { type: 'string', default: '', area: 'settings', label: 'businessType', max: 60, setupOnly: true },
+  'products.defaultHasVariants': { type: 'boolean', default: false, area: 'settings', label: 'New products: variants', setupOnly: true },
+  'products.defaultHasColors': { type: 'boolean', default: false, area: 'settings', label: 'New products: colors', setupOnly: true },
+  'products.defaultHasBarcode': { type: 'boolean', default: false, area: 'settings', label: 'New products: barcode', setupOnly: true },
+  'labels.nav.products': { type: 'string', default: '', area: 'settings', label: 'Products page name', max: 40 },
   'store.name': {
     type: 'string',
     default: '',

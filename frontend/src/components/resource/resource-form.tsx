@@ -248,12 +248,21 @@ function MarginSummary({
 }
 
 export function ResourceForm({
-  schema,
+  schema: baseSchema,
   row,
   open,
   onOpenChange,
   onSaved,
 }: ResourceFormProps) {
+  const { editPanelMode, productDefaults } = useAppSettings();
+  const variantsDefault = productDefaults?.hasVariants;
+  const colorsDefault = productDefaults?.hasColors;
+  const barcodeDefault = productDefaults?.hasBarcode;
+  const schema = useMemo(() => {
+    if (row || baseSchema.resource !== 'products') return baseSchema;
+    const defaults: Record<string, boolean | undefined> = { hasVariants: variantsDefault, hasColors: colorsDefault, hasBarcode: barcodeDefault };
+    return { ...baseSchema, fields: baseSchema.fields.map(field => defaults[field.name] === undefined ? field : { ...field, defaultValue: defaults[field.name] }) };
+  }, [baseSchema, row, variantsDefault, colorsDefault, barcodeDefault]);
   const t = useTranslations('resourceForm');
   // Separate binding: `t` above is scoped to `resourceForm`, but the group
   // headings are resource vocabulary shared with the table, so they live under
@@ -261,7 +270,6 @@ export function ResourceForm({
   const tGroups = useTranslations('resource.fieldGroups');
   const fieldLabel = useResourceFieldLabel(schema.resource);
   const translateError = useTranslatedApiError();
-  const { editPanelMode } = useAppSettings();
 
   const fields = useMemo(() => formFields(schema), [schema]);
 
@@ -1248,6 +1256,12 @@ function inputType(field: FieldConfig): string {
  * `admin.config.ts`, not here.
  */
 function placeholderFor(field: FieldConfig, tCommon: ReturnType<typeof useTranslations<'common'>>): string | undefined {
+  // A field that declares its own example wins over the type-level default —
+  // it is strictly more specific, and it is the ONLY way to give a `text`
+  // field a useful placeholder (see the `placeholder` comment in
+  // admin.config.ts for why those cannot be typed at this level).
+  if (field.placeholder) return field.placeholder;
+
   switch (field.type) {
     case 'money':
       return '0.00';
