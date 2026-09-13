@@ -118,6 +118,19 @@ export function ShiftsTable({ openOnly = false, page: controlledPage, onPageChan
       cell: (shift) => <span className="tabular-nums">{duration(shift)}</span>,
     },
     {
+      id: 'sales',
+      header: t('sales'),
+      align: 'end',
+      cell: (shift) => <span className="tabular-nums">{shift.salesCount}</span>,
+    },
+    {
+      id: 'taken',
+      header: t('taken'),
+      align: 'end',
+      // Bare 2dp string, matching the till report's money columns — no symbol.
+      cell: (shift) => <span className="tabular-nums">{shift.taken}</span>,
+    },
+    {
       id: 'summary',
       header: '',
       cell: (shift) => (
