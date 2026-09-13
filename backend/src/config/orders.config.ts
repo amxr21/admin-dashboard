@@ -22,10 +22,28 @@ import { DeliveryStatus, OrderStatus } from '@prisma/client';
  * returned one cannot go back to delivered. Undoing a mistake is a new order
  * or a credit note, not a status rewind — otherwise history stops being a
  * record of what happened.
+ *
+ * ─── CONFIRMED → RETURNED: THE POINT-OF-SALE RETURN (owner-approved 2026-09-13)
+ * A POS sale is created CONFIRMED and never ships or gets delivered — the
+ * customer takes the item at the counter. Before this line, `RETURNED` was
+ * reachable ONLY from SHIPPED/DELIVERED, so a walk-in customer bringing an item
+ * back could not be served: the till return sheet's own `createReturn` /
+ * `approveReturn` both call `canTransition(status, 'RETURNED')`, which was false
+ * for a CONFIRMED sale — the whole feature 400'd on the most common physical
+ * return. Allowing it here makes the till return sheet work.
+ *
+ * ─── THE ACCEPTED AMBIGUITY ──────────────────────────────────────────
+ * `RETURNED` now means two things — a delivered mail order that came back, and
+ * a counter sale that was returned. The owner accepted this over a separate
+ * POS-returnable terminal state (which would have needed a migration and new
+ * states). Readers of `RETURNED` must not assume a delivery ever happened: a
+ * POS return has no `DeliveryAssignment` (the assignment write in
+ * returns.service.ts is already guarded by `if (order.assignment)`), and the
+ * returns report counts it the same as any other return, which is intended.
  */
 export const ORDER_TRANSITIONS: Readonly<Record<OrderStatus, readonly OrderStatus[]>> = {
   [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELED],
-  [OrderStatus.CONFIRMED]: [OrderStatus.SHIPPED, OrderStatus.CANCELED],
+  [OrderStatus.CONFIRMED]: [OrderStatus.SHIPPED, OrderStatus.CANCELED, OrderStatus.RETURNED],
   [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED, OrderStatus.RETURNED],
   [OrderStatus.DELIVERED]: [OrderStatus.RETURNED],
   [OrderStatus.CANCELED]: [],
