@@ -671,6 +671,112 @@ describe('resource export (B3.3)', () => {
     expect(res.status).toBe(404);
   });
 
+  it('exports only the requested columns, in the config\'s own order', async () => {
+    const category = await prisma.category.create({
+      data: { name: `${RUN} exportcols`, slug: `${RUN}-exportcols` },
+    });
+
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?columns=name&columns=slug')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    const [headerLine] = res.text.split('\r\n');
+    expect(headerLine.split(',')).toEqual(['Name', 'Slug']);
+
+    await prisma.category.delete({ where: { id: category.id } });
+  });
+
+  it('refuses a column the resource does not declare, rather than ignoring it', async () => {
+    // Silently dropping it would hand back a file that LOOKS like it honoured
+    // the request — the same rule the unknown-filter-key check follows.
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?columns=passwordHash')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses to range-filter a field that is not a date', async () => {
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?dateField=name&dateFrom=2026-01-01')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a malformed date bound', async () => {
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?dateField=createdAt&dateFrom=last-tuesday')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a date bound without a field instead of exporting unfiltered rows', async () => {
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?dateFrom=2026-01-01')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a calendar date that JavaScript would normalize', async () => {
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?dateField=createdAt&dateFrom=2026-02-31')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(400);
+  });
+
+  it('treats the "to" bound as the whole of that day, not midnight', async () => {
+    /**
+     * The boundary that makes or breaks this feature: a row created at 14:00
+     * on the 10th must appear in a window ending ON the 10th. Comparing
+     * `lte 2026-…-10T00:00:00` would drop it, and the person exporting would
+     * never know the day was missing.
+     */
+    const category = await prisma.category.create({
+      data: { name: `${RUN} exportday`, slug: `${RUN}-exportday` },
+    });
+
+    const createdAt = category.createdAt;
+    const day = createdAt.toISOString().slice(0, 10);
+
+    const res = await request(app)
+      .get(`/api/v1/r/categories/export?dateField=createdAt&dateFrom=${day}&dateTo=${day}`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain(`${RUN} exportday`);
+
+    await prisma.category.delete({ where: { id: category.id } });
+  });
+
+  it('excludes rows outside the window', async () => {
+    const category = await prisma.category.create({
+      data: { name: `${RUN} exportoutside`, slug: `${RUN}-exportoutside` },
+    });
+
+    // A window that ended before this row existed must not contain it.
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?dateField=createdAt&dateFrom=2020-01-01&dateTo=2020-01-02')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain(`${RUN} exportoutside`);
+
+    await prisma.category.delete({ where: { id: category.id } });
+  });
+
+  it('refuses a range whose start is after its end', async () => {
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?dateField=createdAt&dateFrom=2026-05-01&dateTo=2026-04-01')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(400);
+  });
+
   it('is gated by the resource permission area, same as the list endpoint', async () => {
     // SUPPORT reaches customers but not discounts (see "per-resource
     // authorisation" above) — same pair, same reasoning, export endpoint.

@@ -503,6 +503,23 @@ keep — don't resolve the ambiguity by picking whichever is less code to wire u
   and logged in `TODO.md`; their publication and production acceptance remain
   in `URGENT_TODO.md`. `gh auth status` reports an invalid token, so current PR
   checks and mergeability are unknown.
+- **Business setup wizard (MVP) is implemented on `feat/business-setup-wizard`** (2026-09-13). An
+  optional, skippable, rerunnable owner-only wizard at `/admin/setup` configures the EXISTING
+  system rather than generating config — the compiled-TypeScript architecture question in
+  "Planned / not started" stays open and is not blocked by this. 13 allowlisted feature keys with
+  server-resolved dependencies drive visibility only; the permission middleware remains
+  authoritative and disabling never deletes data. 18 business templates preselect features,
+  catalogue defaults and label suggestions but carry NO permission changes, so choosing a business
+  type cannot silently alter who can reach what. **Contract change worth knowing**: settings marked
+  `setupOnly` (`features.*`, `setup.*`, `products.default*`) are now refused by the generic
+  `PATCH /settings` and hidden from the settings form — two write paths into the same keys, one
+  with dependency resolution and one without, would let the simpler path produce an inconsistent
+  state. `setRoleAreas()` gained an optional transaction client so setup reuses the existing
+  permission engine instead of duplicating it. Verified: 29/29 backend setup cases, 12/12 frontend
+  setup cases, 386/386 frontend regression sweep, both typechecks and lint clean, full backend
+  suite 1307/1307. Browser passes (desktop EN, mobile EN, Arabic RTL, repeat-run warning) and the
+  Arabic native-speaker review remain open. Full detail in
+  `.claude-workbook/setup-wizard-guide.md`.
 - **The URG-004 finding worth remembering**: the startup gate as first written blocked the HTTP
   server on any non-zero `prisma migrate deploy` *or* `prisma migrate status`. That conflates
   migration BOOKKEEPING with schema CORRECTNESS, and the two diverge exactly when

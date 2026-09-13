@@ -48,7 +48,7 @@ describe('production startup migration gate', () => {
   });
 
   // A database can hold the correct tables while `_prisma_migrations` is
-  // missing or incomplete — a state this project has hit repeatedly. Both
+  // missing or incomplete - a state this project has hit repeatedly. Both
   // `migrate deploy` and `migrate status` fail there, so gating on either
   // would turn a bookkeeping gap into an outage. The live shape check decides.
   it('still serves traffic when migration deployment fails but the live schema matches', async () => {
@@ -182,7 +182,7 @@ describe('production startup migration gate', () => {
   });
 
   // A crashed runner is not evidence the schema is healthy, so a thrown error
-  // still aborts startup — distinct from a non-zero exit code, which is not.
+  // still aborts startup - distinct from a non-zero exit code, which is not.
   it('does not hide a post-deploy status-check failure', async () => {
     const failure = new Error('migration status unavailable');
     const startServer = vi.fn();

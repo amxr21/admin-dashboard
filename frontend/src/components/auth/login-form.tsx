@@ -61,6 +61,20 @@ function ResetSuccessNotice({ suppressed }: { suppressed: boolean }) {
   );
 }
 
+/**
+ * True when a 403 is the concurrent-device cap rather than a disabled or
+ * expired account. The three are the same status with three different user
+ * actions, so they must not collapse into one message.
+ */
+function sessionLimitReason(details: unknown): boolean {
+  return (
+    typeof details === 'object' &&
+    details !== null &&
+    'reason' in details &&
+    (details as { reason?: unknown }).reason === 'SESSION_LIMIT_REACHED'
+  );
+}
+
 function SessionExpiredNotice() {
   const t = useTranslations('auth');
   const [visible, setVisible] = useState(false);
@@ -116,6 +130,15 @@ export function LoginForm() {
       case 401:
         return t('invalidCredentials');
       case 403:
+        /**
+         * The device cap is also a 403, and it is neither of the two account
+         * states this branch used to assume. Checked by the STABLE reason code
+         * rather than by sniffing the message (which the two cases below still
+         * do, and which cannot survive a reworded server string) — see
+         * `assertSessionCapacity`.
+         */
+        if (sessionLimitReason(caught.details)) return t('sessionLimitReached');
+
         return caught.message.toLowerCase().includes('deactivated')
           ? t('accountDeactivated')
           : t('accessEnded');

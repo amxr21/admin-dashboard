@@ -1,4 +1,162 @@
 {
+  "setup": {
+    "title": "Business setup",
+    "scope": "Applies to all businesses and branches in this installation.",
+    "intro": "Choose recommended features for your business, then adjust them to suit your work. Setup is optional.",
+    "rerun": "You can run setup again from Settings at any time.",
+    "preserve": "Hidden features keep all their existing data. Enabling them again restores access through navigation.",
+    "ownerOnly": "Only an owner or developer can run business setup.",
+    "loading": "Loading business setup…",
+    "empty": "No setup templates are available.",
+    "retry": "Retry",
+    "done": "Setup preferences saved",
+    "settings": "Back to Settings",
+    "stepsLabel": "Setup steps",
+    "steps": {
+      "entry": "Welcome",
+      "business": "Business type",
+      "features": "Features",
+      "names": "Names",
+      "products": "Catalogue",
+      "people": "People and permissions",
+      "operations": "Defaults",
+      "review": "Review"
+    },
+    "businessType": "Business type",
+    "loadTemplate": "Load recommendations",
+    "recommendations": "Templates preselect features and new-product preferences. You can change every recommendation. Existing permissions are kept unless you edit them.",
+    "requiredBy": "Required by: {features}",
+    "alwaysEnabled": "Always available so you can navigate and change setup.",
+    "displayOnly": "Names change display labels only. Leave a name empty to use the built-in translation.",
+    "catalogueHelp": "These preferences preselect options when creating a product. Existing products are unchanged.",
+    "catalogueExtensions": "Stock locations and supplier cost remain available in product forms. Serial numbers and expiry fields are outside this setup.",
+    "operationsHelp": "Currency changes formatting; it does not convert existing prices. Tax is a percentage. Tender rates are units of the tender currency per 1 store currency; 0 disables that tender. Return window 0 means no time limit.",
+    "branchHelp": "Create or edit branches and warehouses from Settings after applying setup. Existing branch-level currency overrides still apply.",
+    "permissionsHelp": "Only checked permission edits are applied. Hiding a feature does not revoke access permissions. Other areas keep their current grants; role assignments and hierarchy stay unchanged.",
+    "lockedRole": "Owners and developers always retain full access.",
+    "permissionsUnchanged": "No role permission changes.",
+    "enabled": "Enabled",
+    "hidden": "Off",
+    "enabledFeatures": "Enabled sections",
+    "disabledFeatures": "Hidden sections",
+    "none": "None",
+    "grant": "Grant",
+    "revoke": "Revoke",
+    "back": "Back",
+    "skip": "Skip for now",
+    "start": "Start setup",
+    "next": "Next",
+    "reviewAction": "Review changes",
+    "apply": "Apply setup",
+    "cancel": "Return to Settings",
+    "skipped": "Setup skipped. Your feature choices are unchanged.",
+    "saved": "Business setup applied.",
+    "disabledTitle": "This feature is not enabled for this business setup",
+    "disabledOwner": "You can enable this feature in Business setup. Existing data is retained.",
+    "disabledStaff": "Contact an owner to enable this feature. Existing data is retained.",
+    "recommended": {
+      "menu": "Menu items",
+      "tickets": "Tickets",
+      "team": "Team"
+    },
+    "warnings": {
+      "existingData": "{feature} has existing data. Hiding it keeps that data; enable the feature again to use it.",
+      "dependencyEnabled": "{feature} stays enabled because another selected feature requires it."
+    },
+    "roles": {
+      "DEVELOPER": "Developer",
+      "OWNER": "Owner",
+      "MANAGER": "Manager",
+      "FULFILLMENT": "Fulfillment",
+      "CASHIER": "Cashier",
+      "SUPPORT": "Support",
+      "DEMO": "Demo (read-only)"
+    },
+    "areas": {
+      "orders": "Orders",
+      "products": "Products",
+      "inventory": "Inventory",
+      "customers": "Customers",
+      "categories": "Categories",
+      "discounts": "Discounts",
+      "reviews": "Reviews",
+      "delivery": "Delivery",
+      "returns": "Returns",
+      "reports": "Reports",
+      "settings": "Settings",
+      "staff": "Staff",
+      "shifts": "Shift approvals"
+    },
+    "defaults": {
+      "products_defaultHasVariants": "New products have variants",
+      "products_defaultHasColors": "New products have colours",
+      "products_defaultHasBarcode": "New products have barcodes",
+      "store_currency": "Store currency",
+      "store_taxRate": "Tax / VAT (%)",
+      "returns_windowDays": "Return window (days; 0 = no limit)",
+      "inventory_lowStockThreshold": "Low-stock threshold",
+      "pos_maxCashierDiscountPercent": "Maximum cashier discount (%)",
+      "pos_tenderRate_AED": "AED per 1 store currency (0 = off)",
+      "pos_tenderRate_SAR": "SAR per 1 store currency (0 = off)",
+      "pos_tenderRate_USD": "USD per 1 store currency (0 = off)",
+      "pos_tenderRate_EUR": "EUR per 1 store currency (0 = off)",
+      "pos_tenderRate_GBP": "GBP per 1 store currency (0 = off)"
+    },
+    "features": {
+      "dashboard": {
+        "title": "Dashboard",
+        "description": "Business overview and summaries."
+      },
+      "pos": {
+        "title": "Point of sale",
+        "description": "Till, checkout, and shift clock. Requires orders and inventory."
+      },
+      "orders": {
+        "title": "Orders",
+        "description": "Sales orders and their history."
+      },
+      "inventory": {
+        "title": "Inventory",
+        "description": "Stock movements, receiving, and low-stock views."
+      },
+      "suppliers": {
+        "title": "Suppliers",
+        "description": "Supplier directory and restock outreach."
+      },
+      "delivery": {
+        "title": "Delivery",
+        "description": "Couriers and delivery assignments."
+      },
+      "returns": {
+        "title": "Returns",
+        "description": "Return requests and refunds."
+      },
+      "reports": {
+        "title": "Reports",
+        "description": "Sales and operational reporting."
+      },
+      "scheduledReports": {
+        "title": "Scheduled reports",
+        "description": "Scheduled report configuration. Existing schedules keep running."
+      },
+      "customerCases": {
+        "title": "Customer cases",
+        "description": "Customer support cases and follow-up."
+      },
+      "staff": {
+        "title": "Staff",
+        "description": "Staff, permissions, and shift management screens."
+      },
+      "branches": {
+        "title": "Branches",
+        "description": "Business, branch, and organization settings screens."
+      },
+      "settings": {
+        "title": "Settings",
+        "description": "Preferences and the entry to rerun setup."
+      }
+    }
+  },
   "common": {
     "appName": "admin-dashboard",
     "save": "Save",
@@ -74,7 +232,8 @@
         "BRANCH_REQUIRED_MULTIPLE_BUSINESSES": "Choose the branch where you are working, then start the shift again.",
         "BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS": "Your account is assigned to more than one branch. Choose today's branch, or ask a manager which one to use.",
         "NO_ACTIVE_BRANCH": "No active branch is available for this shift. Ask an owner to configure or assign one.",
-        "BRANCH_NOT_FOUND": "That branch is no longer available. Choose another branch and try again."
+        "BRANCH_NOT_FOUND": "That branch is no longer available. Choose another branch and try again.",
+        "SESSION_LIMIT_REACHED": "This account is already signed in on {limit} devices. Sign out of one of them, then try again."
       }
     },
     "readOnlyDemo": {
@@ -132,7 +291,8 @@
       "backupHint": "Lost your device? A backup code works here too.",
       "verify": "Verify",
       "startOver": "Use a different account"
-    }
+    },
+    "sessionLimitReached": "This account is already signed in on the maximum number of devices. Sign out on one of them first — you can do that from Settings on any device that is still signed in."
   },
   "courier": {
     "login": {
@@ -1536,7 +1696,10 @@
       },
       "notifications": {
         "title": "Notifications",
-        "description": "Which events alert the team."
+        "description": "Which events alert the team.",
+        "sharedInbox": "Alerts appear in one shared staff inbox. Reading or dismissing an alert changes it for everyone with access.",
+        "refresh": "The bell checks for new alerts every 30 seconds and when you return to this tab.",
+        "emailDelivery": "Email alerts also go to the store support address when email is enabled, a sender address is set, and server SMTP is configured."
       },
       "email": {
         "title": "Email",
@@ -1608,7 +1771,8 @@
         "description": "This device will need to sign in again. Every other device stays signed in.",
         "cancel": "Cancel",
         "action": "Sign out"
-      }
+      },
+      "limitNote": "Up to {limit} devices can be signed in at once. Sign one out here to make room for another."
     },
     "apiKeys": {
       "title": "API keys",
@@ -1723,19 +1887,37 @@
       "title": "Data",
       "description": "Export any resource you can access as a CSV file.",
       "exportTitle": "Export centre",
-      "exportDescription": "Choose a resource and download every row you have access to as CSV.",
-      "resourceLabel": "Resource",
+      "exportDescription": "Pick what to export. Each resource downloads as its own CSV file.",
+      "resourceLabel": "What to export",
       "export": "Export CSV",
       "exporting": "Exporting…",
       "exported": "{resource} exported.",
       "historyTitle": "Recent exports",
       "historyEmpty": "No exports yet.",
       "unknownActor": "Unknown",
-      "retry": "Retry"
+      "retry": "Retry",
+      "selectAllResources": "Select all",
+      "clearResources": "Clear",
+      "noResourceSelected": "Choose at least one resource to export.",
+      "selectedCount": "{count, plural, =0 {Nothing selected} one {# resource selected} other {# resources selected}}",
+      "columnsTitle": "Columns",
+      "columnsDescription": "Leave every column ticked to export the whole record.",
+      "columnsAll": "All columns",
+      "columnsFor": "Columns in {resource}",
+      "columnsSelected": "{count} of {total} columns",
+      "columnsNoneWarning": "At least one column has to stay ticked.",
+      "dateTitle": "Date range",
+      "dateDescription": "Optional. Limits rows to a window on the date field you choose.",
+      "dateFieldLabel": "Date field",
+      "dateFieldNone": "No date limit",
+      "dateUnavailable": "This resource has no date field to filter on.",
+      "exportMultiple": "Export {count} files",
+      "exportedMultiple": "{count} files exported.",
+      "exportFailedFor": "Couldn’t export {resource}."
     },
     "policies": {
       "title": "Policies",
-      "description": "Return, privacy, terms, and shipping policy text — per locale, versioned.",
+      "description": "The return, privacy, terms and shipping text customers read. Each language is saved separately, and every publish keeps the previous version.",
       "types": {
         "RETURN": "Return policy",
         "PRIVACY": "Privacy policy",
@@ -1749,7 +1931,7 @@
       "historyEmpty": "No versions yet.",
       "current": "Current",
       "revert": "Revert",
-      "contentPlaceholder": "Write the policy text…",
+      "contentPlaceholder": "Write what customers should know — for example, how many days they have to return something, and who pays return postage.",
       "publish": "Publish",
       "publishing": "Publishing…",
       "published": "Policy published.",
@@ -1764,6 +1946,10 @@
     },
     "features": {
       "title": "Business and feature setup",
+      "setup": {
+        "title": "Business setup",
+        "description": "Choose recommended features, names and defaults, or rerun setup."
+      },
       "businesses": {
         "title": "Businesses and branches",
         "description": "Edit business details, shops, warehouses and branch assignments."

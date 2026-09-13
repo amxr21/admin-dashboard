@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { PrismaClient } from '@prisma/client';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';

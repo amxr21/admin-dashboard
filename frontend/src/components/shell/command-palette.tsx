@@ -27,6 +27,8 @@ import {
 import { canAccessArea, type StaffRole } from '@/config/areas';
 import { search as searchContent, type SearchHit } from '@/lib/search-api';
 import { cn } from '@/lib/utils';
+import { useAppSettings } from '@/components/providers/settings-provider';
+import { isSetupPathEnabled } from '@/lib/setup-visibility';
 
 /**
  * C4.3 — ⌘K/Ctrl+K from anywhere in the admin area. The MASTER_TODO spec
@@ -83,6 +85,7 @@ export function CommandPalette({
   const tPalette = useTranslations('commandPalette');
   const router = useRouter();
   const { resources } = useResourceSchema();
+  const { enabledFeatures } = useAppSettings();
   const { resolvedTheme, setTheme } = useTheme();
 
   const [open, setOpen] = useState(false);
@@ -136,14 +139,14 @@ export function CommandPalette({
       }));
 
     return [...navItems, ...resourceItems]
-      .filter((item) => !item.area || canAccessArea(role, item.area))
+      .filter((item) => (!item.area || canAccessArea(role, item.area)) && isSetupPathEnabled(item.href, enabledFeatures))
       .map((item) => ({
         kind: 'page' as const,
         href: item.href,
         label: t.has(item.labelKey) ? t(item.labelKey) : item.labelKey,
         icon: item.icon,
       }));
-  }, [resources, role, t]);
+  }, [resources, role, t, enabledFeatures]);
 
   const pageResults = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -197,8 +200,8 @@ export function CommandPalette({
       ...contentGroups.orders.map(toResult('order')),
       ...contentGroups.customers.map(toResult('customer')),
       ...contentGroups.products.map(toResult('product')),
-    ];
-  }, [contentGroups]);
+    ].filter(item => isSetupPathEnabled(item.href, enabledFeatures));
+  }, [contentGroups, enabledFeatures]);
 
   // Every action here is REAL — matches Quick Actions on the dashboard
   // (C1.4), which already ruled out "Create order" as having no backend

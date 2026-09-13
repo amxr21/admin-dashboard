@@ -182,9 +182,14 @@ describe('the transition matrix, walked exhaustively', () => {
     for (const to of ALL) {
       if (from === to) continue;
 
-      const legal = ORDER_TRANSITIONS[from].includes(to);
+      // RETURNED is reachable ONLY through the returns flow (`approveReturn`),
+      // never as a bare status flip — the status endpoint refuses it even
+      // where the transition table permits it (see changeOrderStatus). So for
+      // THIS endpoint a move to RETURNED is always a refusal, table or not.
+      const tableLegal = ORDER_TRANSITIONS[from].includes(to);
+      const legalHere = tableLegal && to !== OrderStatus.RETURNED;
 
-      it(`${legal ? 'allows' : 'refuses'} ${from} -> ${to}`, async () => {
+      it(`${legalHere ? 'allows' : 'refuses'} ${from} -> ${to}`, async () => {
         const id = await makeOrder(from);
 
         const res = await request(app)
@@ -195,16 +200,20 @@ describe('the transition matrix, walked exhaustively', () => {
           // cannot be applied unconditionally.
           .send(to === OrderStatus.CANCELED ? { to, cancellationReason: 'OUT_OF_STOCK' } : { to });
 
-        if (legal) {
+        if (legalHere) {
           expect(res.status).toBe(200);
           expect((res.body as OrderBody).data.order.status).toBe(to);
         } else {
           expect(res.status).toBe(400);
-          // The refusal names what WOULD have worked — a bare "invalid
-          // transition" leaves the caller guessing.
-          expect((res.body as ErrorBody).error.details).toMatchObject({
-            allowed: ORDER_TRANSITIONS[from],
-          });
+          // Two refusal shapes, by which guard fires. A move to RETURNED is
+          // refused by the returns-flow guard, whose `allowed` list drops
+          // RETURNED. Any other illegal move is refused by the transition
+          // check, whose `allowed` is the raw table for that state.
+          const expectedAllowed =
+            to === OrderStatus.RETURNED
+              ? ORDER_TRANSITIONS[from].filter((status) => status !== OrderStatus.RETURNED)
+              : ORDER_TRANSITIONS[from];
+          expect((res.body as ErrorBody).error.details).toMatchObject({ allowed: expectedAllowed });
 
           const after = await prisma.order.findUnique({ where: { id } });
           expect(after?.status).toBe(from);
@@ -1363,6 +1372,31 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
       },
     });
   }
+
+  it('refuses a goodwill refund on a CANCELED order (BUG B — other direction)', async () => {
+    // A CANCELED order was voided and its payments already reversed; a
+    // RETURNED order refunded through the returns flow. Refunding either again
+    // here would be a second money-back on an order that no longer stands.
+    const canceled = await makeOrder(OrderStatus.CANCELED);
+    await makePayment(canceled, '59.98');
+
+    const res = await request(app)
+      .post(`/api/v1/orders/${canceled}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '10.00', refundReason: 'CHANGED_MIND' });
+
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorBody).error.message).toMatch(/canceled order cannot be refunded/i);
+
+    const returned = await makeOrder(OrderStatus.RETURNED);
+    await makePayment(returned, '59.98');
+    const res2 = await request(app)
+      .post(`/api/v1/orders/${returned}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '10.00', refundReason: 'CHANGED_MIND' });
+    expect(res2.status).toBe(400);
+    expect((res2.body as ErrorBody).error.message).toMatch(/returned order cannot be refunded/i);
+  });
 
   it('writes a negative Payment row with the coded reason', async () => {
     const id = await makeOrder();

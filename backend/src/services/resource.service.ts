@@ -192,6 +192,85 @@ export interface ListParams {
   /** Trusted service-built alternatives for the free-text search group. Never
    * populated directly from query keys; localized product ids use this. */
   extraSearchConditions?: Record<string, unknown>[];
+  /**
+   * Restrict rows to a window on ONE declared date/datetime field.
+   *
+   * Separate from `filters` because `filters` is exact-match by construction
+   * (`coerceFilterValue` returns a scalar) — a range needs two bounds and an
+   * operator, which that shape cannot express. Naming the field explicitly
+   * rather than assuming `createdAt` matters: a resource can carry several
+   * date columns (`expiresAt` on discounts), and picking one silently would
+   * export a window nobody asked for.
+   */
+  dateRange?: { field: string; from?: string | undefined; to?: string | undefined };
+}
+
+/** `YYYY-MM-DD`, the only shape the date pickers emit and the only one this
+ *  accepts — a free-form date string would parse differently per runtime. */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * One end of a date window, as a real Date.
+ *
+ * `to` is treated as INCLUSIVE of the whole named day: a person choosing
+ * "to 31 March" means through the end of the 31st, but `2026-03-31` parses to
+ * midnight, so `lte` would silently drop every row from that day. Returning
+ * the start of the NEXT day and comparing with `lt` is the fix.
+ */
+function parseRangeBound(
+  raw: string,
+  field: string,
+  bound: 'dateFrom' | 'dateTo',
+): Date {
+  if (!DATE_ONLY.test(raw)) {
+    throw AppError.badRequest(`"${bound}" must be a date like 2026-03-31`, {
+      field: bound,
+      value: raw,
+    });
+  }
+
+  const parsed = new Date(`${raw}T00:00:00.000Z`);
+
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== raw) {
+    throw AppError.badRequest(`"${bound}" is not a real date`, { field: bound, value: raw });
+  }
+
+  if (bound === 'dateTo') parsed.setUTCDate(parsed.getUTCDate() + 1);
+
+  return parsed;
+}
+
+/** The `where` fragment for a date window, or null when neither bound is set. */
+function buildDateRangeCondition(
+  config: ResourceConfig,
+  range: NonNullable<ListParams['dateRange']>,
+): Record<string, unknown> | null {
+  const field = config.fields.find((f) => f.name === range.field);
+
+  // Same rule as an unknown filter key: named explicitly, never ignored. A
+  // silently dropped range returns unfiltered data that LOOKS windowed.
+  if (!field || (field.type !== 'date' && field.type !== 'datetime')) {
+    throw AppError.badRequest(`Cannot filter "${range.field}" by date`, {
+      field: 'dateField',
+      value: range.field,
+    });
+  }
+
+  const bounds: Record<string, Date> = {};
+
+  if (range.from) bounds.gte = parseRangeBound(range.from, range.field, 'dateFrom');
+  // `lt` against the following midnight — see parseRangeBound.
+  if (range.to) bounds.lt = parseRangeBound(range.to, range.field, 'dateTo');
+
+  if (Object.keys(bounds).length === 0) return null;
+
+  if (bounds.gte && bounds.lt && bounds.gte >= bounds.lt) {
+    throw AppError.badRequest('The start of the range is after its end', {
+      field: 'dateFrom',
+    });
+  }
+
+  return { [range.field]: bounds };
 }
 
 export interface ListResult {
@@ -260,6 +339,11 @@ function buildWhere(config: ResourceConfig, params: ListParams): Record<string, 
     if (!field) throw AppError.badRequest(`Cannot filter by "${name}"`, { field: name });
 
     conditions.push({ [name]: coerceFilterValue(field, raw) });
+  }
+
+  if (params.dateRange) {
+    const condition = buildDateRangeCondition(config, params.dateRange);
+    if (condition) conditions.push(condition);
   }
 
   return conditions.length > 0 ? { AND: conditions } : {};
@@ -897,7 +981,10 @@ export interface ResourceExportResult {
  */
 export async function listResourceForExport(
   config: ResourceConfig,
-  params: Pick<ListParams, 'search' | 'filters' | 'sort' | 'dir' | 'extraSearchConditions'>,
+  params: Pick<
+    ListParams,
+    'search' | 'filters' | 'sort' | 'dir' | 'extraSearchConditions' | 'dateRange'
+  >,
 ): Promise<ResourceExportResult> {
   const delegate = delegateFor(config);
   const where = buildWhere(config, params);

@@ -32,10 +32,48 @@ interface DateRangeFieldProps {
    *  two-column block would cost the vertical space this exists to reclaim.
    *  Reports keeps the default labelled layout. */
   inline?: boolean;
+  /**
+   * Lets either end be CLEARED back to empty.
+   *
+   * Off by default, which is right for every reports/dashboard consumer: those
+   * always hold a real range (a preset, or a custom one the user picked), and
+   * an empty bound there would mean "no data window" for a view that cannot
+   * render without one — which is exactly why `DatePicker` hides its clear
+   * control and ignores a deselect when `required`.
+   *
+   * The export centre is the opposite case: its range is genuinely optional
+   * ("export everything" is the default), so without this a person who picked
+   * a date by mistake could never unpick it and would be stuck exporting a
+   * window they did not want.
+   */
+  optional?: boolean;
 }
 
-export function DateRangeField({ range, onChange, idPrefix, inline }: DateRangeFieldProps) {
+export function DateRangeField({
+  range,
+  onChange,
+  idPrefix,
+  inline,
+  optional,
+}: DateRangeFieldProps) {
   const t = useTranslations('reports');
+  // `required` is the DatePicker's own prop name and the inverse of this one;
+  // naming the prop `optional` here keeps the opt-in reading correctly at the
+  // call site ("this range may be empty") rather than as a double negative.
+  const required = !optional;
+
+  /**
+   * The `value &&` guard below drops an empty string, which is what the
+   * REQUIRED consumers need — `DatePicker` emits `''` when a picked day is
+   * clicked again, and a reports view cannot render with half a range.
+   *
+   * An optional range wants the opposite: clearing is a real choice, and
+   * swallowing it would leave the newly visible clear button doing nothing.
+   */
+  const commit = (next: DateRange) => {
+    if (!optional && (next.from === '' || next.to === '')) return;
+    onChange(next);
+  };
 
   if (inline) {
     return (
@@ -46,8 +84,8 @@ export function DateRangeField({ range, onChange, idPrefix, inline }: DateRangeF
         <DatePicker
           id={`${idPrefix}-from`}
           value={range.from}
-          required
-          onChange={(value) => value && onChange({ ...range, from: value })}
+          required={required}
+          onChange={(value) => commit({ ...range, from: value })}
         />
         <span className="text-muted-foreground" aria-hidden="true">
           –
@@ -58,8 +96,8 @@ export function DateRangeField({ range, onChange, idPrefix, inline }: DateRangeF
         <DatePicker
           id={`${idPrefix}-to`}
           value={range.to}
-          required
-          onChange={(value) => value && onChange({ ...range, to: value })}
+          required={required}
+          onChange={(value) => commit({ ...range, to: value })}
         />
       </div>
     );
@@ -72,8 +110,8 @@ export function DateRangeField({ range, onChange, idPrefix, inline }: DateRangeF
         <DatePicker
           id={`${idPrefix}-from`}
           value={range.from}
-          required
-          onChange={(value) => value && onChange({ ...range, from: value })}
+          required={required}
+          onChange={(value) => commit({ ...range, from: value })}
         />
       </div>
 
@@ -82,8 +120,8 @@ export function DateRangeField({ range, onChange, idPrefix, inline }: DateRangeF
         <DatePicker
           id={`${idPrefix}-to`}
           value={range.to}
-          required
-          onChange={(value) => value && onChange({ ...range, to: value })}
+          required={required}
+          onChange={(value) => commit({ ...range, to: value })}
         />
       </div>
     </>

@@ -93,7 +93,7 @@ describe('PoliciesPanel — editor', () => {
     render(<PoliciesPanel />);
 
     await userEvent.click(await screen.findByText('v2'));
-    const textarea = await screen.findByPlaceholderText(/write the policy text/i);
+    const textarea = await screen.findByPlaceholderText(/write what customers should know/i);
     expect(textarea).toHaveValue('Return within 30 days.');
 
     const publishButton = screen.getByRole('button', { name: /^publish$/i });
@@ -107,7 +107,7 @@ describe('PoliciesPanel — editor', () => {
     render(<PoliciesPanel />);
 
     await userEvent.click(await screen.findByText('v2'));
-    const textarea = await screen.findByPlaceholderText(/write the policy text/i);
+    const textarea = await screen.findByPlaceholderText(/write what customers should know/i);
     await userEvent.type(textarea, ' Extra.');
     await userEvent.click(screen.getByRole('button', { name: /^publish$/i }));
 
