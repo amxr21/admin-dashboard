@@ -74,6 +74,27 @@ interface SheetContentProps extends ComponentProps<typeof SheetPrimitive.Content
    * setting's own vocabulary, not a new one.
    */
   variant?: 'drawer' | 'modal';
+  /**
+   * How much room the panel gets (B1).
+   *
+   * ─── WHY A NAMED SIZE AND NOT A className ────────────────────────────
+   * Width used to be whatever `className` each of the ~25 call sites happened
+   * to pass — `max-w-sm`, `max-w-md`, `max-w-lg`, `max-w-xl`, in no particular
+   * system. Widening the base for the resource form would then have widened
+   * every one of them, including panels that are RIGHT to stay narrow (change
+   * password, a 2FA code, a movement log). Making the size an explicit prop
+   * means a panel opts into being wide, so a light detour keeps its gutter and
+   * nothing changes for a caller that says nothing.
+   *
+   * `'default'` reproduces the previous sizing exactly, so every existing
+   * consumer is untouched. `'wide'` is for a content-heavy FORM — the owner's
+   * complaint was a product create panel so narrow that every field stacked
+   * one per row behind an inner scrollbar. It is capped at `4xl` (56rem), which
+   * holds two comfortable columns on a laptop without becoming a full-screen
+   * takeover, and every cap below is a `max-width`, so a phone still gets the
+   * same panel it always did.
+   */
+  size?: 'default' | 'wide';
   title: string;
   /** Visually hidden but read by screen readers if no visible description. */
   description?: string;
@@ -84,6 +105,7 @@ function SheetContent({
   children,
   side = 'start',
   variant = 'drawer',
+  size = 'default',
   title,
   description,
   ...props
@@ -99,14 +121,25 @@ function SheetContent({
             ? // Centering via translate is direction-agnostic (unlike a slide-in
               // translateX, which is NOT — see the RTL note above), so this is
               // safe to do with a physical transform in both directions.
-              'top-1/2 left-1/2 max-h-[85vh] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border p-4 pe-12'
+              cn(
+                'top-1/2 left-1/2 max-h-[85vh] w-full -translate-x-1/2 -translate-y-1/2 rounded-lg border p-4 pe-12',
+                // `w-full` above with a max-width cap here: the panel shrinks
+                // to the viewport on a phone and only widens up to the cap, so
+                // the wide size never forces a horizontal scroll at ~400px.
+                size === 'wide' ? 'max-w-4xl' : 'max-w-lg',
+              )
             : cn(
                 // Block axis never flips with direction, so plain physical
                 // top/bottom is correct here — there is no "inset-block-*"
                 // Tailwind utility (that name doesn't exist; Tailwind's own
                 // logical utilities are `start-*`/`end-*`, mirroring `ps-*`/
                 // `pe-*`), and it silently generated no CSS at all.
-                'top-0 bottom-0 h-full w-3/4 max-w-sm border-e p-4 pe-12',
+                'top-0 bottom-0 h-full border-e p-4 pe-12',
+                // A drawer is pinned to one edge, so its width is a share of
+                // the viewport rather than a centered box. The wide size takes
+                // a larger share AND a larger cap; the default keeps the
+                // original `w-3/4 max-w-sm` exactly.
+                size === 'wide' ? 'w-[92%] max-w-4xl' : 'w-3/4 max-w-sm',
                 // Anchored logically via Tailwind's real `start-*`/`end-*`
                 // inset utilities — mirrors automatically, no transform.
                 side === 'start' ? 'start-0' : 'end-0 border-s border-e-0',

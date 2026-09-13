@@ -136,6 +136,13 @@ export async function startShift(
   actor: ShiftActor,
   input: {
     branchId?: string | undefined;
+    /**
+     * True when `branchId` came from the REQUEST BODY — the cashier actively
+     * picked it — rather than from the `X-Branch-Id` header the client sends
+     * on every request. Only the former is newly client-controlled input, and
+     * only it is roster-checked below.
+     */
+    branchChosenByClient?: boolean | undefined;
     forUserId?: string | undefined;
     note?: string | undefined;
     /** Cash in the drawer at open (O5.3). Omitted for a shift with no till,
@@ -191,6 +198,65 @@ export async function startShift(
       field: 'branchId',
       reason: 'BRANCH_NOT_FOUND',
     });
+  }
+
+  /**
+   * A branch that is closed is not somewhere work can be recorded.
+   *
+   * Checked on the EXPLICIT path specifically: `resolveShiftBranchId` and
+   * `defaultBranchId` both filter on `isActive` already, so the only way an
+   * inactive branch reaches here is a caller naming one — a stale id held by a
+   * client that loaded its picker before the branch was closed. Reported as
+   * BRANCH_NOT_FOUND rather than a new code because the actionable advice is
+   * identical ("choose another branch"), and the client already translates it.
+   */
+  if (!branch.isActive) {
+    throw AppError.badRequest('Branch not found', {
+      field: 'branchId',
+      reason: 'BRANCH_NOT_FOUND',
+    });
+  }
+
+  /**
+   * A NAMED branch still has to be one this person may work at (URG — cashier
+   * shift start).
+   *
+   * `branchId` became reachable from the till so an ambiguous cashier can
+   * answer the "which branch?" refusal below instead of being stuck. That
+   * makes it caller-supplied input on a path where it previously could only
+   * come from the server's own resolution, so it needs the check the resolved
+   * path got for free: without it, naming any branch id would attribute a
+   * shift's cash and takings to a shop the cashier has no assignment at —
+   * which is precisely the misattribution the ambiguity refusal exists to
+   * prevent, reintroduced through the fix for it.
+   *
+   * ─── WHY A FLAG AND NOT `input.branchId` BEING SET ───────────────────
+   * The route fills `branchId` from the `X-Branch-Id` HEADER when the body
+   * names none, so "a branch id is present" does NOT mean "the client chose
+   * one". Keying off that conflated the two and made this check fire on the
+   * long-standing header path, where a branch-scoped user with no roster row
+   * (a FULFILLMENT picker, say) had always been able to clock on — seven
+   * existing tests caught it. Only a branch named in the BODY is the new
+   * client-controlled input this guard exists for; the header path is already
+   * constrained by `withBranchContext` and keeps its previous behaviour.
+   *
+   * Business-wide roles are exempt for the same reason they skip the roster
+   * everywhere else: an OWNER is not scoped to a branch, and `UserBranch`
+   * rows for them are deliberately refused (see `assertCanAssign`), so
+   * requiring one would lock an owner out of their own branches.
+   */
+  if (input.branchChosenByClient && !isBusinessWideRole(actor.role) && userId === actor.id) {
+    const assignment = await prisma.userBranch.findUnique({
+      where: { userId_branchId: { userId, branchId } },
+      select: { userId: true },
+    });
+
+    if (!assignment) {
+      throw AppError.forbidden('You are not assigned to that branch', {
+        field: 'branchId',
+        reason: 'BRANCH_NOT_ASSIGNED',
+      });
+    }
   }
 
   const shift = await prisma.shift.create({

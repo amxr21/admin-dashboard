@@ -18,6 +18,13 @@ export interface Setting {
   key: string;
   label: string;
   description?: string;
+  /**
+   * Example text for an empty input, declared per setting in
+   * `settings.config.ts`. Plain text like `label`, never a translation key —
+   * see that file's own comment. Only text and number settings carry one;
+   * checkboxes, selects and swatch pickers have no empty field to hint at.
+   */
+  placeholder?: string;
   type: SettingType;
   options?: string[];
   min?: number;

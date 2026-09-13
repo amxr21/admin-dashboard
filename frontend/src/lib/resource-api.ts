@@ -63,6 +63,13 @@ export interface FieldConfig {
    * from client validation and payloads; the server validates received fields.
    */
   group?: string;
+  /**
+   * Opens this field's group on a CREATE, where there is no stored value to
+   * seed the switch from (B3). See admin.config.ts's own comment for why this
+   * is a narrow exception to URG-025 rather than a repeal of it — it changes
+   * an initial switch position only, and never makes a field required.
+   */
+  defaultEnabled?: boolean;
 }
 
 export interface ResourceSchema {

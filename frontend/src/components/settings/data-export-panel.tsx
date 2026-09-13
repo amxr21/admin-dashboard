@@ -340,47 +340,70 @@ export function DataExportPanel() {
                     <p className="text-sm font-medium">{t('dateTitle')}</p>
                     <p className="text-muted-foreground text-sm">{t('dateDescription')}</p>
 
-                    {selectedSchemas.map((schema) => {
-                      const available = dateFields(schema);
-                      const fieldId = `export-datefield-${schema.resource}`;
+                    {/*
+                      One narrow select per selected resource, laid out side by
+                      side rather than stacked. Selecting several resources used
+                      to produce a full-page column of near-identical
+                      label+select pairs ("Created" / "No date limit", over and
+                      over) — a lot of vertical space for what is really one
+                      short choice per resource.
 
-                      if (available.length === 0) {
+                      Three across, not the six a wide screen could physically
+                      fit: each trigger still has to show a field name plus its
+                      chevron without truncating, and six columns on a 1280px
+                      laptop leaves roughly 180px each, which is where these
+                      labels start clipping. Two on tablet, one on phone — the
+                      panel has to stay usable at ~400px.
+                    */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {selectedSchemas.map((schema) => {
+                        const available = dateFields(schema);
+                        const fieldId = `export-datefield-${schema.resource}`;
+
+                        // Still one cell in the same grid, so a resource with
+                        // no date field keeps its place next to its siblings
+                        // instead of breaking the row it belongs to.
+                        if (available.length === 0) {
+                          return (
+                            <p key={schema.resource} className="text-muted-foreground text-sm">
+                              {schema.label}: {t('dateUnavailable')}
+                            </p>
+                          );
+                        }
+
                         return (
-                          <p key={schema.resource} className="text-muted-foreground text-sm">
-                            {schema.label}: {t('dateUnavailable')}
-                          </p>
+                          <div key={schema.resource} className="min-w-0 space-y-2">
+                            {/* The resource name stays ON each select — with
+                                several in a row, an unlabelled one is
+                                unattributable. */}
+                            <Label htmlFor={fieldId} className="truncate">
+                              {t('columnsFor', { resource: schema.label })}
+                            </Label>
+                            <Select
+                              value={dateFieldByResource[schema.resource] ?? ''}
+                              onValueChange={(value) =>
+                                setDateFieldByResource((current) => ({
+                                  ...current,
+                                  [schema.resource]: value === '__none__' ? '' : value,
+                                }))
+                              }
+                            >
+                              <SelectTrigger id={fieldId} aria-label={t('dateFieldLabel')}>
+                                <SelectValue placeholder={t('dateFieldNone')} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">{t('dateFieldNone')}</SelectItem>
+                                {available.map((field) => (
+                                  <SelectItem key={field.name} value={field.name}>
+                                    {field.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         );
-                      }
-
-                      return (
-                        <div key={schema.resource} className="space-y-2">
-                          <Label htmlFor={fieldId}>
-                            {t('columnsFor', { resource: schema.label })}
-                          </Label>
-                          <Select
-                            value={dateFieldByResource[schema.resource] ?? ''}
-                            onValueChange={(value) =>
-                              setDateFieldByResource((current) => ({
-                                ...current,
-                                [schema.resource]: value === '__none__' ? '' : value,
-                              }))
-                            }
-                          >
-                            <SelectTrigger id={fieldId} aria-label={t('dateFieldLabel')}>
-                              <SelectValue placeholder={t('dateFieldNone')} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__none__">{t('dateFieldNone')}</SelectItem>
-                              {available.map((field) => (
-                                <SelectItem key={field.name} value={field.name}>
-                                  {field.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      );
-                    })}
+                      })}
+                    </div>
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <DateRangeField

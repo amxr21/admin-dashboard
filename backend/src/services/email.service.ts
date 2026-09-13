@@ -42,6 +42,25 @@ export interface EmailDeliveryReadiness {
 
 interface ResolvedEmailDeliveryConfiguration extends EmailDeliveryReadiness {
   fromAddress: string;
+  /** Display name beside the address, or `''` to send the bare address. */
+  senderName: string;
+  /** `''` means "omit the header" — see `buildFrom`/`replyToHeader` below. */
+  replyToAddress: string;
+}
+
+/**
+ * `"Nour Coffee" <alerts@…>` when a sender name is set, the bare address
+ * otherwise.
+ *
+ * The name is QUOTED because a display name containing a comma or a period
+ * ("Nour Coffee, Ltd.") is otherwise parsed as an address-list separator by
+ * RFC 5322, which turns one recipient header into two malformed ones. Any
+ * quote inside the name is escaped for the same reason. A store cannot type
+ * a name that breaks its own alert emails.
+ */
+export function buildFrom(fromAddress: string, senderName: string): string {
+  if (!senderName) return fromAddress;
+  return `"${senderName.replace(/(["\\])/g, '\\$1')}" <${fromAddress}>`;
 }
 
 export function deriveEmailDeliveryReadiness(
@@ -74,14 +93,22 @@ export function deriveEmailDeliveryReadiness(
 
 async function resolveEmailDeliveryConfiguration(): Promise<ResolvedEmailDeliveryConfiguration> {
   const smtpVars = [env.SMTP_HOST, env.SMTP_PORT, env.SMTP_USER, env.SMTP_PASSWORD];
-  const [enabled, fromAddress] = await Promise.all([
+  const [enabled, fromAddress, senderName, replyToAddress] = await Promise.all([
     getSettingValue('email.enabled'),
     getSettingValue('email.fromAddress'),
+    getSettingValue('email.senderName'),
+    getSettingValue('email.replyToAddress'),
   ]);
 
   return {
+    // Readiness deliberately does NOT consider the sender name or reply-to:
+    // both are presentation, and an empty one has a defined meaning (bare
+    // address / replies to the from-address). Folding them in would report
+    // a working deployment as unconfigured for leaving an optional field blank.
     ...deriveEmailDeliveryReadiness(smtpVars, enabled, fromAddress),
     fromAddress,
+    senderName,
+    replyToAddress,
   };
 }
 
@@ -142,10 +169,15 @@ export async function sendAlertEmail(subject: string, body: string): Promise<voi
 
   try {
     await client.sendMail({
-      from: configuration.fromAddress,
+      from: buildFrom(configuration.fromAddress, configuration.senderName),
       to: toAddress,
       subject,
       text: body,
+      // Spread rather than `replyTo: x || undefined`: an empty Reply-To
+      // header is handled inconsistently across mail servers and some drop
+      // the message, so a blank setting omits the header entirely and lets
+      // the client's own default (reply to the sender) apply.
+      ...(configuration.replyToAddress ? { replyTo: configuration.replyToAddress } : {}),
     });
 
     logger.info({ event: 'email.alert.sent', subject });
@@ -204,10 +236,13 @@ export async function sendEmailToRecipients(
 
   try {
     await client.sendMail({
-      from: configuration.fromAddress,
+      from: buildFrom(configuration.fromAddress, configuration.senderName),
       to: recipients.join(', '),
       subject,
       text: body,
+      // Same omit-when-blank rule as `sendAlertEmail` — a scheduled report
+      // is the case where a reply most needs somewhere real to land.
+      ...(configuration.replyToAddress ? { replyTo: configuration.replyToAddress } : {}),
       attachments: attachments.map((a) => ({
         filename: a.filename,
         content: a.content,

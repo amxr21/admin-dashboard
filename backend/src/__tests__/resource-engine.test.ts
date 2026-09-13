@@ -8,6 +8,10 @@ import { prisma } from '../db/prisma.js';
 import { signToken } from '../services/auth.service.js';
 import { ADMIN_RESOURCES, getResourceConfig, writableFields } from '../config/admin.config.js';
 import { waitFor } from './helpers/wait-for.js';
+// The create-path slug tests assert against the SAME slugifier the hook uses,
+// rather than a hand-written expected string — a second copy of the rule in
+// the test is a copy that can disagree with the one under test.
+import { slugify } from '../lib/slug.js';
 
 /**
  * The generic resource engine.
@@ -624,6 +628,93 @@ describe('product slug + redirect recording (A5.7)', () => {
 
     await prisma.product.delete({ where: { id: taken.id } });
     await prisma.product.delete({ where: { id: other.id } });
+  });
+
+  /**
+   * C1/C2 — a product created with no slug gets one derived from its name.
+   *
+   * The owner asked for "the slug must be same as name with - in spaces and
+   * some kind of id". `uniqueSlug` is the existing answer to both halves: it
+   * slugifies, and it resolves a clash with a readable `-2` suffix rather than
+   * a hash nobody can read back. These pin the three behaviours that make the
+   * feature safe rather than merely present — derive when blank, NEVER
+   * overwrite a typed value, and never collide.
+   */
+  it('derives the slug from the name when a product is created without one', async () => {
+    const res = await request(app)
+      .post('/api/v1/r/products')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} Blue Mug`, price: '5.00' });
+
+    expect(res.status).toBe(201);
+    const created = (res.body as RowBody).data.row;
+    // Spaces become hyphens and the case is normalised — the owner's own
+    // description of what a slug should look like.
+    expect(String(created.slug)).toBe(slugify(`${RUN} Blue Mug`));
+
+    await prisma.product.delete({ where: { id: String(created.id) } });
+  });
+
+  it('leaves a slug the user typed exactly as typed', async () => {
+    // Deliberate input always wins over generation: someone who took the
+    // trouble to type a slug has made a decision the form must not silently
+    // overwrite with a prettier one.
+    const res = await request(app)
+      .post('/api/v1/r/products')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} Red Mug`, price: '5.00', slug: `${RUN}-chosen-by-hand` });
+
+    expect(res.status).toBe(201);
+    const created = (res.body as RowBody).data.row;
+    expect(created.slug).toBe(`${RUN}-chosen-by-hand`);
+
+    await prisma.product.delete({ where: { id: String(created.id) } });
+  });
+
+  it('suffixes rather than fails when two products share a name', async () => {
+    // `Product.slug` is @unique, so the second create would be a 409 the user
+    // never asked for — two products legitimately can share a name.
+    const first = await request(app)
+      .post('/api/v1/r/products')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} Same Name`, price: '5.00' });
+    const second = await request(app)
+      .post('/api/v1/r/products')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} Same Name`, price: '5.00' });
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+
+    const firstRow = (first.body as RowBody).data.row;
+    const secondRow = (second.body as RowBody).data.row;
+    const base = slugify(`${RUN} Same Name`);
+
+    expect(firstRow.slug).toBe(base);
+    // Readable, not a hash — `blue-mug-2` is a slug a human recognises.
+    expect(secondRow.slug).toBe(`${base}-2`);
+
+    await prisma.product.delete({ where: { id: String(firstRow.id) } });
+    await prisma.product.delete({ where: { id: String(secondRow.id) } });
+  });
+
+  it('never re-derives a slug when an existing product is renamed', async () => {
+    // The rule the admin.config.ts comment protects: an existing slug is a URL
+    // someone may have linked, so a rename must not silently move it.
+    const product = await prisma.product.create({
+      data: { name: `${RUN} original name`, price: '5.00', slug: `${RUN}-original` },
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/r/products/${product.id}`)
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} renamed entirely` });
+
+    expect(res.status).toBe(200);
+    const after = await prisma.product.findUnique({ where: { id: product.id } });
+    expect(after?.slug).toBe(`${RUN}-original`);
+
+    await prisma.product.delete({ where: { id: product.id } });
   });
 
   it('exposes slug/metaTitle/metaDescription in the schema for the generic form', async () => {

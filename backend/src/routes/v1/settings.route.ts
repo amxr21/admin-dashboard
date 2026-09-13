@@ -1,10 +1,12 @@
 import { Router } from 'express';
 
 import { prisma } from '../../db/prisma.js';
+import { StaffRole } from '@prisma/client';
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
+import { canAccessAreaResolved } from '../../services/role-permissions.service.js';
 import {
   SETTINGS,
   isSettingKey,
@@ -49,6 +51,7 @@ async function readAll() {
       label: definition.label,
       ...('setupOnly' in definition ? { setupOnly: definition.setupOnly } : {}),
       ...('description' in definition ? { description: definition.description } : {}),
+      ...('placeholder' in definition ? { placeholder: definition.placeholder } : {}),
       type: definition.type,
       ...('options' in definition ? { options: definition.options } : {}),
       ...('min' in definition ? { min: definition.min } : {}),
@@ -62,8 +65,20 @@ async function readAll() {
   });
 }
 
-settingsRouter.get('/settings', authenticate, async (_req, res) => {
-  res.json({ data: { settings: await readAll() } });
+settingsRouter.get('/settings', authenticate, async (req, res) => {
+  const user = requireUser(req);
+  const settings = await readAll();
+  const hiddenFromDeveloper = user.role === StaffRole.DEVELOPER &&
+    !(await canAccessAreaResolved(StaffRole.DEVELOPER, 'settings'));
+
+  // The shell still needs presentation and feature flags when business settings
+  // are hidden. Never return stored brand, tax, POS, security, or email values.
+  const visible = hiddenFromDeveloper
+    ? settings.filter((setting) =>
+        ['features.', 'theme.', 'ui.'].some((prefix) => setting.key.startsWith(prefix)),
+      )
+    : settings;
+  res.json({ data: { settings: visible } });
 });
 
 /**

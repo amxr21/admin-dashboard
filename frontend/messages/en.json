@@ -244,7 +244,8 @@
         "BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS": "Your account is assigned to more than one branch. Choose today's branch, or ask a manager which one to use.",
         "NO_ACTIVE_BRANCH": "No active branch is available for this shift. Ask an owner to configure or assign one.",
         "BRANCH_NOT_FOUND": "That branch is no longer available. Choose another branch and try again.",
-        "SESSION_LIMIT_REACHED": "This account is already signed in on {limit} devices. Sign out of one of them, then try again."
+        "SESSION_LIMIT_REACHED": "This account is already signed in on {limit} devices. Sign out of one of them, then try again.",
+        "BRANCH_NOT_ASSIGNED": "You are not assigned to that branch. Choose one of your own, or ask a manager to assign you."
       }
     },
     "readOnlyDemo": {
@@ -1696,6 +1697,17 @@
       "title": "Store settings",
       "description": "These apply to everyone. Save to apply them."
     },
+    "developerVisibility": {
+      "title": "Developer business area access",
+      "description": "Choose which business areas the Developer account can open in the dashboard and API.",
+      "infrastructureNote": "This controls app access only. Anyone with deployment, server, or database credentials can still access the underlying data.",
+      "accessNote": "Hidden areas are removed from Developer navigation and their business endpoints are restricted. Related information may still appear in allowed areas. Diagnostics and deployment support remain available.",
+      "legend": "Business areas hidden from Developer",
+      "hideArea": "Hide from Developer",
+      "save": "Save visibility",
+      "saving": "Saving…",
+      "saved": "Visibility saved."
+    },
     "groups": {
       "brand": {
         "title": "Brand",
@@ -1714,7 +1726,7 @@
       },
       "email": {
         "title": "Email",
-        "description": "Send alerts by email in addition to the in-app notification."
+        "description": "How alerts are sent by email: whether to send at all, the address they come from, and where replies go. SMTP credentials are set on the server, not here."
       },
       "operations": {
         "title": "Operations",
@@ -1814,15 +1826,6 @@
         "cancel": "Cancel",
         "action": "Revoke"
       }
-    },
-    "localisation": {
-      "title": "Localisation",
-      "description": "Whether the English and Arabic interface text are fully in sync.",
-      "inSync": "All {count} keys are translated in both languages.",
-      "outOfSync": "{count, plural, one {# key is} other {# keys are}} out of sync between languages.",
-      "totalKeys": "{count} total interface text keys.",
-      "missingFromAr": "{count, plural, one {# key} other {# keys}} missing from Arabic",
-      "missingFromEn": "{count, plural, one {# key} other {# keys}} missing from English"
     },
     "dangerZone": {
       "title": "Danger zone",
@@ -1981,6 +1984,11 @@
         "title": "Scheduled reports",
         "description": "Manage report recipients, schedules and formats."
       }
+    },
+    "labels": {
+      "rename": "Rename",
+      "usingDefault": "Currently shown as \"{label}\".",
+      "overridden": "Using your own name for this page."
     }
   },
   "audit": {
@@ -2812,7 +2820,16 @@
     "migrationsPending": "{count, plural, one {# migration on disk hasn't applied} other {# migrations on disk haven't applied}}",
     "migrationsInSync": "Applied migrations match disk",
     "largestTables": "Largest tables",
-    "approxRows": "~{count} rows"
+    "approxRows": "~{count} rows",
+    "localisation": {
+      "title": "Localisation",
+      "description": "Whether the English and Arabic interface text are fully in sync.",
+      "inSync": "All {count} keys are translated in both languages.",
+      "outOfSync": "{count, plural, one {# key is} other {# keys are}} out of sync between languages.",
+      "totalKeys": "{count} total interface text keys.",
+      "missingFromAr": "{count, plural, one {# key} other {# keys}} missing from Arabic",
+      "missingFromEn": "{count, plural, one {# key} other {# keys}} missing from English"
+    }
   },
   "viewAs": {
     "label": "View as",
@@ -3270,7 +3287,13 @@
       "openingFloat": "Opening float (optional)",
       "floatPlaceholder": "0.00",
       "startAndOpen": "Start shift & open till",
-      "skip": "Not right now — just let me sell"
+      "skip": "Skip the cash count — start without a till",
+      "floatRequired": "Count the drawer to start",
+      "floatRequiredHint": "Enter the cash you are starting with. This is what your drawer is checked against at the end of your shift.",
+      "floatMissing": "Enter the opening cash amount before starting.",
+      "chooseBranch": "Which branch are you working at today?",
+      "chooseBranchHint": "You are assigned to more than one branch, so your sales cannot be attributed automatically.",
+      "chooseBranchPlaceholder": "Select a branch"
     },
     "managerOverride": {
       "title": "Manager approval needed",

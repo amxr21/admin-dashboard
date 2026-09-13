@@ -19,9 +19,20 @@ import { computeTranslationCompleteness } from '@/lib/translation-completeness';
  * `messages/en.json`/`ar.json` is a code change (a PR, a review, a deploy),
  * not a runtime admin action, the same reasoning `admin.config.ts` is a
  * compiled file rather than a database table.
+ *
+ * ─── WHY IT IS NOT ON THE SETTINGS PAGE ──────────────────────────────
+ * It used to be. Read-only-by-design is exactly what made it wrong there: an
+ * owner opening Settings expects things they can change, and this offered a
+ * number whose only remedy is a developer editing a JSON file. It now renders
+ * on the DEVELOPER-only /admin/configuration page with the other
+ * deployment-state readouts. The file stays here beside its own test rather
+ * than moving directories — nothing about it is diagnostics-specific except
+ * where it is mounted, and moving it would churn its import path for no gain.
  */
 export function TranslationCompletenessPanel() {
-  const t = useTranslations('settings.localisation');
+  // `diagnostics.*`, not `settings.*` — the strings moved with the panel, so
+  // the namespace names the surface it actually renders on.
+  const t = useTranslations('diagnostics.localisation');
   const { totalKeys, missingFromAr, missingFromEn, inSync } = computeTranslationCompleteness();
 
   return (

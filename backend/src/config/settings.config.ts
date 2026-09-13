@@ -31,6 +31,37 @@ export interface SettingDefinition {
   /** Shown in the UI. Not a translation key — see the note in the route. */
   label: string;
   description?: string;
+  /**
+   * Example text shown in an empty input.
+   *
+   * ─── WHY EVERY TEXT AND NUMBER SETTING WANTS ONE ─────────────────────
+   * A settings form is mostly empty on a fresh install: every string here
+   * defaults to `''`, so an owner opening this page sees a column of blank
+   * boxes whose labels name the FIELD ("Tax / VAT registration number")
+   * without showing what a filled-in one looks like. The label says what to
+   * type; the placeholder shows the SHAPE, and the two answer different
+   * questions — which is why a placeholder is never the label repeated back.
+   *
+   * A placeholder is an EXAMPLE, never an instruction: it vanishes the
+   * moment someone types, so anything they still need while filling the
+   * field belongs in `description`, which stays on screen. "Enter a value"
+   * and "Store name" are both wrong here for that reason; "e.g. Nour Coffee
+   * Roasters" is right.
+   *
+   * Plain text, exactly like `label` — NOT a translation key. The route's
+   * own note explains why the registry ships human-readable strings rather
+   * than keys, and an example is no more translatable than the label above
+   * it. A localized example would also have to stay honest per locale (an
+   * Arabic store name example is not a translation of an English one), which
+   * is a bigger job than this field is worth today.
+   *
+   * Only declared for settings that render as a TEXT or NUMBER input.
+   * Booleans are checkboxes, enums are selects or segmented controls and
+   * colors are swatch pickers — none of them has an empty field to hint at,
+   * so a placeholder on one would be dead config that reads as a promise the
+   * UI never keeps.
+   */
+  placeholder?: string;
 }
 
 /**
@@ -71,7 +102,7 @@ export const SETTINGS = {
   'products.defaultHasVariants': { type: 'boolean', default: false, area: 'settings', label: 'New products: variants', setupOnly: true },
   'products.defaultHasColors': { type: 'boolean', default: false, area: 'settings', label: 'New products: colors', setupOnly: true },
   'products.defaultHasBarcode': { type: 'boolean', default: false, area: 'settings', label: 'New products: barcode', setupOnly: true },
-  'labels.nav.products': { type: 'string', default: '', area: 'settings', label: 'Products page name', max: 40 },
+  'labels.nav.products': { type: 'string', default: '', area: 'settings', label: 'Products page name', max: 40, placeholder: 'e.g. Menu items' },
   'store.name': {
     type: 'string',
     default: '',
@@ -79,6 +110,7 @@ export const SETTINGS = {
     max: 120,
     label: 'Store name',
     description: 'Shown on invoices and in the browser tab.',
+    placeholder: 'e.g. Nour Coffee Roasters',
   },
   'store.supportEmail': {
     type: 'string',
@@ -87,6 +119,7 @@ export const SETTINGS = {
     max: 255,
     label: 'Support email',
     description: 'Where customers are told to write when something goes wrong.',
+    placeholder: 'e.g. help@nourcoffee.com',
   },
   'store.currency': {
     type: 'enum',
@@ -123,6 +156,7 @@ export const SETTINGS = {
     min: 0,
     label: 'AED per 1 store currency',
     description: '0 means AED is not accepted at the till. Ignored when AED is the store currency.',
+    placeholder: 'e.g. 3.67',
   },
   'pos.tenderRate.SAR': {
     type: 'number',
@@ -131,6 +165,7 @@ export const SETTINGS = {
     min: 0,
     label: 'SAR per 1 store currency',
     description: '0 means SAR is not accepted at the till. Ignored when SAR is the store currency.',
+    placeholder: 'e.g. 3.75',
   },
   'pos.tenderRate.USD': {
     type: 'number',
@@ -139,6 +174,7 @@ export const SETTINGS = {
     min: 0,
     label: 'USD per 1 store currency',
     description: '0 means USD is not accepted at the till. Ignored when USD is the store currency.',
+    placeholder: 'e.g. 0.27',
   },
   'pos.tenderRate.EUR': {
     type: 'number',
@@ -147,6 +183,7 @@ export const SETTINGS = {
     min: 0,
     label: 'EUR per 1 store currency',
     description: '0 means EUR is not accepted at the till. Ignored when EUR is the store currency.',
+    placeholder: 'e.g. 0.25',
   },
   'pos.tenderRate.GBP': {
     type: 'number',
@@ -155,6 +192,7 @@ export const SETTINGS = {
     min: 0,
     label: 'GBP per 1 store currency',
     description: '0 means GBP is not accepted at the till. Ignored when GBP is the store currency.',
+    placeholder: 'e.g. 0.21',
   },
   'ui.defaultLocale': {
     type: 'enum',
@@ -180,6 +218,7 @@ export const SETTINGS = {
     max: 100000,
     label: 'Low stock threshold',
     description: 'Products at or below this are flagged as low.',
+    placeholder: 'e.g. 5',
   },
   'system.maintenanceMode': {
     type: 'boolean',
@@ -203,6 +242,10 @@ export const SETTINGS = {
     // description is user-facing copy, so it describes what someone
     // actually sees, not the storage type.
     description: 'Uploaded to your image host, or paste a URL directly. Shown in the sidebar.',
+    // The control is an upload widget with a "paste a URL instead" fallback,
+    // and that fallback is a bare text box — so the example shows the shape
+    // the typed half expects.
+    placeholder: 'e.g. https://nourcoffee.com/logo.png',
   },
   'store.url': {
     type: 'string',
@@ -211,6 +254,7 @@ export const SETTINGS = {
     max: 255,
     label: 'Store URL',
     description: 'Linked from invoices and emails, if you have a customer-facing site.',
+    placeholder: 'e.g. https://nourcoffee.com',
   },
   'store.tagline': {
     type: 'string',
@@ -219,6 +263,7 @@ export const SETTINGS = {
     max: 200,
     label: 'Tagline',
     description: 'A short line shown under the store name on invoices.',
+    placeholder: 'e.g. Small-batch roasters since 2014',
   },
   'store.address': {
     type: 'string',
@@ -227,6 +272,7 @@ export const SETTINGS = {
     max: 500,
     label: 'Address',
     description: 'Printed on invoices.',
+    placeholder: 'e.g. Shop 4, Al Wasl Road, Dubai',
   },
   'store.supportPhone': {
     type: 'string',
@@ -235,6 +281,7 @@ export const SETTINGS = {
     max: 40,
     label: 'Support phone',
     description: 'Shown alongside the support email.',
+    placeholder: 'e.g. +971 4 123 4567',
   },
   'store.taxId': {
     type: 'string',
@@ -243,6 +290,7 @@ export const SETTINGS = {
     max: 60,
     label: 'Tax / VAT registration number',
     description: 'Printed on invoices alongside the address, if your jurisdiction requires it.',
+    placeholder: 'e.g. 100123456700003',
   },
   'store.taxRate': {
     type: 'number',
@@ -256,6 +304,7 @@ export const SETTINGS = {
     // single-jurisdiction assumption store.taxId already makes.
     description:
       'Applied to every order subtotal on the invoice. Set to 0 if you do not charge tax.',
+    placeholder: 'e.g. 5',
   },
 
   // ─── Security ───────────────────────────────────────────────────────
@@ -268,6 +317,7 @@ export const SETTINGS = {
     label: 'Session timeout (minutes)',
     description:
       'How long a signed-in session stays valid before requiring another login. Shortening this does not sign out existing sessions early — it only shapes the next one issued.',
+    placeholder: 'e.g. 10080',
   },
   'security.minPasswordLength': {
     type: 'number',
@@ -277,6 +327,7 @@ export const SETTINGS = {
     max: 128,
     label: 'Minimum password length',
     description: 'Enforced when an admin sets or resets a staff password, and on self-service reset.',
+    placeholder: 'e.g. 12',
   },
   'security.ipAllowlist': {
     type: 'string',
@@ -286,6 +337,7 @@ export const SETTINGS = {
     label: 'IP allowlist',
     description:
       'Comma-separated IPs or CIDR ranges (e.g. "203.0.113.0/24, 198.51.100.9"). Empty = disabled, the default and the only safe starting state. OWNER and DEVELOPER always bypass this check, even when their own IP is not listed — otherwise a wrong range locks out the only people who could fix it.',
+    placeholder: 'e.g. 203.0.113.0/24, 198.51.100.9',
   },
   'security.require2faForRoles': {
     type: 'string',
@@ -295,6 +347,7 @@ export const SETTINGS = {
     label: 'Require 2FA for roles',
     description:
       'Comma-separated role names (e.g. "OWNER, MANAGER"). Staff in a listed role who have not enabled 2FA can still sign in and use everything EXCEPT write actions until they do — never a hard lockout. Empty = disabled, the default.',
+    placeholder: 'e.g. OWNER, MANAGER',
   },
 
   // ─── Theme ──────────────────────────────────────────────────────────
@@ -412,6 +465,7 @@ export const SETTINGS = {
     // next process restart.
     description:
       'A cashier may discount a line up to this percentage without help. Above it, a manager has to approve in place. Set to 0 to require approval for any discount at all.',
+    placeholder: 'e.g. 20',
   },
 
   'notifications.returnRequestAlerts': {
@@ -464,6 +518,7 @@ export const SETTINGS = {
     label: 'Return window (days)',
     description:
       'How many days after an order was placed a return is considered on-time. Past this, a request still goes through — staff just sees it is late. Set to 0 for no window at all.',
+    placeholder: 'e.g. 30',
   },
   /**
    * A DEFAULT, not the whole answer (the owner's own call, matching how
@@ -481,6 +536,7 @@ export const SETTINGS = {
     label: 'Restocking fee (%)',
     description:
       'Deducted from the refund cap by default when a return is approved. The person approving can still adjust or waive it for an individual return.',
+    placeholder: 'e.g. 10',
   },
 
   // ─── Email ──────────────────────────────────────────────────────────
@@ -506,6 +562,54 @@ export const SETTINGS = {
     max: 255,
     label: 'Send emails from',
     description: 'The "From" address on outgoing alert emails. Alerts are sent TO the support email above.',
+    placeholder: 'e.g. orders@nourcoffee.com',
+  },
+  /**
+   * The display name beside the from-address — "Nour Coffee" <alerts@…>.
+   *
+   * Deliberately NOT reusing `store.name`: the name a business trades under
+   * and the name it sends mail as are allowed to differ, and a store whose
+   * registered name is long ("Nour Coffee Roasters LLC") usually wants
+   * something shorter in an inbox list. Reusing one field would also mean
+   * renaming the store silently rewrites the sender on every future alert.
+   *
+   * Empty is the declared default and means "send the bare address", never a
+   * literal empty display name — the same "blank falls back to the built-in
+   * behaviour" contract `labels.nav.*` already uses.
+   */
+  'email.senderName': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 120,
+    label: 'Sender name',
+    description:
+      'The name shown beside the from-address in an inbox. Left blank, the address is sent on its own.',
+  },
+  /**
+   * Where a REPLY goes, when that is not the sending address.
+   *
+   * This is the email setting with a real operational failure behind it: a
+   * store sending alerts from an unattended `no-reply@` mailbox has no way to
+   * learn that a courier or customer answered one, because the answer lands
+   * somewhere nobody opens. Splitting reply-to from the from-address is the
+   * standard fix, and it names a mailbox rather than authenticating to one,
+   * so it is a preference and belongs here — not with the `SMTP_*`
+   * credentials in env.ts.
+   *
+   * Empty means "replies go to the from-address", which is the mail client's
+   * own behaviour when the header is absent — so the sender OMITS the header
+   * entirely rather than sending it empty. An empty `Reply-To` is handled
+   * inconsistently across mail servers and some drop the message outright.
+   */
+  'email.replyToAddress': {
+    type: 'string',
+    default: '',
+    area: 'settings',
+    max: 255,
+    label: 'Reply-to address',
+    description:
+      'Where replies to an alert email go, if that is not the sending address. Left blank, replies go back to the from-address.',
   },
 
   // ─── Dashboard behavior ─────────────────────────────────────────────
@@ -517,6 +621,7 @@ export const SETTINGS = {
     max: 100,
     label: 'Rows per table page',
     description: 'Applies to every list in the dashboard.',
+    placeholder: 'e.g. 20',
   },
 
   // ─── Business-specific nav labels ──────────────────────────────────
@@ -537,6 +642,7 @@ export const SETTINGS = {
     max: 40,
     label: 'Staff page name',
     description: 'Replaces "Staff" in the sidebar and page heading, e.g. "Baristas".',
+    placeholder: 'e.g. Baristas',
   },
   'labels.nav.orders': {
     type: 'string',
@@ -545,6 +651,7 @@ export const SETTINGS = {
     max: 40,
     label: 'Orders page name',
     description: 'Replaces "Orders" in the sidebar and page heading, e.g. "Tickets".',
+    placeholder: 'e.g. Tickets',
   },
   'labels.nav.delivery': {
     type: 'string',
@@ -553,6 +660,7 @@ export const SETTINGS = {
     max: 40,
     label: 'Delivery page name',
     description: 'Replaces "Delivery" in the sidebar and page heading, e.g. "Runs".',
+    placeholder: 'e.g. Runs',
   },
   'labels.nav.inventory': {
     type: 'string',
@@ -561,6 +669,7 @@ export const SETTINGS = {
     max: 40,
     label: 'Inventory page name',
     description: 'Replaces "Inventory" in the sidebar and page heading.',
+    placeholder: 'e.g. Stock room',
   },
   'labels.nav.returns': {
     type: 'string',
@@ -569,6 +678,7 @@ export const SETTINGS = {
     max: 40,
     label: 'Returns page name',
     description: 'Replaces "Returns" in the sidebar and page heading.',
+    placeholder: 'e.g. Refunds',
   },
   'labels.nav.reports': {
     type: 'string',
@@ -577,6 +687,7 @@ export const SETTINGS = {
     max: 40,
     label: 'Reports page name',
     description: 'Replaces "Reports" in the sidebar and page heading.',
+    placeholder: 'e.g. Insights',
   },
 } as const satisfies Record<string, SettingDefinition>;
 
