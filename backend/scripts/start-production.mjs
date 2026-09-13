@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const backendDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationRunner = resolve(backendDir, 'scripts/with-db-url.mjs');
 const schemaPath = resolve(backendDir, 'prisma/schema.prisma');
+const compiledServerModule = '../dist/server.js';
 
 // `migrate diff` only introspects and compares these two sources; unlike
 // migrate deploy/dev or db push, it cannot write to the running database.
@@ -73,11 +74,15 @@ export function verifyMigrationData() {
   return runGuardedCommand(['node', 'scripts/check-migration-data.mjs']);
 }
 
+function startCompiledServer() {
+  return import(compiledServerModule);
+}
+
 /**
  * Start order: deploy migrations, check status, compare the RUNNING schema,
  * then check known data-only invariants if migration history is unhealthy.
  *
- * ─── WHY `migrate status` IS DIAGNOSTIC AND NOT A GATE ───────────────────
+ * --- WHY `migrate status` IS DIAGNOSTIC AND NOT A GATE -------------------
  * `migrate status` fails whenever `_prisma_migrations` is missing or
  * incomplete, even when every table, column and index is already correct.
  * That exact state has occurred on this project repeatedly (see CLAUDE.md and
@@ -98,7 +103,7 @@ export async function runProductionStart({
   verify = verifyMigrationStatus,
   verifySchema = verifyDatabaseSchema,
   verifyData = verifyMigrationData,
-  startServer = () => import('../dist/server.js'),
+  startServer = startCompiledServer,
   log = (message) => process.stderr.write(`[production-start] ${message}\n`),
 } = {}) {
   const migrationExitCode = await migrate();
