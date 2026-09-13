@@ -114,7 +114,8 @@ interface SettingsContextValue {
   navLabels: Record<string, string>;
   /** Re-fetches the registry and re-applies every derived side effect. Call
    *  after a settings save so the change is visible without a page reload. */
-  refresh: () => Promise<void>;
+  /** False means the registry could not be refreshed; the last known values remain in place. */
+  refresh: () => Promise<boolean>;
   /** Applies an UNSAVED value everywhere this setting is consumed — CSS
    *  custom properties, sidebar mode, edit panel style, brand strings — the
    *  instant it changes, before Save is ever clicked. */
@@ -157,7 +158,7 @@ const DEFAULT_VALUE: SettingsContextValue = {
   storeCurrency: 'AED',
   ...BRAND_DEFAULTS,
   navLabels: {},
-  refresh: async () => {},
+  refresh: async () => false,
   previewSetting: () => {},
   clearPreview: () => {},
 };
@@ -217,10 +218,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       } else {
         setBrand(null);
       }
+      return true;
     } catch {
       // Swallowed on purpose, same as SchemaProvider: the shell must still
       // render with the CSS defaults and the hardcoded page size rather than
       // failing the whole app over a settings-provider outage.
+      return false;
     } finally {
       setIsLoading(false);
     }
