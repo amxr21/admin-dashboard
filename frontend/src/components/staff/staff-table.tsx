@@ -10,7 +10,6 @@ import {
   Plus,
   Power,
   PowerOff,
-  Search,
   Ticket,
   UserPlus,
 } from 'lucide-react';
@@ -35,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -413,19 +412,12 @@ export function StaffTable() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-56 flex-1 space-y-2">
           <Label htmlFor="staff-search">{t('search.label')}</Label>
-          <div className="relative">
-            <Search
-              className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
-              aria-hidden
-            />
-            <Input
-              id="staff-search"
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              placeholder={t('search.placeholder')}
-              className="ps-9"
-            />
-          </div>
+          <SearchInput
+            id="staff-search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder={t('search.placeholder')}
+          />
         </div>
 
         <div className="w-44 space-y-2">
