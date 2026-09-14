@@ -92,6 +92,35 @@ export interface FieldConfig {
    * or a hint instead.
    */
   placeholder?: string;
+  /**
+   * A standing explanation of what this field means, shown under the control
+   * and never dismissed.
+   *
+   * ─── WHY THIS IS NOT A PLACEHOLDER ───────────────────────────────────
+   * The comment above says it outright: a placeholder is an EXAMPLE and it
+   * disappears the moment someone types, so anything a person still needs
+   * while filling the field has nowhere to live. That "hint" it points at did
+   * not exist until now — which is why the rule behind `cost` (blank means
+   * "not tracked", and the line is then excluded from margin entirely rather
+   * than counted as free profit) was written only as a comment in this file,
+   * beside a field with no way to display it.
+   *
+   * ─── THE SAME SHAPE THE SETTINGS REGISTRY ALREADY USES ───────────────
+   * `settings.config.ts` has carried a `description` on nearly every key for
+   * a long time, rendered by `settings-form.tsx` under the control and
+   * sharing `aria-describedby` with the error. This is that, for resource
+   * fields, deliberately spelled the same way so the two registries stay one
+   * pattern rather than two.
+   *
+   * Plain text, not a translation key — same reasoning as `label` and
+   * `placeholder`, and the same known limitation: the registry ships English
+   * and localizing it is a larger job than any single field justifies.
+   *
+   * Reserve it for a rule that is NOT evident from the label. "The product's
+   * name" under a field labelled Name is noise; what a blank value means, or
+   * what a number is measured against, is not.
+   */
+  description?: string;
   /** For `enum`. The engine rejects any value not in this list. */
   options?: readonly string[];
   relation?: RelationSpec;
@@ -206,8 +235,31 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       // zero. That distinction is what the dashboard's "Based on N of M order
       // lines" coverage note is built on, so it must survive this change —
       // making cost easy to fill is the goal, making it mandatory is not.
-      { name: 'cost', label: 'Cost', type: 'money', inList: false, group: 'pricing', defaultEnabled: true },
-      { name: 'stock', label: 'Stock', type: 'number', sortable: true, placeholder: 'e.g. 24' },
+      {
+        name: 'cost',
+        label: 'Cost',
+        type: 'money',
+        inList: false,
+        group: 'pricing',
+        defaultEnabled: true,
+        // The rule this field has always had, finally on screen: a blank cost
+        // is "not tracked", never zero, and profit reporting drops the line
+        // rather than treating it as pure margin. Stated here because nothing
+        // about a money input labelled "Cost" implies any of it.
+        description:
+          'What one unit costs you. Leave it blank if you do not track it — blank is not zero, and lines without a cost are left out of profit and margin entirely rather than counted as free.',
+      },
+      {
+        name: 'stock',
+        label: 'Stock',
+        type: 'number',
+        sortable: true,
+        placeholder: 'e.g. 24',
+        // Says where the real control lives. Editing this number here writes
+        // no movement, so the two surfaces disagree unless someone says so.
+        description:
+          'The quantity on hand right now. Day-to-day changes belong on the Inventory page, where each one is recorded as a movement with a reason.',
+      },
       /**
        * Per-product stock defaults (F7.8). Both `inList: false` — they are
        * setup values you fill in once, not columns worth a place in a list

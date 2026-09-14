@@ -36,8 +36,19 @@ const schema: ResourceSchema = {
   fields: [
     { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
     { name: 'name', label: 'Name', type: 'text', required: true },
-    { name: 'price', label: 'Price', type: 'money', required: true },
-    { name: 'stock', label: 'Stock', type: 'number' },
+    {
+      name: 'price',
+      label: 'Price',
+      type: 'money',
+      required: true,
+      description: 'Tax is added on the invoice, not here.',
+    },
+    {
+      name: 'stock',
+      label: 'Stock',
+      type: 'number',
+      description: 'Day-to-day changes belong on the Inventory page.',
+    },
     { name: 'isActive', label: 'Active', type: 'boolean' },
     { name: 'status', label: 'Status', type: 'enum', options: ['DRAFT', 'ACTIVE'] },
     {
@@ -84,6 +95,62 @@ beforeEach(() => {
   updateRow.mockReset();
   fetchRelationOptions.mockReset();
   fetchRelationOptions.mockResolvedValue([{ value: 'c1', label: 'Home & Garden' }]);
+});
+
+describe('a field that explains itself', () => {
+  /**
+   * The gap this closes: `FieldConfig` carried `placeholder` and nothing else,
+   * so a rule a person needs WHILE filling a field had nowhere to live — a
+   * placeholder disappears on the first keystroke. The settings registry has
+   * had `description` for a long time; this is the same thing for resource
+   * fields, and these cases pin the two halves that fail quietly.
+   */
+  it('shows the description under the control, not as a placeholder', async () => {
+    renderForm();
+
+    const hint = await screen.findByText(/day-to-day changes belong on the inventory page/i);
+    expect(hint).toBeInTheDocument();
+
+    // Announced as the control's description, not merely printed nearby.
+    expect(screen.getByLabelText(/stock/i)).toHaveAccessibleDescription(
+      'Day-to-day changes belong on the Inventory page.',
+    );
+  });
+
+  it('lets an error replace the description rather than stacking on it', async () => {
+    // Both describe the same control. When a field is wrong, WHAT is wrong is
+    // the more urgent of the two — so the error takes over `aria-describedby`
+    // as well as the visible slot, and the two never disagree.
+    //
+    // Driven through `price` rather than `stock` deliberately: a `number`
+    // field renders `<input type="number">`, which discards non-numeric text
+    // before it ever reaches state, so blur sees an empty value and correctly
+    // declines to flag it. Money is typed as TEXT on purpose (see the form's
+    // own note on why a float must never touch a price), so an invalid value
+    // genuinely survives into state — which is the only path that can reach
+    // the branch under test.
+    renderForm();
+
+    const price = await screen.findByLabelText(/price/i);
+    await userEvent.type(price, '12.999');
+    await userEvent.tab();
+
+    await waitFor(() => {
+      expect(price).toHaveAccessibleDescription(
+        'Enter an amount with up to two decimal places, like 19.99.',
+      );
+    });
+
+    expect(screen.queryByText(/tax is added on the invoice/i)).not.toBeInTheDocument();
+  });
+
+  it('leaves a field with no description undescribed', async () => {
+    // A hint is opt-in per field. Wiring `aria-describedby` at an element that
+    // does not exist makes some screen readers announce nothing at all.
+    renderForm();
+
+    expect(await screen.findByLabelText(/name/i)).not.toHaveAccessibleDescription();
+  });
 });
 
 describe('which fields appear', () => {

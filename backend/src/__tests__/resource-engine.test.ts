@@ -729,6 +729,25 @@ describe('product slug + redirect recording (A5.7)', () => {
       expect.arrayContaining(['slug', 'metaTitle', 'metaDescription']),
     );
   });
+
+  it('carries a field description through to the client', async () => {
+    // The route serialises `fields: config.fields` wholesale, so this passes
+    // today by construction — which is exactly why it is worth pinning. The
+    // moment someone hand-picks properties there (as the RESOURCE level above
+    // already does), a field's description would vanish silently and the form
+    // would simply stop explaining itself, with nothing failing.
+    const res = await request(app).get('/api/v1/r/_schema').set(auth(ownerToken));
+
+    const products = (
+      res.body as {
+        data: { resources: { resource: string; fields: { name: string; description?: string }[] }[] };
+      }
+    ).data.resources.find((r) => r.resource === 'products');
+
+    const cost = products?.fields.find((f) => f.name === 'cost');
+
+    expect(cost?.description).toMatch(/blank is not zero/i);
+  });
 });
 
 describe('resource export (B3.3)', () => {

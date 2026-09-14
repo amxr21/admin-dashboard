@@ -1047,6 +1047,7 @@ function FormField({
   const tCommon = useTranslations('common');
   const id = `field-${field.name}`;
   const errorId = `${id}-error`;
+  const hintId = `${id}-hint`;
 
   // Only once there WAS a real value and it has actually changed — never on
   // create (originalValue is always '' there) and never while the field is
@@ -1076,9 +1077,14 @@ function FormField({
 
   // aria-describedby only when there IS a message — pointing at an element
   // that doesn't exist makes some screen readers announce nothing at all.
+  //
+  // The error wins over the hint rather than being announced alongside it:
+  // both describe the same control, and when a field is wrong, what is wrong
+  // with it is the more urgent of the two. Same precedence `settings-form.tsx`
+  // already uses, and the same reason its hint is hidden while an error shows.
   const aria = {
     'aria-invalid': error ? true : undefined,
-    'aria-describedby': error ? errorId : undefined,
+    'aria-describedby': error ? errorId : field.description ? hintId : undefined,
   } as const;
 
   function control() {
@@ -1257,6 +1263,15 @@ function FormField({
       {error ? (
         <p id={errorId} role="alert" className="text-destructive text-sm">
           {error}
+        </p>
+      ) : field.description ? (
+        // Directly under the control and never dismissed — the whole point is
+        // that it is still there while the field is being filled in, which a
+        // placeholder cannot be. Suppressed while an error shows, matching
+        // `aria-describedby` above so the announced and visible descriptions
+        // are always the same one.
+        <p id={hintId} className="text-muted-foreground text-sm">
+          {field.description}
         </p>
       ) : null}
 

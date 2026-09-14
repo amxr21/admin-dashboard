@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 import { DataTable, type Column } from '@/components/data-table';
 import { StatusBadge } from '@/components/status-badge';
+import { TablePagination } from '@/components/table-pagination';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -45,6 +46,9 @@ const ALL = 'all';
 /** Defaults are omitted from the URL, so an unfiltered log has a clean one. */
 const URL_DEFAULTS = {
   page: '1',
+  /** Overrides `dashboard.tablePageSize` for this view only — see
+   *  resource-table.tsx. Empty means "use the store-wide default". */
+  pageSize: '',
   entity: ALL,
   entityId: '',
   actorId: ALL,
@@ -71,7 +75,6 @@ function formatValue(value: unknown): string {
 
 export function AuditTable() {
   const t = useTranslations('audit');
-  const tTable = useTranslations('table');
   const tOutcome = useTranslations('auditOutcome');
   const translateError = useTranslatedApiError();
   const { tablePageSize } = useAppSettings();
@@ -92,6 +95,9 @@ export function AuditTable() {
   const { values, setValues } = useUrlState(URL_DEFAULTS);
 
   const page = Math.max(1, Number(values.page) || 1);
+  /** Overrides `dashboard.tablePageSize` for this view only — same shape as
+   *  inventory-table.tsx, so the two lists behave identically. */
+  const effectivePageSize = Math.max(1, Number(values.pageSize) || tablePageSize);
   const entity = values.entity ?? ALL;
   const entityId = values.entityId ?? '';
   const actorId = values.actorId ?? ALL;
@@ -150,14 +156,14 @@ export function AuditTable() {
     setError(null);
 
     try {
-      setResult(await fetchAudit({ page, pageSize: tablePageSize, ...filters }));
+      setResult(await fetchAudit({ page, pageSize: effectivePageSize, ...filters }));
     } catch (caught) {
       setError(translateError(caught));
       setResult(null);
     } finally {
       setIsLoading(false);
     }
-  }, [page, filters, tablePageSize, translateError]);
+  }, [page, filters, effectivePageSize, translateError]);
 
   const handleExport = useCallback(async () => {
     setIsExporting(true);
@@ -549,35 +555,21 @@ export function AuditTable() {
         emptyMessage={t('empty')}
       />
 
-      {result && result.totalPages > 1 ? (
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-muted-foreground text-sm tabular-nums">
-            {t('total', { count: result.total })}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1 || isLoading}
-              onClick={() => setValues({ page: String(Math.max(1, page - 1)) })}
-            >
-              {t('pagination.previous')}
-            </Button>
-            <span className="text-sm tabular-nums">
-              {tTable('pageOf', { page, total: result.totalPages })}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= result.totalPages || isLoading}
-              onClick={() =>
-                setValues({ page: String(Math.min(result.totalPages, page + 1)) })
-              }
-            >
-              {t('pagination.next')}
-            </Button>
-          </div>
-        </div>
+      {result ? (
+        // The shared footer, not a local copy: the hand-written one here had
+        // no rows-per-page control and hid itself entirely at one page — so a
+        // log showing 20 of 23 entries looked complete, and the only control
+        // that would reveal otherwise was the one not being rendered.
+        <TablePagination
+          page={page}
+          totalPages={result.totalPages}
+          total={result.total}
+          pageSize={effectivePageSize}
+          isLoading={isLoading}
+          onPageChange={(next) => setValues({ page: String(next) })}
+          onPageSizeChange={(next) => setValues({ pageSize: String(next), page: null })}
+          totalLabel={t('total', { count: result.total })}
+        />
       ) : null}
     </div>
   );

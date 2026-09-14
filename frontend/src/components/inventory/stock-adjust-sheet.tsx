@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import {
   STOCK_REASONS,
   adjustStock,
@@ -139,6 +140,22 @@ export function StockAdjustSheet({
     setUnitCost('');
     setError(null);
   }, [open, product?.id, variant]);
+
+  /**
+   * Compared against the same expressions the effect above seeds from — note
+   * `reason` seeds from `PRESET_REASON[variant]`, not from empty, so a
+   * "receive" sheet is NOT dirty merely for having RECEIVED preselected.
+   * Direction is deliberately excluded: it is derived from the reason (see
+   * `DIRECTION_FOR`), so counting it would double-count one choice.
+   */
+  const isDirty =
+    open &&
+    (amount !== '' ||
+      note !== '' ||
+      unitCost !== '' ||
+      reason !== (PRESET_REASON[variant] ?? ''));
+
+  useUnsavedChangesGuard(isDirty && !isSaving);
 
   if (!product) return null;
 

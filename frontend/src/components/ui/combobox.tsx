@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Check, ChevronsUpDown } from 'lucide-react';
 
+import { FIELD_SURFACE } from '@/components/ui/field-surface';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -134,10 +135,11 @@ export function Combobox({
           aria-controls={open ? listId : undefined}
           disabled={disabled}
           className={cn(
-            'border-input bg-background ring-offset-background placeholder:text-muted-foreground',
-            'focus:ring-ring flex h-8 w-full items-center justify-between gap-2 rounded-md border',
-            'px-3 py-1.5 text-sm transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none',
-            'disabled:cursor-not-allowed disabled:opacity-50',
+            // The same shared surface `SelectTrigger` uses — these two were
+            // hand-copied from each other and had already begun to drift.
+            // Sharing the constant is what stops a third copy appearing.
+            FIELD_SURFACE,
+            'flex items-center justify-between gap-2 px-3 py-1.5',
             className,
           )}
           {...aria}
