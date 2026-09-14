@@ -21,6 +21,7 @@ import { ApiError } from '@/lib/api';
 import { isAccountEmailValid, normalizeAccountEmail } from '@/lib/identity-validation';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import {
   STAFF_ROLES,
   canAssign,
@@ -103,6 +104,26 @@ export function StaffSheet({
     setError(null);
     setEmailError(null);
   }, [open, member]);
+
+  /**
+   * Compared against the same expressions the effect above seeds from, so
+   * "dirty" means exactly "differs from what this sheet opened with" — no
+   * second copy of the initial values to fall out of step with the first.
+   *
+   * `password` counts even though it seeds empty: a typed-but-unsaved
+   * password is precisely the edit worth warning about losing.
+   */
+  const isDirty =
+    open &&
+    (email !== (member?.email ?? '') ||
+      name !== (member?.name ?? '') ||
+      phone !== (member?.phone ?? '') ||
+      role !== (member?.role ?? 'SUPPORT') ||
+      isActive !== (member?.isActive ?? true) ||
+      accessExpiresAt !== (member?.accessExpiresAt ? member.accessExpiresAt.slice(0, 10) : '') ||
+      password !== '');
+
+  useUnsavedChangesGuard(isDirty && !isSaving);
 
   /** Only roles at or below the actor's own rank — rule 1, mirrored. */
   const assignable = STAFF_ROLES.filter((candidate) => canAssign(actorRole, candidate));

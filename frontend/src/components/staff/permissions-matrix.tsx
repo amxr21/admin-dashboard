@@ -91,6 +91,38 @@ const AREA_GROUPS = [
   { id: 'oversight', areas: ['reports', 'settings', 'staff'] },
 ] as const satisfies readonly { id: string; areas: readonly string[] }[];
 
+/**
+ * The grid's own checkbox treatment — scoped HERE, not in the primitive.
+ *
+ * ─── WHY NOT CHANGE `ui/checkbox.tsx` ────────────────────────────────
+ * Fifteen files import that primitive: the DataTable's row selection, the
+ * till, the setup wizard, every multi-select field in the resource form.
+ * Those are all "pick some items out of a set", where a 16px box beside a
+ * label is correct and a larger tinted tile would be a wall of colour.
+ *
+ * ─── WHY THIS GRID IS DIFFERENT ──────────────────────────────────────
+ * It draws 65 at once (13 areas × 5 editable roles), in a matrix with no
+ * labels beside the boxes — the meaning comes from the row and column. At
+ * that density a solid `bg-primary` fill turns the table into a block of
+ * blue, and a 16px target inside a 32px row is small for something an owner
+ * clicks repeatedly while reasoning about access.
+ *
+ * So: one step larger, a TINTED fill with a brand-coloured tick rather than
+ * a solid one, and a real border in the OFF state — an unticked cell must
+ * read as "not granted", never as a cell that failed to render. `cn` merges
+ * these over the primitive's own classes, so the checked/indeterminate
+ * state machine, the focus ring and the disabled treatment all still come
+ * from `ui/checkbox.tsx` and cannot drift from it.
+ */
+const MATRIX_CHECKBOX = cn(
+  'size-5 rounded-md border-[1.5px]',
+  'data-[state=unchecked]:bg-card',
+  // Tinted, not solid: `bg-primary` at this density is a wall of colour.
+  'data-[state=checked]:bg-primary/15 data-[state=checked]:text-primary',
+  'data-[state=checked]:border-primary/55',
+  'transition-colors',
+);
+
 type GroupId = (typeof AREA_GROUPS)[number]['id'] | 'other';
 
 function groupAreas(areas: readonly Area[]): { id: GroupId; areas: Area[] }[] {
@@ -550,6 +582,7 @@ export function PermissionsMatrix() {
                                   // changing what the checkbox itself reports.
                                   <label className="flex cursor-pointer items-center justify-center py-1">
                                     <Checkbox
+                                      className={MATRIX_CHECKBOX}
                                       checked={granted}
                                       onCheckedChange={(checked) =>
                                         void toggle(role.role, area, checked === true)

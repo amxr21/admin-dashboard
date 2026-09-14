@@ -6,6 +6,7 @@ import { Boxes, FilterX, History, MailPlus, PackagePlus, Search, SearchX, Slider
 
 import { DataTable, type Column } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
+import { TablePagination } from '@/components/table-pagination';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useResourceSchema } from '@/components/providers/schema-provider';
 import { MovementLogSheet } from '@/components/inventory/movement-log-sheet';
@@ -377,33 +378,23 @@ export function InventoryTable() {
         }
       />
 
-      {result && result.totalPages > 1 ? (
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-muted-foreground text-sm tabular-nums">
-            {t('total', { count: result.total })}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1 || isLoading}
-              onClick={() => setValues({ page: String(Math.max(1, page - 1)) }, { history: 'push' })}
-            >
-              {t('pagination.previous')}
-            </Button>
-            <span className="text-sm tabular-nums">
-              {tTable('pageOf', { page, total: result.totalPages })}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= result.totalPages || isLoading}
-              onClick={() => setValues({ page: String(Math.min(result.totalPages, page + 1)) }, { history: 'push' })}
-            >
-              {t('pagination.next')}
-            </Button>
-          </div>
-        </div>
+      {result ? (
+        // The shared footer, not a local copy — see the note in audit-table.tsx
+        // on why the old one hid the very control that would have explained a
+        // short list. `history: 'push'` is deliberately dropped with it: the
+        // shared component replaces rather than pushes, matching every other
+        // list in the app, so Back leaves the table instead of walking the
+        // user backwards through their own paging.
+        <TablePagination
+          page={page}
+          totalPages={result.totalPages}
+          total={result.total}
+          pageSize={pageSize}
+          isLoading={isLoading}
+          onPageChange={(next) => setValues({ page: String(next) })}
+          onPageSizeChange={(next) => setValues({ pageSize: String(next), page: null })}
+          totalLabel={t('total', { count: result.total })}
+        />
       ) : null}
 
       <StockAdjustSheet

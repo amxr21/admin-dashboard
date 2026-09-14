@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import {
   createScheduledReport,
   updateScheduledReport,
@@ -81,6 +82,16 @@ export function ScheduledReportSheet({ schedule, open, onOpenChange, onSaved }: 
     setRecipientsText(schedule?.recipients.join(', ') ?? '');
     setError(null);
   }, [open, schedule]);
+
+  /** Same seeded expressions as the effect above — see supplier-sheet.tsx. */
+  const isDirty =
+    open &&
+    (reportKey !== (schedule?.reportKey ?? 'overview') ||
+      frequency !== (schedule?.frequency ?? 'DAILY') ||
+      format !== (schedule?.format ?? 'CSV') ||
+      recipientsText !== (schedule?.recipients.join(', ') ?? ''));
+
+  useUnsavedChangesGuard(isDirty && !isSaving);
 
   async function submit() {
     const recipients = recipientsText

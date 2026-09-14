@@ -11,6 +11,7 @@ import { PhoneField } from '@/components/ui/phone-field';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { createSupplier, updateSupplier, type Supplier } from '@/lib/suppliers-api';
 
 export function SupplierSheet({ supplier, open, onOpenChange, onSaved }: {
@@ -35,6 +36,21 @@ export function SupplierSheet({ supplier, open, onOpenChange, onSaved }: {
     setPhone(supplier?.phone ?? ''); setContactName(supplier?.contactName ?? '');
     setNote(supplier?.note ?? ''); setError(null);
   }, [open, supplier]);
+
+  /**
+   * Compared against the same expressions the effect above seeds from, so
+   * "dirty" means exactly "differs from what this sheet opened with" — no
+   * second copy of the initial values to fall out of step with the first.
+   */
+  const isDirty =
+    open &&
+    (name !== (supplier?.name ?? '') ||
+      email !== (supplier?.email ?? '') ||
+      phone !== (supplier?.phone ?? '') ||
+      contactName !== (supplier?.contactName ?? '') ||
+      note !== (supplier?.note ?? ''));
+
+  useUnsavedChangesGuard(isDirty && !saving);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
