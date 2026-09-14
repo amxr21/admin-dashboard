@@ -274,6 +274,10 @@ export async function getOrder(id: string) {
       taxAmount: true,
       paymentMethod: true,
       placedAt: true,
+      // Who rang it up, when it came from the till (F-POS). Null on a web
+      // order or anything predating the column — a real "not a counter sale"
+      // fact, which the detail page states rather than hiding.
+      soldByName: true,
       payments: {
         where: { method: 'goodwill-refund' },
         orderBy: { paidAt: 'desc' },
@@ -375,6 +379,7 @@ export async function getOrder(id: string) {
     taxAmount: money(order.taxAmount),
     paymentMethod: order.paymentMethod,
     placedAt: order.placedAt.toISOString(),
+    soldByName: order.soldByName,
     goodwillRefunds: order.payments.map((payment) => ({
       id: payment.id,
       amount: payment.amount.negated().toFixed(2),

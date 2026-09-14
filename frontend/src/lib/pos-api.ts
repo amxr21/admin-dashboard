@@ -113,6 +113,14 @@ export interface CheckoutResult {
   /** Cash to hand back. Null on a card sale — nothing was tendered. */
   change: string | null;
   /**
+   * Who rang the sale up, for the receipt's `Served by` line.
+   *
+   * Returned by the server from the order row rather than read from the
+   * session here: a reprint months later must name the person who actually
+   * served the customer, not whoever is signed in at the time it prints.
+   */
+  soldByName: string | null;
+  /**
    * URG-034 — the foreign-currency figures for the receipt, all null on a
    * base-currency sale (the overwhelming majority).
    *
