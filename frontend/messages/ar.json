@@ -208,7 +208,8 @@
       "none": "غير محدد"
     },
     "phoneInvalid": "لا يبدو هذا رقم هاتف صالحًا للدولة المختارة.",
-    "phoneInvalidNoCountry": "لا يبدو هذا رقم هاتف دولي صالح."
+    "phoneInvalidNoCountry": "لا يبدو هذا رقم هاتف دولي صالح.",
+    "requiredField": "مطلوب"
   },
   "language": {
     "label": "اللغة",

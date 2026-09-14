@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PhoneField } from '@/components/ui/phone-field';
@@ -89,6 +90,9 @@ export function StaffSheet({
 
   const [error, setError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
+  /** Hoisted out of PhoneField so the phone's own validation message shares
+   *  the one slot its Field owns — see ui/field.tsx. */
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -103,6 +107,7 @@ export function StaffSheet({
     setPassword('');
     setError(null);
     setEmailError(null);
+    setPhoneError(null);
   }, [open, member]);
 
   /**
@@ -222,8 +227,11 @@ export function StaffSheet({
             </p>
           ) : null}
 
-          <div className="space-y-2">
-            <Label htmlFor="staff-email">{t('form.fields.email')}</Label>
+          <Field
+            id="staff-email"
+            label={t('form.fields.email')}
+            error={emailError ?? undefined}
+          >
             <Input
               id="staff-email"
               // A real type so globals.css forces LTR on the address.
@@ -244,15 +252,9 @@ export function StaffSheet({
                 if (email && !isAccountEmailValid(email)) setEmailError(t('form.emailInvalid'));
               }}
             />
-            {emailError ? (
-              <p id="staff-email-error" role="alert" className="text-destructive text-sm">
-                {emailError}
-              </p>
-            ) : null}
-          </div>
+          </Field>
 
-          <div className="space-y-2">
-            <Label htmlFor="staff-name">{t('form.fields.name')}</Label>
+          <Field id="staff-name" label={t('form.fields.name')}>
             <Input
               id="staff-name"
               type="text"
@@ -260,20 +262,25 @@ export function StaffSheet({
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
-          </div>
+          </Field>
 
-          <div className="space-y-2">
-            <Label htmlFor="staff-phone">{t('form.fields.phone')}</Label>
-            {/* URG-020/022. No country context here — a staff record has no
-                country field — so this validates against international rules
-                rather than assuming one. */}
+          {/* URG-020/022. No country context here — a staff record has no
+              country field — so this validates against international rules
+              rather than assuming one. `onError` hoists the message into the
+              Field's one slot rather than PhoneField printing its own. */}
+          <Field
+            id="staff-phone"
+            label={t('form.fields.phone')}
+            error={phoneError ?? undefined}
+          >
             <PhoneField
               id="staff-phone"
               value={phone}
               onChange={setPhone}
               country={null}
+              onError={setPhoneError}
             />
-          </div>
+          </Field>
 
           {!isEdit ? (
             <div className="space-y-2">

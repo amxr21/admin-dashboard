@@ -38,6 +38,15 @@ interface ImageUploadFieldProps {
   disabled?: boolean;
   'aria-describedby'?: string;
   'aria-invalid'?: boolean;
+  /**
+   * Hoists the upload failure to a parent that owns the message slot.
+   *
+   * Same contract as `PhoneField.onError`: the failure is internal (it comes
+   * from the upload call, which this component makes), so it is reported
+   * upward rather than decided elsewhere. Omit it and this keeps rendering
+   * its own message, leaving the four existing call sites unchanged.
+   */
+  onError?: (message: string | null) => void;
 }
 
 export function ImageUploadField({
@@ -47,6 +56,7 @@ export function ImageUploadField({
   folder,
   shape = 'square',
   disabled = false,
+  onError,
   ...aria
 }: ImageUploadFieldProps) {
   const t = useTranslations('imageUpload');
@@ -58,8 +68,14 @@ export function ImageUploadField({
   // image" placeholder as having none, not a broken-image browser icon.
   const [previewFailed, setPreviewFailed] = useState(false);
 
+  /** Sets local state AND notifies a parent that owns the slot. */
+  function report(message: string | null) {
+    setError(message);
+    onError?.(message);
+  }
+
   async function handleFile(file: File) {
-    setError(null);
+    report(null);
     setIsUploading(true);
 
     try {
@@ -67,7 +83,7 @@ export function ImageUploadField({
       setPreviewFailed(false);
       onChange(result.url);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : t('failed'));
+      report(caught instanceof ApiError ? caught.message : t('failed'));
     } finally {
       setIsUploading(false);
       // Lets the same file be re-selected immediately after a failure —
@@ -175,7 +191,8 @@ export function ImageUploadField({
         />
       ) : null}
 
-      {error ? (
+      {/* Only when nobody upstream took it — see `onError`. */}
+      {!onError && error ? (
         <p role="alert" className="text-destructive text-sm">
           {error}
         </p>

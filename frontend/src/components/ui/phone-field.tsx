@@ -44,6 +44,18 @@ interface PhoneFieldProps {
   disabled?: boolean;
   maxLength?: number;
   'aria-describedby'?: string;
+  /**
+   * Hoists the validation message to a parent that owns the message slot —
+   * `ui/field.tsx`, in practice.
+   *
+   * The failure itself stays INTERNAL: whether a number parses for a given
+   * country is decided here on blur, and no parent can know it. So this
+   * reports the outcome upward rather than moving the decision. Omit it and
+   * the field keeps rendering its own message exactly as before, which is
+   * what lets the five existing call sites stay untouched until each one
+   * opts in.
+   */
+  onError?: (message: string | null) => void;
 }
 
 export function PhoneField({
@@ -53,6 +65,7 @@ export function PhoneField({
   country,
   disabled,
   maxLength = 40,
+  onError,
   ...rest
 }: PhoneFieldProps) {
   const tCommon = useTranslations('common');
@@ -64,19 +77,26 @@ export function PhoneField({
   // honest hint. Falls back to the shared example when no country is chosen.
   const placeholder = exampleFor(country) ?? tCommon('placeholders.phone');
 
+  /** Sets local state AND notifies a parent that owns the slot, so the two
+   *  can never show different things. */
+  function report(message: string | null) {
+    setError(message);
+    onError?.(message);
+  }
+
   function handleBlur() {
     const raw = value.trim();
     if (!raw) {
-      setError(null);
+      report(null);
       return;
     }
 
     if (!isValidPhone(raw, country)) {
-      setError(country ? tCommon('phoneInvalid') : tCommon('phoneInvalidNoCountry'));
+      report(country ? tCommon('phoneInvalid') : tCommon('phoneInvalidNoCountry'));
       return;
     }
 
-    setError(null);
+    report(null);
     // Valid — store the canonical form. `toE164` cannot return null here,
     // since `isValidPhone` just succeeded on the same input.
     const canonical = toE164(raw, country);
@@ -102,11 +122,14 @@ export function PhoneField({
         onChange={(event) => {
           // Formatting only — never normalize mid-typing.
           onChange(formatAsYouType(event.target.value, country));
-          if (error) setError(null);
+          if (error) report(null);
         }}
         onBlur={handleBlur}
       />
-      {error ? (
+      {/* Only when nobody upstream took the message: a parent that passed
+          `onError` renders it in its own slot, and printing it twice would
+          be worse than either alone. */}
+      {!onError && error ? (
         <p id={errorId} role="alert" className="text-destructive text-sm">
           {error}
         </p>

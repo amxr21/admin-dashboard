@@ -208,7 +208,8 @@
       "none": "Not set"
     },
     "phoneInvalid": "That does not look like a valid phone number for the selected country.",
-    "phoneInvalidNoCountry": "That does not look like a valid international phone number."
+    "phoneInvalidNoCountry": "That does not look like a valid international phone number.",
+    "requiredField": "required"
   },
   "language": {
     "label": "Language",
