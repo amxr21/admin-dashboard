@@ -1810,9 +1810,13 @@
       "revoked": "That key was revoked.",
       "alreadyGone": "That key was already revoked.",
       "createTitle": "Create an API key",
-      "createDescription": "This key will be able to do anything your own account can do. Give it a name that says what it’s for.",
+      "createDescription": "The key is generated automatically and can do anything your account can do. Record why it is needed and who will hold it.",
       "nameLabel": "Name",
       "namePlaceholder": "e.g. Inventory sync script",
+      "purposeLabel": "Reason for this key",
+      "purposePlaceholder": "e.g. Sync stock with the warehouse",
+      "recipientLabel": "Who will hold or receive it?",
+      "recipientPlaceholder": "e.g. Warehouse integration team",
       "cancel": "Cancel",
       "revealTitle": "Your new API key",
       "shownOnce": "Shown once. Save it somewhere safe — it cannot be viewed again, only revoked and replaced.",
@@ -1826,6 +1830,14 @@
         "cancel": "Cancel",
         "action": "Revoke"
       }
+    },
+    "activeSessions": {
+      "title": "Staff signed in now",
+      "description": "Active staff devices across the dashboard. Refreshes every 15 seconds while this page is open.",
+      "refresh": "Refresh",
+      "loading": "Loading sessions…",
+      "empty": "No staff sessions are active.",
+      "unknownDevice": "Unknown device"
     },
     "dangerZone": {
       "title": "Danger zone",
@@ -2209,11 +2221,29 @@
     "permissions": {
       "title": "Permissions",
       "description": "Which areas each role can reach. Enforced by the server — this is a read-only view of that model.",
+      "descriptionEditable": "Which areas each role can reach. Changes apply the next time that person loads a page.",
       "area": "Area",
       "readOnly": "Read-only",
+      "readOnlyExplained": "Reaches these areas but cannot change anything in them.",
       "granted": "{role} can reach {area}",
       "notGranted": "{role} cannot reach {area}",
       "alwaysFull": "Always full",
+      "alwaysFullExplained": "always reach every area, and cannot be narrowed.",
+      "coverage": "{count} of {total}",
+      "customised": "Changed",
+      "customisedExplained": "Changed from the default that shipped with this version.",
+      "grantAll": "Give {role} every area",
+      "revokeAll": "Remove every area from {role}",
+      "resetRole": "Return {role} to the default",
+      "ownerOnly": "Owner only",
+      "ownerOnlyExplained": "No other role reaches {area} right now — this is a deliberate setting, not a missing one.",
+      "groups": {
+        "selling": "Selling",
+        "fulfilment": "Fulfilment",
+        "catalogue": "Customers & catalogue",
+        "oversight": "Oversight",
+        "other": "Other"
+      },
       "reset": "Reset",
       "resetDone": "Returned to the default",
       "toggle": "{role} can open {area}"

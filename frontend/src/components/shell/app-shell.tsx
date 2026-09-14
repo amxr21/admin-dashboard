@@ -24,10 +24,11 @@ import { Forbidden } from '@/components/shell/forbidden';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { canAccessArea, isReadOnlyRole, type StaffRole } from '@/config/areas';
+import { isReadOnlyRole, type StaffRole } from '@/config/areas';
 import { resolveAreaForPath } from '@/config/navigation';
 import { useResourceSchema } from '@/components/providers/schema-provider';
 import { useAppSettings } from '@/components/providers/settings-provider';
+import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
 import { useSidebarCollapse } from '@/hooks/useSidebarCollapse';
 import { usePathname } from '@/i18n/navigation';
 import { cn } from '@/lib/utils';
@@ -72,6 +73,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   const pathname = usePathname();
   const { resources } = useResourceSchema();
   const { logoUrl, sidebarMode, storeName } = useAppSettings();
+  const canAccessArea = useCanAccessArea();
   const pageTitle = usePageTitle();
   const breadcrumbSegments = useBreadcrumbSegments();
   // Collapse/expand is a personal per-browser preference, separate from
@@ -165,6 +167,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
         </div>
         <SidebarNav
           role={effectiveRole}
+          canAccessArea={canAccessArea}
           onNavigate={() => setDrawerOpen(false)}
           collapsed={collapsedForThis}
         />
@@ -173,7 +176,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   }
 
   return (
-    <div data-slot="app-shell" className="flex h-dvh overflow-hidden">
+    <div data-slot="app-shell" className="flex h-dvh min-h-0 overflow-hidden">
       <OnboardingWelcome />
       <GlobalLoadingOverlay />
 

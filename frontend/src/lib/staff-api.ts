@@ -342,6 +342,17 @@ export interface StaffSession {
   lastSeenAt: string;
 }
 
+export interface ActiveStaffSession extends StaffSession {
+  userId: string;
+  name: string | null;
+  email: string;
+  role: StaffRole;
+}
+
+export async function fetchActiveStaffSessions(): Promise<ActiveStaffSession[]> {
+  return apiFetch<ActiveStaffSession[]>('/staff/sessions/active');
+}
+
 /** Live sessions for another user. Rank-checked server-side: nobody reaches
  *  upward, exactly as with any other staff write. */
 export async function fetchStaffSessions(id: string): Promise<StaffSession[]> {

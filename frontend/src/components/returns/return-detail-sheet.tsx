@@ -21,7 +21,8 @@ import {
 } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
-import { canAccessArea, type StaffRole } from '@/config/areas';
+import { type StaffRole } from '@/config/areas';
+import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useAuth } from '@/hooks/useAuth';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
@@ -63,6 +64,7 @@ export function ReturnDetailSheet({
   onOpenChange,
   onChanged,
 }: ReturnDetailSheetProps) {
+  const canAccessArea = useCanAccessArea();
   const t = useTranslations('returns.detail');
   const tAudit = useTranslations('audit');
   const formatter = useFormatter();

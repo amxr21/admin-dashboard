@@ -40,7 +40,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { canAccessArea, type StaffRole } from '@/config/areas';
+import { type StaffRole } from '@/config/areas';
+import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
 import { useAuth } from '@/hooks/useAuth';
 import { useUrlState } from '@/hooks/useUrlState';
 import { useTableDensity } from '@/hooks/useTableDensity';
@@ -94,6 +95,7 @@ interface ResourceTableProps {
 
 
 export function ResourceTable({ schema }: ResourceTableProps) {
+  const canAccessArea = useCanAccessArea();
   const t = useTranslations('resource');
   const fieldLabel = useResourceFieldLabel(schema.resource);
   const tAudit = useTranslations('audit');

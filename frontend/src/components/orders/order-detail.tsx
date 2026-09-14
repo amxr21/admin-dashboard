@@ -28,7 +28,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { canAccessArea, type StaffRole } from '@/config/areas';
+import { type StaffRole } from '@/config/areas';
+import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
 import { useAuth } from '@/hooks/useAuth';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
@@ -84,6 +85,7 @@ const NEIGHBOR_PARAM_KEYS = ['search', 'status', 'from', 'to', 'sort', 'dir'] as
  */
 
 export function OrderDetail({ id }: { id: string }) {
+  const canAccessArea = useCanAccessArea();
   const t = useTranslations('orders');
   const tReturn = useTranslations('returns.detail');
   const tNav = useTranslations('nav');

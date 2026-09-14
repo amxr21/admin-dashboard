@@ -5,6 +5,7 @@ import { DangerZonePanel } from '@/components/settings/danger-zone-panel';
 import { MyAccountPanel } from '@/components/settings/my-account-panel';
 import { TwoFactorPanel } from '@/components/settings/two-factor-panel';
 import { SessionsPanel } from '@/components/settings/sessions-panel';
+import { ActiveStaffSessionsPanel } from '@/components/settings/active-staff-sessions-panel';
 import { ApiKeysPanel } from '@/components/settings/api-keys-panel';
 import { DataExportPanel } from '@/components/settings/data-export-panel';
 import { PoliciesPanel } from '@/components/settings/policies-panel';
@@ -60,6 +61,7 @@ export default async function SettingsPage({
       */}
       <TwoFactorPanel />
       <SessionsPanel />
+      <ActiveStaffSessionsPanel />
       <ApiKeysPanel />
       <PersonalSettingsPanel />
       <SettingsForm />

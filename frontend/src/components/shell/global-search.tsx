@@ -15,7 +15,8 @@ import {
   RESOURCE_ICON_FALLBACK,
   type NavItem,
 } from '@/config/navigation';
-import { canAccessArea, type StaffRole } from '@/config/areas';
+import { type StaffRole } from '@/config/areas';
+import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
 import { search as searchContent, type SearchHit } from '@/lib/search-api';
 import { cn } from '@/lib/utils';
 import { useAppSettings } from '@/components/providers/settings-provider';
@@ -64,6 +65,7 @@ interface ContentResult {
 type Result = PageResult | ContentResult;
 
 export function GlobalSearch({ role }: { role: StaffRole }) {
+  const canAccessArea = useCanAccessArea();
   const t = useTranslations('nav');
   const router = useRouter();
   const { resources } = useResourceSchema();
@@ -123,7 +125,7 @@ export function GlobalSearch({ role }: { role: StaffRole }) {
         label: t.has(item.labelKey) ? t(item.labelKey) : item.labelKey,
         icon: item.icon,
       }));
-  }, [resources, role, t, enabledFeatures]);
+  }, [resources, role, t, enabledFeatures, canAccessArea]);
 
   const pageResults = useMemo(() => {
     const q = query.trim().toLowerCase();

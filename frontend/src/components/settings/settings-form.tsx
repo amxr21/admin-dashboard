@@ -9,7 +9,7 @@ import { ErrorScreen } from '@/components/errors/error-screen';
 import { ImageUploadField } from '@/components/image-upload-field';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -366,8 +366,8 @@ export function SettingsForm() {
         ))}
       </div>
 
-      <div className="flex items-center gap-3 border-t pt-4">
-        <Button disabled={isSaving || !isDirty} onClick={() => void submit()}>
+      <div className="bg-background/95 sticky bottom-0 z-20 flex flex-wrap items-center justify-end gap-3 border-t px-3 py-4 shadow-[0_-6px_20px_-12px_rgba(0,0,0,0.3)] backdrop-blur supports-[backdrop-filter]:bg-background/85 rtl:justify-start">
+        <Button className="order-last min-h-11 rtl:order-first" disabled={isSaving || !isDirty} onClick={() => void submit()}>
           {isSaving ? t('saving') : t('save')}
         </Button>
 
@@ -481,10 +481,10 @@ function NavLabelField({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <Checkbox
+          <Switch
             id={toggleId}
             checked={isOverridden}
-            onCheckedChange={(checked) => toggle(checked === true)}
+            onCheckedChange={toggle}
             aria-describedby={`${id}-hint`}
           />
           <Label htmlFor={toggleId} className="text-sm font-normal">
@@ -544,10 +544,10 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
       case 'boolean':
         return (
           <div className="flex items-center gap-2">
-            <Checkbox
+            <Switch
               id={id}
               checked={Boolean(value)}
-              onCheckedChange={(checked) => onChange(checked === true)}
+              onCheckedChange={onChange}
               {...aria}
             />
             <Label htmlFor={id}>{setting.label}</Label>

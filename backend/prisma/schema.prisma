@@ -609,6 +609,10 @@ model ApiKey {
   /// tell keys apart once the plaintext is gone forever.
   name String @db.VarChar(120)
 
+  /// Why this credential was issued and who will hold it. Never store the key itself.
+  purpose   String @db.VarChar(255)
+  recipient String @db.VarChar(255)
+
   /// Keyed HMAC-SHA256, indexed for a one-read lookup on every authenticated
   /// request that uses a key instead of a session token.
   keyHash    String @unique @map("key_hash")

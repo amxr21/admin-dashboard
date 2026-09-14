@@ -51,6 +51,8 @@ function previewOf(plain: string): string {
 export interface ApiKeySummary {
   id: string;
   name: string;
+  purpose: string;
+  recipient: string;
   keyPreview: string;
   lastUsedAt: string | null;
   createdAt: string;
@@ -62,7 +64,7 @@ export async function listApiKeys(userId: string): Promise<ApiKeySummary[]> {
   const rows = await prisma.apiKey.findMany({
     where: { userId, revokedAt: null },
     orderBy: { createdAt: 'desc' },
-    select: { id: true, name: true, keyPreview: true, lastUsedAt: true, createdAt: true },
+    select: { id: true, name: true, purpose: true, recipient: true, keyPreview: true, lastUsedAt: true, createdAt: true },
   });
 
   return rows.map((row) => ({
@@ -75,6 +77,8 @@ export async function listApiKeys(userId: string): Promise<ApiKeySummary[]> {
 export interface CreatedApiKey {
   id: string;
   name: string;
+  purpose: string;
+  recipient: string;
   /** Plaintext, returned exactly once — same one-time-reveal contract as a
    * courier access code, password-reset token, or 2FA backup code. */
   key: string;
@@ -82,7 +86,7 @@ export interface CreatedApiKey {
 
 const MAX_LIVE_KEYS_PER_USER = 20;
 
-export async function createApiKey(userId: string, name: string): Promise<CreatedApiKey> {
+export async function createApiKey(userId: string, name: string, purpose: string, recipient: string): Promise<CreatedApiKey> {
   // A soft ceiling, not a hard security boundary — it exists so an
   // automation bug that calls this endpoint in a loop fails loudly with a
   // clear message rather than silently filling the table one row at a time.
@@ -99,10 +103,12 @@ export async function createApiKey(userId: string, name: string): Promise<Create
     data: {
       userId,
       name,
+      purpose,
+      recipient,
       keyHash: hashKey(plain),
       keyPreview: previewOf(plain),
     },
-    select: { id: true, name: true },
+    select: { id: true, name: true, purpose: true, recipient: true },
   });
 
   return { ...row, key: plain };

@@ -9,6 +9,14 @@ body[data-scroll-locked] [data-slot='app-shell'] nav {
   overflow: hidden;
 }
 
+/* The dashboard owns its scroll in <main>. The locale transition wrapper and
+   portalled UI can otherwise make the document itself a second scroll region. */
+html:has([data-slot='app-shell']),
+body:has([data-slot='app-shell']) {
+  height: 100dvh;
+  overflow: hidden;
+}
+
 /* URG-011: the sidebar nav (19+ items, grows with schema resources — see
    sidebar-nav.tsx) can still legitimately need its own scrollbar on a short
    viewport even after tightening its row spacing. <main> is the shell's one

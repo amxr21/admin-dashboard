@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 
-import { canAccessArea, type StaffRole } from '@/config/areas';
+import { type StaffRole } from '@/config/areas';
+import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
 import { fetchReturns } from '@/lib/returns-api';
 
 /**
@@ -29,6 +30,7 @@ export interface NavCounts {
 }
 
 export function useNavCounts(role: StaffRole): NavCounts {
+  const canAccessArea = useCanAccessArea();
   const [returns, setReturns] = useState<number | null>(null);
   const canSeeReturns = canAccessArea(role, 'returns');
 

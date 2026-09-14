@@ -4,11 +4,12 @@ import { useTranslations } from 'next-intl';
 import { ArrowRight } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { canAccessArea } from '@/config/areas';
+import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { isSetupPathEnabled } from '@/lib/setup-visibility';
 
 export function FeatureSettingsLinks() {
+  const canAccessArea = useCanAccessArea();
   const t = useTranslations('settings.features');
   const { user } = useAuth();
   const { enabledFeatures } = useAppSettings();

@@ -90,6 +90,32 @@ afterAll(async () => {
  * MANAGER must not be able to watch an OWNER's logins or sign them out.
  */
 describe('sessions and login history are rank-checked like any other staff write', () => {
+  it('shows a newly signed-in staff device to the owner but not a manager', async () => {
+    const session = await prisma.session.create({
+      data: { userId: supportId, userAgent: 'Cash desk browser', ip: '127.0.0.1' },
+    });
+    try {
+      const ownerView = await request(app).get('/api/v1/staff/sessions/active').set(auth(ownerToken));
+      expect(ownerView.status).toBe(200);
+      expect((ownerView.body as { data: { id: string; userId: string }[] }).data)
+        .toEqual(expect.arrayContaining([expect.objectContaining({ id: session.id, userId: supportId })]));
+
+      const managerView = await request(app).get('/api/v1/staff/sessions/active').set(auth(managerToken));
+      expect(managerView.status).toBe(403);
+
+      // Business-wide diagnostic: the Developer is the account that exists to
+      // investigate sign-in problems, so it must not be denied alongside the
+      // manager. This is the branch the OWNER-only first draft got wrong.
+      const developer = await makeUser(StaffRole.DEVELOPER, 'developer-sessions');
+      const developerView = await request(app)
+        .get('/api/v1/staff/sessions/active')
+        .set(auth(developer.token));
+      expect(developerView.status).toBe(200);
+    } finally {
+      await prisma.session.delete({ where: { id: session.id } });
+    }
+  });
+
   it('lets an owner read the sessions of a lower-ranked user', async () => {
     const res = await request(app)
       .get(`/api/v1/staff/${supportId}/sessions`)

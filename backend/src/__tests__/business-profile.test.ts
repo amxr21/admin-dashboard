@@ -63,7 +63,7 @@ async function makeApiKey(role: StaffRole, label: string): Promise<string> {
   const res = await request(app)
     .post('/api/v1/auth/me/api-keys')
     .set(auth(signToken(user)))
-    .send({ name: `${label} integration` });
+    .send({ purpose: 'Test integration', recipient: 'Test operator', name: `${label} integration` });
 
   return (res.body as CreatedKeyBody).data.key;
 }
@@ -119,7 +119,7 @@ describe('GET /business/profile — authentication', () => {
     const createRes = await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(token))
-      .send({ name: 'Short-lived integration' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'Short-lived integration' });
     const created = (createRes.body as CreatedKeyBody).data;
 
     await request(app).delete(`/api/v1/auth/me/api-keys/${created.id}`).set(auth(token));

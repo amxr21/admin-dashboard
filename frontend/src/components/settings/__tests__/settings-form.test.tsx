@@ -101,12 +101,12 @@ describe('rendering a control per declared type', () => {
     expect(screen.getByRole('heading', { name: /navigation labels/i })).toBeInTheDocument();
   });
 
-  it('renders a checkbox for boolean', async () => {
+  it('renders a switch for boolean settings', async () => {
     fetchSettings.mockResolvedValue(makeSettings());
     render(<SettingsForm />);
 
-    const checkbox = await screen.findByRole('checkbox', { name: /show the demo banner/i });
-    expect(checkbox).toBeChecked();
+    const control = await screen.findByRole('switch', { name: /show the demo banner/i });
+    expect(control).toHaveAttribute('aria-checked', 'true');
   });
 
   it('renders a select for enum, with its options', async () => {
@@ -173,7 +173,7 @@ describe('saving only what changed', () => {
     fetchSettings.mockResolvedValue(makeSettings());
 
     render(<SettingsForm />);
-    await screen.findByRole('checkbox', { name: /show the demo banner/i });
+    await screen.findByRole('switch', { name: /show the demo banner/i });
 
     expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
     expect(saveSettings).not.toHaveBeenCalled();
