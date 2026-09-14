@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { Label } from '@/components/ui/label';
@@ -40,6 +41,26 @@ import { cn } from '@/lib/utils';
  *
  * `label` is optional: `product-gallery-panel` mounts an upload control with
  * no label at all, and forcing one there would invent a heading for a button.
+ *
+ * ─── WARNINGS ARE A THIRD THING, NOT A SECOND HINT ───────────────────
+ * `resource-form` carries three advisory messages that are neither an error
+ * nor a description: "changing this slug records a redirect", "turning
+ * variants off hides the builder", and a caller-supplied note about the
+ * stored value. They differ from a hint in WHEN they appear — a hint explains
+ * the field always, a warning appears because of what the user just did — so
+ * folding them into `description` would make editing a field hide the
+ * explanation of what the field is.
+ *
+ * They stack below the one message slot rather than replacing it, and they
+ * are suppressed while an error shows, for the same reason the hint is: a
+ * validation failure is the more urgent thing to read.
+ *
+ * ─── THE CARD VARIANT ────────────────────────────────────────────────
+ * `settings-form` renders each setting as a bordered card rather than a bare
+ * stack. That is a real, deliberate difference — the settings page is a grid
+ * of independent choices, where every other form is a sequence of fields in
+ * one panel — so it is a variant here rather than a reason for that file to
+ * keep its own copy of this component.
  */
 
 interface FieldProps {
@@ -59,6 +80,22 @@ interface FieldProps {
   error?: string | undefined;
   /** A standing explanation, shown only while there is no error. */
   description?: ReactNode;
+  /**
+   * Advisory messages about what the user just did — not about what the field
+   * IS. Stacked below the message slot, each with a warning icon, and hidden
+   * entirely while an error shows.
+   *
+   * Falsy entries are dropped, so a caller can pass a conditional list
+   * (`[changed && msg, optedOut && other]`) without filtering first — which
+   * is exactly the shape the three conditions in `resource-form` produce.
+   */
+  warnings?: ReactNode[];
+  /**
+   * Renders the field as a bordered card. For a page that is a GRID of
+   * independent choices (settings) rather than a sequence of fields in one
+   * panel, which is every other form.
+   */
+  card?: boolean;
   /** Spans both columns of a two-column form grid. */
   fullWidth?: boolean;
   className?: string;
@@ -77,6 +114,8 @@ export function Field({
   required = false,
   error,
   description,
+  warnings,
+  card = false,
   fullWidth = false,
   className,
   children,
@@ -84,8 +123,20 @@ export function Field({
   const t = useTranslations('common');
   const { errorId, hintId } = fieldMessageIds(id);
 
+  // Filtered here rather than at each call site: the conditions producing
+  // these are per-field booleans, and making every caller compact its own
+  // array is how one of them ends up rendering a stray `false`.
+  const shownWarnings = (warnings ?? []).filter(Boolean);
+
   return (
-    <div className={cn('space-y-2', fullWidth && 'col-span-full', className)}>
+    <div
+      className={cn(
+        'space-y-2',
+        card && 'bg-card/50 rounded-lg border p-4',
+        fullWidth && 'col-span-full',
+        className,
+      )}
+    >
       {label !== undefined ? (
         // `id` as well as `htmlFor`: a radiogroup or segmented control cannot
         // be the target of `htmlFor`, so it names itself with
@@ -115,6 +166,22 @@ export function Field({
           {description}
         </p>
       ) : null}
+
+      {/* Suppressed entirely while an error shows — see the doc comment on
+          why these are a third category rather than a second hint. */}
+      {!error && shownWarnings.length > 0
+        ? shownWarnings.map((warning, index) => (
+            // Index as key: these are a fixed, ordered set of conditions per
+            // field, never reordered and never individually removed.
+            <p
+              key={index}
+              className="text-muted-foreground flex items-start gap-1.5 text-sm"
+            >
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+              {warning}
+            </p>
+          ))
+        : null}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PhoneField } from '@/components/ui/phone-field';
@@ -94,6 +95,9 @@ export function BranchSheet({
   const [isDefault, setIsDefault] = useState(branch?.isDefault ?? false);
   const [error, setError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
+  /** Hoisted out of PhoneField so its parse failure shares the one slot the
+   *  field's own wrapper owns — see ui/field.tsx. */
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const isEdit = branch !== null;
@@ -186,15 +190,23 @@ export function BranchSheet({
           ) : null}
 
           {TEXT_FIELDS.map((field) => (
-            <div key={field} className="space-y-2">
-              <Label htmlFor={`branch-${field}`}>
-                {t(`fields.${field}`)}
-                {field === 'name' ? (
-                  <span className="text-destructive ms-1" aria-hidden>
-                    *
-                  </span>
-                ) : null}
-              </Label>
+            <Field
+              key={field}
+              id={`branch-${field}`}
+              label={t(`fields.${field}`)}
+              required={field === 'name'}
+              // One slot per field: the name's validation message and the
+              // phone's own parse failure both land here rather than each
+              // control printing its own.
+              error={
+                field === 'name'
+                  ? (nameError ?? undefined)
+                  : field === 'phone'
+                    ? (phoneError ?? undefined)
+                    : undefined
+              }
+              description={field === 'code' ? t('codeHint') : undefined}
+            >
               {field === 'phone' ? (
                 /* A branch inherits its business country. Use that country
                    for the example and validation; null keeps the international
@@ -204,6 +216,7 @@ export function BranchSheet({
                   value={values.phone ?? ''}
                   onChange={(next) => set('phone', next)}
                   country={business.country}
+                  onError={setPhoneError}
                 />
               ) : (
                 <Input
@@ -216,15 +229,7 @@ export function BranchSheet({
                   aria-describedby={field === 'name' && nameError ? 'branch-name-error' : undefined}
                 />
               )}
-              {field === 'name' && nameError ? (
-                <p id="branch-name-error" role="alert" className="text-destructive text-sm">
-                  {nameError}
-                </p>
-              ) : null}
-              {field === 'code' ? (
-                <p className="text-muted-foreground text-xs">{t('codeHint')}</p>
-              ) : null}
-            </div>
+            </Field>
           ))}
 
           <div className="space-y-3 border-t pt-4">

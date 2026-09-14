@@ -115,6 +115,92 @@ describe('the required marker', () => {
   });
 });
 
+describe('warnings', () => {
+  /**
+   * A third category, not a second hint. `resource-form` carries three of
+   * these — a slug change recording a redirect, variants being switched off,
+   * a note about the stored value — and they differ from a description in
+   * WHEN they appear: a hint explains the field always, a warning appears
+   * because of something the user just did.
+   */
+  it('stacks below the description rather than replacing it', () => {
+    render(
+      <Field
+        id="slug"
+        label="Slug"
+        description="Used in the product's public URL."
+        warnings={['Changing this records a redirect.']}
+      >
+        <Input id="slug" />
+      </Field>,
+    );
+
+    expect(screen.getByText("Used in the product's public URL.")).toBeInTheDocument();
+    expect(screen.getByText('Changing this records a redirect.')).toBeInTheDocument();
+  });
+
+  it('hides them while an error is showing', () => {
+    // A validation failure is the more urgent thing to read — the same
+    // precedence the description already follows.
+    render(
+      <Field
+        id="slug"
+        label="Slug"
+        error="Enter a slug."
+        warnings={['Changing this records a redirect.']}
+      >
+        <Input id="slug" />
+      </Field>,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a slug.');
+    expect(screen.queryByText('Changing this records a redirect.')).not.toBeInTheDocument();
+  });
+
+  it('drops falsy entries so a caller can pass raw conditions', () => {
+    // The three conditions in resource-form are per-field booleans. Making
+    // every caller compact its own array is how one ends up rendering a
+    // stray `false`.
+    render(
+      <Field
+        id="slug"
+        label="Slug"
+        warnings={[false && 'never', 'shown', undefined, null]}
+      >
+        <Input id="slug" />
+      </Field>,
+    );
+
+    expect(screen.getByText('shown')).toBeInTheDocument();
+    expect(screen.queryByText('never')).not.toBeInTheDocument();
+  });
+});
+
+describe('the card variant', () => {
+  it('is off by default, so every existing form is unchanged', () => {
+    const { container } = render(
+      <Field id="name" label="Name">
+        <Input id="name" />
+      </Field>,
+    );
+
+    expect(container.firstElementChild).not.toHaveClass('rounded-lg');
+  });
+
+  it('renders a bordered card when asked', () => {
+    // Settings is a grid of independent choices rather than a sequence of
+    // fields in one panel — a real difference, so a variant rather than a
+    // reason for that file to keep its own copy of this component.
+    const { container } = render(
+      <Field id="name" label="Name" card>
+        <Input id="name" />
+      </Field>,
+    );
+
+    expect(container.firstElementChild).toHaveClass('rounded-lg', 'border');
+  });
+});
+
 describe('the label', () => {
   it('associates with the control it wraps', () => {
     render(

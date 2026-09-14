@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { TriangleAlert } from 'lucide-react';
 
 import {
   AlertDialog,
@@ -19,6 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { CollapsibleSection } from '@/components/ui/collapsible-section';
 import { DatePicker } from '@/components/ui/date-picker';
 import { ImageUploadField } from '@/components/image-upload-field';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ProductGalleryPanel } from '@/components/resource/product-gallery-panel';
@@ -1246,59 +1246,26 @@ function FormField({
   }
 
   return (
-    <div className={cn('space-y-2', className)}>
-      {field.type === 'boolean' ? null : (
-        <Label htmlFor={id} id={`${id}-label`}>
-          {label}
-          {field.required ? (
-            <span className="text-destructive ms-1" aria-hidden>
-              *
-            </span>
-          ) : null}
-        </Label>
-      )}
-
+    <Field
+      id={id}
+      // A boolean renders its own inline label beside the checkbox, so the
+      // wrapper must not render a second one above it.
+      {...(field.type === 'boolean' ? {} : { label, required: field.required })}
+      error={error}
+      description={field.description}
+      // All three are advisory and all three are about what the user just
+      // did, not about what the field is — see `Field`'s own note on why they
+      // are a separate category from the description. Falsy entries are
+      // dropped inside the wrapper, so the conditions can be passed raw.
+      warnings={[
+        showChangeWarning && field.changeWarning,
+        showVariantOptOutWarning && t('variantOptOutWarning'),
+        notice,
+      ]}
+      className={className}
+    >
       {control()}
-
-      {error ? (
-        <p id={errorId} role="alert" className="text-destructive text-sm">
-          {error}
-        </p>
-      ) : field.description ? (
-        // Directly under the control and never dismissed — the whole point is
-        // that it is still there while the field is being filled in, which a
-        // placeholder cannot be. Suppressed while an error shows, matching
-        // `aria-describedby` above so the announced and visible descriptions
-        // are always the same one.
-        <p id={hintId} className="text-muted-foreground text-sm">
-          {field.description}
-        </p>
-      ) : null}
-
-      {!error && showChangeWarning ? (
-        <p className="text-muted-foreground flex items-start gap-1.5 text-sm">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          {field.changeWarning}
-        </p>
-      ) : null}
-
-      {!error && showVariantOptOutWarning ? (
-        <p className="text-muted-foreground flex items-start gap-1.5 text-sm">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          {t('variantOptOutWarning')}
-        </p>
-      ) : null}
-
-      {/* A caller-supplied note about THIS field's stored value — see the
-          `notice` prop's own comment on why it is generic rather than a
-          second product-specific branch in here. */}
-      {!error && notice ? (
-        <p className="text-muted-foreground flex items-start gap-1.5 text-sm">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          {notice}
-        </p>
-      ) : null}
-    </div>
+    </Field>
   );
 }
 

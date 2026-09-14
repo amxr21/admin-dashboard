@@ -534,7 +534,10 @@ describe('required fields', () => {
     await userEvent.type(screen.getByLabelText(/price/i), '9.99');
     await userEvent.click(await screen.findByRole('button', { name: 'Save' }));
 
-    expect(await screen.findAllByText(/required/i)).not.toHaveLength(0);
+    // The MESSAGE, not the word: required fields carry a visually-hidden
+    // "required" marker now, so matching loosely would pass even if the
+    // validation error never rendered.
+    expect(await screen.findByText('This field is required.')).toBeInTheDocument();
     expect(createRow).not.toHaveBeenCalled();
   });
 
@@ -545,7 +548,7 @@ describe('required fields', () => {
 
     await userEvent.type(screen.getByLabelText(/price/i), '9.99');
     await userEvent.click(await screen.findByRole('button', { name: 'Save' }));
-    expect(await screen.findAllByText(/required/i)).not.toHaveLength(0);
+    expect(await screen.findByText('This field is required.')).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText(/name/i), 'Vase');
 
@@ -732,7 +735,12 @@ describe('inline validation on blur', () => {
     await userEvent.click(await screen.findByLabelText(/name/i));
     await userEvent.tab();
 
-    expect(screen.queryByText(/required/i)).not.toBeInTheDocument();
+    // Queried by ROLE, not by the word "required": every required field now
+    // carries a visually-hidden "required" beside its asterisk (see
+    // `ui/field.tsx`), so a loose text match would find the marker and report
+    // a validation error that never happened. The error paragraph is the only
+    // thing here with `role="alert"`.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('does not require a Save attempt first — blur alone is enough to surface the message', async () => {
