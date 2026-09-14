@@ -1,6 +1,11 @@
 import { apiFetch } from '@/lib/api';
 import type { Area, StaffRole } from '@/config/areas';
 
+export interface DeveloperVisibility {
+  areas: Area[];
+  hiddenAreas: Area[];
+}
+
 /**
  * Reads the LIVE permission model from `GET /roles` — deliberately NOT the
  * hardcoded copy in `config/areas.ts`. That copy exists so the sidebar can
@@ -52,4 +57,15 @@ export async function setRoleAreas(role: StaffRole, areas: Area[]): Promise<Role
 /** Drop the override, returning the role to the shipped default. */
 export async function resetRoleAreas(role: StaffRole): Promise<RoleGrant> {
   return apiFetch<RoleGrant>(`/roles/${role}/areas`, { method: 'DELETE' });
+}
+
+export async function fetchDeveloperVisibility(): Promise<DeveloperVisibility> {
+  return apiFetch<DeveloperVisibility>('/roles/developer/visibility');
+}
+
+export async function setDeveloperVisibility(hiddenAreas: Area[]): Promise<DeveloperVisibility> {
+  return apiFetch<DeveloperVisibility>('/roles/developer/visibility', {
+    method: 'PUT',
+    body: JSON.stringify({ hiddenAreas }),
+  });
 }

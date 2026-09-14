@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { StaffRole } from '@prisma/client';
 
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
-import { requireRole } from '../../middleware/authorize.js';
+import { requireDeveloperVisible, requireRole } from '../../middleware/authorize.js';
+import { AREAS } from '../../config/roles.js';
 import { audit } from '../../services/audit.service.js';
 import { deleteDemoData, previewDemoData } from '../../services/demo-data.service.js';
 
@@ -16,7 +17,11 @@ import { deleteDemoData, previewDemoData } from '../../services/demo-data.servic
  */
 export const demoDataRouter = Router();
 
-const guard = [authenticate, requireRole(StaffRole.OWNER, StaffRole.DEVELOPER)] as const;
+const guard = [
+  authenticate,
+  requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  requireDeveloperVisible(...AREAS),
+] as const;
 
 demoDataRouter.get('/danger-zone/demo-data', ...guard, async (_req, res) => {
   res.json({ data: await previewDemoData() });

@@ -22,7 +22,8 @@ import { AREAS, ROLE_AREAS, areasFor, type Area } from '../config/roles.js';
  * an owner who unticked their own `settings` box would lose the very screen
  * that ticks it back, and recovery would need database access. A stray row
  * for either role is ignored on read as well as refused on write, so even a
- * hand-written INSERT cannot lock anyone out.
+ * hand-written INSERT cannot lock anyone out. The separate Owner-controlled
+ * Developer visibility policy below can still remove selected business areas.
  *
  * ─── WHY A CACHE, AND WHY A SHORT ONE ────────────────────────────────
  * `canAccessArea` runs on essentially every authenticated request. Reading a
@@ -39,8 +40,9 @@ import { AREAS, ROLE_AREAS, areasFor, type Area } from '../config/roles.js';
  */
 
 const CACHE_TTL_MS = 15_000;
+const DEVELOPER_HIDDEN_AREAS_KEY = 'security.developerHiddenAreas';
 
-/** Roles whose access is fixed in code and can never be narrowed. */
+/** Roles excluded from the editable role matrix; Developer has a separate Owner policy. */
 const LOCKED_ROLES: readonly StaffRole[] = [StaffRole.DEVELOPER, StaffRole.OWNER];
 
 export function isLockedRole(role: StaffRole): boolean {
@@ -48,14 +50,49 @@ export function isLockedRole(role: StaffRole): boolean {
 }
 
 let cache: { at: number; overrides: Map<StaffRole, Area[]> } | null = null;
+let developerVisibilityCache: { at: number; hiddenAreas: Area[] } | null = null;
 
 /** Called after any write, so the change is visible immediately here. */
 export function clearRolePermissionCache(): void {
   cache = null;
+  developerVisibilityCache = null;
 }
 
 function isArea(value: unknown): value is Area {
   return typeof value === 'string' && (AREAS as readonly string[]).includes(value);
+}
+
+/** The customer's optional in-app privacy policy for the operator account. */
+export async function getDeveloperHiddenAreas(): Promise<readonly Area[]> {
+  if (developerVisibilityCache && Date.now() - developerVisibilityCache.at < CACHE_TTL_MS) {
+    return developerVisibilityCache.hiddenAreas;
+  }
+
+  const row = await prisma.setting.findUnique({
+    where: { key: DEVELOPER_HIDDEN_AREAS_KEY },
+    select: { value: true },
+  });
+  const hiddenAreas = Array.isArray(row?.value)
+    ? [...new Set(row.value.filter(isArea))]
+    : [];
+  developerVisibilityCache = { at: Date.now(), hiddenAreas };
+  return hiddenAreas;
+}
+
+export async function setDeveloperHiddenAreas(areas: string[]): Promise<readonly Area[]> {
+  const unknown = areas.filter((area) => !isArea(area));
+  if (unknown.length > 0) {
+    throw AppError.badRequest(`Unknown area: ${unknown.join(', ')}`, { field: 'hiddenAreas' });
+  }
+
+  const hiddenAreas = [...new Set(areas)] as Area[];
+  await prisma.setting.upsert({
+    where: { key: DEVELOPER_HIDDEN_AREAS_KEY },
+    create: { key: DEVELOPER_HIDDEN_AREAS_KEY, value: hiddenAreas },
+    update: { value: hiddenAreas },
+  });
+  clearRolePermissionCache();
+  return hiddenAreas;
 }
 
 async function loadOverrides(): Promise<Map<StaffRole, Area[]>> {
@@ -85,7 +122,11 @@ async function loadOverrides(): Promise<Map<StaffRole, Area[]>> {
 
 /** Every area this role may reach, overrides applied. */
 export async function resolveAreas(role: StaffRole): Promise<readonly Area[]> {
-  if (isLockedRole(role)) return AREAS;
+  if (role === StaffRole.OWNER) return AREAS;
+  if (role === StaffRole.DEVELOPER) {
+    const hiddenAreas = await getDeveloperHiddenAreas();
+    return AREAS.filter((area) => !hiddenAreas.includes(area));
+  }
 
   const overrides = await loadOverrides();
 
@@ -123,7 +164,7 @@ export async function listRolePermissions() {
 export async function setRoleAreas(role: StaffRole, areas: string[], actorId: string, tx?: Prisma.TransactionClient) {
   if (isLockedRole(role)) {
     throw AppError.badRequest(
-      'Owners and developers always keep full access and cannot be changed',
+      'Owners and developers cannot be changed through the role matrix',
       { field: 'role' },
     );
   }

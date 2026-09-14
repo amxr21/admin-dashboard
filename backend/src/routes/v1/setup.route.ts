@@ -2,14 +2,14 @@ import { Router } from 'express';
 import { StaffRole } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
-import { requireRole } from '../../middleware/authorize.js';
+import { requireDeveloperVisible, requireRole } from '../../middleware/authorize.js';
 import { AppError } from '../../errors/AppError.js';
 import { setupDraftSchema } from '../../config/setup.config.js';
 import { applySetup, previewSetup, readSetup, skipSetup } from '../../services/setup.service.js';
 import { audit } from '../../services/audit.service.js';
 
 export const setupRouter = Router();
-setupRouter.use('/setup', authenticate, requireRole(StaffRole.OWNER, StaffRole.DEVELOPER));
+setupRouter.use('/setup', authenticate, requireRole(StaffRole.OWNER, StaffRole.DEVELOPER), requireDeveloperVisible('settings'));
 setupRouter.get('/setup', async (_req, res) => { res.json({ data: await readSetup() }); });
 
 function parseDraft(body: unknown) {
