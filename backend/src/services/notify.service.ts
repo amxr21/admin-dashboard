@@ -31,6 +31,16 @@ export interface NotifyInput {
   body?: string | undefined;
   /** In-app deep link, e.g. '/admin/inventory'. */
   link?: string | undefined;
+  /**
+   * Which branch this alert is about, when the emitter knows one.
+   *
+   * Omitting it is a real choice, not a gap to fill later: an alert with no
+   * branch shows under EVERY branch (see the column's note in schema.prisma),
+   * which is right for anything install-wide. Only pass it where the alert
+   * genuinely concerns one location — guessing a branch here hides the row
+   * from every other one.
+   */
+  branchId?: string | undefined;
 }
 
 /** Fire-and-forget by design — see the note above. */
@@ -42,6 +52,7 @@ export function notify(entry: NotifyInput): void {
         title: entry.title,
         body: entry.body ?? null,
         link: entry.link ?? null,
+        branchId: entry.branchId ?? null,
       },
     })
     .catch((error: unknown) => {

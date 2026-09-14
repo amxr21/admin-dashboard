@@ -9,6 +9,7 @@ import { BreadcrumbHost, useBreadcrumbSegments } from '@/components/shell/breadc
 import { CommandPalette } from '@/components/shell/command-palette';
 import { DiagnosticsBar } from '@/components/shell/diagnostics-bar';
 import { BranchSwitcher } from '@/components/shell/branch-switcher';
+import { isBranchScopedPath } from '@/lib/branch-scope';
 import { ShiftControl } from '@/components/shell/shift-control';
 import { GlobalSearch } from '@/components/shell/global-search';
 import { GlobalLoadingOverlay } from '@/components/shell/global-loading-overlay';
@@ -102,6 +103,12 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   const isPreviewing = canPreview && previewedRole !== null;
 
   const currentArea = resolveAreaForPath(pathname, resources);
+  /**
+   * Switching branch reloads the whole document, so on a page with no branch
+   * dimension the control returns identical rows under a new branch name —
+   * which reads as a broken filter. Hidden there rather than left inert.
+   */
+  const showBranchSwitcher = isBranchScopedPath(pathname, resources);
   const blockedByPreview =
     isPreviewing && currentArea !== undefined && previewedRole !== null
       ? !canAccessArea(previewedRole, currentArea)
@@ -273,8 +280,10 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
                 which changes what every query returns and what you may do),
                 whereas the role preview is a cosmetic overlay. Putting the
                 pretend-role control first would suggest the two are the same
-                kind of thing. Renders nothing on a single-branch install. */}
-            <BranchSwitcher />
+                kind of thing. Renders nothing on a single-branch install, and
+                nothing at all on a page whose data has no branch dimension —
+                see `isBranchScopedPath`. */}
+            {showBranchSwitcher ? <BranchSwitcher /> : null}
 
             {/* Next to the branch switcher because they answer the same kind
                 of question — WHERE you are working and WHETHER you are on

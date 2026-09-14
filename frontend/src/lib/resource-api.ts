@@ -85,6 +85,12 @@ export interface ResourceSchema {
   permissionArea: string;
   defaultSort: { field: string; dir: 'asc' | 'desc' };
   permissions: { create?: boolean; update?: boolean; delete?: boolean };
+  /**
+   * True when this resource's rows narrow with the active branch. Optional
+   * because an older API build does not send it — absent is treated as "not
+   * scoped", which only ever HIDES a control that would have done nothing.
+   */
+  branchScoped?: boolean;
   fields: FieldConfig[];
 }
 

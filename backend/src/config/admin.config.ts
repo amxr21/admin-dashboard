@@ -188,6 +188,22 @@ export interface ResourceConfig {
    * resource can be read-only for everyone.
    */
   permissions?: { create?: boolean; update?: boolean; delete?: boolean };
+  /**
+   * Scope this resource's rows to the request's active branch, using the named
+   * column.
+   *
+   * ─── WHY NOT JUST A FILTER ───────────────────────────────────────────
+   * `filters` is exact-match by construction, and exact-match is the WRONG
+   * rule here: a NULL branch means "concerns every branch" (a settings change,
+   * a system alert), so an exact match on the active branch would hide exactly
+   * the rows that most need to be seen. The engine builds `OR [column = active,
+   * column IS NULL]` instead, which no query-string filter can express.
+   *
+   * Opt-in per resource: most tables either have no branch column or are
+   * genuinely global (products, customers), and scoping those would silently
+   * narrow lists that are correct as they are.
+   */
+  branchScopeField?: string;
   fields: readonly FieldConfig[];
 }
 
@@ -449,12 +465,22 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
     // bespoke routes (notifications.route.ts); delete stays on for
     // dismissing.
     permissions: { create: false, update: false, delete: true },
+    // A low-stock alert belongs to the shop that is low; a settings change
+    // belongs to everyone. `branchId IS NULL` carries that second case, so
+    // selecting a branch narrows to its own alerts WITHOUT losing the
+    // install-wide ones. See `branchScopeField` on ResourceConfig.
+    branchScopeField: 'branchId',
     fields: [
       { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
       { name: 'type', label: 'Type', type: 'text', readOnly: true, sortable: true },
       { name: 'title', label: 'Title', type: 'text', readOnly: true, searchable: true },
       { name: 'body', label: 'Body', type: 'longtext', readOnly: true, inList: false },
       { name: 'link', label: 'Link', type: 'url', readOnly: true, inList: false },
+      // Declared so the column EXISTS for the engine, not so anyone filters by
+      // it from a query string: branch scoping is applied server-side from the
+      // `X-Branch-Id` header (see `branchScopeField` below), because the rule
+      // is an OR with NULL that an exact-match filter cannot express.
+      { name: 'branchId', label: 'Branch', type: 'text', readOnly: true, inForm: false, inList: false },
       { name: 'isRead', label: 'Read', type: 'boolean', sortable: true },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],

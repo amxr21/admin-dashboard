@@ -88,6 +88,11 @@ resourceRouter.get('/r/_schema', authenticate, withBranchContext, async (req, re
     permissionArea: config.permissionArea,
     defaultSort: config.defaultSort,
     permissions: config.permissions ?? {},
+    // Whether this resource's rows narrow with the active branch (F8.5). The
+    // shell reads it to decide if the branch switcher does anything on this
+    // page — derived from the config rather than duplicated in a frontend
+    // list, which would drift the moment a resource gains or loses scoping.
+    branchScoped: Boolean(config.branchScopeField),
     fields: config.fields,
   }));
 
@@ -120,6 +125,9 @@ resourceRouter.get('/r/:resource', authenticate, withBranchContext, async (req, 
     dir: dir === 'asc' ? 'asc' : dir === 'desc' ? 'desc' : undefined,
     filters,
     extraSearchConditions: localizedIds.length > 0 ? [{ id: { in: localizedIds } }] : undefined,
+    // Applies only to resources declaring `branchScopeField`; everything else
+    // ignores it and lists exactly as before.
+    branchScope: req.branchId,
   });
 
   const rows = config.resource === 'products'
@@ -184,6 +192,9 @@ resourceRouter.get('/r/:resource/export', authenticate, withBranchContext, async
         }
       : {}),
     extraSearchConditions: localizedIds.length > 0 ? [{ id: { in: localizedIds } }] : undefined,
+    // Same scope as the list view it mirrors — an export must never reach rows
+    // the list could not show.
+    branchScope: req.branchId,
   });
   const rows = config.resource === 'products'
     ? await localizeProductRows(
