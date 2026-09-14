@@ -443,6 +443,21 @@ async function checkoutOnce(
   const allowNegative = Boolean(await getSettingValue('inventory.allowNegativeStock'));
 
   /**
+   * The cashier's display name, read ONCE here rather than joined at read
+   * time — see `Order.soldByName`'s own comment for why it is snapshotted.
+   *
+   * `tx` deliberately, not `prisma`: this runs inside the checkout
+   * transaction, and a separate connection would be reading outside it.
+   * Falls back to the email because `User.name` is nullable and a receipt
+   * naming nobody is worse than one naming an address.
+   */
+  const cashier = await tx.user.findUnique({
+    where: { id: actorId },
+    select: { name: true, email: true },
+  });
+  const cashierName = cashier?.name ?? cashier?.email ?? null;
+
+  /**
    * Discounts (O9 Tier 3).
    *
    * Validated and the cap resolved BEFORE the transaction — neither needs a
@@ -638,6 +653,12 @@ async function checkoutOnce(
         // method and assuming that is the whole story.
         paymentMethod: isSplit ? 'split' : (input.method as string),
         branchId,
+        // Who served the customer. The id is what a report groups by; the
+        // NAME is snapshotted beside it so a receipt reprinted next year
+        // still says who was at the till, even if that person has since been
+        // renamed or had their account removed entirely.
+        soldById: actorId,
+        soldByName: cashierName,
         ...(input.customerId ? { customerId: input.customerId } : {}),
         items: {
           create: priced.map((line) => ({

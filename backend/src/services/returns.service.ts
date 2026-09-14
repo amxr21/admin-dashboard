@@ -124,6 +124,11 @@ export async function listReturns(params: ReturnListParams) {
         resolution: true,
         category: true,
         createdAt: true,
+        // Who handled it (the till's "previous returns" panel asks exactly
+        // this). Null on anything not approved, and on approvals predating
+        // the column — a real gap, never filled in from the audit log.
+        approvedByName: true,
+        approvedAt: true,
         // O1: reached THROUGH the order, because a return has no branch of
         // its own — it carries a required `orderId` and the order already
         // records the branch, so a second copy could only drift from it.
@@ -146,6 +151,8 @@ export async function listReturns(params: ReturnListParams) {
       resolution: row.resolution,
       category: row.category,
       createdAt: row.createdAt.toISOString(),
+      approvedByName: row.approvedByName,
+      approvedAt: row.approvedAt?.toISOString() ?? null,
       order: { id: row.order.id, orderNumber: row.order.orderNumber },
       // A warning, not a gate (B4.11) — see `returnWindowStatus`'s own note.
       withinWindow: returnWindowStatus(row.order.placedAt, windowDays).withinWindow,
@@ -175,6 +182,8 @@ async function serialiseReturn(id: string) {
       restocked: true,
       rejectionReason: true,
       createdAt: true,
+      approvedByName: true,
+      approvedAt: true,
       order: { select: { id: true, orderNumber: true, status: true, placedAt: true } },
       // Exchange (O9.8) — null until the replacement sale completes, a real
       // "started but not finished" state, not a gap to hide.
@@ -213,6 +222,8 @@ async function serialiseReturn(id: string) {
     restocked: row.restocked,
     rejectionReason: row.rejectionReason,
     createdAt: row.createdAt.toISOString(),
+    approvedByName: row.approvedByName,
+    approvedAt: row.approvedAt?.toISOString() ?? null,
     order: { id: row.order.id, orderNumber: row.order.orderNumber, status: row.order.status },
     // A warning, not a gate (B4.11) — surfaced so the approving screen can
     // show "this is past the return window" without refusing anything.
@@ -679,10 +690,23 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
       });
     }
 
+    // Who signed this off. Read inside the transaction, and the name
+    // snapshotted beside the id for the same reason `Order.soldByName` is —
+    // a rename must not rewrite who approved a refund months ago.
+    const approver = await tx.user.findUnique({
+      where: { id: input.actorId },
+      select: { name: true, email: true },
+    });
+
     await tx.return.update({
       where: { id },
       data: {
         status: ReturnStatus.APPROVED,
+        approvedById: input.actorId,
+        approvedByName: approver?.name ?? approver?.email ?? null,
+        // Distinct from `updatedAt`, which moves for any later edit: this is
+        // the moment money and stock actually moved.
+        approvedAt: new Date(),
         resolution: input.resolution,
         refundAmount,
         // URG-009 — written in the same transaction as the refund itself, so
