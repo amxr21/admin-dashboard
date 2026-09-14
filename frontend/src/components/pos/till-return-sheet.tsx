@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { RotateCcw, Search } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,11 +16,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { fetchOrders, fetchOrder, type OrderDetail } from '@/lib/orders-api';
-import { createReturn, approveReturn, type ReturnResolution } from '@/lib/returns-api';
+import { Timestamp } from '@/components/timestamp';
+import {
+  createReturn,
+  approveReturn,
+  fetchReturns,
+  type ReturnListRow,
+  type ReturnResolution,
+} from '@/lib/returns-api';
 import { ManagerOverrideDialog } from '@/components/pos/manager-override-dialog';
 import type { ManagerOverrideResult } from '@/lib/auth-api';
 
@@ -87,6 +95,24 @@ export function TillReturnSheet({ open, onOpenChange, onProcessed }: TillReturnS
    *  most returns never need this, so nothing here asks up front. */
   const [pendingReturnId, setPendingReturnId] = useState<string | null>(null);
 
+  /**
+   * Recent returns at this branch, and any already recorded against the order
+   * being looked up.
+   *
+   * Two different questions, deliberately answered in two places: the recent
+   * list is ambient context ("what has been happening at this till"), while
+   * the per-order one is a WARNING at the moment it matters — it is the thing
+   * that catches a second refund on an order that was already refunded.
+   *
+   * Both are scoped to the caller's branch by the server (`req.branchId`), so
+   * nothing here has to ask for that. A failure is held separately from the
+   * sheet's own `error`: not being able to show history must never look like
+   * the return itself failing.
+   */
+  const [recent, setRecent] = useState<ReturnListRow[] | null>(null);
+  const [recentFailed, setRecentFailed] = useState(false);
+  const [priorReturns, setPriorReturns] = useState<ReturnListRow[]>([]);
+
   function reset() {
     setStep('lookup');
     setOrderNumber('');
@@ -98,7 +124,43 @@ export function TillReturnSheet({ open, onOpenChange, onProcessed }: TillReturnS
     setRefundAmount('');
     setError(null);
     setPendingReturnId(null);
+    setPriorReturns([]);
   }
+
+  /**
+   * Loaded each time the sheet opens.
+   *
+   * `[open]` alone is the whole dependency: a completed return closes the
+   * sheet (see `processReturn`), so reopening is the only route back to this
+   * list and it always refetches. Keying this on the in-flight return id as
+   * well looked like "refresh after processing" but only ever refired during
+   * the manager-override path, while the sheet was still open and the list
+   * had not changed.
+   *
+   * Five rows: enough to show the shape of recent activity, few enough that
+   * it stays a sidebar to the task rather than becoming a second screen.
+   */
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    setRecentFailed(false);
+
+    fetchReturns({ pageSize: 5, status: 'APPROVED' })
+      .then((result) => {
+        if (!cancelled) setRecent(result.returns);
+      })
+      .catch(() => {
+        // Deliberately not `setError`: that banner means "the return failed".
+        // History being unavailable is a smaller fact and must not look like
+        // the bigger one.
+        if (!cancelled) setRecentFailed(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   async function lookupOrder() {
     const trimmed = orderNumber.trim();
@@ -117,6 +179,22 @@ export function TillReturnSheet({ open, onOpenChange, onProcessed }: TillReturnS
       }
 
       const detail = await fetchOrder(match.id);
+
+      /**
+       * Has this order already been returned against?
+       *
+       * Searched by order number — the same field the list endpoint already
+       * indexes — and filtered to THIS order, since a search is a contains
+       * match and a number can be a prefix of another. A failure here is
+       * swallowed: it degrades to "no prior returns shown", which is the
+       * same state as an order that genuinely has none, and blocking the
+       * return over missing context would be worse than proceeding without it.
+       */
+      const prior = await fetchReturns({ search: match.orderNumber, pageSize: 10 })
+        .then((result) => result.returns.filter((row) => row.order.id === match.id))
+        .catch(() => [] as ReturnListRow[]);
+
+      setPriorReturns(prior);
       setOrder(detail);
       setLines(
         detail.items.map((item) => ({
@@ -258,11 +336,101 @@ export function TillReturnSheet({ open, onOpenChange, onProcessed }: TillReturnS
           </form>
         ) : null}
 
+        {/*
+          Ambient context, shown only on the lookup step: once a cashier has
+          found their order, the screen belongs to THAT return and a list of
+          unrelated ones is noise. Scoped to this branch by the server.
+        */}
+        {step === 'lookup' ? (
+          <section aria-labelledby="till-return-recent" className="space-y-2">
+            <h3 id="till-return-recent" className="text-muted-foreground text-sm font-medium">
+              {t('recentTitle')}
+            </h3>
+
+            {recentFailed ? (
+              // Not an alert: failing to show history is a smaller fact than
+              // failing to process a return, and styling it the same way would
+              // make the two indistinguishable at a glance.
+              <p className="text-muted-foreground text-sm">{t('recentFailed')}</p>
+            ) : recent === null ? (
+              <div className="space-y-1.5">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : recent.length === 0 ? (
+              <p className="text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-center text-sm">
+                {t('recentEmpty')}
+              </p>
+            ) : (
+              <ul className="divide-y rounded-lg border">
+                {recent.map((row) => (
+                  <li key={row.id} className="flex items-baseline justify-between gap-3 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="force-ltr truncate text-sm font-medium">{row.rmaNumber}</p>
+                      <p className="text-muted-foreground truncate text-xs">
+                        {/* The point of the whole panel: who handled it. Null
+                            on approvals predating the column — stated rather
+                            than left blank, so an empty slot never reads as a
+                            rendering fault. */}
+                        {row.approvedByName
+                          ? t('handledBy', { name: row.approvedByName })
+                          : t('handledByUnknown')}
+                      </p>
+                    </div>
+                    {row.approvedAt ? (
+                      <Timestamp value={row.approvedAt} className="text-muted-foreground text-xs" />
+                    ) : (
+                      <span className="text-muted-foreground shrink-0 text-xs">
+                        {t('awaitingApproval')}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ) : null}
+
         {step === 'pick-lines' && order ? (
           <div className="space-y-4">
             <p className="text-muted-foreground text-sm">
               {t('orderFound', { orderNumber: order.orderNumber })}
             </p>
+
+            {/*
+              The warning that catches a duplicate refund. Rendered only when
+              this order HAS prior returns — an absent panel is the ordinary
+              case and needs no words. `role="status"`, not `alert`: it is
+              information the cashier should read before deciding, not a
+              refusal, and the return is still entirely legitimate.
+            */}
+            {priorReturns.length > 0 ? (
+              <div
+                role="status"
+                className="bg-warning/10 space-y-2 rounded-md px-3 py-2 text-sm"
+              >
+                <p className="text-warning font-medium">
+                  {t('priorTitle', { count: priorReturns.length })}
+                </p>
+                <p className="text-muted-foreground text-xs">{t('priorHint')}</p>
+                <ul className="space-y-1">
+                  {priorReturns.map((row) => (
+                    <li
+                      key={row.id}
+                      className="text-muted-foreground flex items-baseline justify-between gap-3 text-xs"
+                    >
+                      <span className="force-ltr truncate">{row.rmaNumber}</span>
+                      <span className="truncate">
+                        {row.approvedByName
+                          ? t('handledBy', { name: row.approvedByName })
+                          : t('awaitingApproval')}
+                      </span>
+                      {row.approvedAt ? <Timestamp value={row.approvedAt} /> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             <ul className="divide-y rounded-lg border">
               {order.items.map((item) => {

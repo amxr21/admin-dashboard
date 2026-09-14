@@ -3301,7 +3301,9 @@
       "loadFailed": "Could not load products. Try again.",
       "empty": "No products yet. Add one from Products.",
       "noMatches": "No products match that search.",
-      "outOfStock": "Out of stock here"
+      "outOfStock": "Out of stock here",
+      "hideSoldOut": "Hide sold out",
+      "allSoldOut": "Everything here is sold out. Turn off \"Hide sold out\" to see it."
     },
     "confirmTitle": "Confirm sale",
     "confirmTotal": "Total",
@@ -3365,7 +3367,15 @@
       "process": "Process return",
       "processing": "Processing...",
       "done": "Return processed",
-      "managerOverrideReason": "A return needs a manager's approval."
+      "managerOverrideReason": "A return needs a manager's approval.",
+      "recentTitle": "Recent returns here",
+      "recentEmpty": "No returns processed at this branch yet.",
+      "recentFailed": "Could not load recent returns.",
+      "priorTitle": "{count, plural, one {# previous return on this order} other {# previous returns on this order}}",
+      "priorHint": "Check this was not already refunded before processing another.",
+      "handledBy": "Handled by {name}",
+      "handledByUnknown": "Approver not recorded",
+      "awaitingApproval": "Not yet approved"
     },
     "voided": "Sale voided",
     "voiding": "Voiding...",

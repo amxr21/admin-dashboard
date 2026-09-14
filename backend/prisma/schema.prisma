@@ -1096,6 +1096,24 @@ model Order {
   paymentMethod          String?             @map("payment_method") @db.VarChar(48)
   placedAt               DateTime            @default(now()) @map("placed_at")
 
+  /// Who rang this sale up at the till.
+  ///
+  /// A plain id, not a relation, for the same reason `branchId` above and
+  /// `AuditLog.actorId` are: a receipt reprinted next year must still name the
+  /// person who served the customer, and a staff member who has since left
+  /// must not take that fact with them.
+  ///
+  /// NULL on every order that did not come from the till — a web order, a
+  /// seeded row, anything created before this column existed. That is a real
+  /// "not a counter sale" fact, never a gap to fill in with a guess.
+  soldById   String? @map("sold_by_id") @db.VarChar(64)
+  /// The cashier's display name AS IT WAS at the moment of sale, snapshotted
+  /// for the same reason `OrderItem.price` is: a later rename, or the account
+  /// being deleted outright, must not rewrite what a printed receipt said.
+  /// `User.name` is nullable, so this falls back to the email at write time —
+  /// a receipt naming nobody is worse than one naming an address.
+  soldByName String? @map("sold_by_name") @db.VarChar(255)
+
   customerId String?   @map("customer_id")
   /// SetNull so deleting a customer preserves order history for accounting.
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -1435,6 +1453,27 @@ model Return {
   /// code plus the operator's own words: the code is what reports group by, the
   /// note is what a human reads. NULL for every catalogued reason.
   refundReasonNote     String?          @map("refund_reason_note") @db.VarChar(500)
+
+  /// Who approved this return, and when.
+  ///
+  /// Until now NOTHING recorded that. The only trace of who resolved a return
+  /// was the `return.approved` audit entry, which answers the question for a
+  /// reviewer reading the log but not for a cashier at the till asking "who
+  /// handled this one?" — and an audit trail is evidence, not an application
+  /// data source: it is filterable, retainable and prunable on its own terms.
+  ///
+  /// Plain id plus a name snapshot, exactly as `Order.soldById` does and for
+  /// the same two reasons: history must survive the account it points at, and
+  /// a later rename must not rewrite who signed off on a refund.
+  ///
+  /// All three NULL on any return approved before this existed, and on every
+  /// return not yet approved. "Approved by nobody" is not a state — REQUESTED
+  /// and REJECTED returns legitimately have no approver.
+  approvedById   String?   @map("approved_by_id") @db.VarChar(64)
+  approvedByName String?   @map("approved_by_name") @db.VarChar(255)
+  /// Distinct from `updatedAt`, which moves for any edit. This is the moment
+  /// money and stock actually moved.
+  approvedAt     DateTime? @map("approved_at")
 
   orderId String @map("order_id")
   order   Order  @relation("ReturnedOrder", fields: [orderId], references: [id], onDelete: Cascade)

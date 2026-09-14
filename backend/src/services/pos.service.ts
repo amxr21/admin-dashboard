@@ -443,6 +443,21 @@ async function checkoutOnce(
   const allowNegative = Boolean(await getSettingValue('inventory.allowNegativeStock'));
 
   /**
+   * The cashier's display name, read ONCE here rather than joined at read
+   * time — see `Order.soldByName`'s own comment for why it is snapshotted.
+   *
+   * `tx` deliberately, not `prisma`: this runs inside the checkout
+   * transaction, and a separate connection would be reading outside it.
+   * Falls back to the email because `User.name` is nullable and a receipt
+   * naming nobody is worse than one naming an address.
+   */
+  const cashier = await tx.user.findUnique({
+    where: { id: actorId },
+    select: { name: true, email: true },
+  });
+  const cashierName = cashier?.name ?? cashier?.email ?? null;
+
+  /**
    * Discounts (O9 Tier 3).
    *
    * Validated and the cap resolved BEFORE the transaction — neither needs a
@@ -638,6 +653,12 @@ async function checkoutOnce(
         // method and assuming that is the whole story.
         paymentMethod: isSplit ? 'split' : (input.method as string),
         branchId,
+        // Who served the customer. The id is what a report groups by; the
+        // NAME is snapshotted beside it so a receipt reprinted next year
+        // still says who was at the till, even if that person has since been
+        // renamed or had their account removed entirely.
+        soldById: actorId,
+        soldByName: cashierName,
         ...(input.customerId ? { customerId: input.customerId } : {}),
         items: {
           create: priced.map((line) => ({
@@ -649,7 +670,10 @@ async function checkoutOnce(
           })),
         },
       },
-      select: { id: true, orderNumber: true },
+      // `soldByName` comes back so the checkout response can carry it to the
+      // receipt. Read from the row just written rather than from the local
+      // variable, so the printed name is provably the stored one.
+      select: { id: true, orderNumber: true, soldByName: true },
     });
 
     // Exchange (O9.8) — link the return to THIS sale now that it exists.
@@ -926,6 +950,16 @@ async function checkoutOnce(
       taxAmount: created.totals.taxAmount.toFixed(2),
       total: created.totals.total.toFixed(2),
       change: created.change?.toFixed(2) ?? null,
+      /**
+       * Who served the customer, for the `Served by` line on the receipt.
+       *
+       * From the ORDER, not from the caller's session: a receipt reprinted
+       * later must name whoever actually made the sale, and reading the
+       * current user would credit whoever happens to be signed in then.
+       * Null only on a sale whose cashier had no name and no email, which
+       * `checkoutOnce` already falls back through.
+       */
+      soldByName: created.order.soldByName,
       /**
        * URG-034 — the foreign-currency figures the receipt prints, returned
        * by the server rather than recomputed by the till.

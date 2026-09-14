@@ -66,6 +66,24 @@ describe('the printed receipt', () => {
     expect(screen.getByText('POS-20260908-AB12')).toBeInTheDocument();
   });
 
+  it('names the cashier who served the customer', () => {
+    // This line and its data field existed from the start and were never
+    // populated — `sale-screen.tsx` did not even import the session. The
+    // value now comes from the ORDER, so a reprint credits the person who
+    // actually made the sale rather than whoever is signed in at print time.
+    render(<ThermalReceipt data={makeReceipt({ cashier: 'Sara Haddad' })} />);
+
+    expect(screen.getByText(/served by sara haddad/i)).toBeInTheDocument();
+  });
+
+  it('omits the cashier line entirely when the sale has no recorded one', () => {
+    // Orders placed before this was recorded have no cashier. Printing
+    // "Served by" with nothing after it reads as a rendering fault.
+    render(<ThermalReceipt data={makeReceipt()} />);
+
+    expect(screen.queryByText(/served by/i)).not.toBeInTheDocument();
+  });
+
   it('renders nothing for a sale with no lines rather than crashing', () => {
     // Defensive: a refund-only or corrected sale could reach here empty, and
     // a blank receipt beats a broken till.

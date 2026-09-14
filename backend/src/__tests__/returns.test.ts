@@ -56,6 +56,10 @@ let customerId = '';
 let branchId = '';
 const businessIds: string[] = [];
 let ownerToken = '';
+/** Captured so the approval snapshot can be asserted against a REAL identity
+ *  rather than merely "not null". */
+let ownerId = '';
+let ownerName = '';
 let demoToken = '';
 let supportToken = '';
 
@@ -69,7 +73,9 @@ async function makeUser(role: StaffRole, tag = role.toLowerCase()) {
     },
   });
   userIds.push(user.id);
-  return { token: signToken(user), id: user.id, email: user.email };
+  // `name` is returned too, so the approval snapshot can be asserted against
+  // the identity actually recorded rather than against "something".
+  return { token: signToken(user), id: user.id, email: user.email, name: user.name };
 }
 
 async function makeProduct(stock = 10) {
@@ -119,6 +125,8 @@ beforeAll(async () => {
     makeUser(StaffRole.SUPPORT, 'support'),
   ]);
   ownerToken = owner.token;
+  ownerId = owner.id;
+  ownerName = owner.name ?? owner.email;
   demoToken = demo.token;
   supportToken = support.token;
 
@@ -517,6 +525,24 @@ describe('approving a return', () => {
     expect(body.data.return.status).toBe('APPROVED');
     expect(body.data.return.resolution).toBe('REFUND');
     expect(body.data.return.refundAmount).toBe('50.00');
+
+    // Who signed it off. Until this existed, the ONLY record of that was the
+    // `return.approved` audit entry — which answers a reviewer's question but
+    // not a cashier's ("who handled this one?"), and an audit trail is
+    // evidence, not an application data source.
+    //
+    // The name is snapshotted rather than joined, for the same reason the
+    // refund amount is: a later rename must not rewrite who approved a refund.
+    // Asserted against the real identity rather than "not null" — an approval
+    // credited to the WRONG person fails just as quietly as one credited to
+    // nobody.
+    const approved = await prisma.return.findUnique({
+      where: { id },
+      select: { approvedById: true, approvedByName: true, approvedAt: true },
+    });
+    expect(approved?.approvedById).toBe(ownerId);
+    expect(approved?.approvedByName).toBe(ownerName);
+    expect(approved?.approvedAt).toBeInstanceOf(Date);
 
     const order = await prisma.order.findUnique({ where: { id: orderId } });
     expect(order?.status).toBe(OrderStatus.RETURNED);

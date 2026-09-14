@@ -33,6 +33,10 @@ const orderIds: string[] = [];
 
 let branchId = '';
 let ownerToken = '';
+/** Captured so the sale's `soldBy` snapshot can be asserted against a REAL
+ *  identity rather than merely "not null". */
+let ownerId = '';
+let ownerName = '';
 let supportToken = '';
 
 function auth(token: string) {
@@ -123,6 +127,8 @@ beforeAll(async () => {
   ]);
 
   ownerToken = signToken(owner);
+  ownerId = owner.id;
+  ownerName = owner.name ?? owner.email;
   supportToken = signToken(support);
 });
 
@@ -402,6 +408,8 @@ describe('taking a sale (O5.7, O5.8)', () => {
       select: {
         status: true,
         branchId: true,
+        soldById: true,
+        soldByName: true,
         items: { select: { quantity: true, price: true, cost: true } },
         payments: { select: { amount: true, method: true, tendered: true, change: true } },
       },
@@ -409,6 +417,17 @@ describe('taking a sale (O5.7, O5.8)', () => {
 
     expect(order?.status).toBe('CONFIRMED');
     expect(order?.branchId).toBe(branchId);
+
+    // Who served the customer, recorded on the sale itself. The id is what a
+    // report groups by; the NAME is snapshotted beside it so a receipt
+    // reprinted next year still says who was at the till — a join would
+    // rewrite itself the moment that person is renamed or removed.
+    //
+    // Asserted against the real identity, not merely "not null": a column
+    // that is written with the WRONG actor fails just as quietly as one never
+    // written at all, and this is the fact a receipt prints.
+    expect(order?.soldById).toBe(ownerId);
+    expect(order?.soldByName).toBe(ownerName);
     expect(order?.items).toHaveLength(1);
     expect(order?.payments).toHaveLength(1);
     expect(order?.payments[0]?.amount.toFixed(2)).toBe('20.00');

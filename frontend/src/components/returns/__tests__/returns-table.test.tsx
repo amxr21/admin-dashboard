@@ -91,6 +91,10 @@ function makeRow(overrides: Partial<ReturnListRow> = {}): ReturnListRow {
     resolution: 'NONE',
     category: null,
     createdAt: '2026-07-20T00:00:00.000Z',
+    // Null by default: this fixture is a REQUESTED return, which has no
+    // approver yet — a real state, not a missing value.
+    approvedByName: null,
+    approvedAt: null,
     branch: null,
     order: { id: 'o1', orderNumber: 'ORD-1024' },
     customer: { id: 'c1', name: 'Ali' },
@@ -113,6 +117,8 @@ function makeDetail(overrides: Partial<ReturnDetail> = {}): ReturnDetail {
     restocked: false,
     rejectionReason: null,
     createdAt: '2026-07-20T00:00:00.000Z',
+    approvedByName: null,
+    approvedAt: null,
     order: { id: 'o1', orderNumber: 'ORD-1024', status: 'DELIVERED' },
     customer: { id: 'c1', name: 'Ali', email: 'ali@example.com' },
     items: [
