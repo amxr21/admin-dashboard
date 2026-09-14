@@ -4,10 +4,9 @@ Admin dashboard — Next.js (App Router) frontend + Express/MySQL backend, both 
 
 ```
 .
-├─ frontend/              Next.js app  → Vercel
-├─ backend/               Express API  → Render
-├─ tsconfig.strict.json   shared strict TS base (both packages extend it)
-└─ FOUNDATIONS.md         how this project is set up and why — read this first
+├─ frontend/              Next.js app → Coolify
+├─ backend/               Express API → Coolify
+└─ tsconfig.strict.json   shared strict TS base (both packages extend it)
 ```
 
 ## Requirements
@@ -22,9 +21,10 @@ Admin dashboard — Next.js (App Router) frontend + Express/MySQL backend, both 
 pnpm install
 
 # Env files are never committed and there is no template in the repo.
-# Create backend/.env and frontend/.env — see CLAUDE.md for the variables.
+# Create backend/.env and frontend/.env with local DB and API settings.
 
 pnpm --filter ./backend db:migrate             # create the schema
+pnpm --filter ./backend db:seed                # needs SEED_DEVELOPER_EMAIL/PASSWORD
 pnpm dev                                       # FE :3000  ·  BE :4000
 ```
 
@@ -39,6 +39,12 @@ pnpm dev                                       # FE :3000  ·  BE :4000
 | `pnpm db:migrate` | Apply Prisma migrations (dev) |
 | `pnpm db:studio` | Open Prisma Studio |
 
+`db:seed` creates or preserves only the Developer account. Set
+`SEED_DEVELOPER_EMAIL` and a new `SEED_DEVELOPER_PASSWORD` (at least 12
+characters) in the backend environment before running it. It never creates an
+Owner or demo data; invite the customer's Owner through Staff after technical
+setup. `demo:seed` is a separate command restricted to a designated demo database.
+
 ## Conventions
 
 Backend integration tests require a dedicated local MySQL database named
@@ -47,7 +53,7 @@ uses a different local database. The runner refuses ordinary application
 database names and remote hosts before importing the application. Do not run
 integration tests against data used by the dashboard.
 
-All non-obvious ones are documented in [FOUNDATIONS.md](FOUNDATIONS.md). The short version:
+Key conventions:
 
 - Every API route lives under `/api/v1/`.
 - Never `console.log` — use `req.log` in routes, `logger` elsewhere.

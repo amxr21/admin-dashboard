@@ -18,9 +18,8 @@ import {
  * is actually set right now.
  *
  * ─── WHY THIS READS THE SERVER AND DOES NOT RESTATE THE DOCS ─────────
- * `SETUP_TODO.md` already lists what to configure. A page that copied that
- * list would be a second source of truth that goes stale silently — the exact
- * failure this project has hit repeatedly with its own planning docs. This
+ * A page that copied a static setup checklist would be a second source of
+ * truth that goes stale silently. This
  * reads the RUNNING server instead, so it can only ever describe the
  * environment you are actually looking at.
  *
