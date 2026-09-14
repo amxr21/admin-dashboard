@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { MessageSquarePlus, Search } from 'lucide-react';
+import { MessageSquarePlus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { DataTable, type Column } from '@/components/data-table';
@@ -11,6 +11,7 @@ import { TablePagination } from '@/components/table-pagination';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
@@ -79,7 +80,7 @@ export function CustomerCasesWorkspace() {
 
   return <section className="space-y-4" aria-label={t('title')}>
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-      <div className="min-w-0 flex-1 space-y-2"><Label htmlFor="case-search">{t('search')}</Label><div className="relative"><Search className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2" aria-hidden /><Input id="case-search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t('searchPlaceholder')} className="ps-9" /></div></div>
+      <div className="min-w-0 flex-1 space-y-2"><Label htmlFor="case-search">{t('search')}</Label><SearchInput id="case-search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t('searchPlaceholder')} /></div>
       <div className="space-y-2 sm:w-44"><Label htmlFor="case-status">{t('columns.status')}</Label><Select value={status} onValueChange={(value) => setValues({ status: value === ALL ? null : value, page: null })}><SelectTrigger id="case-status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={ALL}>{t('all')}</SelectItem>{CASE_STATUSES.map((value) => <SelectItem key={value} value={value}>{t(`status.${value}`)}</SelectItem>)}</SelectContent></Select></div>
       <div className="space-y-2 sm:w-44"><Label htmlFor="case-priority">{t('columns.priority')}</Label><Select value={priority} onValueChange={(value) => setValues({ priority: value === ALL ? null : value, page: null })}><SelectTrigger id="case-priority"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={ALL}>{t('all')}</SelectItem>{CASE_PRIORITIES.map((value) => <SelectItem key={value} value={value}>{t(`priority.${value}`)}</SelectItem>)}</SelectContent></Select></div>
       <Button onClick={() => setCreateOpen(true)}><MessageSquarePlus aria-hidden />{t('newCase')}</Button>
