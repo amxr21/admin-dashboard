@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { Mail, Pencil, Plus, Search } from 'lucide-react';
+import { Mail, Pencil, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { DataTable, type Column } from '@/components/data-table';
@@ -12,7 +12,7 @@ import { SupplierSheet } from '@/components/suppliers/supplier-sheet';
 import { TablePagination } from '@/components/table-pagination';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { useAppSettings } from '@/components/providers/settings-provider';
@@ -75,7 +75,7 @@ export function SuppliersTable() {
 
   return <div className="space-y-4">
     <div className="flex flex-wrap items-end gap-3">
-      <div className="min-w-56 flex-1 space-y-2"><Label htmlFor="supplier-search">{t('search.label')}</Label><div className="relative"><Search className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2" aria-hidden /><Input id="supplier-search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t('search.placeholder')} className="ps-9" /></div></div>
+      <div className="min-w-56 flex-1 space-y-2"><Label htmlFor="supplier-search">{t('search.label')}</Label><SearchInput id="supplier-search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t('search.placeholder')} /></div>
       <Button onClick={() => setCreating(true)}><Plus aria-hidden />{t('actions.create')}</Button>
     </div>
     <div className="flex flex-wrap items-center gap-3"><SegmentedControl value={status} onChange={(value) => setValues({ status: value === 'active' ? null : value, page: null })} aria-label={t('statusLabel')} className="max-w-sm" options={[{ value: 'active', label: t('active') }, { value: 'inactive', label: t('inactive') }, { value: 'all', label: t('all') }]} /><FilterChips filters={filters} onClearAll={() => { setSearchInput(''); clear(['search', 'page']); }} /></div>

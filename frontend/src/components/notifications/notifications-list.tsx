@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { CheckCheck, ExternalLink, Search, Trash2, X } from 'lucide-react';
+import { CheckCheck, ExternalLink, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -17,7 +17,7 @@ import {
 import { EmptyState } from '@/components/empty-state';
 import { ErrorSection } from '@/components/errors/error-section';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
@@ -180,21 +180,14 @@ export function NotificationsList() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-56 flex-1 space-y-2">
           <Label htmlFor="notifications-search">{t('search.label')}</Label>
-          <div className="relative">
-            <Search
-              className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
-              aria-hidden
-            />
-            <Input
-              id="notifications-search"
-              value={searchInput}
-              onChange={(event) => {
-                setSearchInput(event.target.value);
-              }}
-              placeholder={t('search.placeholder')}
-              className="ps-9"
-            />
-          </div>
+          <SearchInput
+            id="notifications-search"
+            value={searchInput}
+            onChange={(event) => {
+              setSearchInput(event.target.value);
+            }}
+            placeholder={t('search.placeholder')}
+          />
         </div>
 
         <div className="min-w-44 space-y-2">

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import { useGSAP } from '@gsap/react';
-import { FilterX, History, Pencil, Plus, Search, SearchX, Trash2, Upload } from 'lucide-react';
+import { FilterX, History, Pencil, Plus, SearchX, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -30,7 +30,7 @@ import type { InventoryRow } from '@/lib/inventory-api';
 import { ResourceCell } from '@/components/resource/resource-cell';
 import { ResourceForm } from '@/components/resource/resource-form';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import {
@@ -821,29 +821,25 @@ export function ResourceTable({ schema }: ResourceTableProps) {
                   fetch from before the debounce caught up), so a suggestion
                   can never point at a row that no longer matches. */}
               <Popover open={canUpdate && searchFocused && searchInput.trim() !== '' && search === searchInput.trim() && (result?.rows.length ?? 0) > 0}>
+                {/* `asChild` needs exactly ONE element to anchor to, and
+                    `SearchInput` renders a single relative-positioned wrapper
+                    — the same element this used to spell out by hand. */}
                 <PopoverAnchor asChild>
-                  <div className="relative">
-                    <Search
-                      className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
-                      aria-hidden
-                    />
-                    <Input
-                      id="resource-search"
-                      value={searchInput}
-                      onChange={(event) => setSearchInput(event.target.value)}
-                      onFocus={() => setSearchFocused(true)}
-                      onBlur={() => setSearchFocused(false)}
-                      // Names the actual columns searched, so nobody wonders why a
-                      // description match returns nothing.
-                      placeholder={t('search.placeholder', {
-                        fields: searchableFields(schema)
-                          .map(fieldLabel)
-                          .join(', '),
-                      })}
-                      className="ps-9"
-                      autoComplete="off"
-                    />
-                  </div>
+                  <SearchInput
+                    id="resource-search"
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
+                    // Names the actual columns searched, so nobody wonders why a
+                    // description match returns nothing.
+                    placeholder={t('search.placeholder', {
+                      fields: searchableFields(schema)
+                        .map(fieldLabel)
+                        .join(', '),
+                    })}
+                    autoComplete="off"
+                  />
                 </PopoverAnchor>
 
                 <PopoverContent

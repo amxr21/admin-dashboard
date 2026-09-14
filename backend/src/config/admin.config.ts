@@ -209,7 +209,16 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       // reachable, but it is not one of the six fields needed to list a
       // sellable product. Grouped with the other codes rather than sitting
       // between Name and Description.
-      { name: 'sku', label: 'SKU', type: 'text', searchable: true, group: 'identifiers', placeholder: 'e.g. TSH-BLK-M' },
+      {
+        name: 'sku',
+        label: 'SKU',
+        type: 'text',
+        searchable: true,
+        group: 'identifiers',
+        placeholder: 'e.g. TSH-BLK-M',
+        description:
+          'Your own code for this product. Used for searching and on exports; it is never shown to a customer.',
+      },
       // Excluded from the list view: a TEXT column makes rows unreadable and
       // is not what anyone scans a catalogue for.
       // URG-025 — not one of the six fields needed to list a sellable product.
@@ -276,6 +285,8 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         inList: false,
         group: 'inventory',
         placeholder: 'e.g. 5',
+        description:
+          "This product's own alert level. Leave it blank to use the store-wide threshold from Settings — blank means \"follow the default\", never zero.",
       },
       {
         name: 'storageLocation',
@@ -365,6 +376,8 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         group: 'identifiers',
         importAliases: ['Barcode (EAN/UPC)'],
         placeholder: 'e.g. 5901234123457',
+        description:
+          'What a scanner reads at the till. Only products with one can be scanned; everything else is found by tapping the grid.',
       },
       { name: 'weightKg', label: 'Weight (kg)', type: 'number', inList: false, group: 'physical', placeholder: 'e.g. 0.25' },
       { name: 'lengthCm', label: 'Length (cm)', type: 'number', inList: false, group: 'physical', placeholder: 'e.g. 30' },
@@ -413,6 +426,8 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         inList: false,
         group: 'seo',
         placeholder: 'e.g. Soft combed-cotton tee in black. Free returns within 30 days.',
+        description:
+          'The summary a search engine may show under the title. Nothing in this app displays it yet — it is groundwork for a future public site.',
       },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],

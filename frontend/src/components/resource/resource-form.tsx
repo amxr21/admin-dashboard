@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { TriangleAlert } from 'lucide-react';
 
 import {
   AlertDialog,
@@ -16,9 +15,11 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Combobox } from '@/components/ui/combobox';
 import { CollapsibleSection } from '@/components/ui/collapsible-section';
 import { DatePicker } from '@/components/ui/date-picker';
 import { ImageUploadField } from '@/components/image-upload-field';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ProductGalleryPanel } from '@/components/resource/product-gallery-panel';
@@ -1045,6 +1046,15 @@ function FormField({
   // every form in the app (see placeholderFor below), not resourceForm-only,
   // so they live in `common` rather than being duplicated per namespace.
   const tCommon = useTranslations('common');
+  /**
+   * An upload failure, hoisted out of `ImageUploadField`.
+   *
+   * It cannot arrive as the `error` prop: that one comes from the form's own
+   * validation, and whether a file reached Cloudinary is decided inside the
+   * control long after that ran. Merged below rather than rendered separately,
+   * so an image field still has exactly one message slot.
+   */
+  const [imageError, setImageError] = useState<string | null>(null);
   const id = `field-${field.name}`;
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
@@ -1152,11 +1162,43 @@ function FormField({
 
       return (
         <>
+        {/*
+          A RELATION is searchable; an ENUM stays a plain Select.
+
+          The split follows `combobox.tsx`'s own rule: `Select` is right for a
+          handful of options you can eyeball, and unusable for a list you have
+          to hunt through. An enum is a fixed, short, code-declared set — three
+          product statuses, two discount types — so a filter box above it would
+          be furniture. A relation is every row of another table: a shop with
+          200 categories got a 200-row dropdown with no way to type, which is
+          the case `Combobox` was built for and was never wired to.
+
+          `clearText` replaces the `NONE` sentinel for relations. The sentinel
+          existed because Radix reserves the empty string for "no selection",
+          so clearing needed a value that was not `''`; `Combobox` models null
+          directly and needs no stand-in.
+        */}
+        {field.type === 'relation' ? (
+          <Combobox
+            id={id}
+            options={items}
+            value={text === '' ? null : text}
+            onValueChange={(next) => onChange(next ?? '')}
+            placeholder={t('choose')}
+            searchPlaceholder={tCommon('combobox.search')}
+            emptyText={tCommon('combobox.empty')}
+            // Offered only when the field may legitimately be empty — a
+            // required relation with a "not set" row would invite a choice
+            // the server then refuses.
+            {...(field.required ? {} : { clearText: t('none') })}
+            {...aria}
+          />
+        ) : (
         <Select
           // Radix reserves the empty string for "no selection", so an explicit
           // clear needs a sentinel of its own. Without one, an optional enum
-          // or relation could be SET but never unset — the only way back to
-          // empty would be a direct API call.
+          // could be SET but never unset — the only way back to empty would be
+          // a direct API call.
           value={text === '' ? NONE : text}
           onValueChange={(next) => onChange(next === NONE ? '' : next)}
         >
@@ -1174,6 +1216,7 @@ function FormField({
             ))}
           </SelectContent>
         </Select>
+        )}
         {onRefreshOptions ? (
           <div className="flex flex-wrap gap-2">
             <Button asChild type="button" variant="link" size="sm" className="min-h-11 px-0">
@@ -1222,6 +1265,10 @@ function FormField({
           onChange={onChange}
           folder={resourceFolder}
           shape="wide"
+          // Reported upward rather than printed inside the control: the field
+          // already owns a slot, and the control's own copy attaches its aria
+          // to an `sr-only` file input nobody can see.
+          onError={setImageError}
           {...aria}
         />
       );
@@ -1246,59 +1293,28 @@ function FormField({
   }
 
   return (
-    <div className={cn('space-y-2', className)}>
-      {field.type === 'boolean' ? null : (
-        <Label htmlFor={id} id={`${id}-label`}>
-          {label}
-          {field.required ? (
-            <span className="text-destructive ms-1" aria-hidden>
-              *
-            </span>
-          ) : null}
-        </Label>
-      )}
-
+    <Field
+      id={id}
+      // A boolean renders its own inline label beside the checkbox, so the
+      // wrapper must not render a second one above it.
+      {...(field.type === 'boolean' ? {} : { label, required: field.required })}
+      // Validation first: a malformed value is the more urgent of the two,
+      // and an upload failure on a field that is also invalid can wait.
+      error={error ?? imageError ?? undefined}
+      description={field.description}
+      // All three are advisory and all three are about what the user just
+      // did, not about what the field is — see `Field`'s own note on why they
+      // are a separate category from the description. Falsy entries are
+      // dropped inside the wrapper, so the conditions can be passed raw.
+      warnings={[
+        showChangeWarning && field.changeWarning,
+        showVariantOptOutWarning && t('variantOptOutWarning'),
+        notice,
+      ]}
+      className={className}
+    >
       {control()}
-
-      {error ? (
-        <p id={errorId} role="alert" className="text-destructive text-sm">
-          {error}
-        </p>
-      ) : field.description ? (
-        // Directly under the control and never dismissed — the whole point is
-        // that it is still there while the field is being filled in, which a
-        // placeholder cannot be. Suppressed while an error shows, matching
-        // `aria-describedby` above so the announced and visible descriptions
-        // are always the same one.
-        <p id={hintId} className="text-muted-foreground text-sm">
-          {field.description}
-        </p>
-      ) : null}
-
-      {!error && showChangeWarning ? (
-        <p className="text-muted-foreground flex items-start gap-1.5 text-sm">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          {field.changeWarning}
-        </p>
-      ) : null}
-
-      {!error && showVariantOptOutWarning ? (
-        <p className="text-muted-foreground flex items-start gap-1.5 text-sm">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          {t('variantOptOutWarning')}
-        </p>
-      ) : null}
-
-      {/* A caller-supplied note about THIS field's stored value — see the
-          `notice` prop's own comment on why it is generic rather than a
-          second product-specific branch in here. */}
-      {!error && notice ? (
-        <p className="text-muted-foreground flex items-start gap-1.5 text-sm">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          {notice}
-        </p>
-      ) : null}
-    </div>
+    </Field>
   );
 }
 
