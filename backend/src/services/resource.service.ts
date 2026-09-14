@@ -203,6 +203,16 @@ export interface ListParams {
    * export a window nobody asked for.
    */
   dateRange?: { field: string; from?: string | undefined; to?: string | undefined };
+  /**
+   * The active branch, applied only to resources that declare
+   * `branchScopeField`. Null/undefined means "all branches" and adds no
+   * condition at all.
+   *
+   * Trusted input like `extraSearchConditions` — it comes from the request's
+   * `X-Branch-Id` context, never from a query key, so it cannot be widened by
+   * whoever is calling the endpoint.
+   */
+  branchScope?: string | null | undefined;
 }
 
 /** `YYYY-MM-DD`, the only shape the date pickers emit and the only one this
@@ -344,6 +354,18 @@ function buildWhere(config: ResourceConfig, params: ListParams): Record<string, 
   if (params.dateRange) {
     const condition = buildDateRangeCondition(config, params.dateRange);
     if (condition) conditions.push(condition);
+  }
+
+  // Branch scoping, for the resources that opted in. A NULL branch is included
+  // deliberately: it means "concerns every branch", so it must survive being
+  // scoped to one — see `branchScopeField`'s note.
+  if (config.branchScopeField && params.branchScope) {
+    conditions.push({
+      OR: [
+        { [config.branchScopeField]: params.branchScope },
+        { [config.branchScopeField]: null },
+      ],
+    });
   }
 
   return conditions.length > 0 ? { AND: conditions } : {};
@@ -983,7 +1005,7 @@ export async function listResourceForExport(
   config: ResourceConfig,
   params: Pick<
     ListParams,
-    'search' | 'filters' | 'sort' | 'dir' | 'extraSearchConditions' | 'dateRange'
+    'search' | 'filters' | 'sort' | 'dir' | 'extraSearchConditions' | 'dateRange' | 'branchScope'
   >,
 ): Promise<ResourceExportResult> {
   const delegate = delegateFor(config);

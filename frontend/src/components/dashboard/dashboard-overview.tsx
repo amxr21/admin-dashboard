@@ -5,6 +5,9 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { ArrowLeft, ArrowRight, PackagePlus, RefreshCw } from 'lucide-react';
 
 import { FulfillmentHealthWidget } from '@/components/dashboard/fulfillment-health-widget';
+import { LatestNotificationsWidget } from '@/components/dashboard/latest-notifications-widget';
+import { LatestOrdersWidget } from '@/components/dashboard/latest-orders-widget';
+import { OnShiftWidget } from '@/components/dashboard/on-shift-widget';
 import { OrderValueWidget } from '@/components/dashboard/order-value-widget';
 import { RecentActivityWidget } from '@/components/dashboard/recent-activity-widget';
 import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-chart';
@@ -36,6 +39,9 @@ import {
   rangeToDashboardParams,
 } from '@/lib/dashboard-state';
 import { fetchAudit, type AuditEntry } from '@/lib/audit-api';
+import { fetchOrders, type OrderListRow } from '@/lib/orders-api';
+import { fetchRows, type ResourceRow } from '@/lib/resource-api';
+import { fetchShifts, type Shift } from '@/lib/shifts-api';
 import {
   deltaPercent,
   fetchFulfillmentHealth,
@@ -127,6 +133,15 @@ export function DashboardOverview() {
   const [returns, setReturns] = useState<ReturnsSummary | null>(null);
   const [orderValue, setOrderValue] = useState<OrderValueDistribution | null>(null);
   const [recentActivity, setRecentActivity] = useState<AuditEntry[] | null>(null);
+  /**
+   * The three "what is happening right now" panels. Unlike everything above
+   * them these are NOT period-scoped — see each widget's own note. They are
+   * still loaded inside the same `load()` so one refresh updates the whole
+   * page rather than leaving three panels on an older clock.
+   */
+  const [onShift, setOnShift] = useState<Shift[] | null>(null);
+  const [latestOrders, setLatestOrders] = useState<OrderListRow[] | null>(null);
+  const [latestNotifications, setLatestNotifications] = useState<ResourceRow[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -163,6 +178,9 @@ export function DashboardOverview() {
         loadedReturns,
         loadedOrderValue,
         loadedActivity,
+        loadedOnShift,
+        loadedLatestOrders,
+        loadedLatestNotifications,
       ] = await Promise.all([
         fetchOverview(range),
         comparisonRange ? fetchOverview(comparisonRange) : Promise.resolve(null),
@@ -176,6 +194,13 @@ export function DashboardOverview() {
         fetchReturnsSummary(range),
         fetchOrderValueDistribution(range),
         fetchAudit({ page: 1, pageSize: 6 }),
+        // "On now", not "during the range": `open` filters to shifts with no
+        // recorded end, which is the schema's own definition of on-shift.
+        fetchShifts({ open: true, pageSize: 8 }),
+        fetchOrders({ page: 1, pageSize: 5, sort: 'placedAt', dir: 'desc' }),
+        // Branch scoping is applied server-side by the resource engine, so no
+        // branch filter is passed here — see `branchScopeField`.
+        fetchRows('notifications', { pageSize: 5, sort: 'createdAt', dir: 'desc' }),
       ]);
 
       setOverview(loadedOverview);
@@ -207,6 +232,9 @@ export function DashboardOverview() {
       setReturns(loadedReturns);
       setOrderValue(loadedOrderValue);
       setRecentActivity(loadedActivity.entries);
+      setOnShift(loadedOnShift.shifts);
+      setLatestOrders(loadedLatestOrders.orders);
+      setLatestNotifications(loadedLatestNotifications.rows);
       setLastUpdated(new Date());
     } catch (caught) {
       setError(translateError(caught));
@@ -545,6 +573,20 @@ export function DashboardOverview() {
         </Reveal>
         <Reveal className="col-span-12 sm:col-span-6" delay={0.03}>
           <RecentActivityWidget entries={recentActivity} isLoading={isLoading} />
+        </Reveal>
+
+        {/* The "right now" row, last because it is the only group that does
+            not describe the selected period — grouping it with the range
+            widgets above would imply the range applies to it too. */}
+        <Reveal className="col-span-12 sm:col-span-6">
+          <LatestOrdersWidget orders={latestOrders} isLoading={isLoading} />
+        </Reveal>
+        <Reveal className="col-span-12 sm:col-span-6" delay={0.03}>
+          <LatestNotificationsWidget rows={latestNotifications} isLoading={isLoading} />
+        </Reveal>
+
+        <Reveal className="col-span-12">
+          <OnShiftWidget shifts={onShift} isLoading={isLoading} />
         </Reveal>
 
         <Reveal className="col-span-12">

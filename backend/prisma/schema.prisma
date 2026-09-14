@@ -675,9 +675,24 @@ model Notification {
   link   String? @db.VarChar(255)
   isRead Boolean @default(false) @map("is_read")
 
+  /// Which branch this alert is ABOUT, when it is about one at all.
+  ///
+  /// NULL is not "unknown" here — it means BRANCH-INDEPENDENT, and those rows
+  /// show under every branch rather than disappearing when one is selected.
+  /// A settings change or a system alert concerns everyone; hiding it because
+  /// a branch is active would suppress exactly the notifications that most
+  /// need to reach whoever is looking. Emitters that genuinely know a branch
+  /// (low stock at a location) set it; the rest legitimately leave it null.
+  ///
+  /// A plain id, not a relation, for the same reason `Order.branchId` is:
+  /// the alert has to survive the branch it names being removed.
+  branchId String? @map("branch_id") @db.VarChar(64)
+
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([isRead, createdAt])
+  /// The bell's own query: unread-first within the active branch.
+  @@index([branchId, isRead, createdAt])
   @@map("notifications")
 }
 

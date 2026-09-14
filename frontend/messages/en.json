@@ -663,6 +663,18 @@
     "costCoverageAll": "All order lines costed",
     "noCostRecorded": "No cost recorded in this period",
     "marginLevelNote": "A level, not a trend",
+    "diagrams": {
+      "margin": {
+        "title": "What the margin is measured against",
+        "allRevenue": "All revenue",
+        "costedRevenue": "Revenue from costed lines",
+        "cogs": "Cost of those same lines",
+        "profit": "Gross profit",
+        "marginIs": "Margin = gross profit ÷ costed revenue",
+        "why": "The uncosted lines are left out of both sides. Dividing by all revenue instead would count them as pure profit and understate the margin.",
+        "coverage": "{costed} of {total} order lines have a cost recorded"
+      }
+    },
     "valueUnavailable": "Not available",
     "totalRevenue": "Total revenue",
     "totalOrders": "Orders",
@@ -714,6 +726,22 @@
       "title": "Recent activity",
       "viewAll": "View all",
       "system": "System"
+    },
+    "onShift": {
+      "title": "On shift now",
+      "viewAll": "View all",
+      "empty": "Nobody is clocked in right now."
+    },
+    "latestOrders": {
+      "title": "Latest orders",
+      "viewAll": "View all",
+      "empty": "No orders yet."
+    },
+    "latestNotifications": {
+      "title": "Latest notifications",
+      "viewAll": "View all",
+      "empty": "Nothing to report.",
+      "untitled": "Notification"
     },
     "quickActions": {
       "title": "Quick actions",
@@ -2770,7 +2798,8 @@
         "count": "Count"
       }
     },
-    "definitionLabel": "What {label} means"
+    "definitionLabel": "What {label} means",
+    "diagramLabel": "How {label} is calculated"
   },
   "imageUpload": {
     "upload": "Upload",
