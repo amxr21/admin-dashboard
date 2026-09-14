@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Combobox } from '@/components/ui/combobox';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { ImageUploadField } from '@/components/image-upload-field';
 import { Label } from '@/components/ui/label';
@@ -186,6 +187,11 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
   const [isLoading, setIsLoading] = useState(isEdit);
   const [error, setError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
+  /** Hoisted out of PhoneField and ImageUploadField so each failure shares the
+   *  one slot its field already owns, rather than the control printing a
+   *  second message of its own — see ui/field.tsx. */
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -372,6 +378,7 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
                     value={values.phone ?? ''}
                     onChange={(next) => set('phone', next)}
                     country={values.country || null}
+                    onError={setPhoneError}
                   />
                 ) : (
                   <Input
@@ -417,6 +424,16 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
                 {field === 'taxId' && taxIdError ? (
                   <p id="business-taxid-error" role="alert" className="text-destructive text-sm">
                     {taxIdError}
+                  </p>
+                ) : null}
+
+                {/* Hoisted out of PhoneField, so it MUST be rendered here:
+                    that component stops printing its own message the moment
+                    `onError` is passed, and a validation failure with nowhere
+                    to appear is worse than the duplicate slot this replaces. */}
+                {field === 'phone' && phoneError ? (
+                  <p id="business-phone-error" role="alert" className="text-destructive text-sm">
+                    {phoneError}
                   </p>
                 ) : null}
 
@@ -470,16 +487,24 @@ export function BusinessForm({ businessId }: BusinessFormProps) {
           <p className="text-muted-foreground text-sm">{t('groups.brand.hint')}</p>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="business-logoUrl">{t('fields.logoUrl')}</Label>
+        <Field
+          id="business-logoUrl"
+          label={t('fields.logoUrl')}
+          error={logoError ?? undefined}
+        >
           <ImageUploadField
             id="business-logoUrl"
             value={values.logoUrl ?? ''}
             onChange={(url) => set('logoUrl', url)}
             folder="logo"
             disabled={isSaving}
+            // The upload's own failure lands in the field's slot rather than
+            // inside the control — and, unlike before, is announced through
+            // an element that is actually visible (the primitive attaches its
+            // aria to an `sr-only` file input).
+            onError={setLogoError}
           />
-        </div>
+        </Field>
       </section>
 
       {isEdit ? (

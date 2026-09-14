@@ -9,6 +9,7 @@ import { ErrorScreen } from '@/components/errors/error-screen';
 import { ImageUploadField } from '@/components/image-upload-field';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -690,31 +691,19 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
   }
 
   return (
-    <div
-      className={cn(
-        'bg-card/50 space-y-2 rounded-lg border p-4',
-        fullWidth && 'col-span-full',
-      )}
+    <Field
+      id={id}
+      // A boolean renders a switch with its own inline label; a second label
+      // above it would name the same control twice.
+      {...(setting.type === 'boolean' ? {} : { label: setting.label })}
+      error={error}
+      description={setting.description}
+      // The settings page is a GRID of independent choices rather than a
+      // sequence of fields in one panel — see `Field`'s note on the variant.
+      card
+      fullWidth={fullWidth}
     >
-      {setting.type === 'boolean' ? null : (
-        // `id` on the label lets the segmented control (a radiogroup, which
-        // can't be the target of htmlFor) name itself via aria-labelledby.
-        <Label id={`${id}-label`} htmlFor={id}>
-          {setting.label}
-        </Label>
-      )}
-
       {control()}
-
-      {error ? (
-        <p id={errorId} role="alert" className="text-destructive text-sm">
-          {error}
-        </p>
-      ) : setting.description ? (
-        <p id={`${id}-hint`} className="text-muted-foreground text-sm">
-          {setting.description}
-        </p>
-      ) : null}
-    </div>
+    </Field>
   );
 }

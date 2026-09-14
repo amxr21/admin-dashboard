@@ -132,6 +132,11 @@ export function ProductGalleryPanel({
             id="gallery-add"
             value=""
             folder="products"
+            // An upload failure joins the panel's own error slot rather than
+            // printing a second one inside the control — this panel already
+            // renders `error` below, and two messages for one failed upload
+            // is the drift `ui/field.tsx` exists to end.
+            onError={setError}
             onChange={(url) => {
               if (!url) return;
               void addImage(productId, url)
