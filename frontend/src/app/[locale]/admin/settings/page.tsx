@@ -1,7 +1,6 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { PageTitle } from '@/components/shell/page-title';
-import { TranslationCompletenessPanel } from '@/components/settings/translation-completeness-panel';
 import { DangerZonePanel } from '@/components/settings/danger-zone-panel';
 import { MyAccountPanel } from '@/components/settings/my-account-panel';
 import { TwoFactorPanel } from '@/components/settings/two-factor-panel';
@@ -12,6 +11,7 @@ import { PoliciesPanel } from '@/components/settings/policies-panel';
 import { PersonalSettingsPanel } from '@/components/settings/personal-settings-panel';
 import { SettingsForm } from '@/components/settings/settings-form';
 import { FeatureSettingsLinks } from '@/components/settings/feature-settings-links';
+import { DeveloperVisibilityPanel } from '@/components/settings/developer-visibility-panel';
 
 /**
  * Settings — one scrollable page with every section stacked top to bottom
@@ -63,8 +63,19 @@ export default async function SettingsPage({
       <ApiKeysPanel />
       <PersonalSettingsPanel />
       <SettingsForm />
+      <DeveloperVisibilityPanel />
       <DataExportPanel />
-      <TranslationCompletenessPanel />
+      {/*
+        The English/Arabic key-parity panel used to sit here. It is a
+        developer diagnostic, not a setting: an owner has no action to take on
+        it (the panel says so itself — fixing a key is a code change), and it
+        answered a question nobody running a shop asks. It now lives on the
+        DEVELOPER-only /admin/configuration page, next to the other
+        "what state is this deployment in" readouts. Moved rather than
+        deleted: the Arabic catalogue is still machine-translated and
+        unreviewed, which is an open release blocker, so the number itself
+        still matters — just not to this audience.
+      */}
       <PoliciesPanel />
       <DangerZonePanel />
     </div>

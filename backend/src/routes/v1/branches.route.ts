@@ -11,7 +11,7 @@ import {
 } from '../../lib/canonical-values.js';
 import { checkTaxId } from '../../lib/tax-id.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
-import { requireArea, requireRole } from '../../middleware/authorize.js';
+import { requireArea, requireDeveloperVisible, requireRole } from '../../middleware/authorize.js';
 import { effectiveRole, withBranchContext } from '../../middleware/branch-context.js';
 import {
   assignUserToBranch,
@@ -64,7 +64,7 @@ const detailSchema = z.object({
  * Not paginated on purpose. A branch list is a switcher, and a business with
  * enough branches to need paging has a different problem than this endpoint.
  */
-branchesRouter.get('/branches', authenticate, withBranchContext, async (req, res) => {
+branchesRouter.get('/branches', authenticate, withBranchContext, requireDeveloperVisible('settings'), async (req, res) => {
   const user = requireUser(req);
 
   const branches = await listBranchesFor(user.id, effectiveRole(req));
@@ -89,7 +89,7 @@ branchesRouter.get('/branches', authenticate, withBranchContext, async (req, res
  * somewhere, and none of these fields is more sensitive than the store name
  * already on screen.
  */
-branchesRouter.get('/branches/_brand', authenticate, withBranchContext, async (req, res) => {
+branchesRouter.get('/branches/_brand', authenticate, withBranchContext, requireDeveloperVisible('settings'), async (req, res) => {
   // `getSettingValue` per key rather than a bulk read: it is the typed
   // accessor, and it already applies the registry's declared default when a
   // row was never written — which is what makes an unfilled setting an empty
@@ -307,6 +307,7 @@ branchesRouter.post(
   authenticate,
   withBranchContext,
   requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  requireDeveloperVisible('settings'),
   async (req, res) => {
     const parsed = businessSchema.safeParse(req.body);
 
@@ -344,6 +345,7 @@ branchesRouter.patch(
   authenticate,
   withBranchContext,
   requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  requireDeveloperVisible('settings'),
   async (req, res) => {
     const parsed = businessPatchSchema.safeParse(req.body);
 
@@ -377,6 +379,7 @@ branchesRouter.post(
   authenticate,
   withBranchContext,
   requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  requireDeveloperVisible('settings'),
   async (req, res) => {
     const parsed = branchCreateSchema.safeParse(req.body);
 
@@ -459,6 +462,7 @@ branchesRouter.get(
   authenticate,
   withBranchContext,
   requireArea('settings'),
+  requireDeveloperVisible('staff'),
   async (req, res) => {
     res.status(200).json({ data: await listBranchStaff(String(req.params.id)) });
   },
@@ -476,6 +480,8 @@ branchesRouter.post(
   authenticate,
   withBranchContext,
   requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  requireDeveloperVisible('settings'),
+  requireDeveloperVisible('staff'),
   async (req, res) => {
     const parsed = rosterSchema.safeParse(req.body);
 
@@ -522,6 +528,8 @@ branchesRouter.delete(
   authenticate,
   withBranchContext,
   requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  requireDeveloperVisible('settings'),
+  requireDeveloperVisible('staff'),
   async (req, res) => {
     const user = requireUser(req);
     const branchId = String(req.params.id);

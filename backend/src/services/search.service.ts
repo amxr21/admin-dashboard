@@ -1,7 +1,8 @@
 import type { StaffRole } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
-import { canAccessArea, type Area } from '../config/roles.js';
+import { type Area } from '../config/roles.js';
+import { resolveAreas } from './role-permissions.service.js';
 import {
   localizeProductRows,
   type ProductLocale,
@@ -67,7 +68,8 @@ export async function search(
   const empty: SearchResults = { orders: [], customers: [], products: [], suppliers: [], customerCases: [] };
   if (q.length < MIN_QUERY_LENGTH) return empty;
 
-  const canSee = (area: Area) => canAccessArea(role, area);
+  const visibleAreas = await resolveAreas(role);
+  const canSee = (area: Area) => visibleAreas.includes(area);
 
   const [orders, customers, products, suppliers, customerCases] = await Promise.all([
     canSee('orders')

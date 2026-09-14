@@ -71,8 +71,23 @@ export async function fetchMyShift(): Promise<Shift | null> {
   return result.shift;
 }
 
+/**
+ * Clock on.
+ *
+ * `branchId` exists so an ambiguous cashier can ANSWER the server's "which
+ * branch?" refusal. Without it the backend's own error message
+ * (BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS, "choose today's branch") asked for
+ * something no call site could send — a contract the client could not
+ * satisfy, so a cashier assigned to two branches simply could not start a
+ * shift at all.
+ *
+ * Still OMITTED on the ordinary single-branch path rather than resolved
+ * client-side: the server picks the branch from the person's own roster, and a
+ * client that guessed would be a second implementation of an attribution rule
+ * that decides where cash and revenue land.
+ */
 export async function startShift(
-  input: { note?: string; forUserId?: string; openingFloat?: string } = {},
+  input: { note?: string; forUserId?: string; openingFloat?: string; branchId?: string } = {},
 ): Promise<Shift> {
   const result = await apiFetch<{ shift: Shift }>('/shifts', {
     method: 'POST',

@@ -27,6 +27,7 @@ import { branchesRouter } from './branches.route.js';
 import { shiftsRouter } from './shifts.route.js';
 import { posRouter } from './pos.route.js';
 import { organizationRouter } from './organization.route.js';
+import { businessProfileRouter } from './business-profile.route.js';
 import { customerCasesRouter } from './customer-cases.route.js';
 import { productContentRouter } from './product-content.route.js';
 
@@ -55,6 +56,7 @@ v1Router.use(settingsRouter);
 v1Router.use(setupRouter);
 v1Router.use(branchesRouter);
 v1Router.use(organizationRouter);
+v1Router.use(businessProfileRouter);
 v1Router.use(customerCasesRouter);
 v1Router.use(diagnosticsRouter);
 v1Router.use(reportsRouter);

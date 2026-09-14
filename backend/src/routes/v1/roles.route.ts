@@ -5,13 +5,15 @@ import { z } from 'zod';
 
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
-import { requireRole } from '../../middleware/authorize.js';
+import { requireDeveloperVisible, requireRole } from '../../middleware/authorize.js';
 import { AREAS, ROLE_LABELS, isReadOnlyRole } from '../../config/roles.js';
 import { audit } from '../../services/audit.service.js';
 import {
+  getDeveloperHiddenAreas,
   listRolePermissions,
   resetRoleAreas,
   resolveAreas,
+  setDeveloperHiddenAreas,
   setRoleAreas,
 } from '../../services/role-permissions.service.js';
 
@@ -24,6 +26,29 @@ import {
  */
 
 export const rolesRouter = Router();
+
+const developerVisibilityBody = z.object({
+  hiddenAreas: z.array(z.enum(AREAS)).max(AREAS.length),
+}).strict();
+
+rolesRouter.get('/roles/developer/visibility', authenticate, requireRole(StaffRole.OWNER), async (_req, res) => {
+  res.status(200).json({ data: { areas: AREAS, hiddenAreas: await getDeveloperHiddenAreas() } });
+});
+
+rolesRouter.put('/roles/developer/visibility', authenticate, requireRole(StaffRole.OWNER), async (req, res) => {
+  const parsed = developerVisibilityBody.safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest('Invalid developer visibility', parsed.error.flatten());
+
+  const before = await getDeveloperHiddenAreas();
+  const hiddenAreas = await setDeveloperHiddenAreas(parsed.data.hiddenAreas);
+  audit(req, {
+    action: 'developer.visibility.changed',
+    entity: 'roles',
+    entityId: StaffRole.DEVELOPER,
+    changes: { hiddenAreas: { from: before, to: hiddenAreas } },
+  });
+  res.status(200).json({ data: { areas: AREAS, hiddenAreas } });
+});
 
 // GET /api/v1/roles — the full model. Any authenticated user may read it;
 // knowing the permission structure grants nothing on its own.
@@ -38,8 +63,8 @@ rolesRouter.get('/roles', authenticate, async (_req, res) => {
     label: ROLE_LABELS[entry.role],
     areas: entry.areas,
     readOnly: isReadOnlyRole(entry.role),
-    /** Owners and developers always keep full access — the matrix renders
-     *  them read-only, and the API refuses them either way. */
+    /** Owner and Developer are read-only in the role matrix. Developer
+     *  visibility is managed by the separate Owner-only policy. */
     isLocked: entry.isLocked,
     /** Whether an owner has changed this from the shipped default, so "why
      *  can Support see reports" has a visible answer. */
@@ -94,6 +119,7 @@ rolesRouter.put(
   '/roles/:role/areas',
   authenticate,
   requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  requireDeveloperVisible('settings'),
   async (req, res) => {
     const parsed = areasBody.safeParse(req.body);
 
@@ -133,6 +159,7 @@ rolesRouter.delete(
   '/roles/:role/areas',
   authenticate,
   requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  requireDeveloperVisible('settings'),
   async (req, res) => {
     const role = parseRole(String(req.params.role));
 

@@ -319,7 +319,24 @@ export function ResourceForm({
         : typeof value === 'boolean'
           ? value
           : String(value).trim() !== '';
-      seeded[field.group] = (seeded[field.group] ?? false) || filled;
+      /**
+       * B3 — a group may also declare itself open by DEFAULT.
+       *
+       * Seeding from data alone is correct for an edit but says nothing on a
+       * CREATE, where every field is empty by definition and so every group
+       * seeded off. That is what made `cost` unreachable while adding a
+       * product: it lives in `pricing`, and the switch it sits behind started
+       * off with the message "Not used for this record."
+       *
+       * `defaultEnabled` is OR-ed in rather than replacing the data check, so
+       * a populated group still opens on an edit even if nothing declares the
+       * flag. Any field carrying it opens the whole group — a group is
+       * enabled as one unit — and this only sets the switch's STARTING
+       * position, which the user can still turn off. Specialist groups do not
+       * declare it, so URG-025's progressive disclosure is unchanged for them.
+       */
+      const openByDefault = field.defaultEnabled === true;
+      seeded[field.group] = (seeded[field.group] ?? false) || filled || openByDefault;
     }
     setEnabledGroups(seeded);
   }, [schema, row]);
@@ -471,6 +488,10 @@ export function ResourceForm({
     return (
       <FormField
         key={field.name}
+        // B2 — a field that needs the full row says so here rather than at
+        // each call site, so the default body and every group agree. See
+        // `spansFullRow` for which types qualify and why.
+        className={spansFullRow(field) ? 'sm:col-span-2' : undefined}
         field={field}
         label={fieldLabel(field)}
         value={values[field.name] ?? ''}
@@ -657,15 +678,19 @@ export function ResourceForm({
       <SheetContent
         side="end"
         variant={editPanelMode}
+        // B1 — this form is the content-heavy case the `wide` size exists for:
+        // a product declares ~20 writable fields, and at the old `max-w-lg`
+        // every one of them stacked in a single column behind an inner
+        // scrollbar. The size is a PROP rather than a width class here on
+        // purpose — a `max-w-*` passed through `className` is exactly what
+        // used to fight the variant's own sizing, and the note this replaces
+        // warned that such a class wins the class merge.
+        size="wide"
         // No `overflow-y-auto` here: scrolling the whole panel would carry the
         // heading and the action buttons off-screen with it. The field list
         // below is the only part that scrolls, so the title stays put and Save
         // /Cancel stay reachable — in the modal variant especially, where the
         // panel is capped at 85vh rather than running the full viewport height.
-        // Width is left to the variant: the drawer sizes itself to the edge,
-        // the modal keeps a small-screen gutter. Passing `w-full` here would
-        // win the class merge and flatten the modal back to edge-to-edge.
-        className="max-w-lg"
         title={isEdit ? t('editTitle', { label: schema.label }) : t('createTitle', { label: schema.label })}
         // Escape and outside clicks route through the same guard as the
         // buttons, so there is no way to lose edits by accident.
@@ -705,10 +730,28 @@ export function ResourceForm({
             </p>
           ) : null}
 
-          {/* The one scrolling region. `-mx-1 px-1` keeps focus rings on the
-              inputs from being clipped by the overflow container. */}
+          {/* The ONE scrolling region (B4), unchanged in kind by the widening:
+              the heading above and the Save/Cancel bar below stay fixed, and
+              nothing inside introduces a second scroller. `-mx-1 px-1` keeps
+              focus rings on the inputs from being clipped by the overflow
+              container. */}
           <div className="-mx-1 min-h-0 flex-1 space-y-4 overflow-y-auto px-1">
-            {ungroupedFields.map(renderField)}
+            {/*
+              B1/B2 — two columns once there is room, ONE below `sm` (40rem).
+              The old single column was the owner's actual complaint: a narrow
+              panel with every field stacked behind an inner scrollbar. Long
+              fields opt back out to the full row via `spansFullRow`, because a
+              textarea or an image dropzone squeezed into half a column is
+              worse than the stacking it replaced, not better.
+
+              `sm:grid-cols-2` is the breakpoint this repo already uses for
+              every other two-column form (business-form, my-account-panel,
+              organization-profile-editor), so a phone keeps the single column
+              it has always had.
+            */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {ungroupedFields.map(renderField)}
+            </div>
 
             {/*
               URG-025 — progressive disclosure. Specialist fields collect into
@@ -727,7 +770,10 @@ export function ResourceForm({
                   key={groupKey}
                   title={tGroups(groupKey)}
                   aside={String(groupFields.length)}
-                  bodyClassName="space-y-4 p-4"
+                  // B2 — a group's fields lay out on the same two-column grid
+                  // as the default body above, so a section does not read as a
+                  // different kind of form from the one it sits under.
+                  bodyClassName="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2"
                   /* Sibling of the heading button, never inside it — see the
                      `action` slot's own comment on why nesting would break
                      keyboard access. */
@@ -762,7 +808,12 @@ export function ResourceForm({
                   {enabled ? (
                     groupFields.map(renderField)
                   ) : (
-                    <p className="text-muted-foreground text-sm">{t('groupDisabled')}</p>
+                    // Spans the grid so the explanation reads as one sentence
+                    // across the section rather than being squeezed into a
+                    // half-width column with the other half left blank.
+                    <p className="text-muted-foreground text-sm sm:col-span-2">
+                      {t('groupDisabled')}
+                    </p>
                   )}
                 </CollapsibleSection>
               );
@@ -956,6 +1007,14 @@ interface FormFieldProps {
    * showing, since a validation failure is the more urgent message.
    */
   notice?: string | undefined;
+  /**
+   * Grid placement for this field's whole row (B2).
+   *
+   * The field decides nothing about the layout itself — the caller owns the
+   * grid and says whether this one takes a single cell or the full row, so a
+   * `longtext` stays readable while a price and a cost sit side by side.
+   */
+  className?: string | undefined;
   onRefreshOptions?: () => void;
   onChange: (value: FormValue) => void;
   /** Runs `validateField` for THIS field only — never on boolean/
@@ -976,6 +1035,7 @@ function FormField({
   options,
   resourceFolder,
   notice,
+  className,
   onRefreshOptions,
   onChange,
   onBlur,
@@ -1180,7 +1240,7 @@ function FormField({
   }
 
   return (
-    <div className="space-y-2">
+    <div className={cn('space-y-2', className)}>
       {field.type === 'boolean' ? null : (
         <Label htmlFor={id} id={`${id}-label`}>
           {label}
@@ -1225,6 +1285,24 @@ function FormField({
       ) : null}
     </div>
   );
+}
+
+/**
+ * Which fields take the whole row instead of one grid cell (B2).
+ *
+ * Half a column is an improvement for a price, a SKU or a date — short values
+ * whose input is wider than the content needs. It is a REGRESSION for anything
+ * whose content is genuinely long: a `longtext` description squeezed into half
+ * the width just trades one cramped box for a narrower one, and an `image`
+ * field renders a preview and a dropzone that need room to read as a target
+ * rather than a stamp.
+ *
+ * Keyed on the semantic TYPE rather than a field-name list, so a new long field
+ * on any resource is laid out correctly the moment it is declared — the same
+ * config-driven discipline the rest of this form follows.
+ */
+function spansFullRow(field: FieldConfig): boolean {
+  return field.type === 'longtext' || field.type === 'image' || field.type === 'multiRelation';
 }
 
 function inputType(field: FieldConfig): string {

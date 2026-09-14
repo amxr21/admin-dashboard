@@ -327,6 +327,29 @@ export function requireArea(area: Area) {
   };
 }
 
+/** Apply an owner's visibility choice to role-specific routes that bypass requireArea. */
+export function requireDeveloperVisible(...areas: readonly Area[]) {
+  return async function developerVisibilityGuard(
+    req: Request,
+    _res: Response,
+    next: NextFunction,
+  ): Promise<void> {
+    try {
+      const user = requireUser(req);
+      if (user.role === StaffRole.DEVELOPER) {
+        for (const area of areas) {
+          if (!(await canAccessAreaResolved(user.role, area))) {
+            throw AppError.forbidden('The owner has hidden this business area from developer access');
+          }
+        }
+      }
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
 /**
  * Requires one of an explicit set of roles.
  *

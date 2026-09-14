@@ -277,6 +277,50 @@ describe('starting a shift with no branch header, in a multi-business install', 
       .toBe('BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS');
   });
 
+  it('an ambiguous cashier CAN start once they name one of their own branches', async () => {
+    // The point of the whole fix. The refusal above tells the cashier to
+    // choose a branch; before this, `startShift` had no `branchId` field to
+    // send and the till rendered no picker, so the instruction could not be
+    // followed and a two-branch cashier simply could not clock on.
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-picks-branch');
+    await prisma.userBranch.createMany({
+      data: [
+        { userId: cashier.id, branchId, role: StaffRole.CASHIER },
+        { userId: cashier.id, branchId: otherBranchId, role: StaffRole.CASHIER },
+      ],
+    });
+
+    const res = await request(app)
+      .post('/api/v1/shifts')
+      .set(auth(signToken(cashier)))
+      .send({ branchId: otherBranchId });
+
+    expect(res.status).toBe(201);
+    // Recorded against the branch they PICKED, not a default — the whole
+    // point is that the attribution is answered rather than guessed.
+    expect((res.body as ShiftBody).data.shift.branch.id).toBe(otherBranchId);
+  });
+
+  it('refuses a branch the cashier holds no assignment at', async () => {
+    // `branchId` became client-supplied so the ambiguity could be answered.
+    // Without this check that same field would let a cashier attribute their
+    // shift — and its cash — to a shop they have no business working at,
+    // reintroducing the exact misattribution the refusal exists to prevent.
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-wrong-branch');
+    await prisma.userBranch.create({
+      data: { userId: cashier.id, branchId, role: StaffRole.CASHIER },
+    });
+
+    const res = await request(app)
+      .post('/api/v1/shifts')
+      .set(auth(signToken(cashier)))
+      .send({ branchId: otherBranchId });
+
+    expect(res.status).toBe(403);
+    expect((res.body as { error: { details: { reason: string } } }).error.details.reason)
+      .toBe('BRANCH_NOT_ASSIGNED');
+  });
+
   it('a branch-scoped role with no roster row still gets the ambiguity error', async () => {
     const unassigned = await makeUser(StaffRole.CASHIER, 'cashier-unassigned');
 

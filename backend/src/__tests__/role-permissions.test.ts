@@ -105,7 +105,7 @@ describe('who may change permissions', () => {
   });
 });
 
-describe('OWNER and DEVELOPER can never be narrowed', () => {
+describe('OWNER and DEVELOPER cannot be edited in the role matrix', () => {
   it('refuses to edit OWNER', async () => {
     const res = await request(app)
       .put('/api/v1/roles/OWNER/areas')
@@ -113,7 +113,7 @@ describe('OWNER and DEVELOPER can never be narrowed', () => {
       .send({ areas: ['orders'] });
 
     expect(res.status).toBe(400);
-    expect((res.body as { error: { message: string } }).error.message).toMatch(/full access/i);
+    expect((res.body as { error: { message: string } }).error.message).toMatch(/role matrix/i);
   });
 
   it('refuses to edit DEVELOPER', async () => {

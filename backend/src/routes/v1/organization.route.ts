@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { StaffRole } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate } from '../../middleware/authenticate.js';
-import { requireRole } from '../../middleware/authorize.js';
+import { requireDeveloperVisible, requireRole } from '../../middleware/authorize.js';
 import { AppError } from '../../errors/AppError.js';
 import { audit } from '../../services/audit.service.js';
 import {
@@ -11,7 +11,12 @@ import {
 } from '../../services/organization.service.js';
 
 export const organizationRouter = Router();
-const guard = [authenticate, requireRole(StaffRole.OWNER, StaffRole.DEVELOPER)] as const;
+const guard = [
+  authenticate,
+  requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  requireDeveloperVisible('settings'),
+  requireDeveloperVisible('staff'),
+] as const;
 const profileParams = z.object({ entityType: entityTypeSchema, entityId: z.string().min(1).max(64) });
 
 organizationRouter.get('/organization', ...guard, async (_req, res) => {

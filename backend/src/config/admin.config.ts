@@ -116,6 +116,27 @@ export interface FieldConfig {
    */
   group?: string;
   /**
+   * Groups whose switch starts ON for a BRAND-NEW record (B3).
+   *
+   * URG-026 seeds every group's switch from the DATA — a product that already
+   * has a weight is self-evidently physical, so its Dimensions group opens
+   * enabled. On a CREATE there is no data by definition, so every group seeded
+   * off, and `cost` — which lives in `pricing` — was unreachable while adding a
+   * product. The owner asked for price and cost together at that exact moment.
+   *
+   * This flag is the narrow exception, not a repeal: it says "this group is
+   * part of describing the thing, so open it even with nothing to go on".
+   * Specialist groups (shipping/customs, SEO, dimensions) deliberately do NOT
+   * set it and keep URG-025's progressive disclosure — the complaint was about
+   * cost, never about being asked for an HS code.
+   *
+   * Declared per FIELD but read per GROUP: any field carrying it opens its
+   * whole group, since a group is enabled or disabled as one unit. It changes
+   * only the INITIAL state of a switch the user can still turn off, and it
+   * makes nothing required — a blank cost still means "not tracked", never 0.
+   */
+  defaultEnabled?: boolean;
+  /**
    * Older CSV templates may carry a previous human label. These aliases are
    * read on import only; templates still emit the current `label`.
    */
@@ -171,13 +192,22 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         type: 'longtext',
         inList: false,
         group: 'organisation',
+        placeholder: 'e.g. Soft combed cotton, pre-shrunk, fits true to size',
       },
       { name: 'price', label: 'Price', type: 'money', required: true, sortable: true },
       // Optional and deliberately not in the list view: most rows won't have
       // it filled in yet, and margin reporting must treat a blank cost as
       // "not tracked", never as free — see the schema comment on Product.cost.
-      { name: 'cost', label: 'Cost', type: 'money', inList: false, group: 'pricing' },
-      { name: 'stock', label: 'Stock', type: 'number', sortable: true },
+      //
+      // `defaultEnabled` (B3) opens the Cost & margin group on a new product so
+      // cost sits next to price while someone is adding one, which is what the
+      // owner asked for. Still OPTIONAL: the switch can be turned off, and a
+      // blank cost saves as NULL, keeping "not tracked" distinct from a real
+      // zero. That distinction is what the dashboard's "Based on N of M order
+      // lines" coverage note is built on, so it must survive this change —
+      // making cost easy to fill is the goal, making it mandatory is not.
+      { name: 'cost', label: 'Cost', type: 'money', inList: false, group: 'pricing', defaultEnabled: true },
+      { name: 'stock', label: 'Stock', type: 'number', sortable: true, placeholder: 'e.g. 24' },
       /**
        * Per-product stock defaults (F7.8). Both `inList: false` — they are
        * setup values you fill in once, not columns worth a place in a list
@@ -193,6 +223,7 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         type: 'number',
         inList: false,
         group: 'inventory',
+        placeholder: 'e.g. 5',
       },
       {
         name: 'storageLocation',
@@ -283,10 +314,10 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         importAliases: ['Barcode (EAN/UPC)'],
         placeholder: 'e.g. 5901234123457',
       },
-      { name: 'weightKg', label: 'Weight (kg)', type: 'number', inList: false, group: 'physical' },
-      { name: 'lengthCm', label: 'Length (cm)', type: 'number', inList: false, group: 'physical' },
-      { name: 'widthCm', label: 'Width (cm)', type: 'number', inList: false, group: 'physical' },
-      { name: 'heightCm', label: 'Height (cm)', type: 'number', inList: false, group: 'physical' },
+      { name: 'weightKg', label: 'Weight (kg)', type: 'number', inList: false, group: 'physical', placeholder: 'e.g. 0.25' },
+      { name: 'lengthCm', label: 'Length (cm)', type: 'number', inList: false, group: 'physical', placeholder: 'e.g. 30' },
+      { name: 'widthCm', label: 'Width (cm)', type: 'number', inList: false, group: 'physical', placeholder: 'e.g. 22' },
+      { name: 'heightCm', label: 'Height (cm)', type: 'number', inList: false, group: 'physical', placeholder: 'e.g. 3' },
       { name: 'hsCode', label: 'HS code', type: 'text', inList: false, group: 'shipping', placeholder: 'e.g. 6109.10' },
       {
         name: 'countryOfOrigin',
@@ -296,10 +327,19 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         group: 'shipping',
         placeholder: 'e.g. India',
       },
-      // SEO block. `slug` is never auto-derived from `name` on write — see
-      // the schema comment on Product.slug — a user types it, so changing it
-      // is a deliberate act the UI can warn about, not a side effect of
-      // renaming the product. Meta title/description are single-locale for
+      // SEO block. `slug` is auto-derived from `name` ON CREATE ONLY, and only
+      // when the user left it blank (C1/C2, owner-approved) — see the products
+      // hook in resource-hooks.ts, which reuses `uniqueSlug` so a clash becomes
+      // `blue-mug-2` rather than a 409 nobody asked for.
+      //
+      // This comment previously read "never auto-derived from `name` on write".
+      // That rule still holds for every UPDATE, which is what it was really
+      // protecting: an existing slug is a URL someone may have linked, and
+      // changing one records a `ProductRedirect`, so it stays a deliberate act
+      // the UI warns about rather than a side effect of renaming a product. The
+      // create case it also covered was never the risk — there is no previous
+      // slug to redirect from — and leaving it blank just produced a product
+      // with no URL key at all. Meta title/description are single-locale for
       // now, matching `name`/`description` (no i18n content model exists
       // yet — that's A5.8's job, not duplicated here).
       {
@@ -311,14 +351,16 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         group: 'seo',
         changeWarning:
           'Changing the slug records a redirect from the old one, but nothing in this app resolves products by slug yet — this is for a future public site.',
+        placeholder: 'e.g. black-cotton-t-shirt',
       },
-      { name: 'metaTitle', label: 'Meta title', type: 'text', inList: false, group: 'seo' },
+      { name: 'metaTitle', label: 'Meta title', type: 'text', inList: false, group: 'seo', placeholder: 'e.g. Black Cotton T-Shirt | Nour' },
       {
         name: 'metaDescription',
         label: 'Meta description',
         type: 'longtext',
         inList: false,
         group: 'seo',
+        placeholder: 'e.g. Soft combed-cotton tee in black. Free returns within 30 days.',
       },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],
@@ -361,14 +403,14 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
     permissions: { create: true, update: true, delete: true },
     fields: [
       { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
-      { name: 'name', label: 'Name', type: 'text', required: true, searchable: true, sortable: true },
+      { name: 'name', label: 'Name', type: 'text', required: true, searchable: true, sortable: true, placeholder: 'e.g. Hot drinks' },
       // URG-027/032 — no longer required of the ADMINISTRATOR. The column is
       // still NOT NULL and unique; `resource-hooks.ts` derives a free slug
       // from the name on create when this is left blank. Keeping
       // `required: true` here would make the form refuse the write before the
       // server ever got the chance to generate one, which is precisely the
       // "adding a category feels strange" complaint.
-      { name: 'slug', label: 'Slug', type: 'text', searchable: true },
+      { name: 'slug', label: 'Slug', type: 'text', searchable: true, placeholder: 'e.g. hot-drinks' },
       // Depth cap and circular-parent prevention are enforced server-side
       // (resource-hooks.ts's beforeWrite, S7.6) — a resource with no field
       // rule for "cannot select an id below a certain depth" leans on that,
@@ -420,15 +462,17 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
     permissions: { create: true, update: true, delete: true },
     fields: [
       { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
-      { name: 'name', label: 'Name', type: 'text', required: true, searchable: true, sortable: true },
+      { name: 'name', label: 'Name', type: 'text', required: true, searchable: true, sortable: true, placeholder: 'e.g. Sarah Haddad' },
+      // email/phone deliberately carry no placeholder: `placeholderFor` already
+      // supplies a format example true for every field of those types.
       { name: 'email', label: 'Email', type: 'email', required: true, searchable: true, sortable: true },
       { name: 'phone', label: 'Phone', type: 'phone', searchable: true },
-      { name: 'city', label: 'City', type: 'text', sortable: true },
-      { name: 'country', label: 'Country', type: 'text', sortable: true },
+      { name: 'city', label: 'City', type: 'text', sortable: true, placeholder: 'e.g. Dubai' },
+      { name: 'country', label: 'Country', type: 'text', sortable: true, placeholder: 'e.g. United Arab Emirates' },
       // Staff-only, never surfaced to the customer — the customer has no API
       // access to this resource at all, so "staff-only" falls out of the
       // existing permission model rather than needing a new rule.
-      { name: 'internalNotes', label: 'Internal notes', type: 'longtext', inList: false },
+      { name: 'internalNotes', label: 'Internal notes', type: 'longtext', inList: false, placeholder: 'e.g. Prefers afternoon delivery; called about order 1042' },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],
   },
@@ -448,7 +492,7 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       // PERCENT stores the percentage itself (10.00 = 10%); FIXED stores a
       // money amount. Same Decimal(10,2) either way, so the same string rule.
       { name: 'value', label: 'Value', type: 'money', required: true, sortable: true },
-      { name: 'maxUses', label: 'Max uses', type: 'number' },
+      { name: 'maxUses', label: 'Max uses', type: 'number', placeholder: 'e.g. 100' },
       { name: 'usedCount', label: 'Used', type: 'number', readOnly: true, sortable: true },
       { name: 'isActive', label: 'Active', type: 'boolean', defaultValue: true, sortable: true },
       { name: 'expiresAt', label: 'Expires', type: 'datetime', sortable: true },
