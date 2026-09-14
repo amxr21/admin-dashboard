@@ -28,7 +28,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { useAuth } from '@/hooks/useAuth';
 import { useUrlState } from '@/hooks/useUrlState';
-import { canAccessArea, landingFor } from '@/config/areas';
+import { landingFor } from '@/config/areas';
+import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
 import {
   DEFAULT_DASHBOARD_COMPARISON,
   parseDashboardState,
@@ -79,6 +80,7 @@ import {
  */
 
 export function DashboardOverview() {
+  const canAccessArea = useCanAccessArea();
   const t = useTranslations('dashboard');
   const { user } = useAuth();
   /**

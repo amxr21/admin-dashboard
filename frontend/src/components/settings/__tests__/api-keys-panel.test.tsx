@@ -68,14 +68,27 @@ describe('ApiKeysPanel — creation and one-time reveal', () => {
     expect(createApiKey).not.toHaveBeenCalled();
   });
 
+  it('requires a reason and holder before enabling creation', async () => {
+    render(<ApiKeysPanel />);
+    await userEvent.click(await screen.findByRole('button', { name: /create key/i }));
+    await userEvent.type(screen.getByLabelText(/^name$/i), 'Inventory sync');
+    expect(screen.getByRole('button', { name: /^create key$/i })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/reason for this key/i), 'Sync stock');
+    expect(screen.getByRole('button', { name: /^create key$/i })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/who will hold/i), 'Warehouse team');
+    expect(screen.getByRole('button', { name: /^create key$/i })).toBeEnabled();
+  });
+
   it('reveals the full plaintext key exactly once, right after creation', async () => {
     render(<ApiKeysPanel />);
 
     await userEvent.click(await screen.findByRole('button', { name: /create key/i }));
     await userEvent.type(screen.getByLabelText(/^name$/i), 'CI pipeline');
+    await userEvent.type(screen.getByLabelText(/reason for this key/i), 'Run CI deployments');
+    await userEvent.type(screen.getByLabelText(/who will hold/i), 'Engineering team');
     await userEvent.click(screen.getByRole('button', { name: /^create key$/i }));
 
-    await waitFor(() => expect(createApiKey).toHaveBeenCalledWith('CI pipeline'));
+    await waitFor(() => expect(createApiKey).toHaveBeenCalledWith('CI pipeline', 'Run CI deployments', 'Engineering team'));
     expect(
       await screen.findByText('adk_abcdefghijklmnopqrstuvwxyz0123456789ABCD'),
     ).toBeInTheDocument();
@@ -86,6 +99,8 @@ describe('ApiKeysPanel — creation and one-time reveal', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /create key/i }));
     await userEvent.type(screen.getByLabelText(/^name$/i), 'CI pipeline');
+    await userEvent.type(screen.getByLabelText(/reason for this key/i), 'Run CI deployments');
+    await userEvent.type(screen.getByLabelText(/who will hold/i), 'Engineering team');
     await userEvent.click(screen.getByRole('button', { name: /^create key$/i }));
 
     await screen.findByText('adk_abcdefghijklmnopqrstuvwxyz0123456789ABCD');
@@ -112,6 +127,8 @@ describe('ApiKeysPanel — creation and one-time reveal', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /create key/i }));
     await userEvent.type(screen.getByLabelText(/^name$/i), 'One too many');
+    await userEvent.type(screen.getByLabelText(/reason for this key/i), 'Run CI deployments');
+    await userEvent.type(screen.getByLabelText(/who will hold/i), 'Engineering team');
     await userEvent.click(screen.getByRole('button', { name: /^create key$/i }));
 
     expect(await screen.findByText(/20 active keys/i)).toBeInTheDocument();

@@ -2,6 +2,32 @@ import { AuditOutcome } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { listAudit, type AuditListParams } from './audit.service.js';
+import { getSettingValue } from './settings.service.js';
+
+/** Owner overview of currently valid staff devices, newest activity first. */
+export async function listActiveStaffSessions() {
+  const timeoutMinutes = await getSettingValue('security.sessionTimeoutMinutes');
+  const rows = await prisma.session.findMany({
+    where: {
+      revokedAt: null,
+      createdAt: { gt: new Date(Date.now() - timeoutMinutes * 60_000) },
+      user: { isActive: true },
+    },
+    orderBy: { lastSeenAt: 'desc' },
+    select: {
+      id: true, userId: true, userAgent: true, ip: true, createdAt: true, lastSeenAt: true,
+      user: { select: { name: true, email: true, role: true } },
+    },
+  });
+  return rows.map(({ user, ...row }) => ({
+    ...row,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    createdAt: row.createdAt.toISOString(),
+    lastSeenAt: row.lastSeenAt.toISOString(),
+  }));
+}
 
 /**
  * Who signed in, when, from where — and who tried and failed.

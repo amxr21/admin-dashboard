@@ -582,7 +582,11 @@ authRouter.get('/auth/me/api-keys', authenticate, async (req, res) => {
   res.status(200).json({ data: await listApiKeys(actor.id) });
 });
 
-const createApiKeySchema = z.object({ name: z.string().trim().min(1).max(120) }).strict();
+const createApiKeySchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  purpose: z.string().trim().min(3).max(255),
+  recipient: z.string().trim().min(2).max(255),
+}).strict();
 
 /**
  * POST /api/v1/auth/me/api-keys
@@ -595,7 +599,7 @@ authRouter.post('/auth/me/api-keys', authenticate, async (req, res) => {
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
 
   const actor = requireUser(req);
-  const created = await createApiKey(actor.id, parsed.data.name);
+  const created = await createApiKey(actor.id, parsed.data.name, parsed.data.purpose, parsed.data.recipient);
 
   // The key itself is NEVER logged — same rule as a courier access code or
   // reset token.
@@ -603,7 +607,7 @@ authRouter.post('/auth/me/api-keys', authenticate, async (req, res) => {
     action: 'auth.api-key.created',
     entity: 'apiKey',
     entityId: created.id,
-    changes: { name: created.name },
+    changes: { name: created.name, purpose: created.purpose, recipient: created.recipient },
   });
 
   res.status(201).json({ data: created });

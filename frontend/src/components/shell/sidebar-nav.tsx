@@ -45,6 +45,7 @@ function countForHref(href: string, counts: ReturnType<typeof useNavCounts>): nu
 
 interface SidebarNavProps {
   role: StaffRole;
+  canAccessArea?: (role: StaffRole, area: Area) => boolean;
   /** Mobile drawer passes a close handler so tapping a link dismisses it. */
   onNavigate?: () => void;
   /**
@@ -57,7 +58,7 @@ interface SidebarNavProps {
   collapsed?: boolean;
 }
 
-export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavProps) {
+export function SidebarNav({ role, canAccessArea: canAccess = canAccessArea, onNavigate, collapsed = false }: SidebarNavProps) {
   const { enabledFeatures } = useAppSettings();
   const t = useTranslations('nav');
   const pathname = usePathname();
@@ -131,7 +132,7 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
     if (group.labelKey) byKey.set(group.labelKey, copy);
   }
 
-  const canSeeSettings = canAccessArea(role, 'settings');
+  const canSeeSettings = canAccess(role, 'settings');
   // Mirrors `requireRole(OWNER, DEVELOPER)` on GET /diagnostics/configuration.
   // An explicit pair, not "any elevated role": MANAGER holds `settings` and
   // must not reach it. Hiding the link is presentation only — the API refuses
@@ -151,7 +152,7 @@ export function SidebarNav({ role, onNavigate, collapsed = false }: SidebarNavPr
         // Hide whole groups the role cannot reach, rather than leaving an
         // empty heading behind.
         const visible = group.items.filter(
-          (item) => (!item.area || canAccessArea(role, item.area)) && isSetupPathEnabled(item.href, enabledFeatures),
+          (item) => (!item.area || canAccess(role, item.area)) && isSetupPathEnabled(item.href, enabledFeatures),
         );
         if (visible.length === 0) return null;
 

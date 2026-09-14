@@ -40,7 +40,8 @@ import {
  * There is no per-key scope picker here because there is no per-key scope on
  * the backend — see `ApiKey`'s schema doc comment. A key created from this
  * panel can do exactly what the signed-in account can do, nothing more and
- * nothing less. That is the whole reason this form only ever asks for a name.
+ * nothing less. The name identifies it; purpose and recipient record why it
+ * exists and who holds this sensitive credential.
  */
 export function ApiKeysPanel() {
   const t = useTranslations('settings.apiKeys');
@@ -132,6 +133,7 @@ export function ApiKeysPanel() {
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{key.name}</p>
+                  <p className="text-muted-foreground truncate text-xs">{key.purpose} · {key.recipient}</p>
                   <p className="text-muted-foreground flex items-center gap-1 text-xs">
                     <code className="force-ltr">{key.keyPreview}</code>
                     <span>·</span>
@@ -202,7 +204,7 @@ export function ApiKeysPanel() {
   );
 }
 
-type CreateStep = 'name' | 'reveal';
+type CreateStep = 'details' | 'reveal';
 
 function CreateKeySheet({
   editPanelMode,
@@ -214,8 +216,10 @@ function CreateKeySheet({
   const t = useTranslations('settings.apiKeys');
   const translateError = useTranslatedApiError();
 
-  const [step, setStep] = useState<CreateStep>('name');
+  const [step, setStep] = useState<CreateStep>('details');
   const [name, setName] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [recipient, setRecipient] = useState('');
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -226,7 +230,7 @@ function CreateKeySheet({
     setError(null);
 
     try {
-      const result = await createApiKey(name.trim());
+      const result = await createApiKey(name.trim(), purpose.trim(), recipient.trim());
       setCreated(result);
       setStep('reveal');
     } catch (caught) {
@@ -322,6 +326,16 @@ function CreateKeySheet({
           />
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="api-key-purpose">{t('purposeLabel')}</Label>
+          <Input id="api-key-purpose" value={purpose} onChange={(event) => setPurpose(event.target.value)} maxLength={255} placeholder={t('purposePlaceholder')} disabled={isSaving} />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="api-key-recipient">{t('recipientLabel')}</Label>
+          <Input id="api-key-recipient" value={recipient} onChange={(event) => setRecipient(event.target.value)} maxLength={255} placeholder={t('recipientPlaceholder')} disabled={isSaving} />
+        </div>
+
         {error ? (
           <p role="alert" className="text-destructive text-sm">
             {error}
@@ -329,7 +343,7 @@ function CreateKeySheet({
         ) : null}
 
         <div className="flex gap-2">
-          <Button size="sm" disabled={isSaving || !name.trim()} onClick={() => void submit()}>
+          <Button size="sm" disabled={isSaving || !name.trim() || purpose.trim().length < 3 || recipient.trim().length < 2} onClick={() => void submit()}>
             {isSaving ? t('creating') : t('create')}
           </Button>
           <Button variant="outline" size="sm" onClick={onDone}>

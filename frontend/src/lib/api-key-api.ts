@@ -10,6 +10,8 @@ import { apiFetch } from '@/lib/api';
 export interface ApiKeySummary {
   id: string;
   name: string;
+  purpose: string;
+  recipient: string;
   /** e.g. "adk_a1b2c3d4…9x8y" — the plaintext itself is never returned again
    * after creation. */
   keyPreview: string;
@@ -24,15 +26,17 @@ export async function fetchApiKeys(): Promise<ApiKeySummary[]> {
 export interface CreatedApiKey {
   id: string;
   name: string;
+  purpose: string;
+  recipient: string;
   /** Plaintext, returned exactly once — same one-time-reveal contract as a
    * courier access code, password-reset token, or 2FA backup code. */
   key: string;
 }
 
-export async function createApiKey(name: string): Promise<CreatedApiKey> {
+export async function createApiKey(name: string, purpose: string, recipient: string): Promise<CreatedApiKey> {
   return apiFetch<CreatedApiKey>('/auth/me/api-keys', {
     method: 'POST',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, purpose, recipient }),
   });
 }
 

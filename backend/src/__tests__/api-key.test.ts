@@ -63,12 +63,14 @@ describe('creating and listing keys', () => {
     const res = await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(token))
-      .send({ name: 'CI pipeline' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'CI pipeline' });
 
     expect(res.status).toBe(201);
     const body = res.body as CreatedKeyBody;
     expect(body.data.key).toMatch(/^adk_/);
     expect(body.data.name).toBe('CI pipeline');
+    expect(body.data.purpose).toBe('Test integration');
+    expect(body.data.recipient).toBe('Test operator');
   });
 
   it('never returns the plaintext again from the list endpoint', async () => {
@@ -78,7 +80,7 @@ describe('creating and listing keys', () => {
     await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(token))
-      .send({ name: 'Leak check' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'Leak check' });
 
     const listRes = await request(app).get('/api/v1/auth/me/api-keys').set(auth(token));
     const serialised = JSON.stringify(listRes.body);
@@ -96,11 +98,11 @@ describe('creating and listing keys', () => {
     await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(ownerToken))
-      .send({ name: 'Owner key' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'Owner key' });
     await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(otherToken))
-      .send({ name: 'Other key' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'Other key' });
 
     const res = await request(app).get('/api/v1/auth/me/api-keys').set(auth(ownerToken));
     const body = res.body as ListBody;
@@ -116,8 +118,18 @@ describe('creating and listing keys', () => {
     const res = await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(token))
-      .send({ name: '' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: '' });
 
+    expect(res.status).toBe(400);
+  });
+
+  it('requires a purpose and recipient before issuing a credential', async () => {
+    const user = await makeUser(StaffRole.OWNER, 'missing-context');
+    const token = signToken(user);
+    const res = await request(app)
+      .post('/api/v1/auth/me/api-keys')
+      .set(auth(token))
+      .send({ name: 'Unaccounted key' });
     expect(res.status).toBe(400);
   });
 
@@ -135,7 +147,7 @@ describe('a key authenticates as its OWNER, exactly', () => {
     const createRes = await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(ownerToken))
-      .send({ name: 'Read test' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'Read test' });
     const key = (createRes.body as CreatedKeyBody).data.key;
 
     const res = await request(app).get('/api/v1/auth/me').set(auth(key));
@@ -153,7 +165,7 @@ describe('a key authenticates as its OWNER, exactly', () => {
     const createRes = await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(supportToken))
-      .send({ name: 'Support key' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'Support key' });
     const key = (createRes.body as CreatedKeyBody).data.key;
 
     // SUPPORT does not hold the `staff` area — a key inheriting MORE than
@@ -172,7 +184,7 @@ describe('a key authenticates as its OWNER, exactly', () => {
     const createRes = await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(token))
-      .send({ name: 'Will be deactivated' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'Will be deactivated' });
     const key = (createRes.body as CreatedKeyBody).data.key;
 
     await request(app)
@@ -206,7 +218,7 @@ describe('a key authenticates as its OWNER, exactly', () => {
     const createRes = await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(token))
-      .send({ name: 'Tracks last used' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'Tracks last used' });
     const key = (createRes.body as CreatedKeyBody).data.key;
 
     await request(app).get('/api/v1/auth/me').set(auth(key));
@@ -241,7 +253,7 @@ describe('revoking a key', () => {
     const createRes = await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(token))
-      .send({ name: 'To be revoked' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'To be revoked' });
     const created = (createRes.body as CreatedKeyBody).data;
 
     const revokeRes = await request(app)
@@ -260,7 +272,7 @@ describe('revoking a key', () => {
     const createRes = await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(token))
-      .send({ name: 'Independent' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'Independent' });
     const created = (createRes.body as CreatedKeyBody).data;
 
     await request(app).delete(`/api/v1/auth/me/api-keys/${created.id}`).set(auth(token));
@@ -278,7 +290,7 @@ describe('revoking a key', () => {
     const createRes = await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(token))
-      .send({ name: 'Will disappear' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'Will disappear' });
     const created = (createRes.body as CreatedKeyBody).data;
 
     await request(app).delete(`/api/v1/auth/me/api-keys/${created.id}`).set(auth(token));
@@ -298,7 +310,7 @@ describe('revoking a key', () => {
     const createRes = await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(victimToken))
-      .send({ name: 'Victim key' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'Victim key' });
     const created = (createRes.body as CreatedKeyBody).data;
 
     // 204 either way (idempotent), so the real assertion is that the
@@ -326,14 +338,14 @@ describe('the soft ceiling on live keys per user', () => {
       const res = await request(app)
         .post('/api/v1/auth/me/api-keys')
         .set(auth(token))
-        .send({ name: `Key ${String(i)}` });
+        .send({ purpose: 'Test integration', recipient: 'Test operator', name: `Key ${String(i)}` });
       expect(res.status).toBe(201);
     }
 
     const res = await request(app)
       .post('/api/v1/auth/me/api-keys')
       .set(auth(token))
-      .send({ name: 'One too many' });
+      .send({ purpose: 'Test integration', recipient: 'Test operator', name: 'One too many' });
 
     expect(res.status).toBe(400);
   });
