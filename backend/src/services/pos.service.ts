@@ -670,7 +670,10 @@ async function checkoutOnce(
           })),
         },
       },
-      select: { id: true, orderNumber: true },
+      // `soldByName` comes back so the checkout response can carry it to the
+      // receipt. Read from the row just written rather than from the local
+      // variable, so the printed name is provably the stored one.
+      select: { id: true, orderNumber: true, soldByName: true },
     });
 
     // Exchange (O9.8) — link the return to THIS sale now that it exists.
@@ -947,6 +950,16 @@ async function checkoutOnce(
       taxAmount: created.totals.taxAmount.toFixed(2),
       total: created.totals.total.toFixed(2),
       change: created.change?.toFixed(2) ?? null,
+      /**
+       * Who served the customer, for the `Served by` line on the receipt.
+       *
+       * From the ORDER, not from the caller's session: a receipt reprinted
+       * later must name whoever actually made the sale, and reading the
+       * current user would credit whoever happens to be signed in then.
+       * Null only on a sale whose cashier had no name and no email, which
+       * `checkoutOnce` already falls back through.
+       */
+      soldByName: created.order.soldByName,
       /**
        * URG-034 — the foreign-currency figures the receipt prints, returned
        * by the server rather than recomputed by the till.

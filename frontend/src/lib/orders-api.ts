@@ -95,6 +95,13 @@ export interface OrderDetail {
   taxAmount: string | null;
   paymentMethod: string | null;
   placedAt: string;
+  /**
+   * The cashier who rang this up at the till, snapshotted on the order.
+   *
+   * Null for a web order, or one placed before this was recorded — the UI
+   * omits the line rather than implying nobody served the customer.
+   */
+  soldByName?: string | null;
   /** Negative payment rows represented as positive refund amounts for display. */
   goodwillRefunds?: Array<{
     id: string;

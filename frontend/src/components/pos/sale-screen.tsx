@@ -649,6 +649,12 @@ export function SaleScreen() {
         method,
         tendered: method === 'cash' && tendered.trim() !== '' ? tendered.trim() : null,
         change: result.change,
+        /* The receipt has had a `Served by` line and a `cashier` field since
+           it was built, and nothing ever filled them — this is that wiring.
+           The name comes from the SERVER's order row, never from the session
+           here: a reprint must credit whoever made the sale, not whoever is
+           logged in when it prints. */
+        cashier: result.soldByName ?? undefined,
         /* Straight from the server's response — never recomputed here. All
            null on a base-currency sale, which is what keeps the receipt
            identical to before for the overwhelming majority. */
