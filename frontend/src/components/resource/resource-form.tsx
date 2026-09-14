@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Combobox } from '@/components/ui/combobox';
 import { CollapsibleSection } from '@/components/ui/collapsible-section';
 import { DatePicker } from '@/components/ui/date-picker';
 import { ImageUploadField } from '@/components/image-upload-field';
@@ -1152,11 +1153,43 @@ function FormField({
 
       return (
         <>
+        {/*
+          A RELATION is searchable; an ENUM stays a plain Select.
+
+          The split follows `combobox.tsx`'s own rule: `Select` is right for a
+          handful of options you can eyeball, and unusable for a list you have
+          to hunt through. An enum is a fixed, short, code-declared set — three
+          product statuses, two discount types — so a filter box above it would
+          be furniture. A relation is every row of another table: a shop with
+          200 categories got a 200-row dropdown with no way to type, which is
+          the case `Combobox` was built for and was never wired to.
+
+          `clearText` replaces the `NONE` sentinel for relations. The sentinel
+          existed because Radix reserves the empty string for "no selection",
+          so clearing needed a value that was not `''`; `Combobox` models null
+          directly and needs no stand-in.
+        */}
+        {field.type === 'relation' ? (
+          <Combobox
+            id={id}
+            options={items}
+            value={text === '' ? null : text}
+            onValueChange={(next) => onChange(next ?? '')}
+            placeholder={t('choose')}
+            searchPlaceholder={tCommon('combobox.search')}
+            emptyText={tCommon('combobox.empty')}
+            // Offered only when the field may legitimately be empty — a
+            // required relation with a "not set" row would invite a choice
+            // the server then refuses.
+            {...(field.required ? {} : { clearText: t('none') })}
+            {...aria}
+          />
+        ) : (
         <Select
           // Radix reserves the empty string for "no selection", so an explicit
           // clear needs a sentinel of its own. Without one, an optional enum
-          // or relation could be SET but never unset — the only way back to
-          // empty would be a direct API call.
+          // could be SET but never unset — the only way back to empty would be
+          // a direct API call.
           value={text === '' ? NONE : text}
           onValueChange={(next) => onChange(next === NONE ? '' : next)}
         >
@@ -1174,6 +1207,7 @@ function FormField({
             ))}
           </SelectContent>
         </Select>
+        )}
         {onRefreshOptions ? (
           <div className="flex flex-wrap gap-2">
             <Button asChild type="button" variant="link" size="sm" className="min-h-11 px-0">
