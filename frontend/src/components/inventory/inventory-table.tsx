@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { Boxes, FilterX, History, MailPlus, PackagePlus, Search, SearchX, SlidersHorizontal, Truck } from 'lucide-react';
+import { Boxes, FilterX, History, MailPlus, PackagePlus, SearchX, SlidersHorizontal, Truck } from 'lucide-react';
 
 import { DataTable, type Column } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
@@ -13,7 +13,7 @@ import { MovementLogSheet } from '@/components/inventory/movement-log-sheet';
 import { StockAdjustSheet } from '@/components/inventory/stock-adjust-sheet';
 import { SupplierOutreachSheet } from '@/components/suppliers/supplier-outreach-sheet';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
@@ -256,19 +256,12 @@ export function InventoryTable() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-56 flex-1 space-y-2">
           <Label htmlFor="inventory-search">{t('search.label')}</Label>
-          <div className="relative">
-            <Search
-              className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
-              aria-hidden
-            />
-            <Input
-              id="inventory-search"
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              placeholder={t('search.placeholder')}
-              className="ps-9"
-            />
-          </div>
+          <SearchInput
+            id="inventory-search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder={t('search.placeholder')}
+          />
         </div>
 
         <Button

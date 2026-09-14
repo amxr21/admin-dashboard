@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { ImageOff, Search } from 'lucide-react';
+import { ImageOff } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   browseCategories,
@@ -111,20 +111,13 @@ export function ProductGrid({ onAdd, disabled = false, refreshKey }: ProductGrid
 
   return (
     <div className="space-y-3">
-      <div className="relative">
-        <Search
-          className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
-          aria-hidden
-        />
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={t('searchPlaceholder')}
-          aria-label={t('searchLabel')}
-          className="ps-9"
-          disabled={disabled}
-        />
-      </div>
+      <SearchInput
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder={t('searchPlaceholder')}
+        aria-label={t('searchLabel')}
+        disabled={disabled}
+      />
 
       {categories.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
