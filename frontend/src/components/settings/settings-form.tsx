@@ -532,6 +532,9 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
   // Only the language namespace is needed here — every other label and
   // description comes from the server's registry, already human-readable.
   const tLanguage = useTranslations('language');
+  /** An upload failure from the logo field, hoisted so it shares the one slot
+   *  this wrapper owns — see the same note in resource-form.tsx. */
+  const [imageError, setImageError] = useState<string | null>(null);
   const id = `setting-${setting.key}`;
   const errorId = `${id}-error`;
 
@@ -671,6 +674,7 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
               onChange={onChange}
               folder="logo"
               shape="square"
+              onError={setImageError}
               {...aria}
             />
           );
@@ -696,7 +700,8 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
       // A boolean renders a switch with its own inline label; a second label
       // above it would name the same control twice.
       {...(setting.type === 'boolean' ? {} : { label: setting.label })}
-      error={error}
+      // Validation first, same precedence as resource-form.tsx.
+      error={error ?? imageError ?? undefined}
       description={setting.description}
       // The settings page is a GRID of independent choices rather than a
       // sequence of fields in one panel — see `Field`'s note on the variant.
