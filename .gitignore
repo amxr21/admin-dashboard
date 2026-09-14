@@ -48,4 +48,8 @@ docs/
 archive/
 MASTER_TODO.md
 PLUG_AND_PLAY.md
-SETUP_TODO.md
+
+# Documentation stays local; README.md is the only tracked document.
+*.md
+*.mdx
+!README.md

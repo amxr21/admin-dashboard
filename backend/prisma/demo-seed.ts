@@ -1,5 +1,6 @@
 import 'dotenv/config';
 
+import { randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
 import bcrypt from 'bcryptjs';
@@ -21,7 +22,9 @@ import {
 } from '@prisma/client';
 
 import { DEMO, DEMO_TAG, makeRandom } from './demo-data.js';
+import { seedDemoAccount } from './seed-demo-account.js';
 
+import { assertDesignatedDemoDeployment } from '../src/lib/demo-deployment.js';
 import { computeOrderTotals, getTaxRate } from '../src/services/order-math.service.js';
 /**
  * Fills the database with a realistic business, so the dashboard has something
@@ -94,51 +97,18 @@ function money(value: number): Prisma.Decimal {
  * A seeder is the one script most likely to be run by muscle memory in the
  * wrong terminal, and the damage is silent — a production catalogue with
  * `__demo__` products in it looks like a data-entry mistake, not a script.
+ *
+ * The decision itself lives in `src/lib/demo-deployment.ts`: it is an
+ * ALLOWLIST (the operator names the demo deployment; everything else is
+ * refused) rather than the denylist this used to carry, and keeping it in a
+ * connection-free module is what makes every branch of it testable. This file
+ * opens a Prisma client at import time, so a guard written here could only be
+ * exercised against a live database.
  */
 function assertSafeEnvironment() {
-  // A public demo deployment is the one legitimate reason to want demo rows in
-  // a NODE_ENV=production database: showing the dashboard with data in it is
-  // the entire point of that instance. It stays opt-in and explicit — nobody
-  // reaches this by muscle memory, only by setting the variable deliberately.
-  // The `defaultdb` check below is NOT relaxed by it.
-  const demoDeployment = process.env.DEMO_DEPLOYMENT === '1';
+  const target = assertDesignatedDemoDeployment();
 
-  if (process.env.NODE_ENV === 'production' && !demoDeployment) {
-    throw new Error(
-      'Refusing to seed demo data with NODE_ENV=production. If this really is a ' +
-        'public demo instance, set DEMO_DEPLOYMENT=1 to allow it.',
-    );
-  }
-
-  const url = process.env.DATABASE_URL ?? '';
-  const database = /\/([^/?]+)(\?|$)/.exec(url)?.[1];
-
-  if (!database) {
-    throw new Error('Could not determine the target database from DATABASE_URL.');
-  }
-
-  /**
-   * Named databases this must never write to.
-   *
-   * `defaultdb` was Aiven's shared database, which held another project's live
-   * tables; Aiven is gone but the name is kept because a copied .env is
-   * exactly the accident this guards against, and the check costs nothing.
-   *
-   * `default` is the Coolify MySQL's database name and IS PRODUCTION for this
-   * app (owner, 2026-09-05 — there is no dev database). Seeding it would put
-   * `__demo__` rows into the real catalogue, which reads as a data-entry
-   * mistake rather than a script, and would double every figure in the
-   * owner's reports.
-   */
-  const FORBIDDEN_DATABASES = ['defaultdb', 'default'];
-
-  if (FORBIDDEN_DATABASES.includes(database)) {
-    throw new Error(
-      `Refusing to seed: \`${database}\` holds live data, not demo data.`,
-    );
-  }
-
-  process.stdout.write(`  target database: ${database}\n`);
+  process.stdout.write(`  target database: ${target.database}\n`);
 }
 
 export async function seedDemoData() {
@@ -154,6 +124,8 @@ export async function seedDemoData() {
         'seeding twice would double every figure in the reports.',
     );
   }
+
+  await seedDemoAccount(prisma);
 
   /* ── Businesses and branches (F8) ───────────────────────────────── */
   /**
@@ -522,7 +494,7 @@ export async function seedDemoData() {
         OrderStatus.RETURNED,
       );
     } else {
-      const path = [
+      const path: OrderStatus[] = [
         OrderStatus.CONFIRMED,
         OrderStatus.SHIPPED,
         OrderStatus.DELIVERED,
@@ -547,7 +519,7 @@ export async function seedDemoData() {
     /* A courier for orders that actually left the building. */
     if (
       activeCouriers.length > 0 &&
-      [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(status)
+      (status === OrderStatus.SHIPPED || status === OrderStatus.DELIVERED)
     ) {
       await prisma.deliveryAssignment.create({
         data: {
@@ -637,40 +609,40 @@ export async function seedDemoData() {
 
   /* ── Staff ──────────────────────────────────────────────────────── */
   /**
-   * One person per role, so the permissions matrix, the "view as role"
-   * preview and the staff table all have real rows rather than a single
-   * OWNER talking to itself.
+   * One person per operational role, so the permissions matrix, the "view as
+   * role" preview and the staff table all have real rows rather than a single
+   * OWNER talking to itself. The named Demo account is created separately
+   * from explicit SEED_DEMO_* credentials above.
    *
-   * DEVELOPER and OWNER are deliberately NOT seeded: the real admin comes
-   * from seed.ts (SEED_ADMIN_EMAIL), and a second account at that rank would
-   * be a genuine privilege surface in anything that outlives the demo.
+   * DEVELOPER and OWNER are deliberately NOT seeded: the real developer comes
+   * from seed.ts (SEED_DEVELOPER_EMAIL), and a second account at that rank would
+   * be a genuine privilege surface in anything that outlives the demo. The
+   * demo account is read-only and is created by seedDemoAccount with an
+   * explicit password.
    *
-   * Every password is the same throwaway string and every account is tagged,
-   * so these can only sign in on a machine that has run the demo seeder, and
-   * teardown removes them. `lastLoginAt` is staggered so the F2 login-history
-   * and last-seen columns show a spread rather than one identical timestamp.
+   * Operational staff have unrecorded random passwords. They populate the
+   * roster without becoming additional public demo logins. Only the explicit
+   * Demo account above has operator-supplied credentials. Every row is tagged
+   * for teardown. `lastLoginAt` is staggered for the roster's history view.
    */
-  const staffPasswordHash = await bcrypt.hash('DemoStaff!2026', 10);
-
   const staff = await Promise.all(
     (
       [
         { slug: 'manager', name: 'Layla Nasser', role: StaffRole.MANAGER, daysSinceLogin: 0 },
         { slug: 'fulfillment', name: 'Omar Haddad', role: StaffRole.FULFILLMENT, daysSinceLogin: 1 },
         { slug: 'support', name: 'Sara Aziz', role: StaffRole.SUPPORT, daysSinceLogin: 3 },
-        { slug: 'viewer', name: 'Demo Viewer', role: StaffRole.DEMO, daysSinceLogin: 12 },
       ] as const
-    ).map((person) =>
+    ).map(async (person) =>
       prisma.user.create({
         data: {
           email: DEMO.staffEmail(person.slug),
           name: person.name,
           phone: `+971 50 555 0${String(random.int(100, 999))}`,
-          passwordHash: staffPasswordHash,
+          passwordHash: await bcrypt.hash(randomBytes(32).toString('base64url'), 12),
           role: person.role,
           // One deactivated account, so the staff table's inactive styling and
           // the "cannot sign in" path both have something to show.
-          isActive: person.role !== StaffRole.DEMO,
+          isActive: person.role !== StaffRole.SUPPORT,
           lastLoginAt: daysAgo(person.daysSinceLogin),
         },
       }),

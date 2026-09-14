@@ -51,8 +51,7 @@ export const DISTANCE = {
 
 // ─── Stagger (seconds between siblings) ───────────────────────────
 // Total stagger time grows with list length, so cap it: 50 rows at 0.05s each
-// is 2.5 seconds of waiting. Prefer `amount` over `each` for long lists — see
-// MOTION.md.
+// is 2.5 seconds of waiting. Prefer `amount` over `each` for long lists.
 export const STAGGER = {
   tight: 0.03, // dense lists, table rows
   base: 0.06, // cards, tiles
