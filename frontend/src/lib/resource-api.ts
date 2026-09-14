@@ -48,6 +48,11 @@ export interface FieldConfig {
   /** Per-field example text from `admin.config.ts`. Overrides the type-level
    *  default in `placeholderFor` — see that function's own comment. */
   placeholder?: string;
+  /** A standing explanation shown under the control, never dismissed —
+   *  unlike `placeholder`, which vanishes on the first keystroke. Mirrors
+   *  `settings.config.ts`'s `description`; see admin.config.ts's own comment
+   *  for what belongs here and what does not. */
+  description?: string;
   /** Shown when an existing non-empty value is being changed, never on
    *  first-time entry or create. See admin.config.ts's own comment. */
   changeWarning?: string;
