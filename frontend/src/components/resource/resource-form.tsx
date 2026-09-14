@@ -1046,6 +1046,15 @@ function FormField({
   // every form in the app (see placeholderFor below), not resourceForm-only,
   // so they live in `common` rather than being duplicated per namespace.
   const tCommon = useTranslations('common');
+  /**
+   * An upload failure, hoisted out of `ImageUploadField`.
+   *
+   * It cannot arrive as the `error` prop: that one comes from the form's own
+   * validation, and whether a file reached Cloudinary is decided inside the
+   * control long after that ran. Merged below rather than rendered separately,
+   * so an image field still has exactly one message slot.
+   */
+  const [imageError, setImageError] = useState<string | null>(null);
   const id = `field-${field.name}`;
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
@@ -1256,6 +1265,10 @@ function FormField({
           onChange={onChange}
           folder={resourceFolder}
           shape="wide"
+          // Reported upward rather than printed inside the control: the field
+          // already owns a slot, and the control's own copy attaches its aria
+          // to an `sr-only` file input nobody can see.
+          onError={setImageError}
           {...aria}
         />
       );
@@ -1285,7 +1298,9 @@ function FormField({
       // A boolean renders its own inline label beside the checkbox, so the
       // wrapper must not render a second one above it.
       {...(field.type === 'boolean' ? {} : { label, required: field.required })}
-      error={error}
+      // Validation first: a malformed value is the more urgent of the two,
+      // and an upload failure on a field that is also invalid can wait.
+      error={error ?? imageError ?? undefined}
       description={field.description}
       // All three are advisory and all three are about what the user just
       // did, not about what the field is — see `Field`'s own note on why they
