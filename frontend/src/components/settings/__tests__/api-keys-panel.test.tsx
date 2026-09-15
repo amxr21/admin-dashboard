@@ -88,7 +88,19 @@ describe('ApiKeysPanel — creation and one-time reveal', () => {
     await userEvent.type(screen.getByLabelText(/who will hold/i), 'Engineering team');
     await userEvent.click(screen.getByRole('button', { name: /^create key$/i }));
 
-    await waitFor(() => expect(createApiKey).toHaveBeenCalledWith('CI pipeline', 'Run CI deployments', 'Engineering team'));
+    // The fourth argument is the scope selection. An EMPTY array is the
+    // deliberate default — it means "no narrowing", and the lib omits the
+    // field entirely so the endpoint reads it as unscoped. Pinned here
+    // because the safe default for a credential is the one nobody had to
+    // remember to choose.
+    await waitFor(() =>
+      expect(createApiKey).toHaveBeenCalledWith(
+        'CI pipeline',
+        'Run CI deployments',
+        'Engineering team',
+        [],
+      ),
+    );
     expect(
       await screen.findByText('adk_abcdefghijklmnopqrstuvwxyz0123456789ABCD'),
     ).toBeInTheDocument();
@@ -117,6 +129,35 @@ describe('ApiKeysPanel — creation and one-time reveal', () => {
     await userEvent.click(screen.getByRole('button', { name: /^done$/i }));
 
     await waitFor(() => expect(fetchApiKeys).toHaveBeenCalledTimes(2));
+  });
+
+  it('sends only the areas that were ticked, so a key can be narrowed before it is issued', async () => {
+    /**
+     * The whole point of scoping, asserted at the UI boundary: what the
+     * operator ticks is what the key gets. A picker that silently sent
+     * everything (or nothing) would look identical on screen while handing
+     * out a credential with the wrong reach.
+     */
+    render(<ApiKeysPanel />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /create key/i }));
+    await userEvent.type(screen.getByLabelText(/^name$/i), 'Partner catalogue');
+    await userEvent.type(screen.getByLabelText(/reason for this key/i), 'Share the catalogue');
+    await userEvent.type(screen.getByLabelText(/who will hold/i), 'Partner integration');
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /^products$/i }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /^categories$/i }));
+
+    await userEvent.click(screen.getByRole('button', { name: /^create key$/i }));
+
+    await waitFor(() =>
+      expect(createApiKey).toHaveBeenCalledWith(
+        'Partner catalogue',
+        'Share the catalogue',
+        'Partner integration',
+        ['products', 'categories'],
+      ),
+    );
   });
 
   it('surfaces a 400 (e.g. the live-key ceiling) without a generic fallback message', async () => {

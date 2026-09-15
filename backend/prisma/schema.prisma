@@ -621,6 +621,22 @@ model ApiKey {
   /// the plaintext ever being stored or re-derivable from this alone.
   keyPreview String @map("key_preview") @db.VarChar(32)
 
+  /// Which permission areas this key may reach, comma-separated.
+  ///
+  /// NULL means "everything the OWNER can reach" — the original behaviour,
+  /// and still the default, so every key issued before scopes existed keeps
+  /// working unchanged.
+  ///
+  /// A scope only ever NARROWS. The check is an intersection: the owner must
+  /// hold the area AND the scope must list it. So a key cannot become a
+  /// privilege-escalation path — scoping an OWNER's key to `products` locks it
+  /// out of reports, and scoping a SUPPORT user's key to `staff` still grants
+  /// nothing, because SUPPORT does not hold `staff` either.
+  ///
+  /// This is what makes a key safe to hand to a partner: previously the only
+  /// honest warning was "this key can do everything you can do".
+  scopes String? @db.VarChar(512)
+
   lastUsedAt DateTime? @map("last_used_at")
   createdAt  DateTime  @default(now()) @map("created_at")
   /// Null while live. Revoking creates no gap in the audit trail the way a

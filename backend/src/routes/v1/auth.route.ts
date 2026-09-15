@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AuditOutcome } from '@prisma/client';
 import QRCode from 'qrcode';
 
+import { AREAS } from '../../config/roles.js';
 import { AppError } from '../../errors/AppError.js';
 import { accountEmailSchema } from '../../lib/identity-validation.js';
 import { audit } from '../../services/audit.service.js';
@@ -586,20 +587,35 @@ const createApiKeySchema = z.object({
   name: z.string().trim().min(1).max(120),
   purpose: z.string().trim().min(3).max(255),
   recipient: z.string().trim().min(2).max(255),
+  /**
+   * Optional. Omitted means "everything the owner can reach" — the original
+   * behaviour, kept so existing clients of this endpoint are unaffected.
+   *
+   * Validated against the real area list rather than accepted as free text:
+   * a typo'd area would otherwise be stored, silently match nothing, and give
+   * the holder a key that mysteriously 403s everywhere.
+   */
+  scopes: z.array(z.enum(AREAS)).min(1).optional(),
 }).strict();
 
 /**
  * POST /api/v1/auth/me/api-keys
  *
- * The key is its OWNER's exact role-based permissions — see `ApiKey`'s
- * schema doc comment for why there is no separate scope to accept here.
+ * A key acts as its owner, optionally NARROWED to `scopes` — it can never
+ * reach past what the owner holds. See `ApiKey`'s schema doc comment.
  */
 authRouter.post('/auth/me/api-keys', authenticate, async (req, res) => {
   const parsed = createApiKeySchema.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
 
   const actor = requireUser(req);
-  const created = await createApiKey(actor.id, parsed.data.name, parsed.data.purpose, parsed.data.recipient);
+  const created = await createApiKey(
+    actor.id,
+    parsed.data.name,
+    parsed.data.purpose,
+    parsed.data.recipient,
+    parsed.data.scopes,
+  );
 
   // The key itself is NEVER logged — same rule as a courier access code or
   // reset token.

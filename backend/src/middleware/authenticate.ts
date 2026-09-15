@@ -1,10 +1,11 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { StaffRole } from '@prisma/client';
 
+import type { Area } from '../config/roles.js';
 import { AppError } from '../errors/AppError.js';
 import { getAuthenticatedUser, verifyToken, type SafeUser } from '../services/auth.service.js';
 import { touchSession } from '../services/session.service.js';
-import { authenticateApiKey } from '../services/api-key.service.js';
+import { authenticateApiKey, type AuthenticatedApiKey } from '../services/api-key.service.js';
 import {
   assertCanWrite,
   assertIpAllowed,
@@ -48,6 +49,16 @@ declare global {
       /// This is what authorisation reads. `user.role` remains the
       /// business-wide role and is NOT the effective one on a scoped request.
       branchRole?: StaffRole;
+      /// The areas the API KEY that authenticated this request may reach.
+      ///
+      /// `undefined` on a session-authenticated request (there is no key) and
+      /// `null` for a key with no scope — both mean "the owner's own
+      /// permissions decide, unrestricted". A non-null array NARROWS: the area
+      /// must appear in it AND the owner must hold it.
+      ///
+      /// Deliberately not merged into `user`: a session produces the same
+      /// `SafeUser`, and a scope has no meaning there.
+      apiKeyScopes?: readonly Area[] | null;
     }
   }
 }
@@ -83,11 +94,16 @@ export async function authenticate(
       throw AppError.unauthorized('Authentication required');
     }
 
-    const user = token.startsWith(API_KEY_PREFIX)
-      ? await authenticateViaApiKey(token)
-      : await authenticateViaSession(req, token);
+    if (token.startsWith(API_KEY_PREFIX)) {
+      const authenticated = await authenticateViaApiKey(token);
+      req.user = authenticated.user;
+      // Attached BEFORE any guard runs, so `requireArea` can narrow on it.
+      req.apiKeyScopes = authenticated.scopes;
+    } else {
+      req.user = await authenticateViaSession(req, token);
+    }
 
-    req.user = user;
+    const user = req.user;
 
     // userId on every subsequent log line for this request, so an audit trail
     // exists even before the audit-log feature does.
@@ -137,15 +153,15 @@ async function authenticateViaSession(req: Request, token: string): Promise<Safe
  * `assertCanWrite`, …) treats a key-authenticated request identically to a
  * session-authenticated one, with no second code path to keep in sync.
  */
-async function authenticateViaApiKey(key: string): Promise<SafeUser> {
-  const user = await authenticateApiKey(key);
+async function authenticateViaApiKey(key: string): Promise<AuthenticatedApiKey> {
+  const authenticated = await authenticateApiKey(key);
 
   // Same message as an invalid session token — telling a caller "the key
   // format was right but it's revoked" vs. "unknown key" is free
   // reconnaissance about which keys might once have existed.
-  if (!user) throw AppError.unauthorized('Invalid or expired session');
+  if (!authenticated) throw AppError.unauthorized('Invalid or expired session');
 
-  return user;
+  return authenticated;
 }
 
 /**

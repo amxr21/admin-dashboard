@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import { env } from '../config/env.js';
+import { isArea, type Area } from '../config/roles.js';
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import type { SafeUser } from './auth.service.js';
@@ -8,12 +9,17 @@ import type { SafeUser } from './auth.service.js';
 /**
  * API keys — B3.2's "Integrations & API" section.
  *
- * ─── A KEY IS ITS OWNER, NOT A SECOND PERMISSION SYSTEM ───────────────
- * `ApiKey` has no scope list of its own (see the schema's own doc comment).
+ * ─── A KEY IS ITS OWNER, OPTIONALLY NARROWED ──────────────────────────
  * A request authenticated by key checks `canAccessArea` against the OWNING
- * user's role, exactly like a browser session does. Two independent
- * permission systems checking two different things is how one of them ends
- * up silently wrong; one system, two ways to prove who you are, is not.
+ * user's role, exactly like a browser session does. A key may additionally
+ * carry `scopes`, which can only ever REMOVE areas from that answer — the
+ * guard is an intersection (see `requireArea`), never a replacement.
+ *
+ * That ordering is the whole safety property: a scope cannot grant what the
+ * owner lacks, so a key is never an escalation path, and a scoped key is safe
+ * to hand to a partner because it cannot reach past the areas it names.
+ * `scopes: null` means "no narrowing", which is how every key issued before
+ * this existed still behaves.
  *
  * ─── SHAPE OF THE PLAINTEXT KEY ────────────────────────────────────────
  * `adk_` prefix (Admin Dashboard Key) makes a leaked key grep-able in logs
@@ -54,6 +60,8 @@ export interface ApiKeySummary {
   purpose: string;
   recipient: string;
   keyPreview: string;
+  /** Null means "everything its owner can reach" — see the schema's note. */
+  scopes: readonly Area[] | null;
   lastUsedAt: string | null;
   createdAt: string;
 }
@@ -64,11 +72,12 @@ export async function listApiKeys(userId: string): Promise<ApiKeySummary[]> {
   const rows = await prisma.apiKey.findMany({
     where: { userId, revokedAt: null },
     orderBy: { createdAt: 'desc' },
-    select: { id: true, name: true, purpose: true, recipient: true, keyPreview: true, lastUsedAt: true, createdAt: true },
+    select: { id: true, name: true, purpose: true, recipient: true, keyPreview: true, scopes: true, lastUsedAt: true, createdAt: true },
   });
 
   return rows.map((row) => ({
     ...row,
+    scopes: parseScopes(row.scopes),
     lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   }));
@@ -79,6 +88,8 @@ export interface CreatedApiKey {
   name: string;
   purpose: string;
   recipient: string;
+  /** The areas this key may reach, or null for "everything its owner can". */
+  scopes: readonly Area[] | null;
   /** Plaintext, returned exactly once — same one-time-reveal contract as a
    * courier access code, password-reset token, or 2FA backup code. */
   key: string;
@@ -86,7 +97,23 @@ export interface CreatedApiKey {
 
 const MAX_LIVE_KEYS_PER_USER = 20;
 
-export async function createApiKey(userId: string, name: string, purpose: string, recipient: string): Promise<CreatedApiKey> {
+export async function createApiKey(
+  userId: string,
+  name: string,
+  purpose: string,
+  recipient: string,
+  /**
+   * Omitted or null means "no narrowing". An EMPTY array is rejected rather
+   * than stored: a key that may reach nothing is not a useful credential, and
+   * silently treating it as "everything" would be the dangerous reading.
+   */
+  scopes?: readonly Area[] | null,
+): Promise<CreatedApiKey> {
+  if (scopes !== undefined && scopes !== null && scopes.length === 0) {
+    throw AppError.badRequest('Choose at least one area for this key, or leave it unscoped', {
+      field: 'scopes',
+    });
+  }
   // A soft ceiling, not a hard security boundary — it exists so an
   // automation bug that calls this endpoint in a loop fails loudly with a
   // clear message rather than silently filling the table one row at a time.
@@ -107,11 +134,12 @@ export async function createApiKey(userId: string, name: string, purpose: string
       recipient,
       keyHash: hashKey(plain),
       keyPreview: previewOf(plain),
+      scopes: scopes ? scopes.join(',') : null,
     },
-    select: { id: true, name: true, purpose: true, recipient: true },
+    select: { id: true, name: true, purpose: true, recipient: true, scopes: true },
   });
 
-  return { ...row, key: plain };
+  return { ...row, scopes: parseScopes(row.scopes), key: plain };
 }
 
 /**
@@ -136,7 +164,36 @@ export async function revokeApiKey(userId: string, keyId: string): Promise<void>
  * checked, so a key-authenticated request is indistinguishable from a
  * session-authenticated one everywhere past this point.
  */
-export async function authenticateApiKey(plainKey: string): Promise<SafeUser | null> {
+export interface AuthenticatedApiKey {
+  user: SafeUser;
+  /**
+   * The areas this key may reach, or `null` for "whatever the owner can".
+   *
+   * Returned alongside the user rather than folded into it: `SafeUser` is the
+   * shape a SESSION produces too, and a session has no scope. Putting a
+   * key-only concept on it would mean every session-authenticated request
+   * carried a field that is meaningless there.
+   */
+  scopes: readonly Area[] | null;
+}
+
+/**
+ * Parse the stored comma-separated list.
+ *
+ * Unknown entries are DROPPED rather than tolerated: an area that was renamed
+ * or removed must grant nothing. Dropping can only ever narrow the key, which
+ * is the safe direction. An empty result is still a real (empty) scope — it is
+ * not the same as `null`, and must not collapse into "full access".
+ */
+function parseScopes(raw: string | null): readonly Area[] | null {
+  if (raw === null) return null;
+  return raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => isArea(entry));
+}
+
+export async function authenticateApiKey(plainKey: string): Promise<AuthenticatedApiKey | null> {
   const hash = hashKey(plainKey);
 
   const row = await prisma.apiKey.findUnique({
@@ -163,5 +220,5 @@ export async function authenticateApiKey(plainKey: string): Promise<SafeUser | n
     ...safe
   } = row.user;
 
-  return safe;
+  return { user: safe, scopes: parseScopes(row.scopes) };
 }

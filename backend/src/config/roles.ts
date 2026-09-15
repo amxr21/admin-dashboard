@@ -35,6 +35,19 @@ export const AREAS = [
 
 export type Area = (typeof AREAS)[number];
 
+/**
+ * Is this string one of the declared areas?
+ *
+ * Exists because API-key scopes arrive as free text from a request body and
+ * are stored as text, so they have to be validated back into `Area` at both
+ * ends. Narrowing here rather than casting means a scope naming an area that
+ * was renamed or removed fails closed — it simply stops matching, granting
+ * nothing, instead of being trusted because a cast said so.
+ */
+export function isArea(value: string): value is Area {
+  return (AREAS as readonly string[]).includes(value);
+}
+
 /** Grants every area, including ones added later. */
 const ALL = '*' as const;
 
