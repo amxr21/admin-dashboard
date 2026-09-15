@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { KeyRound, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ApiError } from '@/lib/api';
@@ -87,11 +87,12 @@ export function StaffPasswordPanel({ member, onDone }: StaffPasswordPanelProps) 
 
         <div className="space-y-2">
           <Label htmlFor="staff-new-password">{t('password.label')}</Label>
-          <Input
+          <PasswordInput
             id="staff-new-password"
-            // A real password type: the browser must not autofill it from the
-            // ADMIN's saved credentials, and it must not be shoulder-readable.
-            type="password"
+            // Still a real password field by default (it only unmasks on a
+            // deliberate click): the browser must not autofill it from the
+            // ADMIN's saved credentials, and it must not be shoulder-readable
+            // while an admin sets a password on someone else's behalf.
             autoComplete="new-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}

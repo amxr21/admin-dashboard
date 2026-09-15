@@ -26,6 +26,7 @@
  */
 
 import { useId, useMemo } from 'react';
+import { useFormatter, useTranslations } from 'next-intl';
 
 const SIZE = 240;
 const CENTER = SIZE / 2;
@@ -67,6 +68,21 @@ interface ShiftClockDialProps {
 
 export function ShiftClockDial({ startedAt, durationLabel, caption }: ShiftClockDialProps) {
   const gradientId = useId();
+  /**
+   * The dial is `role="img"`, so this label is the ONLY thing a screen reader
+   * gets from it — and the parent wraps it in `aria-live="polite"`, so it is
+   * re-announced as the shift ticks. It was hardcoded English, which meant an
+   * Arabic cashier was read English every minute.
+   *
+   * `shifts`, not `pos`: this dial's only consumer (`shift-clock-screen`)
+   * already reads that namespace, and splitting one screen's strings across
+   * two namespaces is how a key ends up translated in one place only.
+   */
+  const t = useTranslations('shifts');
+  // The locale's own time formatting, rather than `toLocaleTimeString([])` —
+  // that empty array takes the BROWSER's locale, which on an Arabic page is
+  // frequently still en-US, so the label disagreed with the rest of the UI.
+  const formatter = useFormatter();
 
   // `now` intentionally does not tick on its own — the parent already
   // re-renders this once a minute via useShiftClock's `tick`, and adding a
@@ -100,8 +116,10 @@ export function ShiftClockDial({ startedAt, durationLabel, caption }: ShiftClock
         role="img"
         aria-label={
           start
-            ? `Shift started at ${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-            : 'No shift running'
+            ? t('dialRunning', {
+                time: formatter.dateTime(start, { hour: 'numeric', minute: '2-digit' }),
+              })
+            : t('dialIdle')
         }
       >
         <defs>

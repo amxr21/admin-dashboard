@@ -2,6 +2,7 @@
 
 import * as SheetPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import type { ComponentProps } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -110,6 +111,8 @@ function SheetContent({
   description,
   ...props
 }: SheetContentProps) {
+  const t = useTranslations('common');
+
   return (
     <SheetPrimitive.Portal>
       <SheetOverlay />
@@ -213,7 +216,11 @@ function SheetContent({
         >
           {/* An X is symmetric — never .icon-directional. */}
           <X className="size-4" aria-hidden />
-          <span className="sr-only">Close</span>
+          {/* Translated: this is the ONLY name a screen reader has for the
+              button, and it is the shared primitive behind every sheet in the
+              app — so one hardcoded string here was read out in English on
+              every Arabic drawer. */}
+          <span className="sr-only">{t('close')}</span>
         </SheetPrimitive.Close>
       </SheetPrimitive.Content>
     </SheetPrimitive.Portal>

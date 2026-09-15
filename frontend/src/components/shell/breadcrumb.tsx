@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
 
@@ -79,8 +80,12 @@ export function Breadcrumb({ segments }: { segments: BreadcrumbSegment[] }) {
 
 /** Rendered by `AppShell` in the top bar when a page has registered a trail. */
 export function BreadcrumbHost({ segments }: { segments: BreadcrumbSegment[] }) {
+  const t = useTranslations('nav');
+
   return (
-    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">
+    // Translated: this is the landmark name a screen reader announces for the
+    // trail, so an Arabic user heard the English word "Breadcrumb".
+    <nav aria-label={t('breadcrumb')} className="flex min-w-0 items-center gap-1 text-sm">
       {segments.map((segment, index) => {
         const isLast = index === segments.length - 1;
 

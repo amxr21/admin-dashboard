@@ -12,11 +12,18 @@ import { waitFor } from './helpers/wait-for.js';
  * API keys (B3.2).
  *
  * The load-bearing property across this file: a key authenticates as its
- * OWNER, exactly — no separate scope of its own. So the tests that matter
- * most are really about that inheritance being exact: a SUPPORT-owned key
- * can do what SUPPORT can and nothing more, and revoking a key must not
- * touch the owner's own session (they are two independent credentials for
- * the same person, not one revoking the other).
+ * OWNER, optionally NARROWED by `scopes`. So the tests that matter most are
+ * about that inheritance being exact in both directions — a SUPPORT-owned key
+ * can do what SUPPORT can and nothing more, a scope can only ever subtract
+ * from that, and revoking a key must not touch the owner's own session (they
+ * are two independent credentials for the same person, not one revoking the
+ * other).
+ *
+ * The scope tests below exist because the intersection is a SECURITY claim: if
+ * a scope could ever grant an area the owner lacks, every key would become a
+ * privilege-escalation path. An unscoped key (`scopes: null`) must remain
+ * exactly what it was before the column existed, which is what keeps every
+ * already-issued key working.
  */
 
 const app = createApp();
@@ -26,10 +33,16 @@ const PASSWORD = 'correct-horse-battery-staple';
 const createdUserIds: string[] = [];
 
 interface CreatedKeyBody {
-  data: { id: string; name: string; key: string };
+  data: { id: string; name: string; key: string; scopes: string[] | null };
 }
 interface ListBody {
-  data: { id: string; name: string; keyPreview: string; lastUsedAt: string | null }[];
+  data: {
+    id: string;
+    name: string;
+    keyPreview: string;
+    scopes: string[] | null;
+    lastUsedAt: string | null;
+  }[];
 }
 
 async function makeUser(role: StaffRole, label: string) {
@@ -242,6 +255,107 @@ describe('a key authenticates as its OWNER, exactly', () => {
     });
 
     expect(found.lastUsedAt).toBeTruthy();
+  });
+});
+
+describe('scopes NARROW a key, and can never widen it', () => {
+  /** Issue a key for `owner`, optionally scoped. */
+  async function makeKey(ownerToken: string, name: string, scopes?: readonly string[]) {
+    const res = await request(app)
+      .post('/api/v1/auth/me/api-keys')
+      .set(auth(ownerToken))
+      .send({
+        name,
+        purpose: 'Test integration',
+        recipient: 'Test operator',
+        ...(scopes ? { scopes } : {}),
+      });
+
+    return res;
+  }
+
+  it('an unscoped key behaves exactly as it did before scopes existed', async () => {
+    // The backward-compatibility guarantee. Every key issued before this
+    // column was added has `scopes: null`, and must keep full owner access.
+    const owner = await makeUser(StaffRole.OWNER, 'scope-unscoped');
+    const res = await makeKey(signToken(owner), 'Unscoped');
+    const { key, scopes } = (res.body as CreatedKeyBody).data;
+
+    expect(scopes).toBeNull();
+
+    const staffRes = await request(app).get('/api/v1/staff').set(auth(key));
+    expect(staffRes.status).toBe(200);
+  });
+
+  it('a scoped key reaches the area it names', async () => {
+    const owner = await makeUser(StaffRole.OWNER, 'scope-allowed');
+    const res = await makeKey(signToken(owner), 'Staff only', ['staff']);
+    const { key, scopes } = (res.body as CreatedKeyBody).data;
+
+    expect(scopes).toEqual(['staff']);
+
+    const staffRes = await request(app).get('/api/v1/staff').set(auth(key));
+    expect(staffRes.status).toBe(200);
+  });
+
+  it('the SAME owner token still reaches an area their scoped key cannot', async () => {
+    /**
+     * The point of scoping, stated as a contrast: one credential is narrowed
+     * and the other is not, for the identical human. Without this pairing a
+     * 403 below could just mean the owner lacked the area all along.
+     */
+    const owner = await makeUser(StaffRole.OWNER, 'scope-contrast');
+    const ownerToken = signToken(owner);
+    const res = await makeKey(ownerToken, 'Products only', ['products']);
+    const { key } = (res.body as CreatedKeyBody).data;
+
+    const viaKey = await request(app).get('/api/v1/staff').set(auth(key));
+    expect(viaKey.status).toBe(403);
+
+    const viaSession = await request(app).get('/api/v1/staff').set(auth(ownerToken));
+    expect(viaSession.status).toBe(200);
+  });
+
+  it('a scope cannot GRANT an area the owner does not hold', async () => {
+    /**
+     * The escalation case, and the reason the check is an intersection rather
+     * than a replacement. SUPPORT does not hold `staff`; naming it in a scope
+     * must change nothing. If this ever returns 200, every key in the system
+     * is a way around RBAC.
+     */
+    const support = await makeUser(StaffRole.SUPPORT, 'scope-escalate');
+    const res = await makeKey(signToken(support), 'Escalation attempt', ['staff']);
+    const { key } = (res.body as CreatedKeyBody).data;
+
+    const staffRes = await request(app).get('/api/v1/staff').set(auth(key));
+    expect(staffRes.status).toBe(403);
+  });
+
+  it('refuses an empty scope list rather than reading it as "everything"', async () => {
+    // A key that may reach nothing is not a useful credential, and the
+    // dangerous misreading of `[]` is "unrestricted" — so it is a 400.
+    const owner = await makeUser(StaffRole.OWNER, 'scope-empty');
+    const res = await makeKey(signToken(owner), 'Empty scopes', []);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a scope naming something that is not an area', async () => {
+    const owner = await makeUser(StaffRole.OWNER, 'scope-bogus');
+    const res = await makeKey(signToken(owner), 'Bogus scope', ['not-an-area']);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('lists a key with its scopes, so an admin can see what it reaches', async () => {
+    const owner = await makeUser(StaffRole.OWNER, 'scope-listed');
+    const ownerToken = signToken(owner);
+    await makeKey(ownerToken, 'Listed scoped', ['orders', 'products']);
+
+    const listRes = await request(app).get('/api/v1/auth/me/api-keys').set(auth(ownerToken));
+    const row = (listRes.body as ListBody).data.find((entry) => entry.name === 'Listed scoped');
+
+    expect(row?.scopes).toEqual(['orders', 'products']);
   });
 });
 

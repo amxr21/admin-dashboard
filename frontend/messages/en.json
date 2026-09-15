@@ -170,6 +170,10 @@
   },
   "common": {
     "appName": "admin-dashboard",
+    "password": {
+      "show": "Show password",
+      "hide": "Hide password"
+    },
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
@@ -345,6 +349,7 @@
     }
   },
   "nav": {
+    "breadcrumb": "Breadcrumb",
     "configuration": "Configuration",
     "dashboard": "Dashboard",
     "orders": "Orders",
@@ -1828,7 +1833,7 @@
     },
     "apiKeys": {
       "title": "API keys",
-      "description": "Keys for scripts and integrations. A key can do exactly what your account can do — nothing more.",
+      "description": "Keys for scripts and integrations. A key can never do more than your account — and you can limit it to specific areas, so it is safe to hand to someone else.",
       "create": "Create key",
       "creating": "Creating…",
       "retry": "Retry",
@@ -1839,7 +1844,11 @@
       "revoked": "That key was revoked.",
       "alreadyGone": "That key was already revoked.",
       "createTitle": "Create an API key",
-      "createDescription": "The key is generated automatically and can do anything your account can do. Record why it is needed and who will hold it.",
+      "createDescription": "The key is generated automatically. Record why it is needed and who will hold it, and limit it to the areas it actually needs.",
+    "scopesLabel": "Areas this key may reach",
+    "scopesHint": "Leave all unchecked to let the key reach everything your account can. Choosing areas only ever removes access — a key can never do more than you.",
+    "scopesAll": "Everything your account can reach",
+    "scopesSummary": "{count, plural, =1 {1 area} other {# areas}}",
       "nameLabel": "Name",
       "namePlaceholder": "e.g. Inventory sync script",
       "purposeLabel": "Reason for this key",
@@ -3162,6 +3171,8 @@
     "lastTillVariance": "Last till closed with a variance of",
     "floatOnRecord": "Opened with a {float} float",
     "elapsedHint": "Time on shift",
+    "dialRunning": "Shift started at {time}",
+    "dialIdle": "No shift running",
     "notOnShiftShort": "Off shift",
     "tillEvents": {
       "noSale": "No sale",
