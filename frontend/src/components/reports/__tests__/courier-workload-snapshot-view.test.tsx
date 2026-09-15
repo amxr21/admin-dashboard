@@ -27,6 +27,20 @@ describe('courier workload snapshot view (C3.5)', () => {
     expect(fetchCourierWorkloadSnapshot).toHaveBeenCalledWith();
   });
 
+  it('says the roster is empty rather than rendering headers over nothing', async () => {
+    /**
+     * With no couriers the page used to render an empty status strip above a
+     * table with headers and no body — which reads as a broken report, not as
+     * "nobody is on the roster yet". This was the only report view of ~30
+     * with no empty branch at all.
+     */
+    fetchCourierWorkloadSnapshot.mockResolvedValue({ byStatus: [], couriers: [] });
+
+    render(<CourierWorkloadSnapshotView />);
+
+    expect(await screen.findByText(/no couriers on the roster/i)).toBeInTheDocument();
+  });
+
   it('surfaces a load failure', async () => {
     fetchCourierWorkloadSnapshot.mockRejectedValue(new ApiError(500, 'SERVER_ERROR', 'boom'));
 

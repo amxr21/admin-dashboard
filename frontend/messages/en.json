@@ -1459,6 +1459,10 @@
     "subtitle": "Arabic catalogue copy. English remains the default content and fills any field left blank here.",
     "fallbackHelp": "Blank fields automatically use the English value. Clearing every field removes this translation without affecting the product.",
     "loading": "Loading localized content",
+    "empty": {
+      "title": "Nothing to translate yet",
+      "description": "Add English content to this product first — Arabic copy is written against it."
+    },
     "retry": "Try again",
     "save": "Save Arabic content",
     "saving": "Saving…",
@@ -1598,6 +1602,7 @@
       "description": "Assignment and delivery status changes, oldest first.",
       "loading": "Loading delivery timeline",
       "loadFailed": "Could not load the delivery timeline",
+      "empty": "Nothing recorded for this delivery yet.",
       "byActor": "By {actor}",
       "actions": {
         "assigned": "Courier assigned",
@@ -2408,6 +2413,7 @@
       "description": "What's selling, and what's sitting on the shelf.",
       "subtitle": "Units sold in the window against current stock, read from the stock movement ledger.",
       "noDeadStock": "Nothing is sitting idle in this period.",
+      "noTurnover": "Nothing sold in this period.",
       "tabs": {
         "turnover": "Turnover",
         "deadStock": "Dead stock ({count})"
@@ -2786,6 +2792,10 @@
       "title": "Courier workload",
       "description": "Live roster status and open assignment count per courier.",
       "subtitle": "Live state, not scoped to a date range.",
+      "empty": {
+        "title": "No couriers on the roster",
+        "description": "Add a courier on the Delivery page and their workload appears here."
+      },
       "columns": {
         "courier": "Courier",
         "status": "Status",
