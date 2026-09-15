@@ -3123,7 +3123,19 @@
       "emptyBody": "تُسجَّل الوردية عندما يبدأها أحد من الشريط العلوي. لا شيء هنا بعد.",
       "emptyOpenTitle": "لا أحد في وردية",
       "emptyOpenBody": "عندما يبدأ أحدهم وردية، سيظهر هنا حتى ينهيها.",
-      "summaryFor": "عرض ما قام به {name}"
+      "summaryFor": "عرض ما قام به {name}",
+      "approval": "الاعتماد",
+      "approvalPending": "قيد المراجعة",
+      "approvalApproved": "معتمدة",
+      "approvalRejected": "مرفوضة",
+      "approvedBy": "اعتمدها {name}",
+      "rejectedBy": "رفضها {name} — {reason}",
+      "variance": "الدرج",
+      "varianceShort": "عجز {amount}",
+      "varianceOver": "زيادة {amount}",
+      "varianceBalanced": "مطابق",
+      "varianceDetail": "الافتتاحي {float} · المعدود {counted}",
+      "noTill": "لا يوجد درج"
     },
     "summary": {
       "title": "ملخص الوردية",

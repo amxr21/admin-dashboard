@@ -3123,7 +3123,19 @@
       "emptyBody": "A shift is recorded when someone clocks on from the top bar. Nothing here yet.",
       "emptyOpenTitle": "Nobody is on shift",
       "emptyOpenBody": "When someone clocks on, they appear here until they clock off.",
-      "summaryFor": "View what {name} did"
+      "summaryFor": "View what {name} did",
+      "approval": "Approval",
+      "approvalPending": "Pending",
+      "approvalApproved": "Approved",
+      "approvalRejected": "Rejected",
+      "approvedBy": "Approved by {name}",
+      "rejectedBy": "Rejected by {name} — {reason}",
+      "variance": "Till",
+      "varianceShort": "{amount} short",
+      "varianceOver": "{amount} over",
+      "varianceBalanced": "Balanced",
+      "varianceDetail": "Float {float} · counted {counted}",
+      "noTill": "No drawer"
     },
     "summary": {
       "title": "Shift summary",
