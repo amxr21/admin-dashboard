@@ -1141,3 +1141,65 @@ describe('which branch took the order (F8)', () => {
     expect(screen.queryByText('()')).not.toBeInTheDocument();
   });
 });
+
+describe('what the order was actually charged', () => {
+  /**
+   * The order records `subtotal` and `taxAmount` and always has — the API
+   * selects and returns both. This screen showed only the grand total, so
+   * "how much tax was on this order" was unanswerable from the one page that
+   * exists to answer questions about it. The POS receipt printed all three
+   * the whole time; the admin view was the surface lagging behind.
+   */
+  it('shows subtotal and tax alongside the total', async () => {
+    /**
+     * Distinct figures on purpose. The default fixture gives `total` and
+     * `lineTotal` the same string (2 × 29.99 = 59.98), so a query for either
+     * matches two cells — the existing tests here work around that with
+     * `getAllByText(...).length`, which cannot tell the grand total from a
+     * line. Overriding all three keeps each assertion pointed at one number.
+     */
+    fetchOrder.mockResolvedValue(
+      makeOrder({ subtotal: '56.00', taxAmount: '2.80', total: '58.80' }),
+    );
+
+    render(<OrderDetail id="o1" />);
+
+    // Subtotal and tax are each unique on this screen, so a direct query is
+    // unambiguous for them.
+    expect(await screen.findByText(/56\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/2\.80/)).toBeInTheDocument();
+    /**
+     * The grand total keeps its place — the new rows sit above it, they do not
+     * replace it.
+     *
+     * Counted rather than fetched singly: the collapsible Items section puts
+     * the total in its TOGGLE BUTTON's accessible name as well as in the
+     * totals row (see the "keeps the order total visible when the items
+     * section closes" test above, which relies on exactly that), so the figure
+     * legitimately appears twice and `getByText` would throw on the duplicate.
+     */
+    expect(screen.getAllByText(/58\.80/).length).toBeGreaterThan(0);
+  });
+
+  it('omits both rows on an order that predates them, rather than printing em-dashes', async () => {
+    /**
+     * Orders placed before these columns were populated carry null for both.
+     * A row of "—" above a real total is noise, not information, and inventing
+     * a zero tax line would be worse: a fabricated fact about money.
+     *
+     * `makeOrder()` already defaults both to null, which is why every OTHER
+     * test in this file exercises this branch and none covered the one above.
+     */
+    fetchOrder.mockResolvedValue(makeOrder({ total: '58.80' }));
+
+    render(<OrderDetail id="o1" />);
+
+    await screen.findByText('Ceramic Planter');
+    expect(screen.queryByText('Subtotal')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tax')).not.toBeInTheDocument();
+    // Distinct from the line total, so this proves the GRAND total still
+    // renders rather than matching a line item by coincidence. Counted, for
+    // the same duplicate-in-the-toggle reason as the test above.
+    expect(screen.getAllByText(/58\.80/).length).toBeGreaterThan(0);
+  });
+});

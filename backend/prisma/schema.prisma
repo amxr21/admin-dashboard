@@ -1115,6 +1115,35 @@ model Order {
   /// must not rewrite what an old invoice already showed. NULL has the same
   /// "never recorded" meaning as `subtotal`'s.
   taxAmount              Decimal?            @map("tax_amount") @db.Decimal(10, 2)
+  /// What was taken off this order, and why.
+  ///
+  /// ─── A SEPARATE COLUMN, NEVER FOLDED INTO `subtotal` ────────────────
+  /// `subtotal` is read everywhere as "what the goods cost". Writing the
+  /// discounted figure into it would make every existing reader silently
+  /// report a reduced figure as the real one — the same reasoning
+  /// `OrderItem.discountPercent` gives for staying out of `price`.
+  ///
+  /// Applied BEFORE tax: `taxAmount` is computed on `subtotal - discountAmount`,
+  /// because charging tax on money the customer never paid would overstate
+  /// what is owed to the tax authority.
+  ///
+  /// NULL means no discount, which is different from a recorded 0.00 (a code
+  /// that resolved to nothing off — an empty promotion — is a real event).
+  discountAmount         Decimal?            @map("discount_amount") @db.Decimal(10, 2)
+  /// The code the customer typed, snapshotted as text.
+  ///
+  /// NULL when a discount was granted without one — an admin adjusting an
+  /// order by hand has no code to record, and that is an ordinary case rather
+  /// than missing data. Text rather than a relation so the code a customer
+  /// actually used survives the `Discount` row being edited or deleted, the
+  /// same discipline as `OrderItem.price`.
+  discountCode           String?             @map("discount_code") @db.VarChar(48)
+  /// Which `Discount` was applied, when one was.
+  ///
+  /// A plain id, not a relation, for the same reason `branchId` above is:
+  /// history has to survive the thing it points at being removed. NULL for an
+  /// admin-granted discount that came from no catalogue entry.
+  discountId             String?             @map("discount_id") @db.VarChar(64)
   status                 OrderStatus         @default(PENDING)
   /// Why this order was canceled (URG-010), from a fixed catalogue. Lives on
   /// the ORDER rather than only in `OrderStatusHistory.note` because it is a

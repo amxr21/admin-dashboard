@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 
+import { EmptyState } from '@/components/empty-state';
 import { ErrorSection } from '@/components/errors/error-section';
 import { Badge } from '@/components/ui/badge';
 import { LoadingState } from '@/components/ui/loading-state';
@@ -29,6 +30,16 @@ export function CourierWorkloadSnapshotView() {
         <LoadingState />
       ) : error ? (
         <ErrorSection title={tStates('error.title')} description={error} onRetry={() => void load()} />
+      ) : data && data.couriers.length === 0 ? (
+        /**
+         * No couriers at all. Without this the page rendered an empty status
+         * strip above a table with headers and no body — which reads as a
+         * broken report rather than as "nobody is on the roster yet".
+         *
+         * No action offered: couriers are created on the Delivery page, and a
+         * report is the wrong place to invite a write.
+         */
+        <EmptyState title={t('empty.title')} description={t('empty.description')} />
       ) : (
         <>
           <div className="flex flex-wrap gap-3">

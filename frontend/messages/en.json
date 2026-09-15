@@ -1116,6 +1116,8 @@
       "quantity": "Qty",
       "price": "Unit price",
       "lineTotal": "Line total",
+      "subtotal": "Subtotal",
+      "tax": "Tax",
       "total": "Order total",
       "productRemoved": "Product no longer available"
     },
@@ -1243,7 +1245,8 @@
       "category": "Category",
       "stock": "In stock",
       "actions": "Actions",
-      "cost": "Unit cost"
+      "cost": "Unit cost",
+      "location": "Location"
     },
     "search": {
       "label": "Search",
@@ -1303,6 +1306,11 @@
     },
     "log": {
       "title": "Stock history",
+      "supplier": "From {name}",
+      "reference": "Ref {reference}",
+      "unitCost": "{amount} per unit",
+      "delivered": "Delivered {date}",
+      "purchased": "Ordered {date}",
       "current": "now {stock} in stock",
       "empty": "No movements recorded yet.",
       "close": "Close",
@@ -1451,6 +1459,10 @@
     "subtitle": "Arabic catalogue copy. English remains the default content and fills any field left blank here.",
     "fallbackHelp": "Blank fields automatically use the English value. Clearing every field removes this translation without affecting the product.",
     "loading": "Loading localized content",
+    "empty": {
+      "title": "Nothing to translate yet",
+      "description": "Add English content to this product first — Arabic copy is written against it."
+    },
     "retry": "Try again",
     "save": "Save Arabic content",
     "saving": "Saving…",
@@ -1590,6 +1602,7 @@
       "description": "Assignment and delivery status changes, oldest first.",
       "loading": "Loading delivery timeline",
       "loadFailed": "Could not load the delivery timeline",
+      "empty": "Nothing recorded for this delivery yet.",
       "byActor": "By {actor}",
       "actions": {
         "assigned": "Courier assigned",
@@ -2400,6 +2413,7 @@
       "description": "What's selling, and what's sitting on the shelf.",
       "subtitle": "Units sold in the window against current stock, read from the stock movement ledger.",
       "noDeadStock": "Nothing is sitting idle in this period.",
+      "noTurnover": "Nothing sold in this period.",
       "tabs": {
         "turnover": "Turnover",
         "deadStock": "Dead stock ({count})"
@@ -2778,6 +2792,10 @@
       "title": "Courier workload",
       "description": "Live roster status and open assignment count per courier.",
       "subtitle": "Live state, not scoped to a date range.",
+      "empty": {
+        "title": "No couriers on the roster",
+        "description": "Add a courier on the Delivery page and their workload appears here."
+      },
       "columns": {
         "courier": "Courier",
         "status": "Status",
@@ -3121,7 +3139,19 @@
       "emptyBody": "A shift is recorded when someone clocks on from the top bar. Nothing here yet.",
       "emptyOpenTitle": "Nobody is on shift",
       "emptyOpenBody": "When someone clocks on, they appear here until they clock off.",
-      "summaryFor": "View what {name} did"
+      "summaryFor": "View what {name} did",
+      "approval": "Approval",
+      "approvalPending": "Pending",
+      "approvalApproved": "Approved",
+      "approvalRejected": "Rejected",
+      "approvedBy": "Approved by {name}",
+      "rejectedBy": "Rejected by {name} — {reason}",
+      "variance": "Till",
+      "varianceShort": "{amount} short",
+      "varianceOver": "{amount} over",
+      "varianceBalanced": "Balanced",
+      "varianceDetail": "Float {float} · counted {counted}",
+      "noTill": "No drawer"
     },
     "summary": {
       "title": "Shift summary",

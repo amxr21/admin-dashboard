@@ -104,8 +104,19 @@ export function InventoryTurnoverView() {
                 {renderRows(values.tab === 'deadStock' ? (data?.deadStock ?? []) : (data?.turnover ?? []))}
               </TableBody>
             </Table>
-            {values.tab === 'deadStock' && data?.deadStock.length === 0 ? (
-              <p className="text-muted-foreground p-4 text-center text-sm">{t('noDeadStock')}</p>
+            {/**
+              * Was guarded on `tab === 'deadStock'`, so the message only ever
+              * appeared on the Dead-stock tab — the DEFAULT Turnover tab
+              * showed headers over nothing with no explanation. Each tab now
+              * gets its own wording: "nothing is idle" is good news, "nothing
+              * sold" is not, and one message cannot say both.
+              */}
+            {values.tab === 'deadStock' ? (
+              data?.deadStock.length === 0 ? (
+                <p className="text-muted-foreground p-4 text-center text-sm">{t('noDeadStock')}</p>
+              ) : null
+            ) : data?.turnover.length === 0 ? (
+              <p className="text-muted-foreground p-4 text-center text-sm">{t('noTurnover')}</p>
             ) : null}
           </div>
         </div>

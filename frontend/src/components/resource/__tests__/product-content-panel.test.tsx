@@ -98,6 +98,19 @@ describe('localized product editor', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it('says there is nothing to translate when the product has no source content', async () => {
+    /**
+     * Fetch succeeds, but there is no English copy to translate against. The
+     * panel used to render its heading above an empty container, which reads
+     * as a rendering fault rather than as "nothing to do here yet" — its three
+     * sibling panels all carry an EmptyState at this position.
+     */
+    fetchProductContent.mockResolvedValue({ defaultLocale: 'en', content: [] });
+    renderPanel();
+
+    expect(await screen.findByText(/nothing to translate yet/i)).toBeInTheDocument();
+  });
+
   it('renders a recoverable loading failure', async () => {
     fetchProductContent.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(contract());
     renderPanel();

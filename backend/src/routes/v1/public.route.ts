@@ -273,6 +273,19 @@ const checkoutBody = z
       .strict(),
     paymentMethod: z.enum(['cash', 'card-on-delivery']),
     fulfillment: z.enum(['Pickup', 'Delivery']),
+    /**
+     * Optional. Uppercased here rather than in the service so the lookup is
+     * case-insensitive for the shopper without the service having to know that
+     * codes are stored uppercase — someone typing "welcome10" means the same
+     * thing as "WELCOME10".
+     */
+    discountCode: z
+      .string()
+      .trim()
+      .min(1)
+      .max(48)
+      .transform((value) => value.toUpperCase())
+      .optional(),
   })
   .strict()
   // Delivery without an address is not a fulfillable order. Checked here rather

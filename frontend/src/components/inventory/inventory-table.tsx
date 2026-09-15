@@ -176,6 +176,30 @@ export function InventoryTable() {
       sortValue: (row) => row.stock,
     },
     {
+      /**
+       * Where the stock physically lives.
+       *
+       * Declared on `InventoryRow` and selected by the backend, but rendered
+       * nowhere — so somebody picking an order had no way to see where the
+       * item is kept, despite the column being populated and shipped on every
+       * row.
+       *
+       * Free text for now; becomes a relation when a Location model exists
+       * (MASTER_TODO F7.9), which is why this sorts as a plain string.
+       */
+      id: 'location',
+      header: t('columns.location'),
+      cell: (row) =>
+        row.storageLocation ? (
+          <span className="truncate">{row.storageLocation}</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+      // Nulls sort together rather than among the As — an unset location is a
+      // thing to go and fill in, not a name that happens to be empty.
+      sortValue: (row) => row.storageLocation,
+    },
+    {
       id: 'cost',
       header: t('columns.cost'),
       align: 'end',
