@@ -391,7 +391,38 @@ export function OrderDetail({ id }: { id: string }) {
               </TableBody>
             </Table>
 
-            <div className="flex items-center justify-between border-t px-4 py-3">
+            {/**
+              * Subtotal and tax, not just the grand total.
+              *
+              * Both were already fetched and then dropped — the order records
+              * what tax was charged, and showing one combined figure made that
+              * unanswerable from this screen. The POS receipt
+              * (`thermal-receipt.tsx`) always printed all three; the admin view
+              * was the one lagging behind.
+              *
+              * Rendered only when a subtotal EXISTS. An order placed before
+              * these columns were populated has null for both, and a row of
+              * em-dashes above a real total is noise rather than information —
+              * such an order keeps rendering exactly as it does today.
+              */}
+            {order.subtotal !== null ? (
+              <div className="space-y-1 border-t px-4 pt-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">{t('items.subtotal')}</span>
+                  <span className="tabular-nums">{money(order.subtotal)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">{t('items.tax')}</span>
+                  <span className="tabular-nums">{money(order.taxAmount)}</span>
+                </div>
+              </div>
+            ) : null}
+
+            <div
+              className={`flex items-center justify-between px-4 py-3 ${
+                order.subtotal === null ? 'border-t' : ''
+              }`}
+            >
               <span className="font-medium">{t('items.total')}</span>
               <span className="text-lg font-semibold tabular-nums">
                 {money(order.total)}

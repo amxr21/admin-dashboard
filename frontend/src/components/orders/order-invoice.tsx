@@ -189,6 +189,32 @@ export function OrderInvoice({ id }: { id: string }) {
             ))}
           </tbody>
           <tfoot>
+            {/**
+              * An invoice is a TAX DOCUMENT. Printing a single grand total with
+              * no tax line meant the one figure a customer or an accountant
+              * needs to verify was missing from the document that exists to
+              * state it — while the order had recorded it all along.
+              *
+              * Only when a subtotal exists: an order predating these columns
+              * has neither, and inventing a zero tax line on a historical
+              * invoice would be a fabricated fact on a printed record.
+              */}
+            {order.subtotal !== null ? (
+              <>
+                <tr>
+                  <td colSpan={3} className="pt-3 text-end">
+                    {tOrders('items.subtotal')}
+                  </td>
+                  <td className="pt-3 text-end tabular-nums">{money(order.subtotal)}</td>
+                </tr>
+                <tr>
+                  <td colSpan={3} className="text-end">
+                    {tOrders('items.tax')}
+                  </td>
+                  <td className="text-end tabular-nums">{money(order.taxAmount)}</td>
+                </tr>
+              </>
+            ) : null}
             <tr>
               <td colSpan={3} className="pt-3 text-end font-medium">
                 {tOrders('items.total')}
