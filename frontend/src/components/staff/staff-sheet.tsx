@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { PhoneField } from '@/components/ui/phone-field';
 import {
@@ -285,9 +286,8 @@ export function StaffSheet({
           {!isEdit ? (
             <div className="space-y-2">
               <Label htmlFor="staff-password">{t('form.fields.password')}</Label>
-              <Input
+              <PasswordInput
                 id="staff-password"
-                type="password"
                 autoComplete="new-password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}

@@ -170,6 +170,10 @@
   },
   "common": {
     "appName": "admin-dashboard",
+    "password": {
+      "show": "إظهار كلمة المرور",
+      "hide": "إخفاء كلمة المرور"
+    },
     "save": "حفظ",
     "cancel": "إلغاء",
     "delete": "حذف",
@@ -345,6 +349,7 @@
     }
   },
   "nav": {
+    "breadcrumb": "مسار التنقل",
     "configuration": "الإعدادات التقنية",
     "dashboard": "لوحة التحكم",
     "orders": "الطلبات",
@@ -3162,6 +3167,8 @@
     "lastTillVariance": "أُغلق الدرج الأخير بفارق قدره",
     "floatOnRecord": "بدأت بمبلغ افتتاحي قدره {float}",
     "elapsedHint": "مدة الوردية",
+    "dialRunning": "بدأت الوردية في {time}",
+    "dialIdle": "لا توجد وردية جارية",
     "notOnShiftShort": "خارج الوردية",
     "tillEvents": {
       "noSale": "فتح بلا بيع",

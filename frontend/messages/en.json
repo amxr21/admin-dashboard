@@ -170,6 +170,10 @@
   },
   "common": {
     "appName": "admin-dashboard",
+    "password": {
+      "show": "Show password",
+      "hide": "Hide password"
+    },
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
@@ -345,6 +349,7 @@
     }
   },
   "nav": {
+    "breadcrumb": "Breadcrumb",
     "configuration": "Configuration",
     "dashboard": "Dashboard",
     "orders": "Orders",
@@ -3162,6 +3167,8 @@
     "lastTillVariance": "Last till closed with a variance of",
     "floatOnRecord": "Opened with a {float} float",
     "elapsedHint": "Time on shift",
+    "dialRunning": "Shift started at {time}",
+    "dialIdle": "No shift running",
     "notOnShiftShort": "Off shift",
     "tillEvents": {
       "noSale": "No sale",
