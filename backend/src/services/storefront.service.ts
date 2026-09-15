@@ -522,13 +522,157 @@ export interface CheckoutInput {
   contact: CheckoutContact;
   paymentMethod: string;
   fulfillment: string;
+  /** A discount code the shopper typed. Optional — most orders carry none. */
+  discountCode?: string | undefined;
 }
 
 export interface CheckoutResult {
   orderNumber: string;
   subtotal: string;
+  /** What came off, as a 2dp string. "0.00" when no code was used. */
+  discountAmount: string;
   taxAmount: string;
   total: string;
+}
+
+/**
+ * Resolve a typed code into money off, inside the checkout transaction.
+ *
+ * ─── WHY THIS RUNS IN THE TRANSACTION ────────────────────────────────
+ * `maxUses` is only meaningful if the check and the increment are atomic.
+ * Validating outside and incrementing inside would let two shoppers both pass
+ * a check for the last remaining use — which is precisely the case `maxUses`
+ * exists to prevent.
+ *
+ * ─── WHAT IT REFUSES, AND WITH WHICH ERROR ───────────────────────────
+ * A code that is unknown, inactive, expired or not applicable is a 400: the
+ * request is wrong and retrying it unchanged will fail again. A code that was
+ * valid but has just been exhausted is a 409, matching how the oversell race
+ * is reported — nothing is malformed, somebody else simply got there first.
+ *
+ * ─── CUSTOMER-SCOPED CODES ───────────────────────────────────────────
+ * A CUSTOMER-scoped discount belongs to named people. A guest checkout has no
+ * identity to match, so it can never redeem one — and the refusal says the
+ * code does not apply rather than confirming it exists for somebody else.
+ */
+async function resolveDiscount(
+  tx: Prisma.TransactionClient,
+  code: string,
+  subtotal: Prisma.Decimal,
+  productIds: readonly string[],
+  customerId: string | null,
+): Promise<{ id: string; code: string; amount: Prisma.Decimal }> {
+  const discount = await tx.discount.findUnique({
+    where: { code },
+    select: {
+      id: true,
+      code: true,
+      type: true,
+      value: true,
+      scope: true,
+      isActive: true,
+      expiresAt: true,
+      maxUses: true,
+      usedCount: true,
+      categories: { select: { id: true } },
+      products: { select: { id: true } },
+      customers: { select: { id: true } },
+    },
+  });
+
+  // One message for "no such code" and "switched off", deliberately: telling a
+  // caller which one it is confirms that a code exists, which is free
+  // reconnaissance for anyone guessing at them.
+  if (!discount || !discount.isActive) {
+    throw AppError.badRequest('That discount code is not valid', { field: 'discountCode' });
+  }
+
+  if (discount.expiresAt !== null && discount.expiresAt <= new Date()) {
+    throw AppError.badRequest('That discount code has expired', { field: 'discountCode' });
+  }
+
+  if (discount.maxUses !== null && discount.usedCount >= discount.maxUses) {
+    throw AppError.conflict('That discount code has been fully claimed', {
+      field: 'discountCode',
+    });
+  }
+
+  if (discount.scope === DiscountScope.CUSTOMER) {
+    const allowed =
+      customerId !== null && discount.customers.some((entry) => entry.id === customerId);
+    if (!allowed) {
+      throw AppError.badRequest('That discount code does not apply to this order', {
+        field: 'discountCode',
+      });
+    }
+  }
+
+  if (discount.scope === DiscountScope.PRODUCT) {
+    const eligible = new Set(discount.products.map((entry) => entry.id));
+    if (!productIds.some((id) => eligible.has(id))) {
+      throw AppError.badRequest('That discount code does not apply to anything in your cart', {
+        field: 'discountCode',
+      });
+    }
+  }
+
+  if (discount.scope === DiscountScope.CATEGORY) {
+    const eligible = new Set(discount.categories.map((entry) => entry.id));
+    const categories = await tx.product.findMany({
+      where: { id: { in: [...productIds] } },
+      select: { categoryId: true },
+    });
+    if (!categories.some((row) => row.categoryId !== null && eligible.has(row.categoryId))) {
+      throw AppError.badRequest('That discount code does not apply to anything in your cart', {
+        field: 'discountCode',
+      });
+    }
+  }
+
+  /**
+   * PERCENT reads its `value` as the percentage itself (10.00 = 10%), per the
+   * schema's own note. FIXED is a money amount.
+   *
+   * Clamped at the subtotal: a fixed 50 off a 30 order takes 30, never 50 —
+   * a negative total would be a refund the shop never agreed to, and the tax
+   * line below would go negative with it.
+   */
+  const raw =
+    discount.type === DiscountType.PERCENT
+      ? subtotal.times(discount.value).dividedBy(100)
+      : discount.value;
+
+  const amount = Prisma.Decimal.min(raw, subtotal).toDecimalPlaces(2);
+
+  /**
+   * Claim the use. Conditional on the count we just read, so two checkouts
+   * racing for the last use cannot both win: the loser updates zero rows.
+   *
+   * `updateMany` rather than `update` because it reports the row count — an
+   * `update` would succeed against the stale WHERE or throw a less specific
+   * error, and neither tells us we lost a race.
+   */
+  if (discount.maxUses !== null) {
+    const claimed = await tx.discount.updateMany({
+      where: { id: discount.id, usedCount: discount.usedCount },
+      data: { usedCount: { increment: 1 } },
+    });
+
+    if (claimed.count === 0) {
+      throw AppError.conflict('That discount code has been fully claimed', {
+        field: 'discountCode',
+      });
+    }
+  } else {
+    // Uncapped: still counted, because `usedCount` is how anyone judges whether
+    // a promotion worked. No guard needed — there is no limit to race for.
+    await tx.discount.update({
+      where: { id: discount.id },
+      data: { usedCount: { increment: 1 } },
+    });
+  }
+
+  return { id: discount.id, code: discount.code, amount };
 }
 
 /**
@@ -678,16 +822,41 @@ export async function checkout(
       lines.push({ productId, name: product.name, quantity, price: product.price });
     }
 
+    /**
+     * A code comes off BEFORE tax.
+     *
+     * Taxing the full subtotal and then discounting would charge tax on money
+     * the customer never paid — overstating what is owed to the tax authority
+     * and disagreeing with the invoice the shopper receives.
+     */
+    const discount = input.discountCode
+      ? await resolveDiscount(
+          tx,
+          input.discountCode,
+          subtotal,
+          [...quantities.keys()],
+          customerId,
+        )
+      : null;
+
+    const discountAmount = discount?.amount ?? new Prisma.Decimal(0);
+    const taxable = subtotal.minus(discountAmount);
+
     // Rounded once, at creation, and snapshotted — same discipline as
     // OrderItem.price. A later change to store.taxRate must not reach back and
     // rewrite what this invoice already showed.
-    const taxAmount = subtotal.times(taxRate).toDecimalPlaces(2);
-    const total = subtotal.plus(taxAmount);
+    const taxAmount = taxable.times(taxRate).toDecimalPlaces(2);
+    const total = taxable.plus(taxAmount);
 
     const orderData = {
       total,
       subtotal,
       taxAmount,
+      // Null rather than 0 when no code was used — see the column's own note on
+      // why "no discount" and "a discount worth nothing" stay distinguishable.
+      discountAmount: discount ? discountAmount : null,
+      discountCode: discount?.code ?? null,
+      discountId: discount?.id ?? null,
       paymentMethod: input.paymentMethod,
       customerId,
       items: {
@@ -794,6 +963,7 @@ export async function checkout(
     return {
       orderNumber: order.orderNumber,
       subtotal: subtotal.toFixed(2),
+      discountAmount: discountAmount.toFixed(2),
       taxAmount: taxAmount.toFixed(2),
       total: total.toFixed(2),
     };
