@@ -143,6 +143,57 @@ export function MovementLogSheet({
                         {movement.branch.name}
                       </p>
                     ) : null}
+
+                    {/**
+                      * Where this batch came from (F7.8).
+                      *
+                      * The backend has sent supplier, reference, unit cost and
+                      * both dates since F7.8 — the log just never declared or
+                      * rendered them, so the question they exist to answer
+                      * still needed a second lookup.
+                      *
+                      * Each is rendered only when present: these are
+                      * incoming-only facts, and a SOLD movement showing empty
+                      * supplier and reference rows would be noise on every
+                      * outgoing line in the log.
+                      */}
+                    {movement.supplier ||
+                    movement.reference ||
+                    movement.unitCost !== null ||
+                    movement.deliveredAt ||
+                    movement.purchasedAt ? (
+                      <p className="text-muted-foreground mt-0.5 flex flex-wrap gap-x-2 text-xs">
+                        {movement.supplier ? (
+                          <span>{t('supplier', { name: movement.supplier.name })}</span>
+                        ) : null}
+                        {movement.reference ? (
+                          // force-ltr: a PO number is a code and must not
+                          // reorder in Arabic, same rule as a SKU.
+                          <span className="force-ltr">
+                            {t('reference', { reference: movement.reference })}
+                          </span>
+                        ) : null}
+                        {movement.unitCost !== null ? (
+                          <span className="tabular-nums">
+                            {t('unitCost', { amount: movement.unitCost })}
+                          </span>
+                        ) : null}
+                        {movement.deliveredAt ? (
+                          <span>
+                            {t('delivered', {
+                              date: formatter.dateTime(new Date(movement.deliveredAt), 'short'),
+                            })}
+                          </span>
+                        ) : null}
+                        {movement.purchasedAt ? (
+                          <span>
+                            {t('purchased', {
+                              date: formatter.dateTime(new Date(movement.purchasedAt), 'short'),
+                            })}
+                          </span>
+                        ) : null}
+                      </p>
+                    ) : null}
                   </div>
                 </li>
               ))}

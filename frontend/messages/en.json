@@ -1245,7 +1245,8 @@
       "category": "Category",
       "stock": "In stock",
       "actions": "Actions",
-      "cost": "Unit cost"
+      "cost": "Unit cost",
+      "location": "Location"
     },
     "search": {
       "label": "Search",
@@ -1305,6 +1306,11 @@
     },
     "log": {
       "title": "Stock history",
+      "supplier": "From {name}",
+      "reference": "Ref {reference}",
+      "unitCost": "{amount} per unit",
+      "delivered": "Delivered {date}",
+      "purchased": "Ordered {date}",
       "current": "now {stock} in stock",
       "empty": "No movements recorded yet.",
       "close": "Close",

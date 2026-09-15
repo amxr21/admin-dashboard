@@ -98,6 +98,23 @@ export interface StockMovement {
   /** Which branch this belongs to. Null when it predates branch scoping, or
    *  its branch was removed — the UI shows nothing rather than a guess. */
   branch: { id: string; name: string; code: string | null } | null;
+  /**
+   * Where this batch came from and when it landed (F7.8).
+   *
+   * All four are INCOMING-ONLY facts: a SOLD or DAMAGED movement has no
+   * supplier and no purchase order, so null is the ordinary case rather than
+   * missing data. The backend has selected and serialised these since F7.8
+   * specifically "so the log answers 'where did this stock come from and when
+   * did it land' without a second lookup" — they were simply never declared
+   * here, and so were dropped at this boundary before reaching the UI.
+   */
+  supplier: { id: string; name: string } | null;
+  /** The purchase order or invoice reference, as typed. */
+  reference: string | null;
+  /** When the stock physically arrived. */
+  deliveredAt: string | null;
+  /** When it was ordered — often well before it arrived. */
+  purchasedAt: string | null;
 }
 
 export interface MovementListResult {

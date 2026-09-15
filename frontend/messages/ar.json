@@ -1245,7 +1245,8 @@
       "category": "الفئة",
       "stock": "المتوفر",
       "actions": "إجراءات",
-      "cost": "تكلفة الوحدة"
+      "cost": "تكلفة الوحدة",
+      "location": "الموقع"
     },
     "search": {
       "label": "بحث",
@@ -1305,6 +1306,11 @@
     },
     "log": {
       "title": "سجل المخزون",
+      "supplier": "من {name}",
+      "reference": "مرجع {reference}",
+      "unitCost": "{amount} للوحدة",
+      "delivered": "وصلت {date}",
+      "purchased": "طُلبت {date}",
       "current": "المتوفر الآن {stock}",
       "empty": "لا توجد حركات مسجَّلة بعد.",
       "close": "إغلاق",
