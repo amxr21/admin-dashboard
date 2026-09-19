@@ -2172,11 +2172,18 @@
       "emailRequired": "Email is required.",
       "emailInvalid": "Enter a valid email address.",
       "passwordHint": "At least {min} characters. You will need to give it to them directly.",
+      "branchHint": "This is the branch where this employee will work. You can add more branch assignments later.",
+      "chooseBranch": "Choose a branch",
+      "loadingBranches": "Loading branches…",
+      "branchLoadFailed": "Branches could not be loaded. Try again.",
+      "noBranches": "No active branches are available. Create or reactivate a branch first.",
+      "retryBranches": "Retry loading branches",
       "fields": {
         "email": "Email",
         "name": "Name",
         "phone": "Phone",
         "role": "Role",
+        "branch": "Branch",
         "password": "Password",
         "isActive": "Can sign in",
         "accessExpiresAt": "Access expires"

@@ -171,6 +171,7 @@ export interface CreateStaffInput {
   phone?: string;
   role: StaffRole;
   password: string;
+  branchId?: string;
 }
 
 export async function createStaff(input: CreateStaffInput): Promise<StaffMember> {
