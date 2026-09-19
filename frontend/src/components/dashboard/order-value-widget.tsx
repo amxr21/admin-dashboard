@@ -3,6 +3,7 @@
 import { useFormatter, useTranslations } from 'next-intl';
 
 import { Skeleton } from '@/components/ui/skeleton';
+import { WidgetSection } from '@/components/dashboard/widget-section';
 import type { OrderValueDistribution } from '@/lib/reports-api';
 
 /**
@@ -24,17 +25,20 @@ export function OrderValueWidget({ data, isLoading = false }: OrderValueWidgetPr
   const max = data ? Math.max(1, ...data.buckets.map((bucket) => bucket.count)) : 1;
 
   return (
-    <section className="bg-card rounded-lg border p-4" aria-label={t('title')}>
-      <h2 className="text-sm font-medium">{t('title')}</h2>
+    <WidgetSection
+      title={t('title')}
+      icon="orders"
+      tone="neutral"
+    >
 
       {isLoading ? (
-        <div className="mt-3 space-y-2">
+        <div className="space-y-2">
           {Array.from({ length: 6 }, (_, index) => (
             <Skeleton key={index} className="h-5 w-full" />
           ))}
         </div>
       ) : data && data.buckets.some((bucket) => bucket.count > 0) ? (
-        <ul className="mt-3 space-y-2">
+        <ul className="space-y-2">
           {data.buckets.map((bucket) => (
             <li key={bucket.label} className="flex items-center gap-3 text-sm">
               <span className="force-ltr text-muted-foreground w-20 shrink-0 tabular-nums whitespace-nowrap">
@@ -53,8 +57,8 @@ export function OrderValueWidget({ data, isLoading = false }: OrderValueWidgetPr
           ))}
         </ul>
       ) : (
-        <p className="text-muted-foreground mt-3 text-sm">{tStatus('empty.title')}</p>
+        <p className="text-muted-foreground text-sm">{tStatus('empty.title')}</p>
       )}
-    </section>
+    </WidgetSection>
   );
 }

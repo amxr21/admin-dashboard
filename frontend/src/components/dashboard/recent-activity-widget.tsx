@@ -2,8 +2,8 @@
 
 import { useFormatter, useTranslations } from 'next-intl';
 
-import { Link } from '@/i18n/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
+import { WidgetSection } from '@/components/dashboard/widget-section';
 import { stripDemoTag } from '@/lib/demo';
 import type { AuditEntry } from '@/lib/audit-api';
 
@@ -23,22 +23,22 @@ export function RecentActivityWidget({ entries, isLoading = false }: RecentActiv
   const formatter = useFormatter();
 
   return (
-    <section className="bg-card rounded-lg border p-4" aria-label={t('title')}>
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium">{t('title')}</h2>
-        <Link href="/admin/audit" className="text-muted-foreground text-xs hover:underline">
-          {t('viewAll')}
-        </Link>
-      </div>
+    <WidgetSection
+      title={t('title')}
+      icon="activity"
+      tone="neutral"
+      live
+      action={{ href: '/admin/audit', label: t('viewAll') }}
+    >
 
       {isLoading ? (
-        <div className="mt-3 space-y-2">
+        <div className="space-y-2">
           {Array.from({ length: 5 }, (_, index) => (
             <Skeleton key={index} className="h-8 w-full" />
           ))}
         </div>
       ) : entries && entries.length > 0 ? (
-        <ul className="mt-3 space-y-3">
+        <ul className="space-y-3">
           {entries.map((entry) => (
             <li key={entry.id} className="text-sm">
               <p className="truncate">
@@ -60,8 +60,8 @@ export function RecentActivityWidget({ entries, isLoading = false }: RecentActiv
           ))}
         </ul>
       ) : (
-        <p className="text-muted-foreground mt-3 text-sm">{tStatus('empty.title')}</p>
+        <p className="text-muted-foreground text-sm">{tStatus('empty.title')}</p>
       )}
-    </section>
+    </WidgetSection>
   );
 }

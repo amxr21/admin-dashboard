@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
+import { WidgetSection } from '@/components/dashboard/widget-section';
 import { StatusBadge } from '@/components/status-badge';
 import { stripDemoTag } from '@/lib/demo';
 import type { FulfillmentHealth } from '@/lib/reports-api';
@@ -30,17 +31,20 @@ export function FulfillmentHealthWidget({ data, isLoading = false }: Fulfillment
   const tOrderStatus = useTranslations('orderStatus');
 
   return (
-    <section className="bg-card rounded-lg border p-4" aria-label={t('title')}>
-      <h2 className="text-sm font-medium">{t('title')}</h2>
+    <WidgetSection
+      title={t('title')}
+      icon="delivery"
+      tone="neutral"
+    >
 
       {isLoading ? (
-        <div className="mt-3 space-y-2">
+        <div className="space-y-2">
           {Array.from({ length: 4 }, (_, index) => (
             <Skeleton key={index} className="h-6 w-full" />
           ))}
         </div>
       ) : data ? (
-        <div className="mt-3 space-y-4">
+        <div className="space-y-4">
           <dl className="grid grid-cols-2 gap-3">
             {data.avgHoursInStatus.map((row) => (
               <div key={row.status} className="space-y-0.5">
@@ -87,8 +91,8 @@ export function FulfillmentHealthWidget({ data, isLoading = false }: Fulfillment
           )}
         </div>
       ) : (
-        <p className="text-muted-foreground mt-3 text-sm">{tStatus('empty.title')}</p>
+        <p className="text-muted-foreground text-sm">{tStatus('empty.title')}</p>
       )}
-    </section>
+    </WidgetSection>
   );
 }

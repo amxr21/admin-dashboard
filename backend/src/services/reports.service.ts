@@ -991,6 +991,262 @@ export async function getNeedsAttention() {
   };
 }
 
+/** How long a closed shift stays on the floor view awaiting a decision. */
+const RECENTLY_CLOSED_HOURS = 12;
+
+/**
+ * Who is on the till RIGHT NOW, and what their drawer should hold.
+ *
+ * ─── WHY THIS EXISTS AS ONE CALL ─────────────────────────────────────
+ * Everything here was already computable — `getShiftTakings` and
+ * `getTillReport` answer all of it — but only ONE SHIFT AT A TIME. A floor
+ * view over five tills would be five round trips plus a list query, and the
+ * five would each have their own idea of "now". This is the same arithmetic
+ * issued as grouped queries over the open set, so every cashier on screen is
+ * described at one instant.
+ *
+ * ─── THE EXPECTED-DRAWER FORMULA IS COPIED FROM `closeTill`, NOT REINVENTED ──
+ * `openingFloat + (cash takings − drops − payouts)`. That is precisely what
+ * `closeTill` reconciles a count against (see `getShiftTakings.expectedCash`,
+ * which is already net of removals). A dashboard that computed "expected"
+ * any other way would quietly disagree with the figure the cashier is shown
+ * at close — and the whole point of putting this on the dashboard is that the
+ * two agree.
+ *
+ * ─── A CLOSED SHIFT IS STILL FLOOR BUSINESS UNTIL IT IS APPROVED ─────
+ * `recentlyClosed` carries shifts that ended in the last `RECENTLY_CLOSED_HOURS`
+ * and are still PENDING. Their `variance` is READ from the row, never
+ * recomputed — a refund issued after close would otherwise rewrite what the
+ * cashier signed off, the same snapshot rule `closeTill` states.
+ *
+ * Not range-scoped: "who is on now" has no date window, same category as
+ * `getNeedsAttention`.
+ */
+export async function getFloorStatus(params: { branchId?: string | undefined } = {}) {
+  const branchFilter = params.branchId ? { branchId: params.branchId } : {};
+  const closedSince = new Date(Date.now() - RECENTLY_CLOSED_HOURS * 3_600_000);
+
+  const [openShifts, closedShifts] = await Promise.all([
+    prisma.shift.findMany({
+      where: { endedAt: null, ...branchFilter },
+      orderBy: { startedAt: 'asc' },
+      select: {
+        id: true,
+        startedAt: true,
+        openingFloat: true,
+        note: true,
+        user: { select: { id: true, name: true, email: true } },
+        branch: { select: { id: true, name: true } },
+      },
+    }),
+    prisma.shift.findMany({
+      where: {
+        endedAt: { not: null, gte: closedSince },
+        approvalStatus: 'PENDING',
+        ...branchFilter,
+      },
+      orderBy: { endedAt: 'desc' },
+      select: {
+        id: true,
+        startedAt: true,
+        endedAt: true,
+        openingFloat: true,
+        closingCount: true,
+        variance: true,
+        note: true,
+        user: { select: { id: true, name: true, email: true } },
+        branch: { select: { id: true, name: true } },
+      },
+    }),
+  ]);
+
+  const shiftIds = [...openShifts, ...closedShifts].map((row) => row.id);
+
+  // Nothing on the floor and nothing awaiting a decision — return the empty
+  // shape rather than running four aggregates over an empty `IN ()`.
+  if (shiftIds.length === 0) {
+    return {
+      openShifts: [],
+      recentlyClosed: [],
+      totals: {
+        onShift: 0,
+        branches: 0,
+        taken: '0.00',
+        salesCount: 0,
+        expectedInDrawers: '0.00',
+        noSaleCount: 0,
+        voidCount: 0,
+      },
+    };
+  }
+
+  const [payments, removals, noSales] = await Promise.all([
+    // Every payment row for these shifts, read once. Grouping in SQL by
+    // shift alone would lose the method split (cash vs card) AND the order
+    // identity that `salesCount` needs, so this is one read reduced in
+    // memory rather than three overlapping grouped queries.
+    prisma.payment.findMany({
+      where: { shiftId: { in: shiftIds } },
+      select: { shiftId: true, orderId: true, method: true, amount: true },
+    }),
+    prisma.tillEvent.groupBy({
+      by: ['shiftId'],
+      where: { shiftId: { in: shiftIds }, type: { in: ['CASH_DROP', 'PAYOUT'] } },
+      _sum: { amount: true },
+    }),
+    prisma.tillEvent.groupBy({
+      by: ['shiftId'],
+      where: { shiftId: { in: shiftIds }, type: 'NO_SALE' },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const removedByShift = new Map(
+    removals.map((row) => [row.shiftId, row._sum.amount ?? new Prisma.Decimal(0)]),
+  );
+  const noSaleByShift = new Map(noSales.map((row) => [row.shiftId, row._count._all]));
+
+  /**
+   * Per-shift money, folded from the payment rows.
+   *
+   * ─── A VOIDED ORDER IS DROPPED WHOLE, NOT JUST ITS REVERSING ROW ────
+   * `voidSale` writes a reversing payment with `method: 'void'` alongside the
+   * ORIGINAL payment, which stays on the row (see pos.service.ts). Skipping
+   * only the `void` row would therefore leave the original sale counted and
+   * report money that was handed back — so the voided ORDER ids are collected
+   * first, then every row belonging to one is skipped.
+   *
+   * This is deliberately the same treatment `shiftSales` gives the Z report;
+   * the floor band and the Z report must not disagree about what a sale is.
+   */
+  const voidedOrders = new Set(
+    payments.filter((row) => row.method.toLowerCase() === 'void').map((row) => row.orderId),
+  );
+
+  const money = new Map<
+    string,
+    { taken: Prisma.Decimal; cash: Prisma.Decimal; orders: Set<string>; voided: Set<string> }
+  >();
+
+  function accFor(shiftId: string) {
+    let acc = money.get(shiftId);
+    if (!acc) {
+      acc = {
+        taken: new Prisma.Decimal(0),
+        cash: new Prisma.Decimal(0),
+        orders: new Set<string>(),
+        voided: new Set<string>(),
+      };
+      money.set(shiftId, acc);
+    }
+    return acc;
+  }
+
+  for (const row of payments) {
+    if (row.shiftId === null) continue;
+    const acc = accFor(row.shiftId);
+
+    if (voidedOrders.has(row.orderId)) {
+      // Counted once per ORDER, not per reversing row.
+      acc.voided.add(row.orderId);
+      continue;
+    }
+
+    acc.taken = acc.taken.add(row.amount);
+    if (row.method.toLowerCase() === 'cash') acc.cash = acc.cash.add(row.amount);
+    acc.orders.add(row.orderId);
+  }
+
+  const EMPTY = {
+    taken: new Prisma.Decimal(0),
+    cash: new Prisma.Decimal(0),
+    orders: new Set<string>(),
+    voided: new Set<string>(),
+  };
+
+  /** The shared per-shift figures both lists need. */
+  function figures(shift: { id: string; openingFloat: Prisma.Decimal | null }) {
+    const acc = money.get(shift.id) ?? EMPTY;
+    const removed = removedByShift.get(shift.id) ?? new Prisma.Decimal(0);
+    const float = shift.openingFloat ?? new Prisma.Decimal(0);
+    const salesCount = acc.orders.size;
+
+    return {
+      salesCount,
+      taken: acc.taken.toFixed(2),
+      // Guarded like `averageOrderValue`: zero sales must not divide.
+      averageSale: salesCount > 0 ? acc.taken.dividedBy(salesCount).toFixed(2) : '0.00',
+      cash: acc.cash.toFixed(2),
+      // The same sum `closeTill` reconciles against — see this function's note.
+      expectedCash: float.add(acc.cash.sub(removed)).toFixed(2),
+      cashRemoved: removed.toFixed(2),
+      noSaleCount: noSaleByShift.get(shift.id) ?? 0,
+      voidCount: acc.voided.size,
+      // Null means "no till on this shift", never zero — a fulfilment picker
+      // works a shift and never opens a drawer.
+      openingFloat: shift.openingFloat?.toFixed(2) ?? null,
+    };
+  }
+
+  const open = openShifts.map((shift) => ({
+    shiftId: shift.id,
+    startedAt: shift.startedAt.toISOString(),
+    note: shift.note,
+    user: shift.user,
+    branch: shift.branch,
+    ...figures(shift),
+  }));
+
+  const closed = closedShifts.map((shift) => ({
+    shiftId: shift.id,
+    startedAt: shift.startedAt.toISOString(),
+    // Non-null by the query's own `endedAt: { not: null }`, but the type is
+    // nullable — narrowed rather than asserted.
+    endedAt: shift.endedAt?.toISOString() ?? null,
+    note: shift.note,
+    user: shift.user,
+    branch: shift.branch,
+    closingCount: shift.closingCount?.toFixed(2) ?? null,
+    /** STORED, never recomputed — see this function's note. */
+    variance: shift.variance?.toFixed(2) ?? null,
+    ...figures(shift),
+  }));
+
+  // Totals describe the OPEN tills only. Folding a closed shift's takings in
+  // would make "in drawers" claim money for a drawer that has already been
+  // counted and put away.
+  const totals = open.reduce(
+    (acc, row) => ({
+      taken: acc.taken.add(row.taken),
+      expected: acc.expected.add(row.expectedCash),
+      sales: acc.sales + row.salesCount,
+      noSale: acc.noSale + row.noSaleCount,
+      voids: acc.voids + row.voidCount,
+    }),
+    {
+      taken: new Prisma.Decimal(0),
+      expected: new Prisma.Decimal(0),
+      sales: 0,
+      noSale: 0,
+      voids: 0,
+    },
+  );
+
+  return {
+    openShifts: open,
+    recentlyClosed: closed,
+    totals: {
+      onShift: open.length,
+      branches: new Set(open.map((row) => row.branch.id)).size,
+      taken: totals.taken.toFixed(2),
+      salesCount: totals.sales,
+      expectedInDrawers: totals.expected.toFixed(2),
+      noSaleCount: totals.noSale,
+      voidCount: totals.voids,
+    },
+  };
+}
+
 /**
  * Staff activity (C3.5) — who did what, how often, in the selected window.
  * Reuses `auditWhere` from `audit.service.ts` (read-only import — that file

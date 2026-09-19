@@ -722,7 +722,8 @@
         "returnRate": "Returns as a share of orders PLACED in this period — both halves counted the same way, so it agrees with the RETURNED count in Order outcomes. A cohort rate: of what was ordered here, how much came back.",
         "refundValue": "Refunds that flowed out DURING this period, whenever the order was placed. A deliberately different window from Return rate above — 'what did we pay out this month' and 'how much of this month's orders came back' are different questions, and one figure cannot answer both.",
         "unitsReturned": "Items received back during this period, on the same window as Refund value. Counts units, not orders — one return of three items counts as three."
-      }
+      },
+      "mostReturned": "Most returned, by units"
     },
     "orderValue": {
       "title": "Order value distribution"
@@ -765,7 +766,112 @@
     },
     "noReportsTitle": "Your work is elsewhere",
     "noReportsBody": "This page shows revenue and business performance, which your role doesn't cover. Everything you need is one click away.",
-    "noReportsAction": "Go to my work"
+    "noReportsAction": "Go to my work",
+    "floor": {
+      "title": "On the floor now",
+      "summary": "{tills, plural, one {# till} other {# tills}} across {branches, plural, one {# branch} other {# branches}}",
+      "takenToday": "{amount} taken",
+      "liveNote": "Live — the date range does not apply here",
+      "allShifts": "All shifts",
+      "empty": "No tills are open right now.",
+      "elapsed": "{hours}h {minutes}m in",
+      "closedAt": "closed {time}",
+      "salesCount": "{count, plural, one {# sale} other {# sales}}",
+      "averageSale": "avg {amount}",
+      "shareOfToday": "{percent}% of today",
+      "drawer": "drawer {amount}",
+      "counted": "counted {amount}",
+      "noTill": "no till",
+      "shiftNote": "Shift note —",
+      "flags": {
+        "clean": "Balanced",
+        "variance": "Off by {amount}",
+        "voids": "{count, plural, one {# void} other {# voids}}",
+        "noSale": "{count, plural, one {# no-sale} other {# no-sales}}"
+      },
+      "figures": {
+        "onShift": "On the floor",
+        "acrossBranches": "{count, plural, one {# branch} other {# branches}}",
+        "taken": "Taken today",
+        "salesCount": "{count, plural, one {# sale} other {# sales}}",
+        "inDrawers": "In drawers",
+        "expected": "Expected, open tills",
+        "noSale": "No-sale opens",
+        "noSaleSub": "Drawer opened with no sale",
+        "voids": "Voids",
+        "voidsSub": "Sales reversed today"
+      },
+      "table": {
+        "who": "Cashier",
+        "branch": "Branch",
+        "in": "On for",
+        "sales": "Sales",
+        "taken": "Taken",
+        "average": "Avg. sale",
+        "drawer": "Drawer",
+        "flags": "Flags"
+      },
+      "triage": {
+        "eyebrow": "Right now",
+        "title": "{count, plural, one {# thing needs you} other {# things need you}}",
+        "allClearTitle": "Nothing needs you right now.",
+        "variance": "{name}'s drawer is off by {amount}",
+        "varianceDetail": "{branch} · awaiting your approval",
+        "voids": "{name} reversed a sale",
+        "voidsDetail": "{branch} · review the void",
+        "noSale": "{name} opened the drawer with no sale",
+        "noSaleDetail": "{branch} · unexplained drawer opens",
+        "quiet": "{tills, plural, one {# till} other {# tills}} open, {taken} taken today."
+      }
+    },
+    "templates": {
+      "label": "Live section layout",
+      "combo": {
+        "name": "Overview + tills",
+        "description": "Totals across the top, then a card for every cashier."
+      },
+      "tills": {
+        "name": "Till cards only",
+        "description": "Straight to the cashiers, no summary row."
+      },
+      "figures": {
+        "name": "Figures only",
+        "description": "Five numbers, nothing else. The most compact."
+      },
+      "roster": {
+        "name": "Roster table",
+        "description": "Dense and comparable. Scales past ten tills."
+      },
+      "triage": {
+        "name": "Triage first",
+        "description": "Only what needs you. Quiet days look almost empty."
+      }
+    },
+    "attention": {
+      "label": "Needs attention",
+      "allClear": "Nothing is waiting on you.",
+      "queues": {
+        "outOfStock": "Sold, out of stock",
+        "unassigned": "No courier assigned",
+        "returns": "Returns to approve",
+        "reviews": "Reviews to moderate"
+      }
+    },
+    "liveBadge": "live",
+    "lowStock": {
+      "title": "Running low",
+      "outOfStock": "Out",
+      "noSku": "No SKU",
+      "neverReceived": "never received",
+      "lastReceived": "{days, plural, one {last in # day ago} other {last in # days ago}}",
+      "atOrBelow": "{count, plural, one {# product} other {# products}} at or below {threshold}",
+      "allStocked": "Everything is above the low-stock threshold.",
+      "reorder": "Reorder"
+    },
+    "topProducts": {
+      "showing": "{shown, plural, one {top # product} other {top # products}} by revenue",
+      "allProducts": "All products"
+    }
   },
   "products": {
     "title": "Products",
@@ -1858,10 +1964,10 @@
       "alreadyGone": "That key was already revoked.",
       "createTitle": "Create an API key",
       "createDescription": "The key is generated automatically. Record why it is needed and who will hold it, and limit it to the areas it actually needs.",
-    "scopesLabel": "Areas this key may reach",
-    "scopesHint": "Leave all unchecked to let the key reach everything your account can. Choosing areas only ever removes access — a key can never do more than you.",
-    "scopesAll": "Everything your account can reach",
-    "scopesSummary": "{count, plural, =1 {1 area} other {# areas}}",
+      "scopesLabel": "Areas this key may reach",
+      "scopesHint": "Leave all unchecked to let the key reach everything your account can. Choosing areas only ever removes access — a key can never do more than you.",
+      "scopesAll": "Everything your account can reach",
+      "scopesSummary": "{count, plural, =1 {1 area} other {# areas}}",
       "nameLabel": "Name",
       "namePlaceholder": "e.g. Inventory sync script",
       "purposeLabel": "Reason for this key",

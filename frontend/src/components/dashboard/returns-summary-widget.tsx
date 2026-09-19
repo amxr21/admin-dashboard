@@ -2,9 +2,9 @@
 
 import { useFormatter, useTranslations } from 'next-intl';
 
-import { Link } from '@/i18n/navigation';
 import { MetricDefinition } from '@/components/reports/metric-definition';
 import { Skeleton } from '@/components/ui/skeleton';
+import { WidgetSection } from '@/components/dashboard/widget-section';
 import type { ReturnsSummary } from '@/lib/reports-api';
 
 /**
@@ -13,7 +13,19 @@ import type { ReturnsSummary } from '@/lib/reports-api';
  * "how much came back and why" is a different question from "how much came
  * in." The per-product ranking is the actual payoff — a spike on one SKU is
  * a sizing/quality signal, not just a number.
+ *
+ * ─── THREE HEADLINE FIGURES, THEN THE RANKING ────────────────────────
+ * Rate, refunded value and units answer "how bad"; the ranking answers
+ * "where". Previously all four were the same size in one flat list, so the
+ * summary and the detail competed. The figures now lead.
+ *
+ * ─── THE RANKING BARS USE A SECOND SERIES HUE ────────────────────────
+ * Orange, not the primary blue the top-sellers widget uses. The two panels
+ * sit side by side showing product rankings that mean opposite things — best
+ * sellers and worst returns — and one hue across both would invite reading
+ * them as the same measure.
  */
+
 interface ReturnsSummaryWidgetProps {
   data: ReturnsSummary | null;
   isLoading?: boolean;
@@ -24,77 +36,102 @@ export function ReturnsSummaryWidget({ data, isLoading = false }: ReturnsSummary
   const tStatus = useTranslations('states');
   const formatter = useFormatter();
 
-  return (
-    <section className="bg-card rounded-lg border p-4" aria-label={t('title')}>
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium">{t('title')}</h2>
-        <Link href="/admin/returns" className="text-muted-foreground text-xs hover:underline">
-          {t('viewAll')}
-        </Link>
-      </div>
+  const ranked = data?.topReturnedProducts.slice(0, 4) ?? [];
+  const worst = Math.max(1, ...ranked.map((product) => product.unitsReturned));
 
+  const figures = data
+    ? [
+        {
+          key: 'returnRate',
+          label: t('returnRate'),
+          definition: t('definitions.returnRate'),
+          value: formatter.number(data.returnRate, {
+            style: 'percent',
+            maximumFractionDigits: 1,
+          }),
+        },
+        {
+          key: 'refundValue',
+          label: t('refundValue'),
+          definition: t('definitions.refundValue'),
+          value: formatter.number(Number(data.refundValue), 'currency'),
+        },
+        {
+          key: 'unitsReturned',
+          label: t('unitsReturned'),
+          definition: t('definitions.unitsReturned'),
+          value: formatter.number(data.unitsReturned),
+        },
+      ]
+    : [];
+
+  return (
+    <WidgetSection
+      title={t('title')}
+      icon="returns"
+      tone="neutral"
+      footNote={ranked.length > 0 ? t('mostReturned') : null}
+      action={{ href: '/admin/returns', label: t('viewAll') }}
+    >
       {isLoading ? (
-        <div className="mt-3 space-y-2">
-          {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-6 w-full" />
+        <div className="space-y-4">
+          <Skeleton className="h-12 w-full" />
+          {Array.from({ length: 3 }, (_, index) => (
+            <Skeleton key={index} className="h-8 w-full" />
           ))}
         </div>
       ) : data ? (
-        <div className="mt-3 space-y-4">
+        <div className="space-y-4">
           <dl className="grid grid-cols-3 gap-3">
-            <div className="space-y-0.5">
-              <dt className="text-muted-foreground flex items-center gap-1 text-xs">
-                {t('returnRate')}
-                <MetricDefinition label={t('returnRate')} definition={t('definitions.returnRate')} />
-              </dt>
-              <dd className="text-sm font-medium tabular-nums">
-                {formatter.number(data.returnRate, { style: 'percent', maximumFractionDigits: 1 })}
-              </dd>
-            </div>
-            <div className="space-y-0.5">
-              <dt className="text-muted-foreground flex items-center gap-1 text-xs">
-                {t('refundValue')}
-                <MetricDefinition label={t('refundValue')} definition={t('definitions.refundValue')} />
-              </dt>
-              <dd className="text-sm font-medium tabular-nums">
-                {formatter.number(Number(data.refundValue), 'currency')}
-              </dd>
-            </div>
-            <div className="space-y-0.5">
-              <dt className="text-muted-foreground flex items-center gap-1 text-xs">
-                {t('unitsReturned')}
-                <MetricDefinition label={t('unitsReturned')} definition={t('definitions.unitsReturned')} />
-              </dt>
-              <dd className="text-sm font-medium tabular-nums">
-                {formatter.number(data.unitsReturned)}
-              </dd>
-            </div>
+            {figures.map((figure) => (
+              <div key={figure.key} className="min-w-0 space-y-0.5">
+                <dt className="text-muted-foreground flex items-center gap-1 text-[11px] font-semibold tracking-wide uppercase">
+                  <span className="truncate">{figure.label}</span>
+                  <MetricDefinition label={figure.label} definition={figure.definition} />
+                </dt>
+                <dd className="text-xl font-semibold tracking-tight tabular-nums">
+                  {figure.value}
+                </dd>
+              </div>
+            ))}
           </dl>
 
-          {data.topReturnedProducts.length > 0 ? (
-            <ol className="space-y-2 border-t pt-3">
-              {data.topReturnedProducts.slice(0, 5).map((product, index) => (
+          {ranked.length > 0 ? (
+            <ol className="flex flex-col gap-3 border-t pt-3.5">
+              {ranked.map((product, index) => (
                 <li
                   key={product.productId ?? `deleted-${String(index)}`}
-                  className="flex items-baseline justify-between gap-3 text-sm"
+                  className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 gap-y-1"
                 >
-                  <span className="min-w-0 truncate">
-                    <span className="text-muted-foreground me-2 tabular-nums">{index + 1}.</span>
-                    {product.name ?? <em className="text-muted-foreground">{t('deletedProduct')}</em>}
+                  <span className="min-w-0 truncate text-sm">
+                    {product.name ?? (
+                      <em className="text-muted-foreground">{t('deletedProduct')}</em>
+                    )}
                   </span>
-                  <span className="text-muted-foreground shrink-0 tabular-nums">
+                  <span className="shrink-0 text-sm font-semibold tabular-nums">
                     {t('units', { count: product.unitsReturned })}
+                  </span>
+                  <span
+                    className="bg-muted col-span-2 h-2.5 overflow-hidden rounded-full"
+                    aria-hidden
+                  >
+                    <span
+                      className="block h-full rounded-full bg-orange-500"
+                      style={{
+                        width: `${String(Math.max(2, (product.unitsReturned / worst) * 100))}%`,
+                      }}
+                    />
                   </span>
                 </li>
               ))}
             </ol>
           ) : (
-            <p className="text-muted-foreground border-t pt-3 text-sm">{t('none')}</p>
+            <p className="text-muted-foreground border-t pt-3.5 text-sm">{t('none')}</p>
           )}
         </div>
       ) : (
-        <p className="text-muted-foreground mt-3 text-sm">{tStatus('empty.title')}</p>
+        <p className="text-muted-foreground text-sm">{tStatus('empty.title')}</p>
       )}
-    </section>
+    </WidgetSection>
   );
 }

@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { ArrowLeft, ArrowRight, PackagePlus, RefreshCw } from 'lucide-react';
 
+import { AttentionPills } from '@/components/dashboard/attention-pills';
+import { FloorBand } from '@/components/dashboard/floor-band';
 import { FulfillmentHealthWidget } from '@/components/dashboard/fulfillment-health-widget';
 import { LatestNotificationsWidget } from '@/components/dashboard/latest-notifications-widget';
 import { LatestOrdersWidget } from '@/components/dashboard/latest-orders-widget';
-import { OnShiftWidget } from '@/components/dashboard/on-shift-widget';
+import { LowStockWidget } from '@/components/dashboard/low-stock-widget';
 import { OrderValueWidget } from '@/components/dashboard/order-value-widget';
 import { RecentActivityWidget } from '@/components/dashboard/recent-activity-widget';
 import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-chart';
@@ -15,6 +17,7 @@ import { ReturnsSummaryWidget } from '@/components/dashboard/returns-summary-wid
 import { StatTile } from '@/components/dashboard/stat-tile';
 import { BranchSummary } from '@/components/dashboard/branch-summary';
 import { StatusBreakdownWidget } from '@/components/dashboard/status-breakdown-widget';
+import { TemplateSwitcher } from '@/components/dashboard/template-switcher';
 import { TopProductsWidget } from '@/components/dashboard/top-products-widget';
 import { Link } from '@/i18n/navigation';
 import { Reveal } from '@/components/motion/reveal';
@@ -38,13 +41,21 @@ import {
   parseDashboardState,
   rangeToDashboardParams,
 } from '@/lib/dashboard-state';
+import {
+  DEFAULT_DASHBOARD_TEMPLATE,
+  readTemplate,
+  writeTemplate,
+  type DashboardTemplate,
+} from '@/lib/dashboard-template';
 import { fetchAudit, type AuditEntry } from '@/lib/audit-api';
 import { fetchOrders, type OrderListRow } from '@/lib/orders-api';
 import { fetchRows, type ResourceRow } from '@/lib/resource-api';
-import { fetchShifts, type Shift } from '@/lib/shifts-api';
 import {
   deltaPercent,
+  fetchFloorStatus,
   fetchFulfillmentHealth,
+  fetchLowStockSnapshot,
+  fetchNeedsAttention,
   fetchOrderValueDistribution,
   fetchOverview,
   fetchReturnsSummary,
@@ -56,7 +67,10 @@ import {
   profitCoverageOf,
   previousPeriod,
   samePeriodLastYear,
+  type FloorStatus,
   type FulfillmentHealth,
+  type LowStockSnapshot,
+  type NeedsAttention,
   type OrderValueDistribution,
   type Overview,
   type ReturnsSummary,
@@ -117,6 +131,16 @@ export function DashboardOverview() {
   );
   const { range, comparison } = dashboardState;
 
+  /**
+   * Which shape the live band takes. Read from `localStorage` in an effect
+   * rather than in the initialiser: the server render has no `window`, and
+   * seeding state from it directly would hydrate-mismatch the first paint.
+   */
+  const [template, setTemplate] = useState<DashboardTemplate>(DEFAULT_DASHBOARD_TEMPLATE);
+  useEffect(() => {
+    setTemplate(readTemplate());
+  }, []);
+
   const [overview, setOverview] = useState<Overview | null>(null);
   const [previousOverview, setPreviousOverview] = useState<Overview | null>(null);
   const [points, setPoints] = useState<RevenuePoint[]>([]);
@@ -139,7 +163,15 @@ export function DashboardOverview() {
    * still loaded inside the same `load()` so one refresh updates the whole
    * page rather than leaving three panels on an older clock.
    */
-  const [onShift, setOnShift] = useState<Shift[] | null>(null);
+  /**
+   * The floor band and the attention queues. Neither is period-scoped — both
+   * describe "right now" — but both load inside the same `load()` as
+   * everything else so one refresh moves the whole page to one clock.
+   */
+  const [floor, setFloor] = useState<FloorStatus | null>(null);
+  const [attention, setAttention] = useState<NeedsAttention | null>(null);
+  /** Live catalogue state — `stock <= threshold` right now, not over the range. */
+  const [lowStock, setLowStock] = useState<LowStockSnapshot | null>(null);
   const [latestOrders, setLatestOrders] = useState<OrderListRow[] | null>(null);
   const [latestNotifications, setLatestNotifications] = useState<ResourceRow[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -178,9 +210,11 @@ export function DashboardOverview() {
         loadedReturns,
         loadedOrderValue,
         loadedActivity,
-        loadedOnShift,
         loadedLatestOrders,
         loadedLatestNotifications,
+        loadedFloor,
+        loadedAttention,
+        loadedLowStock,
       ] = await Promise.all([
         fetchOverview(range),
         comparisonRange ? fetchOverview(comparisonRange) : Promise.resolve(null),
@@ -194,13 +228,15 @@ export function DashboardOverview() {
         fetchReturnsSummary(range),
         fetchOrderValueDistribution(range),
         fetchAudit({ page: 1, pageSize: 6 }),
-        // "On now", not "during the range": `open` filters to shifts with no
-        // recorded end, which is the schema's own definition of on-shift.
-        fetchShifts({ open: true, pageSize: 8 }),
         fetchOrders({ page: 1, pageSize: 5, sort: 'placedAt', dir: 'desc' }),
         // Branch scoping is applied server-side by the resource engine, so no
         // branch filter is passed here — see `branchScopeField`.
         fetchRows('notifications', { pageSize: 5, sort: 'createdAt', dir: 'desc' }),
+        // Live state, like the three panels above — no range params, and
+        // branch scoping is applied server-side.
+        fetchFloorStatus(),
+        fetchNeedsAttention(),
+        fetchLowStockSnapshot(),
       ]);
 
       setOverview(loadedOverview);
@@ -232,9 +268,11 @@ export function DashboardOverview() {
       setReturns(loadedReturns);
       setOrderValue(loadedOrderValue);
       setRecentActivity(loadedActivity.entries);
-      setOnShift(loadedOnShift.shifts);
       setLatestOrders(loadedLatestOrders.orders);
       setLatestNotifications(loadedLatestNotifications.rows);
+      setFloor(loadedFloor);
+      setAttention(loadedAttention);
+      setLowStock(loadedLowStock);
       setLastUpdated(new Date());
     } catch (caught) {
       setError(translateError(caught));
@@ -367,6 +405,17 @@ export function DashboardOverview() {
                   })
                 : t('refresh')}
             </Button>
+            {/* Sits with the range/comparison controls because it is the same
+                kind of thing: it changes what the page shows, not the data. */}
+            {canSeeReports ? (
+              <TemplateSwitcher
+                value={template}
+                onChange={(next) => {
+                  setTemplate(next);
+                  writeTemplate(next);
+                }}
+              />
+            ) : null}
             <Button asChild size="sm">
               <Link href="/admin/r/products">
                 <PackagePlus className="size-4" aria-hidden />
@@ -422,8 +471,27 @@ export function DashboardOverview() {
        * or 3-up. At 4-up the last row would be a two-tile orphan. Three
        * columns keeps both rows full at every breakpoint.
        */}
+      {/*
+        Above the grid, and above the KPI strip, because it answers a
+        different question from everything below it: not "how did the
+        selected period go" but "what is happening on the floor right now".
+        Putting it inside the grid would place it under the range picker's
+        implied scope, which does not reach it.
+      */}
       {canSeeReports ? (
-      <div className="grid grid-cols-12 items-stretch gap-4">
+        <Reveal>
+          <FloorBand data={floor} template={template} isLoading={isLoading} />
+        </Reveal>
+      ) : null}
+
+      {canSeeReports ? (
+        <Reveal>
+          <AttentionPills data={attention} isLoading={isLoading} />
+        </Reveal>
+      ) : null}
+
+      {canSeeReports ? (
+      <div className="grid grid-cols-12 items-start gap-x-8 gap-y-7">
         {/* `contents`: a semantic landmark for the KPI strip that does NOT
             generate its own box — its children become direct items of the
             outer 12-col grid instead of a second, nested one. Keeps this
@@ -557,22 +625,25 @@ export function DashboardOverview() {
         <Reveal className="col-span-12 sm:col-span-6">
           <FulfillmentHealthWidget data={fulfillment} isLoading={isLoading} />
         </Reveal>
+        {/* Low stock beside fulfilment: both are "what is going wrong in the
+            warehouse", and the pairing puts the count tile's deep-link target
+            next to the orders it would block. */}
         <Reveal className="col-span-12 sm:col-span-6" delay={0.03}>
+          <LowStockWidget data={lowStock} isLoading={isLoading} />
+        </Reveal>
+
+        <Reveal className="col-span-12 sm:col-span-6">
           <ReturnsSummaryWidget data={returns} isLoading={isLoading} />
         </Reveal>
-
-        <Reveal className="col-span-12 sm:col-span-6">
+        <Reveal className="col-span-12 sm:col-span-6" delay={0.03}>
           <TopProductsWidget data={topProducts} isLoading={isLoading} />
         </Reveal>
-        <Reveal className="col-span-12 sm:col-span-6" delay={0.03}>
-          <StatusBreakdownWidget data={statusBreakdown} isLoading={isLoading} />
-        </Reveal>
 
         <Reveal className="col-span-12 sm:col-span-6">
-          <OrderValueWidget data={orderValue} isLoading={isLoading} />
+          <StatusBreakdownWidget data={statusBreakdown} isLoading={isLoading} />
         </Reveal>
         <Reveal className="col-span-12 sm:col-span-6" delay={0.03}>
-          <RecentActivityWidget entries={recentActivity} isLoading={isLoading} />
+          <OrderValueWidget data={orderValue} isLoading={isLoading} />
         </Reveal>
 
         {/* The "right now" row, last because it is the only group that does
@@ -585,8 +656,15 @@ export function DashboardOverview() {
           <LatestNotificationsWidget rows={latestNotifications} isLoading={isLoading} />
         </Reveal>
 
+        {/* Recent activity closes the page: it is the widest-scoped "what
+            happened" panel and the one least likely to be the reason anyone
+            opened the dashboard.
+
+            OnShiftWidget used to sit here. The floor band at the top now
+            answers "who is on" in far more detail, and two panels claiming
+            the same fact is how they start to disagree. */}
         <Reveal className="col-span-12">
-          <OnShiftWidget shifts={onShift} isLoading={isLoading} />
+          <RecentActivityWidget entries={recentActivity} isLoading={isLoading} />
         </Reveal>
 
         <Reveal className="col-span-12">
