@@ -8,6 +8,7 @@ import { PageTitleProvider } from '@/components/shell/page-title';
 import { AuthGuard } from '@/components/auth/auth-guard';
 import { SchemaProvider } from '@/components/providers/schema-provider';
 import { SettingsProvider } from '@/components/providers/settings-provider';
+import { RolePermissionsProvider } from '@/components/providers/role-permissions-provider';
 import { UnsavedChangesProvider } from '@/components/providers/unsaved-changes-provider';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from '@/i18n/navigation';
@@ -31,6 +32,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       {user ? (
         <SchemaProvider>
         <SettingsProvider>
+        <RolePermissionsProvider>
         <UnsavedChangesProvider>
         <PageTitleProvider>
         <BreadcrumbProvider>
@@ -51,6 +53,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         </BreadcrumbProvider>
         </PageTitleProvider>
         </UnsavedChangesProvider>
+        </RolePermissionsProvider>
         </SettingsProvider>
         </SchemaProvider>
       ) : null}

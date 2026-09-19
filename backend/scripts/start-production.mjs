@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -7,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const backendDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationRunner = resolve(backendDir, 'scripts/with-db-url.mjs');
 const schemaPath = resolve(backendDir, 'prisma/schema.prisma');
+const compiledServerModule = '../dist/server.js';
 
 // `migrate diff` only introspects and compares these two sources; unlike
 // migrate deploy/dev or db push, it cannot write to the running database.
@@ -21,8 +20,9 @@ export const DATABASE_SCHEMA_DIFF_ARGS = Object.freeze([
 ]);
 
 /**
- * Apply every committed migration and verify migration history is healthy
- * before the HTTP process starts.
+ * Attempt every committed migration and verify migration history before the
+ * HTTP process starts. A failed history command is diagnosed separately from
+ * live schema drift; see runProductionStart for its current admission policy.
  *
  * The deployment used to rely on a command configured only in Coolify. A
  * container could therefore start against an older schema when that setting
@@ -31,11 +31,11 @@ export const DATABASE_SCHEMA_DIFF_ARGS = Object.freeze([
  * contract: migration deployment, history divergence, or a failed migration
  * means this new container never becomes ready.
  */
-export function runPrismaCommand(args) {
+function runGuardedCommand(args) {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(
       process.execPath,
-      [migrationRunner, 'prisma', ...args],
+      [migrationRunner, ...args],
       {
         cwd: backendDir,
         env: process.env,
@@ -46,12 +46,16 @@ export function runPrismaCommand(args) {
     child.once('error', reject);
     child.once('exit', (code, signal) => {
       if (signal) {
-        reject(new Error(`Migration process stopped by ${signal}`));
+        reject(new Error(`Guarded database process stopped by ${signal}`));
         return;
       }
       resolvePromise(code ?? 1);
     });
   });
+}
+
+export function runPrismaCommand(args) {
+  return runGuardedCommand(['prisma', ...args]);
 }
 
 export function runMigrations() {
@@ -66,12 +70,19 @@ export function verifyDatabaseSchema() {
   return runPrismaCommand(DATABASE_SCHEMA_DIFF_ARGS);
 }
 
+export function verifyMigrationData() {
+  return runGuardedCommand(['node', 'scripts/check-migration-data.mjs']);
+}
+
+function startCompiledServer() {
+  return import(compiledServerModule);
+}
+
 /**
- * Start order: deploy migrations, then verify the RUNNING database's shape
- * against `schema.prisma`. The shape comparison — not migration bookkeeping —
- * is what decides whether this container may serve traffic.
+ * Start order: deploy migrations, check status, compare the RUNNING schema,
+ * then check known data-only invariants if migration history is unhealthy.
  *
- * ─── WHY `migrate status` IS DIAGNOSTIC AND NOT A GATE ───────────────────
+ * --- WHY `migrate status` IS DIAGNOSTIC AND NOT A GATE -------------------
  * `migrate status` fails whenever `_prisma_migrations` is missing or
  * incomplete, even when every table, column and index is already correct.
  * That exact state has occurred on this project repeatedly (see CLAUDE.md and
@@ -80,17 +91,19 @@ export function verifyDatabaseSchema() {
  * also fails, because it replays the first migration against tables that
  * already exist.
  *
- * Gating startup on either of those would turn a bookkeeping gap into a total
- * outage, which is strictly worse than the drift-induced 500 this gate exists
- * to prevent. So both are reported loudly and allowed to proceed; the live
- * shape check below is authoritative and still blocks a genuinely mismatched
- * database. A shape mismatch is the condition that actually breaks queries.
+ * Gating startup on either bookkeeping command alone would turn that gap into
+ * a total outage. Both are reported, while live shape drift and a confirmed
+ * missing catalogue baseline block the new container. A passing catalogue
+ * check cannot prove other historical data migrations ran; operators still
+ * need to reconcile history and those effects before declaring a release
+ * healthy. Never auto-baseline or replay SQL based on shape parity alone.
  */
 export async function runProductionStart({
   migrate = runMigrations,
   verify = verifyMigrationStatus,
   verifySchema = verifyDatabaseSchema,
-  startServer = () => import('../dist/server.js'),
+  verifyData = verifyMigrationData,
+  startServer = startCompiledServer,
   log = (message) => process.stderr.write(`[production-start] ${message}\n`),
 } = {}) {
   const migrationExitCode = await migrate();
@@ -116,6 +129,24 @@ export async function runProductionStart({
         'Refusing to serve traffic.',
     );
     return schemaExitCode;
+  }
+
+  if (migrationExitCode !== 0 || statusExitCode !== 0) {
+    const dataExitCode = await verifyData();
+    if (dataExitCode !== 0) {
+      log(
+        `Migration data check exited ${dataExitCode}; the new container cannot ` +
+          'safely serve until this known invariant is reviewed.',
+      );
+      return dataExitCode;
+    }
+    log(
+      'MIGRATION_DATA_REVIEW_REQUIRED: live schema matches, but migration ' +
+        'history is unverified. The known catalogue invariant passed, but other ' +
+        'historical backfills are not proven. Audit applied migrations and ' +
+        'affected records before calling this release healthy; do not replay ' +
+        'SQL solely from this warning.',
+    );
   }
 
   await startServer();

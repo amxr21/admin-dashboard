@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { TriangleAlert } from 'lucide-react';
+import { Link } from '@/i18n/navigation';
 
 import {
   AlertDialog,
@@ -15,8 +15,11 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Combobox } from '@/components/ui/combobox';
+import { CollapsibleSection } from '@/components/ui/collapsible-section';
 import { DatePicker } from '@/components/ui/date-picker';
 import { ImageUploadField } from '@/components/image-upload-field';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ProductGalleryPanel } from '@/components/resource/product-gallery-panel';
@@ -33,6 +36,7 @@ import {
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { StickyFormBar } from '@/components/ui/sticky-form-bar';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { useResourceFieldLabel } from '@/hooks/useResourceFieldLabel';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api';
@@ -112,7 +116,12 @@ interface ResourceFormProps {
  * place (`toPayload`) rather than scattered through onChange handlers.
  */
 function toFormValue(field: FieldConfig, row: ResourceRow | null): FormValue {
-  if (field.type === 'boolean') return Boolean(row?.[field.name] ?? false);
+  // Legacy products predate the opt-in flag. Keep their NULL distinct from an
+  // explicit false so the existing variants builder remains reachable until
+  // staff choose otherwise. The empty sentinel is omitted from an unchanged
+  // PATCH and converts to false only after an explicit checkbox change.
+  if (field.name === 'hasVariants' && row && row.hasVariants == null) return '';
+  if (field.type === 'boolean') return Boolean(row ? row[field.name] : (field.defaultValue ?? false));
 
   if (field.type === 'multiRelation') {
     const raw = row?.[field.name];
@@ -240,18 +249,111 @@ function MarginSummary({
 }
 
 export function ResourceForm({
-  schema,
+  schema: baseSchema,
   row,
   open,
   onOpenChange,
   onSaved,
 }: ResourceFormProps) {
+  const { editPanelMode, productDefaults } = useAppSettings();
+  const variantsDefault = productDefaults?.hasVariants;
+  const colorsDefault = productDefaults?.hasColors;
+  const barcodeDefault = productDefaults?.hasBarcode;
+  const schema = useMemo(() => {
+    if (row || baseSchema.resource !== 'products') return baseSchema;
+    const defaults: Record<string, boolean | undefined> = { hasVariants: variantsDefault, hasColors: colorsDefault, hasBarcode: barcodeDefault };
+    return { ...baseSchema, fields: baseSchema.fields.map(field => defaults[field.name] === undefined ? field : { ...field, defaultValue: defaults[field.name] }) };
+  }, [baseSchema, row, variantsDefault, colorsDefault, barcodeDefault]);
   const t = useTranslations('resourceForm');
+  // Separate binding: `t` above is scoped to `resourceForm`, but the group
+  // headings are resource vocabulary shared with the table, so they live under
+  // `resource.fieldGroups`.
+  const tGroups = useTranslations('resource.fieldGroups');
+  const fieldLabel = useResourceFieldLabel(schema.resource);
   const translateError = useTranslatedApiError();
-  const { editPanelMode } = useAppSettings();
 
   const fields = useMemo(() => formFields(schema), [schema]);
+
+  /**
+   * URG-025 — progressive disclosure. Fields with no `group` render in the
+   * default body; the rest collect into named sections in FIRST-APPEARANCE
+   * order, so the config file's ordering stays the source of truth rather than
+   * an alphabetical sort nobody chose.
+   */
+  const ungroupedFields = useMemo(() => fields.filter((field) => !field.group), [fields]);
+
+  const fieldGroups = useMemo(() => {
+    const byGroup = new Map<string, typeof fields>();
+    for (const field of fields) {
+      if (!field.group) continue;
+      const existing = byGroup.get(field.group);
+      if (existing) existing.push(field);
+      else byGroup.set(field.group, [field]);
+    }
+    return [...byGroup.entries()];
+  }, [fields]);
+
   const isEdit = row !== null;
+
+  /**
+   * Which optional groups are switched on (URG-026/031).
+   *
+   * Seeded from the DATA rather than from a stored preference: a product that
+   * already has a weight is self-evidently physical, so its Dimensions group
+   * opens enabled. One with none starts off, which is the whole point — a
+   * simple product should never have to answer them.
+   *
+   * Deriving it this way needs no schema change, unlike `hasVariants`. That
+   * one required a column precisely because it records an INTENT with no data
+   * behind it yet ("I want variants, none added"); a group with no values and
+   * no intent is simply off.
+   */
+  const [enabledGroups, setEnabledGroups] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const seeded: Record<string, boolean> = {};
+    for (const field of formFields(schema)) {
+      if (!field.group) continue;
+      const value = toFormValue(field, row);
+      const filled = Array.isArray(value)
+        ? value.length > 0
+        : typeof value === 'boolean'
+          ? value
+          : String(value).trim() !== '';
+      /**
+       * B3 — a group may also declare itself open by DEFAULT.
+       *
+       * Seeding from data alone is correct for an edit but says nothing on a
+       * CREATE, where every field is empty by definition and so every group
+       * seeded off. That is what made `cost` unreachable while adding a
+       * product: it lives in `pricing`, and the switch it sits behind started
+       * off with the message "Not used for this record."
+       *
+       * `defaultEnabled` is OR-ed in rather than replacing the data check, so
+       * a populated group still opens on an edit even if nothing declares the
+       * flag. Any field carrying it opens the whole group — a group is
+       * enabled as one unit — and this only sets the switch's STARTING
+       * position, which the user can still turn off. Specialist groups do not
+       * declare it, so URG-025's progressive disclosure is unchanged for them.
+       */
+      const openByDefault = field.defaultEnabled === true;
+      seeded[field.group] = (seeded[field.group] ?? false) || filled || openByDefault;
+    }
+    setEnabledGroups(seeded);
+  }, [schema, row]);
+
+  /**
+   * One predicate, used by BOTH the payload builder and the submit validator.
+   *
+   * URG-026 requires that a disabled group's fields never submit stale values,
+   * and URG-031 that their validation is conditional on being enabled. Those
+   * are the same question asked at two choke points, and answering it twice is
+   * how the two paths would quietly disagree.
+   */
+  const isFieldActive = useCallback(
+    (field: FieldConfig): boolean => !field.group || enabledGroups[field.group] === true,
+    [enabledGroups],
+  );
 
   // Snapshot of what each field held when the form opened — used only to
   // decide whether a `changeWarning` field's value has actually changed
@@ -378,10 +480,73 @@ export function ResourceForm({
     [t],
   );
 
+  /**
+   * One field row. Extracted (URG-025) so the default body and every grouped
+   * section render fields identically — duplicating this block per section is
+   * how the two paths would quietly drift apart.
+   */
+  function renderField(field: FieldConfig) {
+    return (
+      <FormField
+        key={field.name}
+        // B2 — a field that needs the full row says so here rather than at
+        // each call site, so the default body and every group agree. See
+        // `spansFullRow` for which types qualify and why.
+        className={spansFullRow(field) ? 'sm:col-span-2' : undefined}
+        field={field}
+        label={fieldLabel(field)}
+        value={values[field.name] ?? ''}
+        originalValue={isEdit ? (originalValues[field.name] ?? '') : ''}
+        error={fieldErrors[field.name]}
+        options={relationOptions[field.name] ?? []}
+        resourceFolder={schema.resource}
+        onRefreshOptions={schema.resource === 'products' && field.name === 'categoryId'
+          ? () => {
+              void fetchRelationOptions(schema.resource, field.name)
+                .then((options) => {
+                  setRelationOptions((current) => ({ ...current, [field.name]: options }));
+                })
+                .catch((caught: unknown) => setFormError(translateError(caught)));
+            }
+          : undefined}
+        onChange={(value) => setValue(field.name, value)}
+        onBlur={() => {
+          // A blank REQUIRED field left empty is deliberately not flagged
+          // here — a fresh create form's untouched fields are all blank by
+          // definition, and tabbing through them (focus → blur, never
+          // typing) would light up every required field red before the user
+          // has done anything wrong. Submit still catches a genuinely empty
+          // required field; blur only catches a WRONG value in a field that
+          // has content — a malformed email, an unparseable date — which is
+          // unambiguously a mistake worth surfacing early.
+          const current = values[field.name] ?? '';
+          if (String(current).trim() === '') return;
+
+          const message = validateField(field, current);
+          setFieldErrors((prev) => {
+            if (message === null) {
+              if (!(field.name in prev)) return prev;
+              const { [field.name]: _removed, ...rest } = prev;
+              return rest;
+            }
+            return { ...prev, [field.name]: message };
+          });
+        }}
+      />
+    );
+  }
+
   function buildPayload(): ResourceRow {
     const payload: ResourceRow = {};
 
     for (const field of fields) {
+      // URG-026 — a disabled group's fields never reach the payload, so a
+      // value typed before the group was switched off cannot be submitted as
+      // if it were still intended. Per the owner's decision this OMITS them
+      // rather than nulling them: anything already stored stays stored, since
+      // a UI toggle must not destroy data. Re-enabling shows it unchanged.
+      if (!isFieldActive(field)) continue;
+
       const value = values[field.name] ?? '';
 
       // On edit, send only what changed. It keeps the audit surface small, and
@@ -448,6 +613,11 @@ export function ResourceForm({
 
     const errors: Record<string, string> = {};
     for (const field of fields) {
+      // URG-031 — each group's validation is conditional on being enabled. A
+      // required or format rule inside a switched-off group must not block a
+      // save for a product that legitimately has no dimensions at all.
+      if (!isFieldActive(field)) continue;
+
       const message = validateField(field, values[field.name] ?? '');
       if (message) errors[field.name] = message;
     }
@@ -509,15 +679,19 @@ export function ResourceForm({
       <SheetContent
         side="end"
         variant={editPanelMode}
+        // B1 — this form is the content-heavy case the `wide` size exists for:
+        // a product declares ~20 writable fields, and at the old `max-w-lg`
+        // every one of them stacked in a single column behind an inner
+        // scrollbar. The size is a PROP rather than a width class here on
+        // purpose — a `max-w-*` passed through `className` is exactly what
+        // used to fight the variant's own sizing, and the note this replaces
+        // warned that such a class wins the class merge.
+        size="wide"
         // No `overflow-y-auto` here: scrolling the whole panel would carry the
         // heading and the action buttons off-screen with it. The field list
         // below is the only part that scrolls, so the title stays put and Save
         // /Cancel stay reachable — in the modal variant especially, where the
         // panel is capped at 85vh rather than running the full viewport height.
-        // Width is left to the variant: the drawer sizes itself to the edge,
-        // the modal keeps a small-screen gutter. Passing `w-full` here would
-        // win the class merge and flatten the modal back to edge-to-edge.
-        className="max-w-lg"
         title={isEdit ? t('editTitle', { label: schema.label }) : t('createTitle', { label: schema.label })}
         // Escape and outside clicks route through the same guard as the
         // buttons, so there is no way to lose edits by accident.
@@ -557,44 +731,94 @@ export function ResourceForm({
             </p>
           ) : null}
 
-          {/* The one scrolling region. `-mx-1 px-1` keeps focus rings on the
-              inputs from being clipped by the overflow container. */}
+          {/* The ONE scrolling region (B4), unchanged in kind by the widening:
+              the heading above and the Save/Cancel bar below stay fixed, and
+              nothing inside introduces a second scroller. `-mx-1 px-1` keeps
+              focus rings on the inputs from being clipped by the overflow
+              container. */}
           <div className="-mx-1 min-h-0 flex-1 space-y-4 overflow-y-auto px-1">
-            {fields.map((field) => (
-              <FormField
-                key={field.name}
-                field={field}
-                value={values[field.name] ?? ''}
-                originalValue={isEdit ? (originalValues[field.name] ?? '') : ''}
-                error={fieldErrors[field.name]}
-                options={relationOptions[field.name] ?? []}
-                resourceFolder={schema.resource}
-                onChange={(value) => setValue(field.name, value)}
-                onBlur={() => {
-                  // A blank REQUIRED field left empty is deliberately not
-                  // flagged here — a fresh create form's untouched fields
-                  // are all blank by definition, and tabbing through them
-                  // (focus → blur, never typing) would light up every
-                  // required field red before the user has done anything
-                  // wrong. Submit still catches a genuinely empty required
-                  // field; blur only catches a WRONG value in a field that
-                  // has content — a malformed email, an unparseable date —
-                  // which is unambiguously a mistake worth surfacing early.
-                  const current = values[field.name] ?? '';
-                  if (String(current).trim() === '') return;
+            {/*
+              B1/B2 — two columns once there is room, ONE below `sm` (40rem).
+              The old single column was the owner's actual complaint: a narrow
+              panel with every field stacked behind an inner scrollbar. Long
+              fields opt back out to the full row via `spansFullRow`, because a
+              textarea or an image dropzone squeezed into half a column is
+              worse than the stacking it replaced, not better.
 
-                  const message = validateField(field, current);
-                  setFieldErrors((prev) => {
-                    if (message === null) {
-                      if (!(field.name in prev)) return prev;
-                      const { [field.name]: _removed, ...rest } = prev;
-                      return rest;
-                    }
-                    return { ...prev, [field.name]: message };
-                  });
-                }}
-              />
-            ))}
+              `sm:grid-cols-2` is the breakpoint this repo already uses for
+              every other two-column form (business-form, my-account-panel,
+              organization-profile-editor), so a phone keeps the single column
+              it has always had.
+            */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {ungroupedFields.map(renderField)}
+            </div>
+
+            {/*
+              URG-025 — progressive disclosure. Specialist fields collect into
+              named sections instead of sitting between Name and Price with the
+              same visual weight.
+
+              Each heading starts expanded so its purpose is discoverable;
+              optional fields inside stay disabled until the adjacent switch
+              is turned on. Existing populated groups start enabled.
+            */}
+            {fieldGroups.map(([groupKey, groupFields]) => {
+              const enabled = enabledGroups[groupKey] === true;
+              const groupCheckboxId = `resource-group-${schema.resource}-${groupKey}`;
+              return (
+                <CollapsibleSection
+                  key={groupKey}
+                  title={tGroups(groupKey)}
+                  aside={String(groupFields.length)}
+                  // B2 — a group's fields lay out on the same two-column grid
+                  // as the default body above, so a section does not read as a
+                  // different kind of form from the one it sits under.
+                  bodyClassName="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2"
+                  /* Sibling of the heading button, never inside it — see the
+                     `action` slot's own comment on why nesting would break
+                     keyboard access. */
+                  action={
+                    <Label
+                      htmlFor={groupCheckboxId}
+                      className="flex min-h-11 min-w-11 items-center justify-center rounded-md hover:bg-accent/50"
+                    >
+                      <Checkbox
+                        id={groupCheckboxId}
+                        checked={enabled}
+                        aria-label={t('enableGroup', { group: tGroups(groupKey) })}
+                        onCheckedChange={(next) => {
+                          setEnabledGroups((current) => ({
+                            ...current,
+                            [groupKey]: next === true,
+                          }));
+                          // Switching a group off must not leave its stale
+                          // errors on screen: those fields no longer validate.
+                          if (next !== true) {
+                            setFieldErrors((current) => {
+                              const rest = { ...current };
+                              for (const field of groupFields) delete rest[field.name];
+                              return rest;
+                            });
+                          }
+                        }}
+                      />
+                    </Label>
+                  }
+                >
+                  {enabled ? (
+                    groupFields.map(renderField)
+                  ) : (
+                    // Spans the grid so the explanation reads as one sentence
+                    // across the section rather than being squeezed into a
+                    // half-width column with the other half left blank.
+                    <p className="text-muted-foreground text-sm sm:col-span-2">
+                      {t('groupDisabled')}
+                    </p>
+                  )}
+                </CollapsibleSection>
+              );
+            })}
 
             <MarginSummary
               schema={schema}
@@ -614,15 +838,24 @@ export function ResourceForm({
                   >
                     {t('manageLocalizedContent')}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!isEdit}
-                    onClick={() => setVariantsPanelOpen(true)}
-                  >
-                    {t('manageVariants')}
-                  </Button>
+                  {/* URG-029 — hidden unless this product opts into variants.
+                      `hasVariants === false` is an explicit "no"; NULL means
+                      the owner was never asked, and those products keep the
+                      button so nothing that worked before disappears. Turning
+                      it off hides the BUILDER only: existing variant rows keep
+                      their stock and sales history, per the owner's rule that
+                      a UI toggle must never destroy data. */}
+                  {values.hasVariants !== false ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!isEdit}
+                      onClick={() => setVariantsPanelOpen(true)}
+                    >
+                      {t('manageVariants')}
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="outline"
@@ -711,6 +944,11 @@ export function ResourceForm({
           productName={String(row.name ?? '')}
           open={variantsPanelOpen}
           onOpenChange={setVariantsPanelOpen}
+          /* URG-030 — colour is a variant NAME, not a new dimension, so
+             opting in changes nothing structural: it only suggests the
+             curated spellings while naming one. Read from live form state so
+             ticking the box offers them immediately, without a save. */
+          suggestColours={values.hasColors === true}
         />
         <ProductGalleryPanel
           productId={String(row.id)}
@@ -743,6 +981,7 @@ export function ResourceForm({
 
 interface FormFieldProps {
   field: FieldConfig;
+  label: string;
   value: FormValue;
   /** What this field held when the form opened. Only meaningful for
    *  `changeWarning` fields — empty string on create, where there is
@@ -755,6 +994,29 @@ interface FormFieldProps {
    *  the backend falls back to a generic one for anything it doesn't
    *  recognise, so this never needs to stay in sync with that allowlist. */
   resourceFolder: string;
+  /**
+   * An advisory note about this field's CURRENT value, decided by the caller.
+   *
+   * Generic on purpose (URG-028). A barcode's meaning depends on its sibling
+   * `barcodeType`, and this component only ever sees one field's own value —
+   * so the decision is made in `renderField`, which has the whole form's
+   * values, and arrives here as finished text. The alternative was widening
+   * `validateField`/`placeholderFor` to take sibling values, which would
+   * change a signature every resource shares to serve one product field.
+   *
+   * Not an error: it never blocks a save. Suppressed while a real error is
+   * showing, since a validation failure is the more urgent message.
+   */
+  notice?: string | undefined;
+  /**
+   * Grid placement for this field's whole row (B2).
+   *
+   * The field decides nothing about the layout itself — the caller owns the
+   * grid and says whether this one takes a single cell or the full row, so a
+   * `longtext` stays readable while a price and a cost sit side by side.
+   */
+  className?: string | undefined;
+  onRefreshOptions?: () => void;
   onChange: (value: FormValue) => void;
   /** Runs `validateField` for THIS field only — never on boolean/
    *  multiRelation controls, which have no such control on the underlying
@@ -767,17 +1029,35 @@ interface FormFieldProps {
 /** One labelled control, chosen by the field's SEMANTIC type. */
 function FormField({
   field,
+  label,
   value,
   originalValue,
   error,
   options,
   resourceFolder,
+  notice,
+  className,
+  onRefreshOptions,
   onChange,
   onBlur,
 }: FormFieldProps) {
   const t = useTranslations('resourceForm');
+  // URG-013 — email/phone/url format-example placeholders are shared across
+  // every form in the app (see placeholderFor below), not resourceForm-only,
+  // so they live in `common` rather than being duplicated per namespace.
+  const tCommon = useTranslations('common');
+  /**
+   * An upload failure, hoisted out of `ImageUploadField`.
+   *
+   * It cannot arrive as the `error` prop: that one comes from the form's own
+   * validation, and whether a file reached Cloudinary is decided inside the
+   * control long after that ran. Merged below rather than rendered separately,
+   * so an image field still has exactly one message slot.
+   */
+  const [imageError, setImageError] = useState<string | null>(null);
   const id = `field-${field.name}`;
   const errorId = `${id}-error`;
+  const hintId = `${id}-hint`;
 
   // Only once there WAS a real value and it has actually changed — never on
   // create (originalValue is always '' there) and never while the field is
@@ -787,11 +1067,34 @@ function FormField({
     String(originalValue).trim() !== '' &&
     String(value) !== String(originalValue);
 
+  /**
+   * URG-029 — opting a product OUT of variants hides its builder, and the
+   * variant rows behind it, while leaving every row's stock and sales history
+   * intact in the database. That is the owner's rule ("a toggle must never
+   * destroy data") working as intended, but silently losing the only route to
+   * real rows is its own surprise, so say so at the moment of the change.
+   *
+   * Deliberately states the guarantee rather than a count: the count would
+   * need a `fetchVariants` round-trip per form open, for one field, and a
+   * warning that renders "0 variants" whenever that request failed would be
+   * worse than one that never counts. `originalValue !== false` covers both a
+   * previous `true` and a legacy NULL — turning either off is the transition
+   * worth warning about; a product that was already opted out has nothing to
+   * lose access to.
+   */
+  const showVariantOptOutWarning =
+    field.name === 'hasVariants' && originalValue !== false && value === false;
+
   // aria-describedby only when there IS a message — pointing at an element
   // that doesn't exist makes some screen readers announce nothing at all.
+  //
+  // The error wins over the hint rather than being announced alongside it:
+  // both describe the same control, and when a field is wrong, what is wrong
+  // with it is the more urgent of the two. Same precedence `settings-form.tsx`
+  // already uses, and the same reason its hint is hidden while an error shows.
   const aria = {
     'aria-invalid': error ? true : undefined,
-    'aria-describedby': error ? errorId : undefined,
+    'aria-describedby': error ? errorId : field.description ? hintId : undefined,
   } as const;
 
   function control() {
@@ -804,7 +1107,7 @@ function FormField({
             onCheckedChange={(checked) => onChange(checked === true)}
             {...aria}
           />
-          <Label htmlFor={id}>{field.label}</Label>
+          <Label htmlFor={id}>{label}</Label>
         </div>
       );
     }
@@ -858,11 +1161,44 @@ function FormField({
           : options;
 
       return (
+        <>
+        {/*
+          A RELATION is searchable; an ENUM stays a plain Select.
+
+          The split follows `combobox.tsx`'s own rule: `Select` is right for a
+          handful of options you can eyeball, and unusable for a list you have
+          to hunt through. An enum is a fixed, short, code-declared set — three
+          product statuses, two discount types — so a filter box above it would
+          be furniture. A relation is every row of another table: a shop with
+          200 categories got a 200-row dropdown with no way to type, which is
+          the case `Combobox` was built for and was never wired to.
+
+          `clearText` replaces the `NONE` sentinel for relations. The sentinel
+          existed because Radix reserves the empty string for "no selection",
+          so clearing needed a value that was not `''`; `Combobox` models null
+          directly and needs no stand-in.
+        */}
+        {field.type === 'relation' ? (
+          <Combobox
+            id={id}
+            options={items}
+            value={text === '' ? null : text}
+            onValueChange={(next) => onChange(next ?? '')}
+            placeholder={t('choose')}
+            searchPlaceholder={tCommon('combobox.search')}
+            emptyText={tCommon('combobox.empty')}
+            // Offered only when the field may legitimately be empty — a
+            // required relation with a "not set" row would invite a choice
+            // the server then refuses.
+            {...(field.required ? {} : { clearText: t('none') })}
+            {...aria}
+          />
+        ) : (
         <Select
           // Radix reserves the empty string for "no selection", so an explicit
           // clear needs a sentinel of its own. Without one, an optional enum
-          // or relation could be SET but never unset — the only way back to
-          // empty would be a direct API call.
+          // could be SET but never unset — the only way back to empty would be
+          // a direct API call.
           value={text === '' ? NONE : text}
           onValueChange={(next) => onChange(next === NONE ? '' : next)}
         >
@@ -880,6 +1216,20 @@ function FormField({
             ))}
           </SelectContent>
         </Select>
+        )}
+        {onRefreshOptions ? (
+          <div className="flex flex-wrap gap-2">
+            <Button asChild type="button" variant="link" size="sm" className="min-h-11 px-0">
+              <Link href="/admin/r/categories" target="_blank" rel="noopener noreferrer">
+                {t('createCategory')}
+              </Link>
+            </Button>
+            <Button type="button" variant="ghost" size="sm" className="min-h-11" onClick={onRefreshOptions}>
+              {t('refreshCategories')}
+            </Button>
+          </div>
+        ) : null}
+        </>
       );
     }
 
@@ -915,6 +1265,10 @@ function FormField({
           onChange={onChange}
           folder={resourceFolder}
           shape="wide"
+          // Reported upward rather than printed inside the control: the field
+          // already owns a slot, and the control's own copy attaches its aria
+          // to an `sr-only` file input nobody can see.
+          onError={setImageError}
           {...aria}
         />
       );
@@ -932,41 +1286,54 @@ function FormField({
         value={text}
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
-        placeholder={placeholderFor(field)}
+        placeholder={placeholderFor(field, tCommon)}
         {...aria}
       />
     );
   }
 
   return (
-    <div className="space-y-2">
-      {field.type === 'boolean' ? null : (
-        <Label htmlFor={id} id={`${id}-label`}>
-          {field.label}
-          {field.required ? (
-            <span className="text-destructive ms-1" aria-hidden>
-              *
-            </span>
-          ) : null}
-        </Label>
-      )}
-
+    <Field
+      id={id}
+      // A boolean renders its own inline label beside the checkbox, so the
+      // wrapper must not render a second one above it.
+      {...(field.type === 'boolean' ? {} : { label, required: field.required })}
+      // Validation first: a malformed value is the more urgent of the two,
+      // and an upload failure on a field that is also invalid can wait.
+      error={error ?? imageError ?? undefined}
+      description={field.description}
+      // All three are advisory and all three are about what the user just
+      // did, not about what the field is — see `Field`'s own note on why they
+      // are a separate category from the description. Falsy entries are
+      // dropped inside the wrapper, so the conditions can be passed raw.
+      warnings={[
+        showChangeWarning && field.changeWarning,
+        showVariantOptOutWarning && t('variantOptOutWarning'),
+        notice,
+      ]}
+      className={className}
+    >
       {control()}
-
-      {error ? (
-        <p id={errorId} role="alert" className="text-destructive text-sm">
-          {error}
-        </p>
-      ) : null}
-
-      {!error && showChangeWarning ? (
-        <p className="text-muted-foreground flex items-start gap-1.5 text-sm">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          {field.changeWarning}
-        </p>
-      ) : null}
-    </div>
+    </Field>
   );
+}
+
+/**
+ * Which fields take the whole row instead of one grid cell (B2).
+ *
+ * Half a column is an improvement for a price, a SKU or a date — short values
+ * whose input is wider than the content needs. It is a REGRESSION for anything
+ * whose content is genuinely long: a `longtext` description squeezed into half
+ * the width just trades one cramped box for a narrower one, and an `image`
+ * field renders a preview and a dropzone that need room to read as a target
+ * rather than a stamp.
+ *
+ * Keyed on the semantic TYPE rather than a field-name list, so a new long field
+ * on any resource is laid out correctly the moment it is declared — the same
+ * config-driven discipline the rest of this form follows.
+ */
+function spansFullRow(field: FieldConfig): boolean {
+  return field.type === 'longtext' || field.type === 'image' || field.type === 'multiRelation';
 }
 
 function inputType(field: FieldConfig): string {
@@ -987,7 +1354,33 @@ function inputType(field: FieldConfig): string {
   }
 }
 
-function placeholderFor(field: FieldConfig): string | undefined {
-  if (field.type === 'money') return '0.00';
-  return undefined;
+/**
+ * URG-013 — only for field TYPES generic enough that one example is true for
+ * every field of that type, everywhere in the app (an email is always
+ * shaped like an email). `text`/`longtext`/`number` are deliberately left
+ * alone: their real content varies per FIELD (a product name vs. a SKU vs.
+ * a quantity vs. someone's age), so any single example would be a guess at
+ * best and actively misleading at worst — exactly what URG-013 itself warns
+ * against. A per-field placeholder for those would belong in
+ * `admin.config.ts`, not here.
+ */
+function placeholderFor(field: FieldConfig, tCommon: ReturnType<typeof useTranslations<'common'>>): string | undefined {
+  // A field that declares its own example wins over the type-level default —
+  // it is strictly more specific, and it is the ONLY way to give a `text`
+  // field a useful placeholder (see the `placeholder` comment in
+  // admin.config.ts for why those cannot be typed at this level).
+  if (field.placeholder) return field.placeholder;
+
+  switch (field.type) {
+    case 'money':
+      return '0.00';
+    case 'email':
+      return tCommon('placeholders.email');
+    case 'phone':
+      return tCommon('placeholders.phone');
+    case 'url':
+      return tCommon('placeholders.url');
+    default:
+      return undefined;
+  }
 }

@@ -4,6 +4,7 @@ import * as SelectPrimitive from '@radix-ui/react-select';
 import { Check, ChevronDown } from 'lucide-react';
 import type { ComponentProps } from 'react';
 
+import { FIELD_SURFACE } from '@/components/ui/field-surface';
 import { cn } from '@/lib/utils';
 
 /**
@@ -51,12 +52,14 @@ function SelectTrigger({
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       className={cn(
-        'border-input bg-background ring-offset-background placeholder:text-muted-foreground',
-        'focus:ring-ring flex h-9 w-full items-center justify-between gap-2 rounded-md border',
-        'px-3 py-2 text-sm focus:ring-2 focus:ring-offset-2 focus:outline-none',
-        'disabled:cursor-not-allowed disabled:opacity-50',
-        // Matches the 200ms colour transition the rest of the system uses.
-        'transition-colors',
+        // Shared with Input/Textarea/Combobox/DatePicker — see
+        // ui/field-surface.ts. This trigger previously sat on `bg-background`
+        // with a `ring-2 ring-offset-2` focus ring, so it read as faintly
+        // sunken between two `bg-card` neighbours in a filter bar and
+        // animated differently on tab. It also had no `aria-invalid` styling
+        // at all, which the shared surface now supplies.
+        FIELD_SURFACE,
+        'flex items-center justify-between gap-2 px-3 py-1.5',
         className,
       )}
       {...props}

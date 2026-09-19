@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { fetchBranches, type BranchSummary } from '@/lib/branches-api';
 import { readBranchId, writeBranchId } from '@/lib/auth-storage';
 
@@ -106,22 +107,49 @@ export function BranchSwitcher() {
         </div>
       </div>, document.body,
     ) : null}
+    {/*
+      URG-014 — sized to its content, not to a fixed cap.
+
+      History: a flat `max-w-56` (224px) cropped real names; raising it to
+      `max-w-80` with `w-full` only moved the cap, because `w-full` makes the
+      trigger claim its whole track and `truncate` then clips inside it. A
+      short name ("Downtown") reserved the same 320px as a long one, and a
+      long one was still cut at 320px — capped-and-clipped either way, which
+      is what the ticket objected to.
+
+      Now: `w-auto` lets the trigger be exactly as wide as its label, so short
+      names stop reserving space they don't use and long names grow until they
+      genuinely need help. `max-w-[min(20rem,100%)]` keeps the 320px ceiling
+      AND yields to a narrow topbar — the ticket's required narrow-screen
+      fallback — and `min-w-0` lets it actually shrink rather than overflow.
+      `truncate` and the Tooltip remain for whatever still doesn't fit at
+      320px; the Tooltip shows only for a genuinely selected branch, never for
+      the always-short "All branches".
+    */}
     <Select value={active ?? 'all'} onValueChange={choose} disabled={isSwitching}>
-      <SelectTrigger
-        className="h-8 w-full max-w-56 text-sm"
-        aria-label={t('switcherLabel')}
-      >
-        <SelectValue>
-          <span className="flex items-center gap-2 truncate">
-            {activeBranch && !activeBranch.isSellingPoint ? (
-              <Warehouse className="size-4 shrink-0" aria-hidden />
-            ) : (
-              <Store className="size-4 shrink-0" aria-hidden />
-            )}
-            <span className="truncate">{activeBranch?.name ?? t('allBranches')}</span>
-          </span>
-        </SelectValue>
-      </SelectTrigger>
+      {/* TooltipTrigger asChild clones its child and forwards a ref, which
+          needs a real DOM-rendering element — SelectTrigger, not the
+          context-provider Select.Root wrapping it. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <SelectTrigger
+            className="h-8 w-auto min-w-0 max-w-[min(20rem,100%)] text-sm"
+            aria-label={t('switcherLabel')}
+          >
+            <SelectValue>
+              <span className="flex items-center gap-2 truncate">
+                {activeBranch && !activeBranch.isSellingPoint ? (
+                  <Warehouse className="size-4 shrink-0" aria-hidden />
+                ) : (
+                  <Store className="size-4 shrink-0" aria-hidden />
+                )}
+                <span className="truncate">{activeBranch?.name ?? t('allBranches')}</span>
+              </span>
+            </SelectValue>
+          </SelectTrigger>
+        </TooltipTrigger>
+        {activeBranch ? <TooltipContent side="bottom">{activeBranch.name}</TooltipContent> : null}
+      </Tooltip>
 
       <SelectContent>
         <SelectItem value="all">{t('allBranches')}</SelectItem>

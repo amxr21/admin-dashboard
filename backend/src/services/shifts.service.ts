@@ -136,6 +136,13 @@ export async function startShift(
   actor: ShiftActor,
   input: {
     branchId?: string | undefined;
+    /**
+     * True when `branchId` came from the REQUEST BODY — the cashier actively
+     * picked it — rather than from the `X-Branch-Id` header the client sends
+     * on every request. Only the former is newly client-controlled input, and
+     * only it is roster-checked below.
+     */
+    branchChosenByClient?: boolean | undefined;
     forUserId?: string | undefined;
     note?: string | undefined;
     /** Cash in the drawer at open (O5.3). Omitted for a shift with no till,
@@ -191,6 +198,65 @@ export async function startShift(
       field: 'branchId',
       reason: 'BRANCH_NOT_FOUND',
     });
+  }
+
+  /**
+   * A branch that is closed is not somewhere work can be recorded.
+   *
+   * Checked on the EXPLICIT path specifically: `resolveShiftBranchId` and
+   * `defaultBranchId` both filter on `isActive` already, so the only way an
+   * inactive branch reaches here is a caller naming one — a stale id held by a
+   * client that loaded its picker before the branch was closed. Reported as
+   * BRANCH_NOT_FOUND rather than a new code because the actionable advice is
+   * identical ("choose another branch"), and the client already translates it.
+   */
+  if (!branch.isActive) {
+    throw AppError.badRequest('Branch not found', {
+      field: 'branchId',
+      reason: 'BRANCH_NOT_FOUND',
+    });
+  }
+
+  /**
+   * A NAMED branch still has to be one this person may work at (URG — cashier
+   * shift start).
+   *
+   * `branchId` became reachable from the till so an ambiguous cashier can
+   * answer the "which branch?" refusal below instead of being stuck. That
+   * makes it caller-supplied input on a path where it previously could only
+   * come from the server's own resolution, so it needs the check the resolved
+   * path got for free: without it, naming any branch id would attribute a
+   * shift's cash and takings to a shop the cashier has no assignment at —
+   * which is precisely the misattribution the ambiguity refusal exists to
+   * prevent, reintroduced through the fix for it.
+   *
+   * ─── WHY A FLAG AND NOT `input.branchId` BEING SET ───────────────────
+   * The route fills `branchId` from the `X-Branch-Id` HEADER when the body
+   * names none, so "a branch id is present" does NOT mean "the client chose
+   * one". Keying off that conflated the two and made this check fire on the
+   * long-standing header path, where a branch-scoped user with no roster row
+   * (a FULFILLMENT picker, say) had always been able to clock on — seven
+   * existing tests caught it. Only a branch named in the BODY is the new
+   * client-controlled input this guard exists for; the header path is already
+   * constrained by `withBranchContext` and keeps its previous behaviour.
+   *
+   * Business-wide roles are exempt for the same reason they skip the roster
+   * everywhere else: an OWNER is not scoped to a branch, and `UserBranch`
+   * rows for them are deliberately refused (see `assertCanAssign`), so
+   * requiring one would lock an owner out of their own branches.
+   */
+  if (input.branchChosenByClient && !isBusinessWideRole(actor.role) && userId === actor.id) {
+    const assignment = await prisma.userBranch.findUnique({
+      where: { userId_branchId: { userId, branchId } },
+      select: { userId: true },
+    });
+
+    if (!assignment) {
+      throw AppError.forbidden('You are not assigned to that branch', {
+        field: 'branchId',
+        reason: 'BRANCH_NOT_ASSIGNED',
+      });
+    }
   }
 
   const shift = await prisma.shift.create({
@@ -474,12 +540,97 @@ export async function listShifts(params: ShiftListParams) {
     prisma.shift.count({ where }),
   ]);
 
+  const activity = await shiftActivity(rows.map((row) => row.id));
+
   return {
-    shifts: rows.map(serialise),
+    shifts: rows.map((row) => ({ ...serialise(row), ...(activity.get(row.id) ?? EMPTY_ACTIVITY) })),
     total,
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+const EMPTY_ACTIVITY = { salesCount: 0, taken: '0.00' } as const;
+
+/**
+ * Sales count and money taken for a PAGE of shifts, in two grouped queries
+ * rather than a takings call per row.
+ *
+ * ─── SALES COUNT IS DISTINCT ORDERS, NOT PAYMENT ROWS ────────────────
+ * A split payment is two `Payment` rows for one sale, so counting rows would
+ * report two sales for one. `Order` has no `shiftId` — an order reaches a
+ * shift THROUGH its payments (`Payment.shiftId`) — so distinct `orderId` per
+ * shift is the honest count. Deduped in JS over a bounded set: at most one
+ * page of shifts (<= MAX_PAGE_SIZE) times a shift's own payments, so this is
+ * not the N+1 that a per-shift takings fetch would be.
+ *
+ * `taken` sums `Payment.amount` (the STORE-currency value), the same field
+ * `getShiftTakings` reconciles — foreign-currency tender is counted at close,
+ * not here, so this stays one comparable unit across every row.
+ */
+async function shiftActivity(shiftIds: string[]): Promise<Map<string, { salesCount: number; taken: string }>> {
+  const result = new Map<string, { salesCount: number; taken: string }>();
+  if (shiftIds.length === 0) return result;
+
+  const [totals, lines] = await Promise.all([
+    prisma.payment.groupBy({ by: ['shiftId'], where: { shiftId: { in: shiftIds } }, _sum: { amount: true } }),
+    prisma.payment.findMany({ where: { shiftId: { in: shiftIds } }, select: { shiftId: true, orderId: true } }),
+  ]);
+
+  const takenByShift = new Map(totals.map((row) => [row.shiftId, (row._sum.amount ?? new Prisma.Decimal(0)).toFixed(2)]));
+  const ordersByShift = new Map<string, Set<string>>();
+  for (const line of lines) {
+    if (line.shiftId === null) continue;
+    const set = ordersByShift.get(line.shiftId) ?? new Set<string>();
+    set.add(line.orderId);
+    ordersByShift.set(line.shiftId, set);
+  }
+
+  for (const id of shiftIds) {
+    result.set(id, { salesCount: ordersByShift.get(id)?.size ?? 0, taken: takenByShift.get(id) ?? '0.00' });
+  }
+  return result;
+}
+
+/**
+ * Order-level breakdown for ONE shift's X/Z report: sales count, average sale,
+ * void count.
+ *
+ * ─── VOIDS ARE SEPARATED, UNLIKE THE OPEN-SHIFT COUNT ────────────────
+ * `voidSale` writes a reversing `Payment` with `method: 'void'` on the shift
+ * (see pos.service.ts). On the FLOOR view (listShifts) a voided sale still
+ * counts as one sale rung up — that is the honest "what happened". On the Z
+ * report, which is a financial summary, a voided order is NOT a sale: it is
+ * excluded from `salesCount` and reported as `voidCount` instead. `averageSale`
+ * is the non-void take divided by the non-void sale count.
+ *
+ * ─── NET OF VOIDS AND REFUNDS ────────────────────────────────────────
+ * `amount` is signed, so summing the non-void payments of a non-void order
+ * already nets any partial refund. A void order's rows are dropped whole.
+ */
+async function shiftSales(shiftId: string): Promise<{ salesCount: number; averageSale: string; voidCount: number }> {
+  const rows = await prisma.payment.findMany({
+    where: { shiftId },
+    select: { orderId: true, method: true, amount: true },
+  });
+
+  const voidedOrders = new Set(rows.filter((row) => row.method.toLowerCase() === 'void').map((row) => row.orderId));
+  const saleOrders = new Set<string>();
+  let net = new Prisma.Decimal(0);
+  for (const row of rows) {
+    if (voidedOrders.has(row.orderId)) continue; // a voided order is not a sale on this report
+    saleOrders.add(row.orderId);
+    net = net.add(row.amount);
+  }
+
+  const salesCount = saleOrders.size;
+  return {
+    salesCount,
+    // Guard the divide: no sales means no average, reported as 0.00 rather
+    // than a NaN or a divide-by-zero.
+    averageSale: salesCount === 0 ? '0.00' : net.div(salesCount).toFixed(2),
+    voidCount: voidedOrders.size,
   };
 }
 
@@ -537,6 +688,8 @@ export async function getShiftSummary(shiftId: string) {
     take: 10,
   });
 
+  const sales = await shiftOrders(shiftId);
+
   return {
     shift: serialise(shift),
     /** Total audited writes in the window. Reads are not audited, so this is
@@ -548,7 +701,46 @@ export async function getShiftSummary(shiftId: string) {
       ...entry,
       createdAt: entry.createdAt.toISOString(),
     })),
+    /** The actual orders rung up during the shift (Task 2), newest first. */
+    sales,
   };
+}
+
+/**
+ * The orders sold during a shift, newest first, for the summary sheet.
+ *
+ * ─── ORDERS REACH A SHIFT THROUGH PAYMENTS ───────────────────────────
+ * `Order` has no `shiftId`; a sale is tied to a shift by its `Payment` rows.
+ * So this finds the distinct orders paid on the shift, then reads each order's
+ * own fields. A voided order keeps its row (status CANCELED) and is shown as
+ * such rather than hidden — a cashier reviewing the shift should see the void
+ * happened, not a gap.
+ *
+ * Capped: a till summary is a recent-activity view, not an export. The count
+ * lives on the X/Z report (`shiftSales`) for the exact figure.
+ */
+async function shiftOrders(shiftId: string) {
+  const payments = await prisma.payment.findMany({
+    where: { shiftId },
+    select: { orderId: true },
+  });
+  const orderIds = [...new Set(payments.map((row) => row.orderId))];
+  if (orderIds.length === 0) return [];
+
+  const orders = await prisma.order.findMany({
+    where: { id: { in: orderIds } },
+    orderBy: { placedAt: 'desc' },
+    take: 30,
+    select: { id: true, orderNumber: true, total: true, status: true, placedAt: true },
+  });
+
+  return orders.map((order) => ({
+    id: order.id,
+    orderNumber: order.orderNumber,
+    total: order.total.toFixed(2),
+    status: order.status,
+    placedAt: order.placedAt.toISOString(),
+  }));
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -816,9 +1008,23 @@ export async function getTillReport(shiftId: string) {
       .reduce((sum, row) => sum.add(row.amount ?? '0'), new Prisma.Decimal(0))
       .toFixed(2);
 
+  const sales = await shiftSales(shiftId);
+
   return {
     shift: serialise(shift),
     byMethod: takings.byMethod,
+    /**
+     * URG-034 — forwarded, not recomputed. `getShiftTakings` already counts
+     * foreign cash per currency (each in its OWN units, deliberately never
+     * converted into one expected total), and this report was silently
+     * dropping it: the breakdown existed in the service and never reached the
+     * client, so a drawer holding two currencies printed a Z report that
+     * accounted for only one of them.
+     *
+     * Already strings from `getShiftTakings` (`.toFixed(2)` per row), unlike
+     * the Decimal fields below.
+     */
+    byTenderCurrency: takings.byTenderCurrency,
     // `getShiftTakings` returns these as `Prisma.Decimal` — fine when a
     // ROUTE hands them straight to `res.json()` (Decimal serialises to a
     // string via its own `toJSON`), but this function is called BY a
@@ -829,6 +1035,12 @@ export async function getTillReport(shiftId: string) {
     noSaleCount,
     cashDropTotal: sumAmounts(cashDrops),
     payoutTotal: sumAmounts(payouts),
+    // Order-level breakdown (Task 2): how many sales, their average, and how
+    // many were voided — the till report showed money by method but never
+    // "how many sales was that".
+    salesCount: sales.salesCount,
+    averageSale: sales.averageSale,
+    voidCount: sales.voidCount,
     events,
     /** Only meaningful once the shift is actually closed — null on an X
      *  report taken mid-shift, since `closeTill` has not run yet. */

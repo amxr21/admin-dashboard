@@ -171,6 +171,7 @@ export interface CreateStaffInput {
   phone?: string;
   role: StaffRole;
   password: string;
+  branchId?: string;
 }
 
 export async function createStaff(input: CreateStaffInput): Promise<StaffMember> {
@@ -340,6 +341,17 @@ export interface StaffSession {
   ip: string | null;
   createdAt: string;
   lastSeenAt: string;
+}
+
+export interface ActiveStaffSession extends StaffSession {
+  userId: string;
+  name: string | null;
+  email: string;
+  role: StaffRole;
+}
+
+export async function fetchActiveStaffSessions(): Promise<ActiveStaffSession[]> {
+  return apiFetch<ActiveStaffSession[]>('/staff/sessions/active');
 }
 
 /** Live sessions for another user. Rank-checked server-side: nobody reaches

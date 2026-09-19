@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { accountEmailSchema } from '../../lib/identity-validation.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
-import { requireArea } from '../../middleware/authorize.js';
+import { requireArea, requireRole } from '../../middleware/authorize.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
 import {
   assertCanActOn,
@@ -21,6 +21,7 @@ import {
 } from '../../services/staff.service.js';
 import {
   listLoginHistory,
+  listActiveStaffSessions,
   listSessionsFor,
   revokeSessionFor,
   signOutEverywhere,
@@ -77,9 +78,23 @@ const createBody = z
     phone: z.string().trim().max(48).optional(),
     role: z.nativeEnum(StaffRole, { message: 'Choose a role' }),
     password,
+    branchId: z.string().trim().min(1, 'Choose a branch').optional(),
     accessExpiresAt: z.string().datetime().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((input, context) => {
+    if (
+      input.role !== StaffRole.OWNER &&
+      input.role !== StaffRole.DEVELOPER &&
+      !input.branchId
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['branchId'],
+        message: 'Choose a branch',
+      });
+    }
+  });
 
 const inviteBody = z
   .object({
@@ -107,6 +122,24 @@ staffRouter.get('/staff', ...guard, async (req, res) => {
 
   res.json({ data: await listStaff(parsed.data) });
 });
+
+/**
+ * Who is signed in right now, across the whole business.
+ *
+ * Business-wide by definition, so it follows the same OWNER/DEVELOPER pair
+ * every other business-wide surface uses rather than OWNER alone — locking the
+ * Developer out of a read-only diagnostic view would remove the one account
+ * that exists to diagnose sign-in problems. Declared BEFORE `/staff/:id` so
+ * Express cannot match "sessions" as an id.
+ */
+staffRouter.get(
+  '/staff/sessions/active',
+  ...guard,
+  requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  async (_req, res) => {
+    res.json({ data: await listActiveStaffSessions() });
+  },
+);
 
 staffRouter.get('/staff/:id', ...guard, async (req, res) => {
   const actor = requireUser(req);

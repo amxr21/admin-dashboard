@@ -312,6 +312,90 @@ describe('the movement log', () => {
     expect(screen.getByText('pallet 4')).toBeInTheDocument();
   });
 
+  it('says where a batch came from and when it landed', async () => {
+    /**
+     * F7.8 added supplier, reference, unit cost and both dates to the API
+     * specifically so the log could answer "where did this stock come from"
+     * without a second lookup — and the frontend type never declared them, so
+     * they were dropped at the boundary and rendered nowhere.
+     *
+     * Without this test the whole block could be deleted and every suite would
+     * still pass, because the other mocks here omit all four fields and so
+     * only ever exercise the render-nothing branch.
+     */
+    resolveWith([makeRow()]);
+    fetchMovements.mockResolvedValue({
+      product: { id: 'p1', name: 'Ceramic Planter', sku: null, stock: 50 },
+      movements: [
+        {
+          id: 'm1',
+          delta: 50,
+          reason: 'RECEIVED',
+          note: null,
+          unitCost: '12.50',
+          actorId: 'u1',
+          actorName: 'Sami',
+          createdAt: '2026-07-01T10:00:00.000Z',
+          branch: null,
+          supplier: { id: 's1', name: 'Gulf Ceramics' },
+          reference: 'PO-4471',
+          deliveredAt: '2026-07-01T09:00:00.000Z',
+          purchasedAt: '2026-06-20T09:00:00.000Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 50,
+      totalPages: 1,
+    });
+
+    render(<InventoryTable />);
+    await screen.findByText('Ceramic Planter');
+    await userEvent.click(screen.getByRole('button', { name: /stock history for/i }));
+
+    expect(await screen.findByText(/Gulf Ceramics/)).toBeInTheDocument();
+    expect(screen.getByText(/PO-4471/)).toBeInTheDocument();
+    expect(screen.getByText(/12\.50 per unit/)).toBeInTheDocument();
+  });
+
+  it('shows no provenance line on an outgoing movement, which has none', async () => {
+    // A SOLD movement has no supplier and no purchase order. Empty labels on
+    // every outgoing row would be noise, so the whole line is omitted.
+    resolveWith([makeRow()]);
+    fetchMovements.mockResolvedValue({
+      product: { id: 'p1', name: 'Ceramic Planter', sku: null, stock: 47 },
+      movements: [
+        {
+          id: 'm2',
+          delta: -3,
+          reason: 'SOLD',
+          note: null,
+          unitCost: null,
+          actorId: 'u1',
+          actorName: 'Sami',
+          createdAt: '2026-07-02T10:00:00.000Z',
+          branch: null,
+          supplier: null,
+          reference: null,
+          deliveredAt: null,
+          purchasedAt: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 50,
+      totalPages: 1,
+    });
+
+    render(<InventoryTable />);
+    await screen.findByText('Ceramic Planter');
+    await userEvent.click(screen.getByRole('button', { name: /stock history for/i }));
+
+    expect(await screen.findByText('−3')).toBeInTheDocument();
+    expect(screen.queryByText(/per unit/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Ref /)).not.toBeInTheDocument();
+  });
+
   it('distinguishes an empty history from a failure', async () => {
     resolveWith([makeRow()]);
     fetchMovements.mockResolvedValue({
@@ -328,6 +412,30 @@ describe('the movement log', () => {
     await userEvent.click(screen.getByRole('button', { name: /stock history for/i }));
 
     expect(await screen.findByText(/no movements recorded/i)).toBeInTheDocument();
+  });
+});
+
+describe('where the stock is kept', () => {
+  it('shows the storage location on the row', async () => {
+    // Selected by the backend and declared on InventoryRow, but rendered
+    // nowhere — so whoever was picking an order could not see where the item
+    // lives, despite the value shipping on every row.
+    resolveWith([makeRow({ storageLocation: 'Aisle 3 · Bay B' })]);
+
+    render(<InventoryTable />);
+
+    expect(await screen.findByText('Aisle 3 · Bay B')).toBeInTheDocument();
+  });
+
+  it('marks an unset location rather than leaving the cell blank', async () => {
+    // An empty cell reads as a rendering gap; an em-dash reads as a thing to
+    // go and fill in.
+    resolveWith([makeRow({ storageLocation: null })]);
+
+    render(<InventoryTable />);
+
+    await screen.findByText('Ceramic Planter');
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 });
 

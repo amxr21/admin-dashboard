@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 import {
   Prisma,
+  RefundReason,
   ReturnCategory,
   ReturnItemStatus,
   ReturnResolution,
@@ -17,6 +18,7 @@ import { getSettingValue } from './settings.service.js';
 import { ASSIGNMENT_ON_ORDER_STATUS, canTransition } from '../config/orders.config.js';
 
 import { defaultBranchId } from './inventory.service.js';
+import { assertRefundReason } from './refund-reason.js';
 /**
  * Returns / RMA — the one thing the resource engine cannot express, for the
  * same reason orders is bespoke: approving a return is a PROCEDURE (validate
@@ -122,6 +124,11 @@ export async function listReturns(params: ReturnListParams) {
         resolution: true,
         category: true,
         createdAt: true,
+        // Who handled it (the till's "previous returns" panel asks exactly
+        // this). Null on anything not approved, and on approvals predating
+        // the column — a real gap, never filled in from the audit log.
+        approvedByName: true,
+        approvedAt: true,
         // O1: reached THROUGH the order, because a return has no branch of
         // its own — it carries a required `orderId` and the order already
         // records the branch, so a second copy could only drift from it.
@@ -144,6 +151,8 @@ export async function listReturns(params: ReturnListParams) {
       resolution: row.resolution,
       category: row.category,
       createdAt: row.createdAt.toISOString(),
+      approvedByName: row.approvedByName,
+      approvedAt: row.approvedAt?.toISOString() ?? null,
       order: { id: row.order.id, orderNumber: row.order.orderNumber },
       // A warning, not a gate (B4.11) — see `returnWindowStatus`'s own note.
       withinWindow: returnWindowStatus(row.order.placedAt, windowDays).withinWindow,
@@ -173,6 +182,8 @@ async function serialiseReturn(id: string) {
       restocked: true,
       rejectionReason: true,
       createdAt: true,
+      approvedByName: true,
+      approvedAt: true,
       order: { select: { id: true, orderNumber: true, status: true, placedAt: true } },
       // Exchange (O9.8) — null until the replacement sale completes, a real
       // "started but not finished" state, not a gap to hide.
@@ -211,6 +222,8 @@ async function serialiseReturn(id: string) {
     restocked: row.restocked,
     rejectionReason: row.rejectionReason,
     createdAt: row.createdAt.toISOString(),
+    approvedByName: row.approvedByName,
+    approvedAt: row.approvedAt?.toISOString() ?? null,
     order: { id: row.order.id, orderNumber: row.order.orderNumber, status: row.order.status },
     // A warning, not a gate (B4.11) — surfaced so the approving screen can
     // show "this is past the return window" without refusing anything.
@@ -375,6 +388,14 @@ export interface ApproveReturnInput {
   resolution: Exclude<ReturnResolution, 'NONE'>;
   /** Decimal string. Required when resolution is REFUND, ignored otherwise. */
   refundAmount?: string | undefined;
+  /**
+   * Why the refund is being given (URG-009). Required when resolution is
+   * REFUND, refused otherwise — a refund reason on a REPLACEMENT would be a
+   * stored fact that never happened.
+   */
+  refundReason?: RefundReason | undefined;
+  /** Required free text when the reason is OTHER, and only then. */
+  refundReasonNote?: string | undefined;
   restock: boolean;
   /**
    * Per-line decisions (B4.7). Omit to accept everything in full — the
@@ -395,9 +416,24 @@ export interface ApproveReturnInput {
   restockingFeePercent?: number | undefined;
 }
 
+/**
+ * URG-009 — a refund records WHY it was given, from a fixed catalogue.
+ *
+ * Deliberately separate from the requester's own `category`: the customer says
+ * why they are sending it back, this says why staff chose to refund. They can
+ * legitimately disagree, and that disagreement is worth keeping.
+ */
 export async function approveReturn(id: string, input: ApproveReturnInput, req: Request) {
   if (input.resolution === ReturnResolution.REFUND && !input.refundAmount) {
     throw AppError.badRequest('Enter a refund amount', { field: 'refundAmount' });
+  }
+
+  if (input.resolution === ReturnResolution.REFUND) {
+    assertRefundReason(input);
+  } else if (input.refundReason !== undefined) {
+    throw AppError.badRequest('A refund reason only applies to a refund', {
+      field: 'refundReason',
+    });
   }
 
   // Declared outside the transaction so the audit call below can read what
@@ -654,12 +690,31 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
       });
     }
 
+    // Who signed this off. Read inside the transaction, and the name
+    // snapshotted beside the id for the same reason `Order.soldByName` is —
+    // a rename must not rewrite who approved a refund months ago.
+    const approver = await tx.user.findUnique({
+      where: { id: input.actorId },
+      select: { name: true, email: true },
+    });
+
     await tx.return.update({
       where: { id },
       data: {
         status: ReturnStatus.APPROVED,
+        approvedById: input.actorId,
+        approvedByName: approver?.name ?? approver?.email ?? null,
+        // Distinct from `updatedAt`, which moves for any later edit: this is
+        // the moment money and stock actually moved.
+        approvedAt: new Date(),
         resolution: input.resolution,
         refundAmount,
+        // URG-009 — written in the same transaction as the refund itself, so
+        // a rolled-back approval cannot leave a reason for a refund that was
+        // never given. Only meaningful on a REFUND; `assertRefundReason` has
+        // already refused one on any other resolution.
+        refundReason: input.refundReason ?? null,
+        refundReasonNote: input.refundReasonNote?.trim() || null,
         restockingFeePercent,
         restocked: input.restock,
       },
@@ -680,7 +735,35 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
     },
   });
 
-  return serialiseReturn(id);
+  const approved = await serialiseReturn(id);
+
+  /**
+   * A return was DECIDED. Until now `notify()` fired only when one was
+   * requested, so whoever was waiting on the answer learned nothing — the
+   * request alert announced the work arriving and nothing announced it being
+   * finished.
+   *
+   * After the transaction and after `audit`, mirroring `createReturn`: the
+   * decision is already durable, so a notification failure cannot undo it.
+   * `notify()` never throws by contract (same discipline as `audit()`), which
+   * is what makes calling it outside the transaction safe rather than sloppy.
+   *
+   * The resolution is in the body because "approved" alone does not say
+   * whether money moved, went to store credit, or shipped a replacement —
+   * which is the first thing anyone reading this actually needs.
+   */
+  if (await getSettingValue('notifications.returnDecisionAlerts')) {
+    notify({
+      type: 'return.approved',
+      title: `Return approved — ${approved.rmaNumber}`,
+      body: `${approved.order.orderNumber} · ${input.resolution}${
+        input.restock ? ' · restocked' : ''
+      }`,
+      link: '/admin/returns',
+    });
+  }
+
+  return approved;
 }
 
 export async function rejectReturn(id: string, rejectionReason: string, req: Request) {
@@ -715,5 +798,20 @@ export async function rejectReturn(id: string, rejectionReason: string, req: Req
     },
   });
 
-  return serialiseReturn(id);
+  const rejected = await serialiseReturn(id);
+
+  // Same gate and same placement as the approval above — a refusal is a
+  // decision too, and the one people chase. The reason is IN the body rather
+  // than left to the detail page: "rejected" without a why is the message
+  // that generates the follow-up question it was meant to answer.
+  if (await getSettingValue('notifications.returnDecisionAlerts')) {
+    notify({
+      type: 'return.rejected',
+      title: `Return rejected — ${rejected.rmaNumber}`,
+      body: `${rejected.order.orderNumber} · ${rejectionReason}`,
+      link: '/admin/returns',
+    });
+  }
+
+  return rejected;
 }

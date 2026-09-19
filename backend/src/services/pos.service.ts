@@ -192,6 +192,13 @@ export async function browseProducts(
   const products = await prisma.product.findMany({
     where: {
       status: 'ACTIVE',
+      // A selected till belongs to one branch, so its grid must be built from
+      // that branch's catalogue footprint. The existence of a BranchStock row
+      // means the product is carried there; quantity may still be zero, which
+      // preserves the grid's separate "show sold out" choice.
+      ...(params.branchId !== null
+        ? { branchStock: { some: { branchId: params.branchId } } }
+        : {}),
       ...(q
         ? {
             OR: [
@@ -243,9 +250,8 @@ export async function browseProducts(
     price: (product.price as { toFixed: (digits: number) => string }).toFixed(2),
     imageUrl: product.imageUrl,
     categoryId: product.categoryId,
-    // Missing row means the branch holds none of it — same reasoning as the
-    // scan path's `?? 0` (see inventory.service.ts's comment on the same
-    // question). Only meaningful when a branch is in context at all.
+    // The branch-scoped query above guarantees a row exists when a branch is
+    // selected. `?? 0` remains defensive against a concurrent row removal.
     branchStock: params.branchId === null ? null : (stockByProductId.get(product.id) ?? 0),
     status: product.status,
   }));
@@ -443,6 +449,21 @@ async function checkoutOnce(
   const allowNegative = Boolean(await getSettingValue('inventory.allowNegativeStock'));
 
   /**
+   * The cashier's display name, read ONCE here rather than joined at read
+   * time — see `Order.soldByName`'s own comment for why it is snapshotted.
+   *
+   * `tx` deliberately, not `prisma`: this runs inside the checkout
+   * transaction, and a separate connection would be reading outside it.
+   * Falls back to the email because `User.name` is nullable and a receipt
+   * naming nobody is worse than one naming an address.
+   */
+  const cashier = await tx.user.findUnique({
+    where: { id: actorId },
+    select: { name: true, email: true },
+  });
+  const cashierName = cashier?.name ?? cashier?.email ?? null;
+
+  /**
    * Discounts (O9 Tier 3).
    *
    * Validated and the cap resolved BEFORE the transaction — neither needs a
@@ -638,6 +659,12 @@ async function checkoutOnce(
         // method and assuming that is the whole story.
         paymentMethod: isSplit ? 'split' : (input.method as string),
         branchId,
+        // Who served the customer. The id is what a report groups by; the
+        // NAME is snapshotted beside it so a receipt reprinted next year
+        // still says who was at the till, even if that person has since been
+        // renamed or had their account removed entirely.
+        soldById: actorId,
+        soldByName: cashierName,
         ...(input.customerId ? { customerId: input.customerId } : {}),
         items: {
           create: priced.map((line) => ({
@@ -649,7 +676,10 @@ async function checkoutOnce(
           })),
         },
       },
-      select: { id: true, orderNumber: true },
+      // `soldByName` comes back so the checkout response can carry it to the
+      // receipt. Read from the row just written rather than from the local
+      // variable, so the printed name is provably the stored one.
+      select: { id: true, orderNumber: true, soldByName: true },
     });
 
     // Exchange (O9.8) — link the return to THIS sale now that it exists.
@@ -802,6 +832,24 @@ async function checkoutOnce(
         const entryTendered =
           entry.tendered === undefined ? null : new Prisma.Decimal(entry.tendered);
 
+        /**
+         * URG-007 — a CASH leg must record what was handed over.
+         *
+         * Previously the check below only ran when `tendered` was present, so
+         * a cash leg that simply omitted it skipped the comparison entirely
+         * and stored `tendered: null, change: null` on a sale that really did
+         * take notes across the counter. The drawer then reconciles against a
+         * figure nobody recorded.
+         *
+         * Only cash: a card or transfer leg legitimately hands nothing over,
+         * and `null` there means "not applicable", never "unrecorded".
+         */
+        if (entry.method === 'cash' && entryTendered === null) {
+          throw AppError.badRequest('Enter the cash received for this payment', {
+            field: 'splitPayments',
+          });
+        }
+
         if (entryTendered !== null && entryTendered.lessThan(amount)) {
           throw AppError.badRequest('That is less than this payment', {
             field: 'splitPayments',
@@ -845,6 +893,22 @@ async function checkoutOnce(
        * currency at close.
        */
       const tenderDue = tenderInfo ? totals.total.mul(tenderInfo.rate).toDecimalPlaces(2) : totals.total;
+
+      /**
+       * URG-007 — a cash sale must record what was handed over.
+       *
+       * The comparison below only ran when `tendered` was present, so a cash
+       * sale that omitted it skipped the underpayment check altogether and
+       * completed with `tendered: null, change: null`. Cash genuinely crossed
+       * the counter, so "not recorded" is a gap in the drawer's own audit
+       * trail, not a legitimate state the way it is for a card sale.
+       *
+       * Checked against `tenderDue`, not the base total, so a foreign-currency
+       * sale is judged in the notes actually being handed over.
+       */
+      if (input.method === 'cash' && tendered === null) {
+        throw AppError.badRequest('Enter the cash received', { field: 'tendered' });
+      }
 
       if (tendered !== null && tendered.lessThan(tenderDue)) {
         throw AppError.badRequest('That is less than the total', { field: 'tendered' });
@@ -892,6 +956,37 @@ async function checkoutOnce(
       taxAmount: created.totals.taxAmount.toFixed(2),
       total: created.totals.total.toFixed(2),
       change: created.change?.toFixed(2) ?? null,
+      /**
+       * Who served the customer, for the `Served by` line on the receipt.
+       *
+       * From the ORDER, not from the caller's session: a receipt reprinted
+       * later must name whoever actually made the sale, and reading the
+       * current user would credit whoever happens to be signed in then.
+       * Null only on a sale whose cashier had no name and no email, which
+       * `checkoutOnce` already falls back through.
+       */
+      soldByName: created.order.soldByName,
+      /**
+       * URG-034 — the foreign-currency figures the receipt prints, returned
+       * by the server rather than recomputed by the till.
+       *
+       * The owner's decision, and the only safe one: the till already knows
+       * the rate from `GET /pos/tenders`, so it COULD multiply the total
+       * itself — but that would be a second implementation of the same money
+       * arithmetic, and a rounding difference between the two shows up as a
+       * receipt disagreeing with the payment that was actually recorded.
+       * These come from the same `tenderDue`/`tenderInfo` values written to
+       * the `Payment` row moments earlier, so the printed copy and the drawer
+       * cannot drift.
+       *
+       * All null on a base-currency sale, which is the overwhelming majority
+       * — additive, so nothing changes for an install that accepts one
+       * currency.
+       */
+      tenderCurrency: tenderInfo?.currency ?? null,
+      tenderTotal: tenderInfo ? created.totals.total.mul(tenderInfo.rate).toDecimalPlaces(2).toFixed(2) : null,
+      tenderChange: tenderInfo ? (created.change?.toFixed(2) ?? null) : null,
+      tenderRate: tenderInfo?.rate.toFixed(4) ?? null,
     },
     audit: {
       entityId: created.order.id,
@@ -992,7 +1087,7 @@ export async function voidSale(orderId: string, actorId: string, req: Request) {
       status: true,
       branchId: true,
       items: { select: { productId: true, quantity: true } },
-      payments: { select: { id: true, amount: true } },
+      payments: { select: { id: true, amount: true, method: true } },
     },
   });
 
@@ -1007,6 +1102,27 @@ export async function voidSale(orderId: string, actorId: string, req: Request) {
   if (order.status !== OrderStatus.CONFIRMED) {
     throw AppError.badRequest(
       `Only a CONFIRMED sale can be voided (this one is ${order.status})`,
+      { field: 'status' },
+    );
+  }
+
+  /**
+   * BUG B — a sale that already carries a goodwill refund cannot ALSO be
+   * voided.
+   *
+   * `refundOrder` leaves the order CONFIRMED (a goodwill refund is money back
+   * on a sale that DID happen, not a status change), so without this guard a
+   * refunded sale was still voidable. The two are incoherent together: a void
+   * says "this sale never happened, reverse everything" while the refund is an
+   * acknowledged partial money-return on a sale that stands. Combining them
+   * booked the money back twice — the refund paid the customer, and the void
+   * then reversed the original payment on top. Refuse the void; a fully
+   * refunded sale is already made whole, and a partial one is a refund
+   * decision, not a candidate for erasure.
+   */
+  if (order.payments.some((payment) => payment.method.toLowerCase() === 'goodwill-refund')) {
+    throw AppError.badRequest(
+      'This sale has already been refunded and cannot be voided. Use a return if goods are coming back.',
       { field: 'status' },
     );
   }

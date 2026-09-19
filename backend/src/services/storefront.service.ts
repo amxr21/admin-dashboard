@@ -1,6 +1,12 @@
 import { randomInt } from 'node:crypto';
 
-import { Prisma, ProductStatus, StockMovementReason } from '@prisma/client';
+import {
+  DiscountScope,
+  DiscountType,
+  Prisma,
+  ProductStatus,
+  StockMovementReason,
+} from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
@@ -133,6 +139,10 @@ export interface PublicMenuCategory {
  */
 export async function getPublicMenu(locale: ProductLocale = 'en'): Promise<PublicMenuCategory[]> {
   const categories = await prisma.category.findMany({
+    // Was unfiltered: a category switched off in the admin still appeared here
+    // whenever it held an active product, so deactivating one did nothing to
+    // the storefront. Deactivation is deliberate and has to be honoured.
+    where: { isActive: true },
     orderBy: { name: 'asc' },
     select: {
       id: true,
@@ -169,6 +179,149 @@ export async function getPublicProductBySlug(
   if (!product) throw AppError.notFound('Product not found');
 
   return toPublicProduct(product, locale);
+}
+
+// ─── Categories ─────────────────────────────────────────────────────
+
+/**
+ * Public category fields. An allowlist for the same reason products have one.
+ *
+ * `parentId` is included so a storefront can rebuild the tree itself. Returned
+ * FLAT rather than nested: the depth cap is 3 (see `Category.parentId`), a
+ * client that wants a tree can build one from parent ids in a single pass, and
+ * a nested payload would force every consumer that just wants "all categories"
+ * to walk it.
+ */
+const PUBLIC_CATEGORY_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  parentId: true,
+} satisfies Prisma.CategorySelect;
+
+export interface PublicCategory {
+  id: string;
+  name: string;
+  slug: string;
+  /** Null for a top-level category. Never points at an inactive one — see below. */
+  parentId: string | null;
+}
+
+/**
+ * Every category a shopper may see.
+ *
+ * ─── `isActive` IS RESPECTED HERE, UNLIKE THE MENU ───────────────────
+ * `getPublicMenu` groups products by category and never checked
+ * `Category.isActive`, so a category switched off in the admin still appeared
+ * on the storefront as long as it held an active product. That is fixed below
+ * too — deactivating a category is a deliberate act and the public surface has
+ * to honour it.
+ *
+ * ─── AN ORPHANED `parentId` IS NULLED, NOT LEFT DANGLING ─────────────
+ * A child of a DEACTIVATED parent is still public if it is itself active. Its
+ * `parentId` would then name a category absent from this response, and a
+ * client building a tree would silently drop the whole subtree. Reporting it
+ * as top-level is the honest answer: it IS the top of what remains visible.
+ *
+ * Not translated: `Category` has no translations table (only `Product` does),
+ * so there is no locale parameter here. Adding one would promise a
+ * localisation this schema cannot deliver.
+ */
+export async function listPublicCategories(): Promise<PublicCategory[]> {
+  const categories = await prisma.category.findMany({
+    where: { isActive: true },
+    select: PUBLIC_CATEGORY_SELECT,
+    orderBy: { name: 'asc' },
+  });
+
+  const visible = new Set(categories.map((category) => category.id));
+
+  return categories.map((category) => ({
+    ...category,
+    parentId:
+      category.parentId !== null && visible.has(category.parentId) ? category.parentId : null,
+  }));
+}
+
+// ─── Discounts ──────────────────────────────────────────────────────
+
+/**
+ * The offers a shop is willing to advertise.
+ *
+ * ─── WHAT IS DELIBERATELY NOT HERE ───────────────────────────────────
+ * `usedCount` and `maxUses` are withheld: together they say how close a code
+ * is to exhaustion, which invites a race to claim the last use and tells a
+ * competitor exactly how a promotion is performing.
+ *
+ * CUSTOMER-scoped discounts are excluded entirely. Those are targeted at named
+ * people — publishing them would hand every shopper a code meant for one, and
+ * leak that the targeting exists at all.
+ *
+ * ─── THIS DOES NOT MAKE A CODE REDEEMABLE ────────────────────────────
+ * Nothing applies a discount at checkout today — `checkout()` reads prices
+ * straight from the database and there is no discount service. This endpoint
+ * is INFORMATIONAL: it lets a storefront display current offers. Wiring
+ * redemption is separate work touching money, totals and usage counting, and
+ * naming this endpoint as though it were already done would be the misleading
+ * part.
+ */
+const PUBLIC_DISCOUNT_SELECT = {
+  code: true,
+  type: true,
+  value: true,
+  scope: true,
+  expiresAt: true,
+  categories: { select: { id: true, slug: true, name: true } },
+  products: { select: { id: true, slug: true, name: true } },
+} satisfies Prisma.DiscountSelect;
+
+export interface PublicDiscount {
+  code: string;
+  type: DiscountType;
+  /** Fixed-2 string like every other money/decimal value on this API. For
+   *  PERCENT this is the percentage itself ("10.00" = 10%). */
+  value: string;
+  scope: DiscountScope;
+  /** ISO timestamp, or null for an offer with no end date. */
+  expiresAt: string | null;
+  /** What the offer applies to. Empty for a store-wide (ALL) discount. */
+  appliesTo: { id: string; slug: string | null; name: string }[];
+}
+
+export async function listPublicDiscounts(): Promise<PublicDiscount[]> {
+  const now = new Date();
+
+  const discounts = await prisma.discount.findMany({
+    where: {
+      isActive: true,
+      // A null expiry is an offer with no end date, which is live by
+      // definition — `lte`/`gte` on null would exclude it.
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      // Never CUSTOMER-scoped. Named explicitly rather than `not: CUSTOMER`
+      // so a scope kind added later is invisible here until someone decides
+      // it should be public.
+      scope: { in: [DiscountScope.ALL, DiscountScope.CATEGORY, DiscountScope.PRODUCT] },
+    },
+    select: PUBLIC_DISCOUNT_SELECT,
+    orderBy: { code: 'asc' },
+  });
+
+  return discounts.map((discount) => ({
+    code: discount.code,
+    type: discount.type,
+    value: discount.value.toFixed(2),
+    scope: discount.scope,
+    expiresAt: discount.expiresAt?.toISOString() ?? null,
+    // Only the relation the scope actually names is meaningful — see
+    // `Discount.scope`'s own note. Reading all three would show a category
+    // list on a PRODUCT-scoped offer just because the admin form set one.
+    appliesTo:
+      discount.scope === DiscountScope.CATEGORY
+        ? discount.categories
+        : discount.scope === DiscountScope.PRODUCT
+          ? discount.products
+          : [],
+  }));
 }
 
 // ─── Storefront configuration ───────────────────────────────────────
@@ -369,13 +522,157 @@ export interface CheckoutInput {
   contact: CheckoutContact;
   paymentMethod: string;
   fulfillment: string;
+  /** A discount code the shopper typed. Optional — most orders carry none. */
+  discountCode?: string | undefined;
 }
 
 export interface CheckoutResult {
   orderNumber: string;
   subtotal: string;
+  /** What came off, as a 2dp string. "0.00" when no code was used. */
+  discountAmount: string;
   taxAmount: string;
   total: string;
+}
+
+/**
+ * Resolve a typed code into money off, inside the checkout transaction.
+ *
+ * ─── WHY THIS RUNS IN THE TRANSACTION ────────────────────────────────
+ * `maxUses` is only meaningful if the check and the increment are atomic.
+ * Validating outside and incrementing inside would let two shoppers both pass
+ * a check for the last remaining use — which is precisely the case `maxUses`
+ * exists to prevent.
+ *
+ * ─── WHAT IT REFUSES, AND WITH WHICH ERROR ───────────────────────────
+ * A code that is unknown, inactive, expired or not applicable is a 400: the
+ * request is wrong and retrying it unchanged will fail again. A code that was
+ * valid but has just been exhausted is a 409, matching how the oversell race
+ * is reported — nothing is malformed, somebody else simply got there first.
+ *
+ * ─── CUSTOMER-SCOPED CODES ───────────────────────────────────────────
+ * A CUSTOMER-scoped discount belongs to named people. A guest checkout has no
+ * identity to match, so it can never redeem one — and the refusal says the
+ * code does not apply rather than confirming it exists for somebody else.
+ */
+async function resolveDiscount(
+  tx: Prisma.TransactionClient,
+  code: string,
+  subtotal: Prisma.Decimal,
+  productIds: readonly string[],
+  customerId: string | null,
+): Promise<{ id: string; code: string; amount: Prisma.Decimal }> {
+  const discount = await tx.discount.findUnique({
+    where: { code },
+    select: {
+      id: true,
+      code: true,
+      type: true,
+      value: true,
+      scope: true,
+      isActive: true,
+      expiresAt: true,
+      maxUses: true,
+      usedCount: true,
+      categories: { select: { id: true } },
+      products: { select: { id: true } },
+      customers: { select: { id: true } },
+    },
+  });
+
+  // One message for "no such code" and "switched off", deliberately: telling a
+  // caller which one it is confirms that a code exists, which is free
+  // reconnaissance for anyone guessing at them.
+  if (!discount || !discount.isActive) {
+    throw AppError.badRequest('That discount code is not valid', { field: 'discountCode' });
+  }
+
+  if (discount.expiresAt !== null && discount.expiresAt <= new Date()) {
+    throw AppError.badRequest('That discount code has expired', { field: 'discountCode' });
+  }
+
+  if (discount.maxUses !== null && discount.usedCount >= discount.maxUses) {
+    throw AppError.conflict('That discount code has been fully claimed', {
+      field: 'discountCode',
+    });
+  }
+
+  if (discount.scope === DiscountScope.CUSTOMER) {
+    const allowed =
+      customerId !== null && discount.customers.some((entry) => entry.id === customerId);
+    if (!allowed) {
+      throw AppError.badRequest('That discount code does not apply to this order', {
+        field: 'discountCode',
+      });
+    }
+  }
+
+  if (discount.scope === DiscountScope.PRODUCT) {
+    const eligible = new Set(discount.products.map((entry) => entry.id));
+    if (!productIds.some((id) => eligible.has(id))) {
+      throw AppError.badRequest('That discount code does not apply to anything in your cart', {
+        field: 'discountCode',
+      });
+    }
+  }
+
+  if (discount.scope === DiscountScope.CATEGORY) {
+    const eligible = new Set(discount.categories.map((entry) => entry.id));
+    const categories = await tx.product.findMany({
+      where: { id: { in: [...productIds] } },
+      select: { categoryId: true },
+    });
+    if (!categories.some((row) => row.categoryId !== null && eligible.has(row.categoryId))) {
+      throw AppError.badRequest('That discount code does not apply to anything in your cart', {
+        field: 'discountCode',
+      });
+    }
+  }
+
+  /**
+   * PERCENT reads its `value` as the percentage itself (10.00 = 10%), per the
+   * schema's own note. FIXED is a money amount.
+   *
+   * Clamped at the subtotal: a fixed 50 off a 30 order takes 30, never 50 —
+   * a negative total would be a refund the shop never agreed to, and the tax
+   * line below would go negative with it.
+   */
+  const raw =
+    discount.type === DiscountType.PERCENT
+      ? subtotal.times(discount.value).dividedBy(100)
+      : discount.value;
+
+  const amount = Prisma.Decimal.min(raw, subtotal).toDecimalPlaces(2);
+
+  /**
+   * Claim the use. Conditional on the count we just read, so two checkouts
+   * racing for the last use cannot both win: the loser updates zero rows.
+   *
+   * `updateMany` rather than `update` because it reports the row count — an
+   * `update` would succeed against the stale WHERE or throw a less specific
+   * error, and neither tells us we lost a race.
+   */
+  if (discount.maxUses !== null) {
+    const claimed = await tx.discount.updateMany({
+      where: { id: discount.id, usedCount: discount.usedCount },
+      data: { usedCount: { increment: 1 } },
+    });
+
+    if (claimed.count === 0) {
+      throw AppError.conflict('That discount code has been fully claimed', {
+        field: 'discountCode',
+      });
+    }
+  } else {
+    // Uncapped: still counted, because `usedCount` is how anyone judges whether
+    // a promotion worked. No guard needed — there is no limit to race for.
+    await tx.discount.update({
+      where: { id: discount.id },
+      data: { usedCount: { increment: 1 } },
+    });
+  }
+
+  return { id: discount.id, code: discount.code, amount };
 }
 
 /**
@@ -525,16 +822,41 @@ export async function checkout(
       lines.push({ productId, name: product.name, quantity, price: product.price });
     }
 
+    /**
+     * A code comes off BEFORE tax.
+     *
+     * Taxing the full subtotal and then discounting would charge tax on money
+     * the customer never paid — overstating what is owed to the tax authority
+     * and disagreeing with the invoice the shopper receives.
+     */
+    const discount = input.discountCode
+      ? await resolveDiscount(
+          tx,
+          input.discountCode,
+          subtotal,
+          [...quantities.keys()],
+          customerId,
+        )
+      : null;
+
+    const discountAmount = discount?.amount ?? new Prisma.Decimal(0);
+    const taxable = subtotal.minus(discountAmount);
+
     // Rounded once, at creation, and snapshotted — same discipline as
     // OrderItem.price. A later change to store.taxRate must not reach back and
     // rewrite what this invoice already showed.
-    const taxAmount = subtotal.times(taxRate).toDecimalPlaces(2);
-    const total = subtotal.plus(taxAmount);
+    const taxAmount = taxable.times(taxRate).toDecimalPlaces(2);
+    const total = taxable.plus(taxAmount);
 
     const orderData = {
       total,
       subtotal,
       taxAmount,
+      // Null rather than 0 when no code was used — see the column's own note on
+      // why "no discount" and "a discount worth nothing" stay distinguishable.
+      discountAmount: discount ? discountAmount : null,
+      discountCode: discount?.code ?? null,
+      discountId: discount?.id ?? null,
       paymentMethod: input.paymentMethod,
       customerId,
       items: {
@@ -641,6 +963,7 @@ export async function checkout(
     return {
       orderNumber: order.orderNumber,
       subtotal: subtotal.toFixed(2),
+      discountAmount: discountAmount.toFixed(2),
       taxAmount: taxAmount.toFixed(2),
       total: total.toFixed(2),
     };

@@ -7,6 +7,7 @@ import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/useAuth';
 import { landingFor } from '@/config/areas';
@@ -58,6 +59,20 @@ function ResetSuccessNotice({ suppressed }: { suppressed: boolean }) {
       <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden />
       <span>{t('reset.done')}</span>
     </div>
+  );
+}
+
+/**
+ * True when a 403 is the concurrent-device cap rather than a disabled or
+ * expired account. The three are the same status with three different user
+ * actions, so they must not collapse into one message.
+ */
+function sessionLimitReason(details: unknown): boolean {
+  return (
+    typeof details === 'object' &&
+    details !== null &&
+    'reason' in details &&
+    (details as { reason?: unknown }).reason === 'SESSION_LIMIT_REACHED'
   );
 }
 
@@ -116,6 +131,15 @@ export function LoginForm() {
       case 401:
         return t('invalidCredentials');
       case 403:
+        /**
+         * The device cap is also a 403, and it is neither of the two account
+         * states this branch used to assume. Checked by the STABLE reason code
+         * rather than by sniffing the message (which the two cases below still
+         * do, and which cannot survive a reworded server string) — see
+         * `assertSessionCapacity`.
+         */
+        if (sessionLimitReason(caught.details)) return t('sessionLimitReached');
+
         return caught.message.toLowerCase().includes('deactivated')
           ? t('accountDeactivated')
           : t('accessEnded');
@@ -313,10 +337,9 @@ export function LoginForm() {
 
       <div className="space-y-2">
         <Label htmlFor="password">{t('password')}</Label>
-        <Input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           autoComplete="current-password"

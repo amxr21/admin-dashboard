@@ -452,7 +452,14 @@ describe('bulk status change', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Move' }));
 
     await waitFor(() => {
-      expect(bulkChangeOrderStatus).toHaveBeenCalledWith(['o1'], 'CONFIRMED');
+      // Args 3 and 4 are the note and the cancellation detail (URG-010), both
+      // undefined for a non-cancelling bulk move.
+      expect(bulkChangeOrderStatus).toHaveBeenCalledWith(
+        ['o1'],
+        'CONFIRMED',
+        undefined,
+        undefined,
+      );
     });
     expect(await screen.findByText(/1 order moved to Confirmed/i)).toBeInTheDocument();
   });
@@ -643,6 +650,14 @@ describe('bulk status change — terminal targets require typed confirmation (C5
 
     await userEvent.clear(screen.getByLabelText(/type canceled/i));
     await userEvent.type(screen.getByLabelText(/type canceled/i), 'CANCELED');
+
+    // URG-010 — a bulk cancel also needs a reason, so the typed phrase alone
+    // no longer enables Move. Both gates must be satisfied.
+    expect(moveButton).toBeDisabled();
+
+    await userEvent.click(screen.getByLabelText(/cancellation reason/i));
+    await userEvent.click(await screen.findByRole('option', { name: 'Out of stock' }));
+
     expect(moveButton).toBeEnabled();
   });
 

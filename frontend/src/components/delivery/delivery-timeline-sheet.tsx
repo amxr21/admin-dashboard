@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { CircleDot, PencilLine, RefreshCw, Truck } from 'lucide-react';
 
+import { EmptyState } from '@/components/empty-state';
 import { ErrorSection } from '@/components/errors/error-section';
 import { StatusBadge } from '@/components/status-badge';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
@@ -91,6 +92,18 @@ export function DeliveryTimelineSheet({
               className="bg-border absolute top-2 bottom-2 start-2 w-px"
               aria-hidden
             />
+            {/**
+              * A delivery with no recorded events rendered just the bare
+              * vertical rail and nothing else — visually a broken sheet. Same
+              * shape as `order-status-timeline`'s own empty case, so the two
+              * timelines read alike.
+              */}
+            {result.events.length === 0 ? (
+              <li>
+                <EmptyState title={t('empty')} className="py-4" />
+              </li>
+            ) : null}
+
             {result.events.map((event) => (
               <li key={event.id} className="relative">
                 <span

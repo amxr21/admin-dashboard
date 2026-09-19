@@ -9,6 +9,7 @@ import { BreadcrumbHost, useBreadcrumbSegments } from '@/components/shell/breadc
 import { CommandPalette } from '@/components/shell/command-palette';
 import { DiagnosticsBar } from '@/components/shell/diagnostics-bar';
 import { BranchSwitcher } from '@/components/shell/branch-switcher';
+import { isBranchScopedPath } from '@/lib/branch-scope';
 import { ShiftControl } from '@/components/shell/shift-control';
 import { GlobalSearch } from '@/components/shell/global-search';
 import { GlobalLoadingOverlay } from '@/components/shell/global-loading-overlay';
@@ -24,13 +25,16 @@ import { Forbidden } from '@/components/shell/forbidden';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { canAccessArea, isReadOnlyRole, type StaffRole } from '@/config/areas';
+import { isReadOnlyRole, type StaffRole } from '@/config/areas';
 import { resolveAreaForPath } from '@/config/navigation';
 import { useResourceSchema } from '@/components/providers/schema-provider';
 import { useAppSettings } from '@/components/providers/settings-provider';
+import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
 import { useSidebarCollapse } from '@/hooks/useSidebarCollapse';
 import { usePathname } from '@/i18n/navigation';
 import { cn } from '@/lib/utils';
+import { SetupFeatureGate } from '@/components/setup/setup-feature-gate';
+import { SetupPrompt } from '@/components/setup/setup-prompt';
 
 /**
  * The dashboard chrome: sidebar, topbar, content area.
@@ -70,6 +74,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   const pathname = usePathname();
   const { resources } = useResourceSchema();
   const { logoUrl, sidebarMode, storeName } = useAppSettings();
+  const canAccessArea = useCanAccessArea();
   const pageTitle = usePageTitle();
   const breadcrumbSegments = useBreadcrumbSegments();
   // Collapse/expand is a personal per-browser preference, separate from
@@ -98,6 +103,12 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   const isPreviewing = canPreview && previewedRole !== null;
 
   const currentArea = resolveAreaForPath(pathname, resources);
+  /**
+   * Switching branch reloads the whole document, so on a page with no branch
+   * dimension the control returns identical rows under a new branch name —
+   * which reads as a broken filter. Hidden there rather than left inert.
+   */
+  const showBranchSwitcher = isBranchScopedPath(pathname, resources);
   const blockedByPreview =
     isPreviewing && currentArea !== undefined && previewedRole !== null
       ? !canAccessArea(previewedRole, currentArea)
@@ -163,6 +174,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
         </div>
         <SidebarNav
           role={effectiveRole}
+          canAccessArea={canAccessArea}
           onNavigate={() => setDrawerOpen(false)}
           collapsed={collapsedForThis}
         />
@@ -171,7 +183,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   }
 
   return (
-    <div data-slot="app-shell" className="flex h-dvh overflow-hidden">
+    <div data-slot="app-shell" className="flex h-dvh min-h-0 overflow-hidden">
       <OnboardingWelcome />
       <GlobalLoadingOverlay />
 
@@ -199,7 +211,9 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
         className={cn(
           'bg-card hidden shrink-0 flex-col p-2 lg:flex',
           'transition-[width] duration-200 ease-in-out motion-reduce:transition-none',
-          collapsed ? 'w-16' : 'w-64',
+          // URG-012 — w-56 (was w-64): one step more compact. Still clears
+          // every nav label at both font sizes (en/ar) with room to spare.
+          collapsed ? 'w-16' : 'w-56',
           sidebarMode === 'floating'
             ? 'm-3 h-[calc(100%-1.5rem)] rounded-xl border shadow-lg'
             : 'h-full border-e',
@@ -266,8 +280,10 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
                 which changes what every query returns and what you may do),
                 whereas the role preview is a cosmetic overlay. Putting the
                 pretend-role control first would suggest the two are the same
-                kind of thing. Renders nothing on a single-branch install. */}
-            <BranchSwitcher />
+                kind of thing. Renders nothing on a single-branch install, and
+                nothing at all on a page whose data has no branch dimension —
+                see `isBranchScopedPath`. */}
+            {showBranchSwitcher ? <BranchSwitcher /> : null}
 
             {/* Next to the branch switcher because they answer the same kind
                 of question — WHERE you are working and WHETHER you are on
@@ -341,13 +357,17 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
             fixed-size flex tracks now, not viewport-pinned overlays, so a
             long page scrolls in here alone — no document-level scrollbar,
             no competing scroll containers. */}
-        <main className="min-w-0 flex-1 overflow-y-auto p-4 lg:p-6">
+        {/* URG-012 — p-3/lg:p-5 (was p-4/lg:p-6): one step more compact. */}
+        <main className="min-w-0 flex-1 overflow-y-auto p-3 lg:p-5">
           {blockedByPreview && previewedRole ? (
             <ViewAsBlocked role={previewedRole} />
           ) : blockedByRealRole && currentArea ? (
             <Forbidden area={currentArea} />
           ) : (
-            children
+            <SetupFeatureGate pathname={pathname} role={effectiveRole}>
+              {pathname === '/admin' ? <SetupPrompt role={effectiveRole} /> : null}
+              {children}
+            </SetupFeatureGate>
           )}
         </main>
       </div>

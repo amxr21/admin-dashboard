@@ -41,6 +41,8 @@ let ownerId = '';
 let secondOwnerId = '';
 let managerToken = '';
 let supportId = '';
+let businessId = '';
+let branchId = '';
 
 async function makeUser(role: StaffRole, tag = role.toLowerCase()) {
   const user = await prisma.user.create({
@@ -64,6 +66,13 @@ function patch(id: string, body: Record<string, unknown>, token = ownerToken) {
 }
 
 beforeAll(async () => {
+  const business = await prisma.business.create({ data: { name: `${RUN} Business` } });
+  const branch = await prisma.branch.create({
+    data: { businessId: business.id, name: `${RUN} Branch`, isDefault: true },
+  });
+  businessId = business.id;
+  branchId = branch.id;
+
   const owner = await makeUser(StaffRole.OWNER, 'owner');
   const secondOwner = await makeUser(StaffRole.OWNER, 'owner2');
   const manager = await makeUser(StaffRole.MANAGER, 'manager');
@@ -78,6 +87,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.business.delete({ where: { id: businessId } });
   await prisma.$disconnect();
 });
 
@@ -90,6 +100,32 @@ afterAll(async () => {
  * MANAGER must not be able to watch an OWNER's logins or sign them out.
  */
 describe('sessions and login history are rank-checked like any other staff write', () => {
+  it('shows a newly signed-in staff device to the owner but not a manager', async () => {
+    const session = await prisma.session.create({
+      data: { userId: supportId, userAgent: 'Cash desk browser', ip: '127.0.0.1' },
+    });
+    try {
+      const ownerView = await request(app).get('/api/v1/staff/sessions/active').set(auth(ownerToken));
+      expect(ownerView.status).toBe(200);
+      expect((ownerView.body as { data: { id: string; userId: string }[] }).data)
+        .toEqual(expect.arrayContaining([expect.objectContaining({ id: session.id, userId: supportId })]));
+
+      const managerView = await request(app).get('/api/v1/staff/sessions/active').set(auth(managerToken));
+      expect(managerView.status).toBe(403);
+
+      // Business-wide diagnostic: the Developer is the account that exists to
+      // investigate sign-in problems, so it must not be denied alongside the
+      // manager. This is the branch the OWNER-only first draft got wrong.
+      const developer = await makeUser(StaffRole.DEVELOPER, 'developer-sessions');
+      const developerView = await request(app)
+        .get('/api/v1/staff/sessions/active')
+        .set(auth(developer.token));
+      expect(developerView.status).toBe(200);
+    } finally {
+      await prisma.session.delete({ where: { id: session.id } });
+    }
+  });
+
   it('lets an owner read the sessions of a lower-ranked user', async () => {
     const res = await request(app)
       .get(`/api/v1/staff/${supportId}/sessions`)
@@ -350,11 +386,18 @@ describe('passwordHash never leaves the server', () => {
         name: 'New Person',
         role: StaffRole.SUPPORT,
         password: 'a-sufficiently-long-password',
+        branchId,
       });
 
     expect(res.status).toBe(201);
-    userIds.push(String((res.body as StaffBody).data.staff.id));
+    const createdId = String((res.body as StaffBody).data.staff.id);
+    userIds.push(createdId);
     expect(JSON.stringify(res.body)).not.toContain('passwordHash');
+    await expect(
+      prisma.userBranch.findUnique({
+        where: { userId_branchId: { userId: createdId, branchId } },
+      }),
+    ).resolves.toMatchObject({ role: StaffRole.SUPPORT });
   });
 });
 
@@ -800,6 +843,7 @@ describe('input validation', () => {
         email: `${RUN}-owner@example.test`,
         role: StaffRole.SUPPORT,
         password: 'a-sufficiently-long-password',
+        branchId,
       });
 
     expect(res.status).toBe(409);
@@ -815,10 +859,42 @@ describe('input validation', () => {
         email: `${RUN}-x@example.test`,
         role: StaffRole.SUPPORT,
         password: 'a-sufficiently-long-password',
+        branchId,
         passwordHash: 'injected',
       });
 
     expect(res.status).toBe(400);
+  });
+
+  it('requires a branch for a branch-scoped employee', async () => {
+    const email = `${RUN}-missing-branch@example.test`;
+    const res = await request(app)
+      .post('/api/v1/staff')
+      .set(auth(ownerToken))
+      .send({
+        email,
+        role: StaffRole.CASHIER,
+        password: 'a-sufficiently-long-password',
+      });
+
+    expect(res.status).toBe(400);
+    expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
+  });
+
+  it('does not create the employee when the selected branch is invalid', async () => {
+    const email = `${RUN}-invalid-branch@example.test`;
+    const res = await request(app)
+      .post('/api/v1/staff')
+      .set(auth(ownerToken))
+      .send({
+        email,
+        role: StaffRole.CASHIER,
+        password: 'a-sufficiently-long-password',
+        branchId: 'missing-branch',
+      });
+
+    expect(res.status).toBe(400);
+    expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
   });
 
   it('404s an unknown staff member', async () => {

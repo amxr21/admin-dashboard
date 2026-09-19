@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { Download, Search } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -28,7 +28,9 @@ import { useTableDensity } from '@/hooks/useTableDensity';
 import { StatusBadge } from '@/components/status-badge';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -44,11 +46,13 @@ import { BranchCell } from '@/components/branch-cell';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTypedConfirm } from '@/components/danger-zone';
 import {
+  CANCELLATION_REASONS,
   bulkChangeOrderStatus,
   exportOrdersCsv,
   fetchOrders,
   previewBulkStatusChange,
   type BulkStatusPreview,
+  type CancellationReason,
   type OrderListResult,
   type OrderListRow,
   type OrderSortField,
@@ -142,10 +146,29 @@ export function OrdersTable() {
   const confirmPhrase = pendingBulk?.to ?? '';
   const typedConfirm = useTypedConfirm(confirmPhrase);
 
+  /**
+   * URG-010 — one reason for the whole batch.
+   *
+   * Cancelling fifty orders is ONE decision ("the supplier failed"), not fifty
+   * separate ones, so the dialog asks once and the server writes a copy onto
+   * each row. Cleared with the dialog so the next batch starts clean rather
+   * than inheriting the last one's reason.
+   */
+  const [bulkCancellationReason, setBulkCancellationReason] = useState<CancellationReason | ''>('');
+  const [bulkCancellationReasonNote, setBulkCancellationReasonNote] = useState('');
+
+  const isBulkCanceling = pendingBulk?.to === 'CANCELED';
+  const bulkNeedsReasonNote = isBulkCanceling && bulkCancellationReason === 'OTHER';
+  const bulkReasonIncomplete =
+    isBulkCanceling &&
+    (!bulkCancellationReason || (bulkNeedsReasonNote && !bulkCancellationReasonNote.trim()));
+
   useEffect(() => {
     if (!pendingBulk) {
       setBulkPreview(null);
       setBulkPreviewFailed(false);
+      setBulkCancellationReason('');
+      setBulkCancellationReasonNote('');
       return;
     }
 
@@ -288,7 +311,17 @@ export function OrdersTable() {
     setIsBulkApplying(true);
 
     try {
-      const outcome = await bulkChangeOrderStatus(ids, to);
+      const outcome = await bulkChangeOrderStatus(
+        ids,
+        to,
+        undefined,
+        to === 'CANCELED'
+          ? {
+              cancellationReason: bulkCancellationReason || undefined,
+              cancellationReasonNote: bulkCancellationReasonNote.trim() || undefined,
+            }
+          : undefined,
+      );
 
       if (outcome.succeeded.length > 0) {
         toast.success(
@@ -510,6 +543,51 @@ export function OrdersTable() {
               {t('bulkStatus.withAssignment', { count: bulkPreview.withActiveAssignment })}
             </p>
           ) : null}
+          {/* URG-010 — asked once for the batch, before the typed
+              confirmation: choosing WHY comes before confirming you mean it. */}
+          {isBulkCanceling ? (
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <Label htmlFor="bulk-cancellation-reason">
+                  {t('statusControl.cancellationReasonLabel')}
+                </Label>
+                <Select
+                  value={bulkCancellationReason}
+                  onValueChange={(value) => setBulkCancellationReason(value as CancellationReason)}
+                >
+                  <SelectTrigger id="bulk-cancellation-reason">
+                    <SelectValue
+                      placeholder={t('statusControl.cancellationReasonPlaceholder')}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CANCELLATION_REASONS.map((reason) => (
+                      <SelectItem key={reason} value={reason}>
+                        {t(`statusControl.cancellationReasons.${reason}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {bulkNeedsReasonNote ? (
+                <div className="space-y-1">
+                  <Label htmlFor="bulk-cancellation-reason-note">
+                    {t('statusControl.cancellationReasonNoteLabel')}
+                  </Label>
+                  <Textarea
+                    id="bulk-cancellation-reason-note"
+                    value={bulkCancellationReasonNote}
+                    onChange={(event) => setBulkCancellationReasonNote(event.target.value)}
+                    rows={2}
+                    maxLength={500}
+                    placeholder={t('statusControl.cancellationReasonNotePlaceholder')}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {bulkPreview?.isTerminal ? (
             <div className="space-y-2">
               <p className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">
@@ -538,6 +616,7 @@ export function OrdersTable() {
               disabled={
                 isBulkApplying ||
                 (!bulkPreview && !bulkPreviewFailed) ||
+                bulkReasonIncomplete ||
                 (bulkPreview?.isTerminal ? !typedConfirm.confirmed : false)
               }
               onClick={(event) => {
@@ -565,19 +644,12 @@ export function OrdersTable() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-56 flex-1 space-y-2">
           <Label htmlFor="order-search">{t('search.label')}</Label>
-          <div className="relative">
-            <Search
-              className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
-              aria-hidden
-            />
-            <Input
-              id="order-search"
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              placeholder={t('search.placeholder')}
-              className="ps-9"
-            />
-          </div>
+          <SearchInput
+            id="order-search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder={t('search.placeholder')}
+          />
         </div>
 
         <div className="w-44 space-y-2">

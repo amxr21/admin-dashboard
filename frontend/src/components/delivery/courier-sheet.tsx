@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -176,15 +177,13 @@ export function CourierSheet({ courier, open, onOpenChange, onSaved }: CourierSh
           ) : null}
 
           {TEXT_FIELDS.map((field) => (
-            <div key={field} className="space-y-2">
-              <Label htmlFor={`courier-${field}`}>
-                {t(`fields.${field}`)}
-                {field === 'name' ? (
-                  <span className="text-destructive ms-1" aria-hidden>
-                    *
-                  </span>
-                ) : null}
-              </Label>
+            <Field
+              key={field}
+              id={`courier-${field}`}
+              label={t(`fields.${field}`)}
+              required={field === 'name'}
+              error={field === 'name' ? (nameError ?? undefined) : undefined}
+            >
               <Input
                 id={`courier-${field}`}
                 // Real types so globals.css can force LTR on codes and contacts.
@@ -194,12 +193,7 @@ export function CourierSheet({ courier, open, onOpenChange, onSaved }: CourierSh
                 aria-invalid={field === 'name' && nameError ? true : undefined}
                 aria-describedby={field === 'name' && nameError ? 'courier-name-error' : undefined}
               />
-              {field === 'name' && nameError ? (
-                <p id="courier-name-error" role="alert" className="text-destructive text-sm">
-                  {nameError}
-                </p>
-              ) : null}
-            </div>
+            </Field>
           ))}
 
           <div className="space-y-2">

@@ -16,12 +16,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Timestamp } from '@/components/timestamp';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { AREAS, type Area } from '@/config/areas';
 import { ApiError } from '@/lib/api';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
@@ -36,14 +38,22 @@ import {
 /**
  * API keys (B3.2, scoped to keys only — webhooks parked, see MASTER_TODO.md).
  *
- * ─── A KEY ACTS AS ITS OWNER, EXACTLY ─────────────────────────────────
- * There is no per-key scope picker here because there is no per-key scope on
- * the backend — see `ApiKey`'s schema doc comment. A key created from this
- * panel can do exactly what the signed-in account can do, nothing more and
- * nothing less. That is the whole reason this form only ever asks for a name.
+ * ─── A KEY ACTS AS ITS OWNER, OPTIONALLY NARROWED ─────────────────────
+ * A key can never do MORE than the signed-in account — the backend checks the
+ * owner's role first and the key's scopes second, as an intersection (see
+ * `requireArea`). Choosing areas here therefore only ever removes access,
+ * which is what makes a scoped key safe to hand to a partner.
+ *
+ * Choosing nothing is a real, unremarkable answer: it leaves the key unscoped,
+ * matching every key issued before scopes existed. So the picker defaults to
+ * empty rather than to everything-checked — a pre-ticked list of every area
+ * would read as a recommendation to grant it all.
  */
 export function ApiKeysPanel() {
   const t = useTranslations('settings.apiKeys');
+  // The wizard's own permission grid already translates all 13 areas; reusing
+  // that namespace rather than adding a second copy that could drift.
+  const tAreas = useTranslations('setup.areas');
   const translateError = useTranslatedApiError();
   const { editPanelMode } = useAppSettings();
 
@@ -132,6 +142,16 @@ export function ApiKeysPanel() {
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{key.name}</p>
+                  <p className="text-muted-foreground truncate text-xs">{key.purpose} · {key.recipient}</p>
+                  {/* Says what this key can REACH, not just who holds it — the
+                      one fact that decides whether handing it out was safe. */}
+                  <p className="text-muted-foreground truncate text-xs">
+                    {key.scopes && key.scopes.length > 0
+                      ? key.scopes
+                          .map((area) => (tAreas.has(area) ? tAreas(area) : area))
+                          .join(' · ')
+                      : t('scopesAll')}
+                  </p>
                   <p className="text-muted-foreground flex items-center gap-1 text-xs">
                     <code className="force-ltr">{key.keyPreview}</code>
                     <span>·</span>
@@ -202,8 +222,11 @@ export function ApiKeysPanel() {
   );
 }
 
-type CreateStep = 'name' | 'reveal';
+type CreateStep = 'details' | 'reveal';
 
+/** Declared again here rather than passed down: this is a separate component
+ *  scope, and threading a translator through props to save one hook call is
+ *  more indirection than it removes. */
 function CreateKeySheet({
   editPanelMode,
   onDone,
@@ -212,10 +235,21 @@ function CreateKeySheet({
   onDone: () => void;
 }) {
   const t = useTranslations('settings.apiKeys');
+  const tAreas = useTranslations('setup.areas');
   const translateError = useTranslatedApiError();
 
-  const [step, setStep] = useState<CreateStep>('name');
+  const [step, setStep] = useState<CreateStep>('details');
   const [name, setName] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [recipient, setRecipient] = useState('');
+  /**
+   * Starts EMPTY, meaning "no narrowing".
+   *
+   * Not pre-ticked with every area: a list arriving fully checked reads as a
+   * recommendation to grant everything, and the safe default for a credential
+   * you are about to hand someone else is the one that asks you to choose.
+   */
+  const [scopes, setScopes] = useState<Area[]>([]);
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -226,7 +260,9 @@ function CreateKeySheet({
     setError(null);
 
     try {
-      const result = await createApiKey(name.trim());
+      // An empty selection is sent as "no scopes" (the lib omits the field),
+      // which the endpoint reads as unscoped — see its `.strict()` schema.
+      const result = await createApiKey(name.trim(), purpose.trim(), recipient.trim(), scopes);
       setCreated(result);
       setStep('reveal');
     } catch (caught) {
@@ -322,6 +358,57 @@ function CreateKeySheet({
           />
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="api-key-purpose">{t('purposeLabel')}</Label>
+          <Input id="api-key-purpose" value={purpose} onChange={(event) => setPurpose(event.target.value)} maxLength={255} placeholder={t('purposePlaceholder')} disabled={isSaving} />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="api-key-recipient">{t('recipientLabel')}</Label>
+          <Input id="api-key-recipient" value={recipient} onChange={(event) => setRecipient(event.target.value)} maxLength={255} placeholder={t('recipientPlaceholder')} disabled={isSaving} />
+        </div>
+
+        <fieldset className="space-y-2" disabled={isSaving}>
+          <legend className="text-sm font-medium">{t('scopesLabel')}</legend>
+          <p id="api-key-scopes-hint" className="text-muted-foreground text-xs">
+            {t('scopesHint')}
+          </p>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            {AREAS.map((area) => {
+              const id = `api-key-scope-${area}`;
+              return (
+                <label
+                  key={area}
+                  htmlFor={id}
+                  className="bg-card hover:bg-muted/60 focus-within:ring-ring flex min-h-11 cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors focus-within:ring-2"
+                >
+                  <Checkbox
+                    id={id}
+                    checked={scopes.includes(area)}
+                    aria-describedby="api-key-scopes-hint"
+                    onCheckedChange={(checked) =>
+                      setScopes((current) =>
+                        checked === true
+                          ? [...current, area]
+                          : current.filter((entry) => entry !== area),
+                      )
+                    }
+                  />
+                  {/* `setup.areas` rather than a new namespace — the same 13
+                      labels are already translated there for the wizard's own
+                      permission grid, and a second copy would drift. */}
+                  <span className="text-sm">{tAreas(area)}</span>
+                </label>
+              );
+            })}
+          </div>
+
+          {scopes.length === 0 ? (
+            <p className="text-muted-foreground text-xs">{t('scopesAll')}</p>
+          ) : null}
+        </fieldset>
+
         {error ? (
           <p role="alert" className="text-destructive text-sm">
             {error}
@@ -329,7 +416,7 @@ function CreateKeySheet({
         ) : null}
 
         <div className="flex gap-2">
-          <Button size="sm" disabled={isSaving || !name.trim()} onClick={() => void submit()}>
+          <Button size="sm" disabled={isSaving || !name.trim() || purpose.trim().length < 3 || recipient.trim().length < 2} onClick={() => void submit()}>
             {isSaving ? t('creating') : t('create')}
           </Button>
           <Button variant="outline" size="sm" onClick={onDone}>

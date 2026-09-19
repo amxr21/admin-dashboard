@@ -42,11 +42,13 @@ import {
   browseProducts,
   checkout,
   discardParkedSale,
+  fetchTenders,
   listParkedSales,
   parkSale,
   resumeParkedSale,
   scanProduct,
   voidSale,
+  type AcceptedTender,
   type ParkedSale,
   type CheckoutInput,
 } from '@/lib/pos-api';
@@ -87,6 +89,17 @@ import type { ReturnResolution } from '@/lib/returns-api';
  * the shared receipt math (O5.4). Two implementations of the same arithmetic
  * is precisely how a receipt ends up disagreeing with an invoice by a cent.
  */
+
+/**
+ * Sentinel for "the store's own currency" in the tender Select (URG-034).
+ *
+ * Radix reserves the empty string for "no selection" and refuses it on an
+ * item, so the default option needs a value that is not `''` — the same
+ * reason `resource-form.tsx` carries its own `NONE` constant. Mapped back to
+ * `''` before it reaches state, so nothing downstream ever sees this string
+ * and an ordinary sale still sends no `tenderCurrency` at all.
+ */
+const BASE_TENDER = '__base__';
 
 /**
  * Everything a cart line actually reads (O9.10) — deliberately narrower than
@@ -152,6 +165,16 @@ export function SaleScreen() {
    *  the sidebar total was always visible, but tapping the button charged
    *  immediately with no chance to catch a wrong item or method first. */
   const [confirmOpen, setConfirmOpen] = useState(false);
+  /**
+   * URG-008 — the CURRENT open state, readable from inside `takePayment`.
+   *
+   * `takePayment` closes the dialog on success and leaves it open on failure,
+   * then decides in its `finally` whether refocusing the scan field is safe.
+   * Reading `confirmOpen` there would see the value captured when the charge
+   * started — always `true` — so the success path could never refocus. A ref
+   * tracks the live value across that await.
+   */
+  const confirmOpenRef = useRef(false);
   const [isScanning, setIsScanning] = useState(false);
   const [isSelling, setIsSelling] = useState(false);
   /** Bumped once per completed sale so the grid refetches stock (O9.10). */
@@ -184,6 +207,23 @@ export function SaleScreen() {
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [parkLabel, setParkLabel] = useState('');
   const [parkDialogOpen, setParkDialogOpen] = useState(false);
+  /**
+   * URG-034 — which currencies this till accepts, and which one the customer
+   * is paying in right now.
+   *
+   * The server is the authority on both the list and the rate (`GET
+   * /pos/tenders`): the rate shown on screen has to be the rate the server
+   * will actually apply, and two copies of that arithmetic is how a receipt
+   * ends up disagreeing with the drawer.
+   *
+   * An install that configured nothing gets exactly ONE entry — its own
+   * currency — so the control hides itself and the till behaves precisely as
+   * it did before any of this existed. `tenderCurrency` stays empty for the
+   * base currency rather than holding the code, so an ordinary sale sends no
+   * `tenderCurrency` at all and takes the unchanged server path.
+   */
+  const [acceptedTenders, setAcceptedTenders] = useState<AcceptedTender[]>([]);
+  const [tenderCurrency, setTenderCurrency] = useState('');
   const scanField = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -195,6 +235,31 @@ export function SaleScreen() {
         // refresh (after the next park) corrects it.
       });
   }, []);
+
+  useEffect(() => {
+    fetchTenders()
+      .then(setAcceptedTenders)
+      .catch(() => {
+        // Left empty on purpose: the selector renders only when more than one
+        // currency came back, so a failed load degrades to the store currency
+        // — today's behaviour — rather than blocking the till. Refusing to
+        // sell because a currency list did not load would be far worse than
+        // not offering a second currency for one shift.
+      });
+  }, []);
+
+  /** The store's own currency, for labelling the default option. */
+  const baseTender = useMemo(
+    () => acceptedTenders.find((entry) => entry.isBase) ?? null,
+    [acceptedTenders],
+  );
+
+  /** The rate the server will apply to the chosen currency, shown beside the
+   *  control so the cashier can sanity-check it before charging. */
+  const activeTender = useMemo(
+    () => acceptedTenders.find((entry) => entry.currency === tenderCurrency) ?? null,
+    [acceptedTenders, tenderCurrency],
+  );
 
 
   /** Display only — see the note at the top of this file. */
@@ -220,6 +285,10 @@ export function SaleScreen() {
     () => lines.some((line) => (line.discountPercent ?? 0) > maxCashierDiscountPercent),
     [lines, maxCashierDiscountPercent],
   );
+
+  useEffect(() => {
+    confirmOpenRef.current = confirmOpen;
+  }, [confirmOpen]);
 
   function refocus() {
     scanField.current?.focus();
@@ -453,6 +522,68 @@ export function SaleScreen() {
     [splitLines],
   );
 
+  /**
+   * URG-007 — cash must cover what is owed, explained before the confirm
+   * dialog rather than refused at it.
+   *
+   * A NUDGE in the same sense as `needsOverride`: the server independently
+   * enforces this and is the real boundary. Cash only — a card or transfer
+   * hands nothing over, so there is nothing to be short of.
+   *
+   * Deliberately compared against `estimate`, the same display figure the
+   * cashier is reading on screen. The authoritative total comes back from the
+   * server, which is why a rounding edge can only ever cost a refusal the
+   * cashier can see and correct, never a silently accepted short payment.
+   *
+   * ─── URG-034: COMPARED IN THE CURRENCY BEING HANDED OVER ─────────────
+   * `tendered` is typed in the SELECTED currency, so comparing it against the
+   * base-currency estimate made a correct foreign payment read as short —
+   * $1.23 against a 4.50 AED sale looked 3.27 short, the warning fired, and
+   * the confirm dialog could never open. The foreign-currency path was
+   * unusable end to end because of it.
+   *
+   * The rate comes from the server (`GET /pos/tenders`), and this figure is
+   * only ever a WARNING — `pos.service.ts` recomputes `tenderDue` itself and
+   * owns the refusal. That is what keeps this from being a second
+   * implementation of money arithmetic in the sense that matters: nothing
+   * recorded, printed or reconciled is derived here.
+   *
+   * `null` means nothing to say; a string is the message to show.
+   */
+  const cashShortfall = useMemo(() => {
+    if (lines.length === 0) return null;
+
+    if (isSplitting) {
+      for (const [index, line] of splitLines.entries()) {
+        if (line.method !== 'cash') continue;
+
+        const amount = Number(line.amount) || 0;
+        if (amount <= 0) continue;
+
+        if (line.tendered.trim() === '') {
+          return t('splitTenderedMissing', { index: index + 1 });
+        }
+
+        const short = amount - (Number(line.tendered) || 0);
+        if (short > 0) return t('tenderedShort', { short: short.toFixed(2) });
+      }
+
+      return null;
+    }
+
+    if (method !== 'cash') return null;
+    if (tendered.trim() === '') return t('tenderedMissing');
+
+    // What is owed IN THE CURRENCY BEING HANDED OVER. No selection means the
+    // store currency and the estimate stands unchanged.
+    const due = activeTender
+      ? Number(estimate) * Number(activeTender.rate)
+      : Number(estimate);
+
+    const short = due - (Number(tendered) || 0);
+    return short > 0 ? t('tenderedShort', { short: short.toFixed(2) }) : null;
+  }, [lines, isSplitting, splitLines, method, tendered, estimate, activeTender, t]);
+
   async function takePayment() {
     if (lines.length === 0 || isSelling) return;
 
@@ -483,6 +614,12 @@ export function SaleScreen() {
               ...(method === 'card' && reference.trim() !== ''
                 ? { reference: reference.trim() }
                 : {}),
+              /* URG-034 — omitted entirely for the store currency, so an
+                 ordinary sale takes the exact same server path it always
+                 did. Split payments deliberately carry no currency: the
+                 server's own contract is one shape or the other, and mixing
+                 currencies across legs is not a decision anyone has made. */
+              ...(tenderCurrency !== '' ? { tenderCurrency } : {}),
             }),
         ...(overrideToken ? { overrideToken } : {}),
         ...(pendingExchangeReturnId ? { exchangeReturnId: pendingExchangeReturnId } : {}),
@@ -512,12 +649,29 @@ export function SaleScreen() {
         method,
         tendered: method === 'cash' && tendered.trim() !== '' ? tendered.trim() : null,
         change: result.change,
+        /* The receipt has had a `Served by` line and a `cashier` field since
+           it was built, and nothing ever filled them — this is that wiring.
+           The name comes from the SERVER's order row, never from the session
+           here: a reprint must credit whoever made the sale, not whoever is
+           logged in when it prints. */
+        cashier: result.soldByName ?? undefined,
+        /* Straight from the server's response — never recomputed here. All
+           null on a base-currency sale, which is what keeps the receipt
+           identical to before for the overwhelming majority. */
+        tenderCurrency: result.tenderCurrency,
+        tenderTotal: result.tenderTotal,
+        tenderChange: result.tenderChange,
+        tenderRate: result.tenderRate,
       });
       setLastSaleOrderId(result.orderId);
       toast.success(t('sold', { total: result.total }));
 
       setLines([]);
       setTendered('');
+      /* Back to the store currency for the next customer: carrying a foreign
+         selection forward is how the following sale gets recorded in the
+         wrong money without anyone choosing it. */
+      setTenderCurrency('');
       setReference('');
       setIsSplitting(false);
       setSplitLines([
@@ -525,6 +679,11 @@ export function SaleScreen() {
         { method: 'card', amount: '', tendered: '' },
       ]);
       setConfirmOpen(false);
+      // Synchronously, not via the mirroring effect below: `setConfirmOpen`
+      // is batched, so the effect has not run by the time `finally` reads
+      // this — leaving it `true` and suppressing the refocus the success path
+      // is supposed to perform (URG-008).
+      confirmOpenRef.current = false;
       // The approval is for THIS sale only — the next customer's discount
       // (if any) needs its own manager, never inherited from the last one.
       setOverrideToken(null);
@@ -548,7 +707,23 @@ export function SaleScreen() {
       );
     } finally {
       setIsSelling(false);
-      refocus();
+      /**
+       * URG-008 — only refocus the scan field when the dialog is actually
+       * gone.
+       *
+       * This used to run unconditionally. On a FAILED charge the dialog stays
+       * open on purpose (the Action prevents its own default close, so the
+       * cashier can read the refusal), and Radix marks everything outside an
+       * open dialog `aria-hidden="true"`. Focusing `#pos-scan` from here
+       * therefore moved focus onto an element hidden from assistive
+       * technology — the warning this fixes — and silently took keyboard
+       * focus out of the dialog the cashier was still reading.
+       *
+       * On success the dialog has already been closed above, so the scan
+       * field is visible again and refocusing it is both safe and what the
+       * cashier expects: the next thing they do is scan the next item.
+       */
+      if (!confirmOpenRef.current) refocus();
     }
   }
 
@@ -893,9 +1068,69 @@ export function SaleScreen() {
               </Select>
             </div>
 
+            {/*
+              URG-034 — only when this till accepts more than one currency.
+              `fetchTenders` always returns the store's own, so a single entry
+              means nothing was configured and a control with one choice would
+              be pure noise.
+
+              Placed before the cash field on purpose: the currency decides
+              what the "cash received" figure MEANS, so choosing it second
+              would invite the cashier to type dirhams and then relabel them
+              as dollars.
+            */}
+            {acceptedTenders.length > 1 ? (
+              <div className="space-y-2">
+                <Label htmlFor="pos-tender-currency">{t('tenderCurrency')}</Label>
+                <Select
+                  value={tenderCurrency === '' ? BASE_TENDER : tenderCurrency}
+                  onValueChange={(next) =>
+                    setTenderCurrency(next === BASE_TENDER ? '' : next)
+                  }
+                >
+                  <SelectTrigger id="pos-tender-currency">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* The base currency is the sentinel, not its own code:
+                        sending no `tenderCurrency` keeps an ordinary sale on
+                        the unchanged server path. */}
+                    <SelectItem value={BASE_TENDER}>
+                      {baseTender
+                        ? t('tenderCurrencyBase', { currency: baseTender.currency })
+                        : t('tenderCurrency')}
+                    </SelectItem>
+                    {acceptedTenders
+                      .filter((entry) => !entry.isBase)
+                      .map((entry) => (
+                        <SelectItem key={entry.currency} value={entry.currency}>
+                          {entry.currency}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {/* The rate the SERVER will apply. Shown because a
+                    wrong-direction rate is silently wrong rather than
+                    obviously broken — the same reason every rate setting
+                    spells out "per 1 store currency". */}
+                {activeTender ? (
+                  <p className="text-muted-foreground text-xs">
+                    {t('tenderRateHint', {
+                      currency: activeTender.currency,
+                      rate: activeTender.rate,
+                    })}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             {method === 'cash' ? (
               <div className="space-y-2">
-                <Label htmlFor="pos-tendered">{t('tendered')}</Label>
+                <Label htmlFor="pos-tendered">
+                  {tenderCurrency === ''
+                    ? t('tendered')
+                    : t('tenderedInCurrency', { currency: tenderCurrency })}
+                </Label>
                 <Input
                   id="pos-tendered"
                   value={tendered}
@@ -935,6 +1170,20 @@ export function SaleScreen() {
                   className="force-ltr"
                   aria-label={t('splitAmountLabel', { index: index + 1 })}
                 />
+                {/* URG-007 — a cash leg records what was handed over. The
+                    state field and the request already carried this, but no
+                    input ever rendered it, so `line.tendered` was permanently
+                    empty and every cash leg sent nothing. */}
+                {line.method === 'cash' ? (
+                  <Input
+                    value={line.tendered}
+                    onChange={(event) => updateSplitLine(index, { tendered: event.target.value })}
+                    placeholder={t('tenderedPlaceholder')}
+                    inputMode="decimal"
+                    className="force-ltr"
+                    aria-label={t('splitTenderedLabel', { index: index + 1 })}
+                  />
+                ) : null}
                 {splitLines.length > 2 ? (
                   <Button
                     variant="ghost"
@@ -964,6 +1213,18 @@ export function SaleScreen() {
           </div>
         )}
 
+        {/* URG-007 — the shortfall is explained BEFORE the confirm dialog,
+            which is where money actually moves. Mirrors the override dialog's
+            reasoning above: do not let a cashier reach the last step only to
+            be refused there. The server independently enforces the same rule,
+            so this is a courtesy, not the boundary. */}
+        {cashShortfall !== null ? (
+          <p className="text-warning flex items-center gap-1 text-xs">
+            <AlertTriangle className="size-3 shrink-0" aria-hidden />
+            {cashShortfall}
+          </p>
+        ) : null}
+
         <Button
           className="w-full"
           onClick={() => {
@@ -978,7 +1239,7 @@ export function SaleScreen() {
             }
             setConfirmOpen(true);
           }}
-          disabled={lines.length === 0 || isSelling}
+          disabled={lines.length === 0 || isSelling || cashShortfall !== null}
         >
           {t('takePayment')}
         </Button>

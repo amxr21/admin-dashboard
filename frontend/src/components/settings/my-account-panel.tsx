@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ApiError } from '@/lib/api';
@@ -214,9 +215,8 @@ function ChangePasswordSheet({ editPanelMode, minLength, onDone }: ChangePasswor
 
         <div className="space-y-2">
           <Label htmlFor="my-account-current-password">{t('account.currentPassword')}</Label>
-          <Input
+          <PasswordInput
             id="my-account-current-password"
-            type="password"
             autoComplete="current-password"
             value={currentPassword}
             onChange={(event) => setCurrentPassword(event.target.value)}
@@ -225,9 +225,8 @@ function ChangePasswordSheet({ editPanelMode, minLength, onDone }: ChangePasswor
 
         <div className="space-y-2">
           <Label htmlFor="my-account-new-password">{t('account.newPassword')}</Label>
-          <Input
+          <PasswordInput
             id="my-account-new-password"
-            type="password"
             autoComplete="new-password"
             value={newPassword}
             onChange={(event) => setNewPassword(event.target.value)}

@@ -54,6 +54,15 @@ export interface Shift {
   closingCount: string | null;
   /** Negative is short, positive is over. Null until the till is closed. */
   variance: string | null;
+
+  /**
+   * Sales made during this shift (Task 2). `salesCount` is DISTINCT orders,
+   * not payment rows — a split payment is one sale. `taken` is money taken in
+   * the store currency (2dp string), net of refunds since payments are signed.
+   * On an open shift these are live "so far" figures.
+   */
+  salesCount: number;
+  taken: string;
 }
 
 /** My open shift, or null. */
@@ -62,8 +71,23 @@ export async function fetchMyShift(): Promise<Shift | null> {
   return result.shift;
 }
 
+/**
+ * Clock on.
+ *
+ * `branchId` exists so an ambiguous cashier can ANSWER the server's "which
+ * branch?" refusal. Without it the backend's own error message
+ * (BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS, "choose today's branch") asked for
+ * something no call site could send — a contract the client could not
+ * satisfy, so a cashier assigned to two branches simply could not start a
+ * shift at all.
+ *
+ * Still OMITTED on the ordinary single-branch path rather than resolved
+ * client-side: the server picks the branch from the person's own roster, and a
+ * client that guessed would be a second implementation of an attribution rule
+ * that decides where cash and revenue land.
+ */
 export async function startShift(
-  input: { note?: string; forUserId?: string; openingFloat?: string } = {},
+  input: { note?: string; forUserId?: string; openingFloat?: string; branchId?: string } = {},
 ): Promise<Shift> {
   const result = await apiFetch<{ shift: Shift }>('/shifts', {
     method: 'POST',
@@ -158,14 +182,43 @@ export interface ShiftSummary {
     entityId: string | null;
     createdAt: string;
   }[];
+  /**
+   * The orders rung up during the shift (Task 2), newest first, capped at 30.
+   * A voided order keeps its row with status CANCELED rather than vanishing.
+   * `total` is a 2dp string; `status` is the order's own status string.
+   */
+  sales: {
+    id: string;
+    orderNumber: string;
+    total: string;
+    status: string;
+    placedAt: string;
+  }[];
 }
 
 export async function fetchShiftSummary(id: string): Promise<ShiftSummary> {
   return apiFetch<ShiftSummary>(`/shifts/${id}/summary`);
 }
 
+/**
+ * Foreign cash in the drawer, counted in its OWN units (URG-034).
+ *
+ * Never converted into the store currency: the owner's rule is that a
+ * shortfall must stay distinguishable from the rate moving during the shift,
+ * and one combined "expected" figure makes those two indistinguishable.
+ * `expected` is what should physically remain — taken minus change given
+ * back, both in this currency.
+ */
+export interface TenderCurrencyTakings {
+  currency: string;
+  expected: string;
+}
+
 export interface ShiftTakings {
   byMethod: { method: string; total: string }[];
+  /** Empty on the overwhelming majority of installs — nothing is accepted
+   *  beyond the store currency until a rate is configured above zero. */
+  byTenderCurrency: TenderCurrencyTakings[];
   /** Raw cash SALES only — card takings never were in the drawer, and this
    *  does NOT account for a cash drop or payout since (O9 Tier 4). For
    *  "what should physically be in the drawer right now", read
@@ -245,11 +298,23 @@ export async function fetchTillEvents(shiftId: string): Promise<TillEvent[]> {
 export interface TillReport {
   shift: Shift;
   byMethod: { method: string; total: string }[];
+  /** Per-currency foreign cash (URG-034) — see `TenderCurrencyTakings`. Each
+   *  currency is counted separately at close rather than converted. */
+  byTenderCurrency: TenderCurrencyTakings[];
   cash: string;
   expectedCash: string;
   noSaleCount: number;
   cashDropTotal: string;
   payoutTotal: string;
+  /**
+   * Order-level breakdown (Task 2). `salesCount` EXCLUDES voided orders (a Z
+   * report is financial, so a void is not a sale); `voidCount` reports those
+   * separately. `averageSale` is the non-void take over the non-void count,
+   * '0.00' when there were no sales.
+   */
+  salesCount: number;
+  averageSale: string;
+  voidCount: number;
   events: TillEvent[];
   isFinal: boolean;
 }

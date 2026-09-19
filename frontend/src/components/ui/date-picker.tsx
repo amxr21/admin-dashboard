@@ -6,6 +6,7 @@ import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
+import { FIELD_SURFACE } from '@/components/ui/field-surface';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -89,7 +90,14 @@ export function DatePicker({
             aria-invalid={ariaInvalid}
             aria-describedby={describedBy}
             className={cn(
-              'w-full justify-start font-normal',
+              // A Button by construction, but a FIELD by role: it sits in
+              // form rows and filter bars beside Input and Select, and
+              // `resource-form` passes it `aria-invalid` exactly as it does
+              // to those. Button's own `focus-visible:ring-2 ring-offset-2`
+              // and its lack of any invalid styling are both wrong here, so
+              // the shared surface is applied over them.
+              FIELD_SURFACE,
+              'justify-start px-3 font-normal',
               !selected && 'text-muted-foreground',
             )}
           >

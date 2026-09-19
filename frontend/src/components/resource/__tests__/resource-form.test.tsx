@@ -36,8 +36,19 @@ const schema: ResourceSchema = {
   fields: [
     { name: 'id', label: 'ID', type: 'id', inForm: false, readOnly: true },
     { name: 'name', label: 'Name', type: 'text', required: true },
-    { name: 'price', label: 'Price', type: 'money', required: true },
-    { name: 'stock', label: 'Stock', type: 'number' },
+    {
+      name: 'price',
+      label: 'Price',
+      type: 'money',
+      required: true,
+      description: 'Tax is added on the invoice, not here.',
+    },
+    {
+      name: 'stock',
+      label: 'Stock',
+      type: 'number',
+      description: 'Day-to-day changes belong on the Inventory page.',
+    },
     { name: 'isActive', label: 'Active', type: 'boolean' },
     { name: 'status', label: 'Status', type: 'enum', options: ['DRAFT', 'ACTIVE'] },
     {
@@ -86,6 +97,62 @@ beforeEach(() => {
   fetchRelationOptions.mockResolvedValue([{ value: 'c1', label: 'Home & Garden' }]);
 });
 
+describe('a field that explains itself', () => {
+  /**
+   * The gap this closes: `FieldConfig` carried `placeholder` and nothing else,
+   * so a rule a person needs WHILE filling a field had nowhere to live — a
+   * placeholder disappears on the first keystroke. The settings registry has
+   * had `description` for a long time; this is the same thing for resource
+   * fields, and these cases pin the two halves that fail quietly.
+   */
+  it('shows the description under the control, not as a placeholder', async () => {
+    renderForm();
+
+    const hint = await screen.findByText(/day-to-day changes belong on the inventory page/i);
+    expect(hint).toBeInTheDocument();
+
+    // Announced as the control's description, not merely printed nearby.
+    expect(screen.getByLabelText(/stock/i)).toHaveAccessibleDescription(
+      'Day-to-day changes belong on the Inventory page.',
+    );
+  });
+
+  it('lets an error replace the description rather than stacking on it', async () => {
+    // Both describe the same control. When a field is wrong, WHAT is wrong is
+    // the more urgent of the two — so the error takes over `aria-describedby`
+    // as well as the visible slot, and the two never disagree.
+    //
+    // Driven through `price` rather than `stock` deliberately: a `number`
+    // field renders `<input type="number">`, which discards non-numeric text
+    // before it ever reaches state, so blur sees an empty value and correctly
+    // declines to flag it. Money is typed as TEXT on purpose (see the form's
+    // own note on why a float must never touch a price), so an invalid value
+    // genuinely survives into state — which is the only path that can reach
+    // the branch under test.
+    renderForm();
+
+    const price = await screen.findByLabelText(/price/i);
+    await userEvent.type(price, '12.999');
+    await userEvent.tab();
+
+    await waitFor(() => {
+      expect(price).toHaveAccessibleDescription(
+        'Enter an amount with up to two decimal places, like 19.99.',
+      );
+    });
+
+    expect(screen.queryByText(/tax is added on the invoice/i)).not.toBeInTheDocument();
+  });
+
+  it('leaves a field with no description undescribed', async () => {
+    // A hint is opt-in per field. Wiring `aria-describedby` at an element that
+    // does not exist makes some screen readers announce nothing at all.
+    renderForm();
+
+    expect(await screen.findByLabelText(/name/i)).not.toHaveAccessibleDescription();
+  });
+});
+
 describe('which fields appear', () => {
   it('omits read-only and non-form fields', async () => {
     renderForm();
@@ -102,6 +169,24 @@ describe('which fields appear', () => {
 
     expect(await screen.findByLabelText(/name/i)).toHaveValue('Ceramic Planter');
     expect(screen.getByLabelText(/price/i)).toHaveValue('34.99');
+  });
+
+  it('localizes schema labels in Arabic without changing field values', async () => {
+    renderForm(existing, 'ar');
+    expect(await screen.findByLabelText(/الاسم/)).toHaveValue('Ceramic Planter');
+    expect(screen.getByLabelText(/السعر/)).toHaveValue('34.99');
+  });
+
+  it('keeps a product draft open while a category is created in another tab', async () => {
+    renderForm();
+    const link = await screen.findByRole('link', { name: 'Create a category in a new tab' });
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(link.getAttribute('href')).toContain('/admin/r/categories');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh categories' }));
+    await waitFor(() => expect(fetchRelationOptions).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });
 
@@ -146,6 +231,118 @@ describe('variants/gallery on create — no dead end', () => {
     await screen.findByLabelText(/name/i);
     expect(screen.queryByRole('button', { name: 'Manage variants' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Manage gallery' })).not.toBeInTheDocument();
+  });
+});
+
+describe('variant intent on existing products', () => {
+  const variantSchema: ResourceSchema = {
+    ...schema,
+    fields: [
+      ...schema.fields,
+      { name: 'hasVariants', label: 'This product has variants', type: 'boolean', group: 'options' },
+    ],
+  };
+
+  function renderVariantForm(hasVariants: boolean | null) {
+    render(
+      <ResourceForm
+        schema={variantSchema}
+        row={{ ...existing, hasVariants }}
+        open
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+  }
+
+  it('keeps the builder reachable for a legacy NULL intent', async () => {
+    renderVariantForm(null);
+    expect(await screen.findByRole('button', { name: 'Manage variants' })).toBeEnabled();
+  });
+
+  it('hides the builder after an explicit opt-out', async () => {
+    renderVariantForm(false);
+    expect(await screen.findByRole('button', { name: 'Manage gallery' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Manage variants' })).not.toBeInTheDocument();
+  });
+
+  it('restores the builder when an opted-out product enables variants again', async () => {
+    renderVariantForm(false);
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Use Variants & options/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'This product has variants' }));
+    expect(screen.getByRole('button', { name: 'Manage variants' })).toBeEnabled();
+  });
+
+  /**
+   * URG-029 — hiding the builder leaves real variant rows reachable only
+   * through the database, so the moment of opting out has to say so. The
+   * property that matters is WHEN it fires: on the transition away from an
+   * existing intent, never as standing text on an already-opted-out product.
+   */
+  /**
+   * The group seeds OPEN when the field already holds a value and closed when
+   * it does not, so a test must reveal the field rather than assume a click
+   * opens the group — clicking an already-open group closes it and hides the
+   * very checkbox under test.
+   */
+  async function revealVariantField() {
+    const groupToggle = await screen.findByRole('checkbox', {
+      name: /Use Variants & options/,
+    });
+    if (!screen.queryByRole('checkbox', { name: 'This product has variants' })) {
+      await userEvent.click(groupToggle);
+    }
+    return screen.getByRole('checkbox', { name: 'This product has variants' });
+  }
+
+  it('warns when an existing product is opted out of variants', async () => {
+    renderVariantForm(true);
+    const field = await revealVariantField();
+    expect(screen.queryByText(/keep their stock and sales history/i)).not.toBeInTheDocument();
+
+    await userEvent.click(field);
+    expect(screen.getByText(/keep their stock and sales history/i)).toBeInTheDocument();
+  });
+
+  it('warns a legacy product with no recorded intent on opt-out', async () => {
+    renderVariantForm(null);
+    const field = await revealVariantField();
+
+    // A legacy NULL reads as unchecked, so reaching an explicit "no" means
+    // switching it on and back off again.
+    await userEvent.click(field);
+    expect(screen.queryByText(/keep their stock and sales history/i)).not.toBeInTheDocument();
+
+    await userEvent.click(field);
+    expect(screen.getByText(/keep their stock and sales history/i)).toBeInTheDocument();
+  });
+
+  it('does not warn a product that was already opted out', async () => {
+    renderVariantForm(false);
+    await revealVariantField();
+    expect(screen.queryByText(/keep their stock and sales history/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('category creation defaults', () => {
+  it('starts a new category active while preserving its parent picker', async () => {
+    const categorySchema: ResourceSchema = {
+      ...schema,
+      resource: 'categories',
+      label: 'Categories',
+      fields: [
+        { name: 'name', label: 'Name', type: 'text', required: true },
+        { name: 'slug', label: 'Slug', type: 'text' },
+        { name: 'parentId', label: 'Parent category', type: 'relation', relation: { resource: 'categories', labelField: 'name' } },
+        { name: 'isActive', label: 'Active', type: 'boolean', defaultValue: true },
+      ],
+    };
+    render(
+      <ResourceForm schema={categorySchema} row={null} open onOpenChange={vi.fn()} onSaved={vi.fn()} />,
+    );
+
+    expect(await screen.findByRole('checkbox', { name: 'Active' })).toBeChecked();
+    expect(screen.getByLabelText('Parent category')).toBeInTheDocument();
   });
 });
 
@@ -337,7 +534,10 @@ describe('required fields', () => {
     await userEvent.type(screen.getByLabelText(/price/i), '9.99');
     await userEvent.click(await screen.findByRole('button', { name: 'Save' }));
 
-    expect(await screen.findAllByText(/required/i)).not.toHaveLength(0);
+    // The MESSAGE, not the word: required fields carry a visually-hidden
+    // "required" marker now, so matching loosely would pass even if the
+    // validation error never rendered.
+    expect(await screen.findByText('This field is required.')).toBeInTheDocument();
     expect(createRow).not.toHaveBeenCalled();
   });
 
@@ -348,7 +548,7 @@ describe('required fields', () => {
 
     await userEvent.type(screen.getByLabelText(/price/i), '9.99');
     await userEvent.click(await screen.findByRole('button', { name: 'Save' }));
-    expect(await screen.findAllByText(/required/i)).not.toHaveLength(0);
+    expect(await screen.findByText('This field is required.')).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText(/name/i), 'Vase');
 
@@ -535,7 +735,12 @@ describe('inline validation on blur', () => {
     await userEvent.click(await screen.findByLabelText(/name/i));
     await userEvent.tab();
 
-    expect(screen.queryByText(/required/i)).not.toBeInTheDocument();
+    // Queried by ROLE, not by the word "required": every required field now
+    // carries a visually-hidden "required" beside its asterisk (see
+    // `ui/field.tsx`), so a loose text match would find the marker and report
+    // a validation error that never happened. The error paragraph is the only
+    // thing here with `role="alert"`.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('does not require a Save attempt first — blur alone is enough to surface the message', async () => {

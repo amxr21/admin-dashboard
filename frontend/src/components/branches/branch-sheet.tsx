@@ -5,8 +5,10 @@ import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PhoneField } from '@/components/ui/phone-field';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ApiError } from '@/lib/api';
 import { useAppSettings } from '@/components/providers/settings-provider';
@@ -48,6 +50,17 @@ interface BranchSheetProps {
 
 const TEXT_FIELDS = ['name', 'code', 'addressLine', 'city', 'phone'] as const;
 
+/** URG-013 — a worked example per field, not one generic hint. Keys live in
+ *  `common.placeholders` beside the existing email/phone/url so there is one
+ *  place a shared example lives, rather than a per-form copy of the same idea. */
+const BRANCH_PLACEHOLDERS: Partial<Record<(typeof TEXT_FIELDS)[number], string>> = {
+  name: 'placeholders.branchName',
+  code: 'placeholders.branchCode',
+  addressLine: 'placeholders.addressLine',
+  city: 'placeholders.city',
+  phone: 'placeholders.phone',
+};
+
 type Values = Record<string, string>;
 
 function initial(branch: BranchRow | null): Values {
@@ -70,6 +83,9 @@ export function BranchSheet({
   onSaved,
 }: BranchSheetProps) {
   const t = useTranslations('branches.form');
+  // URG-013 — shared format-example placeholder, same string every phone
+  // input in the app uses (see resource-form.tsx's placeholderFor).
+  const tCommon = useTranslations('common');
   const translateError = useTranslatedApiError();
   const { editPanelMode } = useAppSettings();
 
@@ -79,6 +95,9 @@ export function BranchSheet({
   const [isDefault, setIsDefault] = useState(branch?.isDefault ?? false);
   const [error, setError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
+  /** Hoisted out of PhoneField so its parse failure shares the one slot the
+   *  field's own wrapper owns — see ui/field.tsx. */
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const isEdit = branch !== null;
@@ -171,32 +190,46 @@ export function BranchSheet({
           ) : null}
 
           {TEXT_FIELDS.map((field) => (
-            <div key={field} className="space-y-2">
-              <Label htmlFor={`branch-${field}`}>
-                {t(`fields.${field}`)}
-                {field === 'name' ? (
-                  <span className="text-destructive ms-1" aria-hidden>
-                    *
-                  </span>
-                ) : null}
-              </Label>
-              <Input
-                id={`branch-${field}`}
-                type={field === 'phone' ? 'tel' : 'text'}
-                value={values[field] ?? ''}
-                onChange={(event) => set(field, event.target.value)}
-                aria-invalid={field === 'name' && nameError ? true : undefined}
-                aria-describedby={field === 'name' && nameError ? 'branch-name-error' : undefined}
-              />
-              {field === 'name' && nameError ? (
-                <p id="branch-name-error" role="alert" className="text-destructive text-sm">
-                  {nameError}
-                </p>
-              ) : null}
-              {field === 'code' ? (
-                <p className="text-muted-foreground text-xs">{t('codeHint')}</p>
-              ) : null}
-            </div>
+            <Field
+              key={field}
+              id={`branch-${field}`}
+              label={t(`fields.${field}`)}
+              required={field === 'name'}
+              // One slot per field: the name's validation message and the
+              // phone's own parse failure both land here rather than each
+              // control printing its own.
+              error={
+                field === 'name'
+                  ? (nameError ?? undefined)
+                  : field === 'phone'
+                    ? (phoneError ?? undefined)
+                    : undefined
+              }
+              description={field === 'code' ? t('codeHint') : undefined}
+            >
+              {field === 'phone' ? (
+                /* A branch inherits its business country. Use that country
+                   for the example and validation; null keeps the international
+                   fallback when the business has no country recorded. */
+                <PhoneField
+                  id="branch-phone"
+                  value={values.phone ?? ''}
+                  onChange={(next) => set('phone', next)}
+                  country={business.country}
+                  onError={setPhoneError}
+                />
+              ) : (
+                <Input
+                  id={`branch-${field}`}
+                  type="text"
+                  placeholder={BRANCH_PLACEHOLDERS[field] ? tCommon(BRANCH_PLACEHOLDERS[field]) : undefined}
+                  value={values[field] ?? ''}
+                  onChange={(event) => set(field, event.target.value)}
+                  aria-invalid={field === 'name' && nameError ? true : undefined}
+                  aria-describedby={field === 'name' && nameError ? 'branch-name-error' : undefined}
+                />
+              )}
+            </Field>
           ))}
 
           <div className="space-y-3 border-t pt-4">

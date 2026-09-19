@@ -14,6 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { EmptyState } from '@/components/empty-state';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -254,6 +255,21 @@ export function ProductContentPanel({
                 </Button>
               </div>
             </form>
+          ) : !error ? (
+            /**
+             * Fetch succeeded, but there is no English content to translate
+             * against — the panel previously rendered its heading above an
+             * empty container, which reads as a rendering fault rather than
+             * as "nothing to do here yet". Its three sibling panels
+             * (history, variants, gallery) each carry an EmptyState at this
+             * exact position.
+             *
+             * Guarded on `!error`: a failed fetch already renders its own
+             * alert above, and showing "nothing here" beside "could not load"
+             * would tell the reader two different stories about the same
+             * request.
+             */
+            <EmptyState title={t('empty.title')} description={t('empty.description')} />
           ) : null}
         </SheetContent>
       </Sheet>

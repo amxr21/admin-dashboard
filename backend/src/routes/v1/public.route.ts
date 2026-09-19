@@ -18,6 +18,8 @@ import {
   getPublicProductBySlug,
   getStorefrontConfig,
   getWishlist,
+  listPublicCategories,
+  listPublicDiscounts,
   listPublicProducts,
   removeFromCart,
   setCartQuantity,
@@ -124,6 +126,26 @@ publicRouter.get('/public/products/:slug', async (req, res) => {
       productLocaleFromHeader(req.get('accept-language')),
     ),
   });
+});
+
+/**
+ * Every visible category, flat, with `parentId` so a client can build the tree.
+ * No locale parameter: categories carry no translations (only products do).
+ */
+publicRouter.get('/public/categories', async (_req, res) => {
+  res.json({ data: await listPublicCategories() });
+});
+
+/**
+ * Current public offers.
+ *
+ * INFORMATIONAL ONLY — nothing applies a discount at checkout yet, so a code
+ * listed here is something a storefront can display, not something it can
+ * redeem. CUSTOMER-scoped discounts and usage counts are withheld entirely;
+ * see `listPublicDiscounts` for why each.
+ */
+publicRouter.get('/public/discounts', async (_req, res) => {
+  res.json({ data: await listPublicDiscounts() });
 });
 
 // ─── Sign-in ────────────────────────────────────────────────────────
@@ -251,6 +273,19 @@ const checkoutBody = z
       .strict(),
     paymentMethod: z.enum(['cash', 'card-on-delivery']),
     fulfillment: z.enum(['Pickup', 'Delivery']),
+    /**
+     * Optional. Uppercased here rather than in the service so the lookup is
+     * case-insensitive for the shopper without the service having to know that
+     * codes are stored uppercase — someone typing "welcome10" means the same
+     * thing as "WELCOME10".
+     */
+    discountCode: z
+      .string()
+      .trim()
+      .min(1)
+      .max(48)
+      .transform((value) => value.toUpperCase())
+      .optional(),
   })
   .strict()
   // Delivery without an address is not a fulfillable order. Checked here rather

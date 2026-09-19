@@ -14,6 +14,8 @@ import { applyAppearance, cacheAppearance, readAppearance } from '@/lib/apply-ap
 import { fetchSettings } from '@/lib/settings-api';
 import { fetchBrand, type ResolvedBrand } from '@/lib/branches-api';
 import { readBranchId } from '@/lib/auth-storage';
+import { SETUP_FEATURE_KEYS } from '@/lib/setup-api';
+import type { EnabledFeatures } from '@/lib/setup-visibility';
 
 /**
  * Fetches the settings registry and shares it — same reasoning as
@@ -55,6 +57,10 @@ import { readBranchId } from '@/lib/auth-storage';
 type Value = string | boolean | number;
 
 interface SettingsContextValue {
+  enabledFeatures: EnabledFeatures;
+  setupCompletedAt: string;
+  setupSkippedAt: string;
+  productDefaults: Partial<Record<'hasVariants' | 'hasColors' | 'hasBarcode', boolean>>;
   isLoading: boolean;
   tablePageSize: number;
   /** The live `security.minPasswordLength`. Exposed so password forms inside
@@ -108,7 +114,8 @@ interface SettingsContextValue {
   navLabels: Record<string, string>;
   /** Re-fetches the registry and re-applies every derived side effect. Call
    *  after a settings save so the change is visible without a page reload. */
-  refresh: () => Promise<void>;
+  /** False means the registry could not be refreshed; the last known values remain in place. */
+  refresh: () => Promise<boolean>;
   /** Applies an UNSAVED value everywhere this setting is consumed — CSS
    *  custom properties, sidebar mode, edit panel style, brand strings — the
    *  instant it changes, before Save is ever clicked. */
@@ -128,6 +135,10 @@ const BRAND_DEFAULTS = {
 };
 
 const DEFAULT_VALUE: SettingsContextValue = {
+  enabledFeatures: {},
+  setupCompletedAt: '',
+  setupSkippedAt: '',
+  productDefaults: {},
   isLoading: true,
   tablePageSize: 20,
   // Mirrors `settings.config.ts`'s declared default, used only until the real
@@ -147,7 +158,7 @@ const DEFAULT_VALUE: SettingsContextValue = {
   storeCurrency: 'AED',
   ...BRAND_DEFAULTS,
   navLabels: {},
-  refresh: async () => {},
+  refresh: async () => false,
   previewSetting: () => {},
   clearPreview: () => {},
 };
@@ -207,10 +218,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       } else {
         setBrand(null);
       }
+      return true;
     } catch {
       // Swallowed on purpose, same as SchemaProvider: the shell must still
       // render with the CSS defaults and the hardcoded page size rather than
       // failing the whole app over a settings-provider outage.
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -269,7 +282,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   // One `labels.nav.<key>` setting per relabelable nav item — see
   // settings.config.ts's own "Labels" section for the full list and why an
   // empty string means "not overridden" rather than a real label.
-  const NAV_LABEL_KEYS = ['staff', 'orders', 'delivery', 'inventory', 'returns', 'reports'];
+  const NAV_LABEL_KEYS = ['products', 'staff', 'orders', 'delivery', 'inventory', 'returns', 'reports'];
   const navLabels = Object.fromEntries(
     NAV_LABEL_KEYS.map((key) => [key, String(effective[`labels.nav.${key}`] ?? '')]).filter(
       ([, label]) => label !== '',
@@ -277,6 +290,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
 
   const value: SettingsContextValue = {
+    enabledFeatures: Object.fromEntries(SETUP_FEATURE_KEYS.map(key => [key, byKey[`features.${key}.enabled`] !== false])),
+    setupCompletedAt: String(byKey['setup.completedAt'] ?? ''),
+    setupSkippedAt: String(byKey['setup.skippedAt'] ?? ''),
+    productDefaults: byKey['setup.completedAt'] ? {
+      hasVariants: byKey['products.defaultHasVariants'] === true,
+      hasColors: byKey['products.defaultHasColors'] === true,
+      hasBarcode: byKey['products.defaultHasBarcode'] === true,
+    } : {},
     isLoading,
     tablePageSize: Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20,
     minPasswordLength:

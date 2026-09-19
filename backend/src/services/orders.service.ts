@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import { OrderStatus, Prisma } from '@prisma/client';
+import { CancellationReason, OrderStatus, Prisma, type RefundReason } from '@prisma/client';
 import { resolveBranchLabels } from './branches.service.js';
 
 import { prisma } from '../db/prisma.js';
@@ -12,6 +12,7 @@ import {
 } from '../config/orders.config.js';
 import { notifyCustomerOrderStatus } from './customer-order-notifications.service.js';
 import { normalizePhone } from '../lib/phone.js';
+import { assertRefundReason } from './refund-reason.js';
 
 /**
  * Orders — the one resource the generic engine cannot express.
@@ -273,6 +274,22 @@ export async function getOrder(id: string) {
       taxAmount: true,
       paymentMethod: true,
       placedAt: true,
+      // Who rang it up, when it came from the till (F-POS). Null on a web
+      // order or anything predating the column — a real "not a counter sale"
+      // fact, which the detail page states rather than hiding.
+      soldByName: true,
+      payments: {
+        where: { method: 'goodwill-refund' },
+        orderBy: { paidAt: 'desc' },
+        select: {
+          id: true,
+          amount: true,
+          paidAt: true,
+          refundReason: true,
+          refundReasonNote: true,
+          note: true,
+        },
+      },
       // Which branch took it (F8). Selected so the detail page can SAY so —
       // without it, two orders from different businesses look identical once
       // opened, which is exactly the confusion branch scoping exists to end.
@@ -362,6 +379,15 @@ export async function getOrder(id: string) {
     taxAmount: money(order.taxAmount),
     paymentMethod: order.paymentMethod,
     placedAt: order.placedAt.toISOString(),
+    soldByName: order.soldByName,
+    goodwillRefunds: order.payments.map((payment) => ({
+      id: payment.id,
+      amount: payment.amount.negated().toFixed(2),
+      paidAt: payment.paidAt.toISOString(),
+      refundReason: payment.refundReason,
+      refundReasonNote: payment.refundReasonNote,
+      legacyReason: payment.refundReason ? null : payment.note,
+    })),
     notes: order.notes.map((note) => ({
       id: note.id,
       body: note.body,
@@ -535,6 +561,56 @@ export interface ChangeStatusInput {
   to: OrderStatus;
   note?: string | undefined;
   actorId: string;
+  /**
+   * Why the order is being canceled (URG-010). Required when `to` is
+   * CANCELED, refused otherwise — a cancellation reason on a SHIPPED
+   * transition would be a stored fact that never happened.
+   */
+  cancellationReason?: CancellationReason | undefined;
+  /** Required free text when the reason is OTHER, and only then. */
+  cancellationReasonNote?: string | undefined;
+}
+
+/**
+ * URG-010 — a cancellation records WHY, from a fixed catalogue.
+ *
+ * Validated here rather than only at the route because
+ * `bulkChangeOrderStatus` calls this same function: a check that lived in the
+ * route would leave the bulk path able to cancel hundreds of orders with no
+ * reason at all.
+ */
+function assertCancellationReason(input: ChangeStatusInput) {
+  if (input.to !== OrderStatus.CANCELED) {
+    if (input.cancellationReason !== undefined) {
+      throw AppError.badRequest('A cancellation reason only applies when canceling an order', {
+        field: 'cancellationReason',
+      });
+    }
+    return;
+  }
+
+  if (!input.cancellationReason) {
+    throw AppError.badRequest('Choose why this order is being canceled', {
+      field: 'cancellationReason',
+    });
+  }
+
+  // The note is what a human reads; the code is what reports group by. OTHER
+  // without it would record "something else" and nothing more.
+  if (input.cancellationReason === CancellationReason.OTHER) {
+    if (!input.cancellationReasonNote?.trim()) {
+      throw AppError.badRequest('Describe the cancellation reason', {
+        field: 'cancellationReasonNote',
+      });
+    }
+  } else if (input.cancellationReasonNote?.trim()) {
+    // A note attached to a catalogued reason would be a second, unqueryable
+    // explanation competing with the code — the free-text `note` field is
+    // where an extra sentence belongs.
+    throw AppError.badRequest('A reason note only applies to "Other"', {
+      field: 'cancellationReasonNote',
+    });
+  }
 }
 
 /**
@@ -570,8 +646,55 @@ export async function changeOrderStatus(id: string, input: ChangeStatusInput) {
     );
   }
 
+  /**
+   * RETURNED is reachable ONLY through the returns flow (`approveReturn`),
+   * never as a bare status flip here.
+   *
+   * A return moves money and stock: it records the returned items, caps and
+   * issues the refund, and optionally restocks — none of which a direct status
+   * change does. `approveReturn` calls `canTransition(..., 'RETURNED')` itself,
+   * so the transition table still permits it there; this guard blocks only the
+   * order-status path (the admin dropdown, the bulk endpoint), which would
+   * otherwise mark an order RETURNED with no Return record, no refund and no
+   * restock. This closes a hole that pre-dated CONFIRMED → RETURNED (a dropdown
+   * SHIPPED/DELIVERED → RETURNED already skipped the returns flow); adding the
+   * POS transition made closing it necessary rather than merely tidy.
+   */
+  if (input.to === OrderStatus.RETURNED) {
+    throw AppError.badRequest('Process a return through the returns flow, not a status change', {
+      field: 'to',
+      allowed: nextStatuses(current.status).filter((status) => status !== OrderStatus.RETURNED),
+    });
+  }
+
+  /**
+   * AFTER the transition check, deliberately.
+   *
+   * Running it first made a missing reason hijack every illegal-cancellation
+   * refusal: SHIPPED -> CANCELED reported `{ field: 'cancellationReason' }`
+   * instead of naming the legal moves, so the caller was told to supply a
+   * reason for a move that was never going to be allowed. Legality is decided
+   * first; only a move that COULD happen is then asked to justify itself.
+   */
+  assertCancellationReason(input);
+
   await prisma.$transaction(async (tx) => {
-    await tx.order.update({ where: { id }, data: { status: input.to } });
+    await tx.order.update({
+      where: { id },
+      data: {
+        status: input.to,
+        // URG-010 — written in the SAME transaction as the status move and its
+        // history row. A reason recorded separately could survive a rolled-back
+        // cancellation, leaving an order that says why it was canceled while
+        // not being canceled at all.
+        ...(input.to === OrderStatus.CANCELED
+          ? {
+              cancellationReason: input.cancellationReason ?? null,
+              cancellationReasonNote: input.cancellationReasonNote?.trim() || null,
+            }
+          : {}),
+      },
+    });
 
     await tx.orderStatusHistory.create({
       data: {
@@ -734,14 +857,11 @@ export async function addOrderNote(id: string, body: string, actorId: string) {
  */
 export async function refundOrder(
   orderId: string,
-  input: { amount: string; reason: string },
+  input: { amount: string; refundReason: RefundReason; refundReasonNote?: string | undefined },
   actorId: string,
   req: Request,
 ) {
-  const trimmedReason = input.reason.trim();
-  if (!trimmedReason) {
-    throw AppError.badRequest('Enter a reason for this refund', { field: 'reason' });
-  }
+  const reason = assertRefundReason(input);
 
   const requested = new Prisma.Decimal(input.amount);
   if (requested.isNegative() || requested.isZero()) {
@@ -753,12 +873,31 @@ export async function refundOrder(
       where: { id: orderId },
       select: {
         id: true,
+        status: true,
+        branchId: true,
         total: true,
         payments: { select: { amount: true } },
       },
     });
 
-    if (!order) throw AppError.notFound('Order not found');
+    if (!order || (req.branchId && order.branchId !== req.branchId)) {
+      throw AppError.notFound('Order not found');
+    }
+
+    /**
+     * BUG B (other direction) — no goodwill refund on a sale that was already
+     * undone. A CANCELED order was voided (its payments reversed) and a
+     * RETURNED order went through the returns flow (which issues its own
+     * refund). The `netPaid` cap below would already refuse most of these
+     * arithmetically, but state is the honest reason: refunding an order that
+     * no longer stands is not a cap edge case, it is a category error.
+     */
+    if (order.status === OrderStatus.CANCELED || order.status === OrderStatus.RETURNED) {
+      throw AppError.badRequest(
+        `A ${order.status.toLowerCase()} order cannot be refunded here`,
+        { field: 'status' },
+      );
+    }
 
     const netPaid = order.payments.reduce(
       (sum, payment) => sum.add(payment.amount),
@@ -778,7 +917,8 @@ export async function refundOrder(
         amount: requested.negated(),
         method: 'goodwill-refund',
         actorId,
-        note: trimmedReason,
+        refundReason: reason.refundReason,
+        refundReasonNote: reason.refundReasonNote,
       },
       select: { id: true, amount: true },
     });
@@ -790,7 +930,8 @@ export async function refundOrder(
     entityId: orderId,
     changes: {
       amount: { from: null, to: created.amount.negated().toFixed(2) },
-      reason: { from: null, to: trimmedReason },
+      refundReason: { from: null, to: reason.refundReason },
+      refundReasonNote: { from: null, to: reason.refundReasonNote },
     },
   });
 

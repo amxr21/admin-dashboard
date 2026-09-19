@@ -29,6 +29,21 @@ export interface ReturnListRow {
    *  requester skipped it — it's optional alongside the free-text reason. */
   category: ReturnCategory | null;
   createdAt: string;
+  /**
+   * Who approved this return, snapshotted at approval time (not joined at
+   * read time) so a rename or a removed account cannot rewrite who signed
+   * off on a refund.
+   *
+   * Null on anything not approved — REQUESTED and REJECTED returns have no
+   * approver, which is a real state — and on approvals that predate the
+   * column. Deliberately NOT backfilled from the audit log: that answers a
+   * reviewer's question, and inventing a value here would present a guess as
+   * a recorded fact.
+   */
+  approvedByName: string | null;
+  /** When money and stock actually moved. Distinct from `createdAt`, which is
+   *  when the customer asked. Null for the same cases as `approvedByName`. */
+  approvedAt: string | null;
   order: { id: string; orderNumber: string };
   customer: { id: string; name: string } | null;
   itemCount: number;
@@ -66,6 +81,11 @@ export interface ReturnDetail {
   /** Staff's own words for the rejection. Null on anything not (yet) rejected. */
   rejectionReason: string | null;
   createdAt: string;
+  /** Who approved it — see `ReturnListRow.approvedByName` for why this is a
+   *  snapshot rather than a join, and what null means. */
+  approvedByName: string | null;
+  /** When money and stock actually moved. Null for the same cases. */
+  approvedAt: string | null;
   order: { id: string; orderNumber: string; status: string };
   customer: { id: string; name: string; email: string } | null;
   items: ReturnItemDetail[];
@@ -121,9 +141,25 @@ export async function createReturn(input: CreateReturnInput): Promise<ReturnDeta
   return body.return;
 }
 
+/**
+ * Why a refund was GIVEN (URG-009) — mirrors the backend enum through a
+ * frontend-only shared contract, with no Prisma dependency in the client.
+ *
+ * Distinct from the requester's own return `category`: that is why the customer
+ * says they are sending it back, this is why staff chose to refund. They can
+ * legitimately disagree.
+ */
+export { REFUND_REASONS } from './refund-reasons';
+export type { RefundReason } from './refund-reasons';
+import type { RefundReason } from './refund-reasons';
+
 export interface ApproveReturnInput {
   resolution: Exclude<ReturnResolution, 'NONE'>;
   refundAmount?: string;
+  /** Required when resolution is REFUND, refused otherwise (URG-009). */
+  refundReason?: RefundReason;
+  /** Required free text when the reason is OTHER, and only then. */
+  refundReasonNote?: string;
   restock: boolean;
   /** Proof a manager approved in place (O9.7) — required when the caller is
    *  a cashier, ignored otherwise. Verified server-side against the

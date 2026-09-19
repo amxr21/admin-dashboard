@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PhoneField } from '@/components/ui/phone-field';
 import {
   Select,
   SelectContent,
@@ -59,6 +60,9 @@ export function InviteStaffSheet({
   onInvited,
 }: InviteStaffSheetProps) {
   const t = useTranslations('staff');
+  // URG-013 — shared format-example placeholders (see resource-form.tsx's
+  // placeholderFor).
+  const tCommon = useTranslations('common');
   const tRole = useTranslations('roles');
   const translateError = useTranslatedApiError();
   const { editPanelMode, defaultInviteRole } = useAppSettings();
@@ -188,6 +192,7 @@ export function InviteStaffSheet({
             <Input
               id="invite-email"
               type="email"
+              placeholder={tCommon('placeholders.email')}
               value={email}
               maxLength={255}
               onChange={(event) => {
@@ -214,11 +219,13 @@ export function InviteStaffSheet({
 
           <div className="space-y-2">
             <Label htmlFor="invite-phone">{t('form.fields.phone')}</Label>
-            <Input
+            {/* URG-020/022 — same international-only validation as the staff
+                sheet, for the same reason: no country field on the record. */}
+            <PhoneField
               id="invite-phone"
-              type="tel"
               value={phone}
-              onChange={(event) => setPhone(event.target.value)}
+              onChange={setPhone}
+              country={null}
             />
           </div>
 

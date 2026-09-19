@@ -317,6 +317,7 @@ export interface CreateStaffInput {
   phone?: string | undefined;
   role: StaffRole;
   password: string;
+  branchId?: string | undefined;
   accessExpiresAt?: string | undefined;
 }
 
@@ -344,6 +345,20 @@ async function assertCanCreate(actor: Actor, email: string, role: StaffRole): Pr
 export async function createStaff(actor: Actor, input: CreateStaffInput) {
   await assertCanCreate(actor, input.email, input.role);
 
+  if (input.branchId) {
+    const branch = await prisma.branch.findFirst({
+      where: { id: input.branchId, isActive: true, business: { isActive: true } },
+      select: { id: true },
+    });
+    if (!branch) {
+      throw AppError.badRequest('Choose an active branch', { field: 'branchId' });
+    }
+  } else if (input.role !== StaffRole.OWNER && input.role !== StaffRole.DEVELOPER) {
+    // Kept in the service as well as the route schema so a future non-HTTP
+    // caller cannot create a branch-scoped employee with nowhere to work.
+    throw AppError.badRequest('Choose a branch', { field: 'branchId' });
+  }
+
   const user = await prisma.user.create({
     data: {
       email: input.email,
@@ -352,6 +367,11 @@ export async function createStaff(actor: Actor, input: CreateStaffInput) {
       role: input.role,
       passwordHash: await bcrypt.hash(input.password, 10),
       accessExpiresAt: input.accessExpiresAt ? new Date(input.accessExpiresAt) : null,
+      // Nested creation makes the identity and roster placement one database
+      // write: neither can survive if the other fails.
+      ...(input.branchId
+        ? { branchRoles: { create: { branchId: input.branchId, role: input.role } } }
+        : {}),
     },
     select: STAFF_FIELDS,
   });

@@ -377,6 +377,17 @@ describe('the order itself', () => {
     expect(screen.getAllByText(/59\.98/).length).toBeGreaterThan(0);
   });
 
+  it('keeps the order total visible when the items section closes', async () => {
+    fetchOrder.mockResolvedValue(makeOrder());
+    render(<OrderDetail id="o1" />);
+
+    const itemsToggle = await screen.findByRole('button', { name: /items.*59\.98/i });
+    await userEvent.click(itemsToggle);
+    expect(itemsToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(itemsToggle).toBeVisible();
+    expect(screen.getByText('Ceramic Planter')).not.toBeVisible();
+  });
+
   it('says so when a product was deleted rather than rendering a blank row', async () => {
     // Line items carry a price snapshot but NOT a name snapshot, so a
     // hard-deleted product leaves nothing to fall back to.
@@ -468,7 +479,14 @@ describe('the status control offers only what the server allows', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() => {
-      expect(changeOrderStatus).toHaveBeenCalledWith('o1', 'SHIPPED', 'left the warehouse');
+      // The 4th argument is the cancellation detail (URG-010) — undefined for
+      // any move that is not a cancellation.
+      expect(changeOrderStatus).toHaveBeenCalledWith(
+        'o1',
+        'SHIPPED',
+        'left the warehouse',
+        undefined,
+      );
     });
   });
 
@@ -651,7 +669,7 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     expect(screen.getByRole('button', { name: /^refund$/i })).toBeInTheDocument();
   });
 
-  it('submits the amount and reason, then shows the confirmation', async () => {
+  it('submits the amount and coded reason, then shows the confirmation', async () => {
     fetchOrder.mockResolvedValue(makeOrder());
     refundOrder.mockResolvedValue(makeOrder());
 
@@ -666,19 +684,21 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     const dialog = await screen.findByRole('alertdialog');
 
     await userEvent.type(within(dialog).getByLabelText(/amount/i), '20');
-    await userEvent.type(within(dialog).getByLabelText(/reason/i), 'Goodwill — arrived late');
+    await userEvent.click(within(dialog).getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: /changed their mind/i }));
     await userEvent.click(within(dialog).getByRole('button', { name: /^refund$/i }));
 
     await waitFor(() => {
       expect(refundOrder).toHaveBeenCalledWith('o1', {
         amount: '20',
-        reason: 'Goodwill — arrived late',
+        refundReason: 'CHANGED_MIND',
       });
     });
   });
 
-  it('disables the confirm button until both an amount and a reason are entered', async () => {
+  it('requires an Other note before the confirm button enables', async () => {
     fetchOrder.mockResolvedValue(makeOrder());
+    refundOrder.mockResolvedValue(makeOrder());
 
     render(<OrderDetail id="o1" />);
     await screen.findByText('Ceramic Planter');
@@ -689,10 +709,24 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     expect(within(dialog).getByRole('button', { name: /^refund$/i })).toBeDisabled();
 
     await userEvent.type(within(dialog).getByLabelText(/amount/i), '20');
+    await userEvent.click(within(dialog).getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: /^other$/i }));
     expect(within(dialog).getByRole('button', { name: /^refund$/i })).toBeDisabled();
 
-    await userEvent.type(within(dialog).getByLabelText(/reason/i), 'x');
+    await userEvent.type(
+      within(dialog).getByLabelText(/describe the reason/i),
+      'Price-matched a competitor',
+    );
     expect(within(dialog).getByRole('button', { name: /^refund$/i })).toBeEnabled();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: /^refund$/i }));
+    await waitFor(() => {
+      expect(refundOrder).toHaveBeenCalledWith('o1', {
+        amount: '20',
+        refundReason: 'OTHER',
+        refundReasonNote: 'Price-matched a competitor',
+      });
+    });
   });
 
   it('surfaces the server refusal — e.g. over the cap — instead of failing silently', async () => {
@@ -708,7 +742,8 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     const dialog = await screen.findByRole('alertdialog');
 
     await userEvent.type(within(dialog).getByLabelText(/amount/i), '50');
-    await userEvent.type(within(dialog).getByLabelText(/reason/i), 'x');
+    await userEvent.click(within(dialog).getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: /faulty/i }));
     await userEvent.click(within(dialog).getByRole('button', { name: /^refund$/i }));
 
     expect(await screen.findByText(/cannot exceed 19\.98/i)).toBeInTheDocument();
@@ -1104,5 +1139,67 @@ describe('which branch took the order (F8)', () => {
 
     expect(await screen.findByText('Corniche')).toBeInTheDocument();
     expect(screen.queryByText('()')).not.toBeInTheDocument();
+  });
+});
+
+describe('what the order was actually charged', () => {
+  /**
+   * The order records `subtotal` and `taxAmount` and always has — the API
+   * selects and returns both. This screen showed only the grand total, so
+   * "how much tax was on this order" was unanswerable from the one page that
+   * exists to answer questions about it. The POS receipt printed all three
+   * the whole time; the admin view was the surface lagging behind.
+   */
+  it('shows subtotal and tax alongside the total', async () => {
+    /**
+     * Distinct figures on purpose. The default fixture gives `total` and
+     * `lineTotal` the same string (2 × 29.99 = 59.98), so a query for either
+     * matches two cells — the existing tests here work around that with
+     * `getAllByText(...).length`, which cannot tell the grand total from a
+     * line. Overriding all three keeps each assertion pointed at one number.
+     */
+    fetchOrder.mockResolvedValue(
+      makeOrder({ subtotal: '56.00', taxAmount: '2.80', total: '58.80' }),
+    );
+
+    render(<OrderDetail id="o1" />);
+
+    // Subtotal and tax are each unique on this screen, so a direct query is
+    // unambiguous for them.
+    expect(await screen.findByText(/56\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/2\.80/)).toBeInTheDocument();
+    /**
+     * The grand total keeps its place — the new rows sit above it, they do not
+     * replace it.
+     *
+     * Counted rather than fetched singly: the collapsible Items section puts
+     * the total in its TOGGLE BUTTON's accessible name as well as in the
+     * totals row (see the "keeps the order total visible when the items
+     * section closes" test above, which relies on exactly that), so the figure
+     * legitimately appears twice and `getByText` would throw on the duplicate.
+     */
+    expect(screen.getAllByText(/58\.80/).length).toBeGreaterThan(0);
+  });
+
+  it('omits both rows on an order that predates them, rather than printing em-dashes', async () => {
+    /**
+     * Orders placed before these columns were populated carry null for both.
+     * A row of "—" above a real total is noise, not information, and inventing
+     * a zero tax line would be worse: a fabricated fact about money.
+     *
+     * `makeOrder()` already defaults both to null, which is why every OTHER
+     * test in this file exercises this branch and none covered the one above.
+     */
+    fetchOrder.mockResolvedValue(makeOrder({ total: '58.80' }));
+
+    render(<OrderDetail id="o1" />);
+
+    await screen.findByText('Ceramic Planter');
+    expect(screen.queryByText('Subtotal')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tax')).not.toBeInTheDocument();
+    // Distinct from the line total, so this proves the GRAND total still
+    // renders rather than matching a line item by coincidence. Counted, for
+    // the same duplicate-in-the-toggle reason as the test above.
+    expect(screen.getAllByText(/58\.80/).length).toBeGreaterThan(0);
   });
 });

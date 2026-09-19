@@ -1,4 +1,5 @@
 import { apiDownload, apiFetch } from '@/lib/api';
+import type { RefundReason } from '@/lib/refund-reasons';
 
 /**
  * Client for the bespoke orders routes (`/api/v1/orders`).
@@ -94,6 +95,23 @@ export interface OrderDetail {
   taxAmount: string | null;
   paymentMethod: string | null;
   placedAt: string;
+  /**
+   * The cashier who rang this up at the till, snapshotted on the order.
+   *
+   * Null for a web order, or one placed before this was recorded — the UI
+   * omits the line rather than implying nobody served the customer.
+   */
+  soldByName?: string | null;
+  /** Negative payment rows represented as positive refund amounts for display. */
+  goodwillRefunds?: Array<{
+    id: string;
+    amount: string;
+    paidAt: string;
+    refundReason: RefundReason | null;
+    refundReasonNote: string | null;
+    /** Existing unstructured note, never relabeled with a guessed code. */
+    legacyReason: string | null;
+  }>;
   /** Staff-only, never surfaced to the customer — a THREAD (C5.7), oldest first. */
   notes: OrderNote[];
   customer: OrderCustomer | null;
@@ -227,14 +245,57 @@ export async function fetchOrderNeighbors(
   return apiFetch<OrderNeighbors>(`/orders/${id}/neighbors?${toOrderQuery(filters)}`);
 }
 
+/**
+ * Why an order is being canceled (URG-010) — mirrors the backend enum.
+ * Declared here rather than imported so the client keeps no Prisma dependency.
+ */
+export type CancellationReason =
+  | 'OUT_OF_STOCK'
+  | 'CUSTOMER_REQUEST'
+  | 'DUPLICATE_ORDER'
+  | 'PAYMENT_FAILED'
+  | 'UNABLE_TO_FULFILL'
+  | 'OTHER';
+
+export const CANCELLATION_REASONS: CancellationReason[] = [
+  'OUT_OF_STOCK',
+  'CUSTOMER_REQUEST',
+  'DUPLICATE_ORDER',
+  'PAYMENT_FAILED',
+  'UNABLE_TO_FULFILL',
+  'OTHER',
+];
+
+/**
+ * The reason travels in an options object rather than as more positional
+ * arguments: `(id, to, note, reason, reasonNote)` is a call nobody can read at
+ * the call site, and the two reason fields only ever apply together.
+ */
+export interface CancellationDetails {
+  cancellationReason?: CancellationReason | undefined;
+  cancellationReasonNote?: string | undefined;
+}
+
 export async function changeOrderStatus(
   id: string,
   to: OrderStatus,
   note?: string,
+  cancellation?: CancellationDetails,
 ): Promise<OrderDetail> {
   const body = await apiFetch<{ order: OrderDetail }>(`/orders/${id}/status`, {
     method: 'PATCH',
-    body: JSON.stringify(note ? { to, note } : { to }),
+    body: JSON.stringify({
+      to,
+      ...(note ? { note } : {}),
+      // Omitted entirely when absent — the route is `.strict()` and the
+      // service refuses a reason on a non-cancelling transition.
+      ...(cancellation?.cancellationReason
+        ? { cancellationReason: cancellation.cancellationReason }
+        : {}),
+      ...(cancellation?.cancellationReasonNote
+        ? { cancellationReasonNote: cancellation.cancellationReasonNote }
+        : {}),
+    }),
   });
   return body.order;
 }
@@ -259,10 +320,23 @@ export async function bulkChangeOrderStatus(
   ids: string[],
   to: OrderStatus,
   note?: string,
+  cancellation?: CancellationDetails,
 ): Promise<BulkStatusResult> {
   const body = await apiFetch<BulkStatusResult>('/orders/bulk-status', {
     method: 'POST',
-    body: JSON.stringify(note ? { ids, to, note } : { ids, to }),
+    body: JSON.stringify({
+      ids,
+      to,
+      ...(note ? { note } : {}),
+      // One reason for the whole batch — cancelling 50 orders is one
+      // decision, and the server writes a copy onto each row.
+      ...(cancellation?.cancellationReason
+        ? { cancellationReason: cancellation.cancellationReason }
+        : {}),
+      ...(cancellation?.cancellationReasonNote
+        ? { cancellationReasonNote: cancellation.cancellationReasonNote }
+        : {}),
+    }),
   });
   return body;
 }
@@ -315,7 +389,7 @@ export async function addOrderNote(id: string, body: string): Promise<OrderDetai
  */
 export async function refundOrder(
   id: string,
-  input: { amount: string; reason: string },
+  input: { amount: string; refundReason: RefundReason; refundReasonNote?: string },
 ): Promise<OrderDetail> {
   const result = await apiFetch<{ order: OrderDetail }>(`/orders/${id}/refund`, {
     method: 'POST',

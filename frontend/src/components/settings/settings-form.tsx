@@ -9,7 +9,8 @@ import { ErrorScreen } from '@/components/errors/error-screen';
 import { ImageUploadField } from '@/components/image-upload-field';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Field } from '@/components/ui/field';
+import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -54,6 +55,24 @@ const SEGMENTED_ENUM_KEYS = new Set([
 function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
+
+/**
+ * `labels.nav.<item>` → the `nav` translation key holding its BUILT-IN label.
+ *
+ * These seven settings all store "" to mean "use the built-in translated
+ * label" (see settings.config.ts's Labels section and NAV_LABEL_KEYS in
+ * settings-provider.tsx). Rendered as a plain text input, that contract is
+ * invisible: an empty box looks identical to a box someone cleared on
+ * purpose, and it never shows what the label actually IS right now. So these
+ * keys get their own control — the current default, plus a toggle that
+ * reveals an input prefilled with it.
+ *
+ * The suffix is also the `nav` namespace key for every one of them, so this
+ * derives rather than duplicating a second list that could drift from the
+ * backend's.
+ */
+const NAV_LABEL_PREFIX = 'labels.nav.';
+
 
 /**
  * Key prefix → visual group, purely for layout. `settings.config.ts` on the
@@ -102,6 +121,7 @@ function groupByPrefix(
   const buckets = new Map<GroupId, Setting[]>();
 
   for (const setting of settings) {
+    if (setting.setupOnly) continue;
     const id: GroupId = SETTINGS_GROUPS.find((group) => group.match(setting.key))?.id ?? 'other';
     const bucket = buckets.get(id);
     if (bucket) bucket.push(setting);
@@ -306,28 +326,49 @@ export function SettingsForm() {
               <p className="text-muted-foreground text-sm">
                 {t(`groups.${group.id}.description`)}
               </p>
+              {group.id === 'notifications' ? (
+                <div className="text-muted-foreground space-y-1 text-sm">
+                  <p>{t('groups.notifications.sharedInbox')}</p>
+                  <p>{t('groups.notifications.refresh')}</p>
+                  <p>{t('groups.notifications.emailDelivery')}</p>
+                </div>
+              ) : null}
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {group.items.map((setting) => (
-                <SettingField
-                  key={setting.key}
-                  setting={setting}
-                  value={values[setting.key] ?? setting.value}
-                  error={fieldErrors[setting.key]}
-                  onChange={(value) => set(setting.key, value)}
-                  // Address is the one field genuinely long-form enough to
-                  // want the full row rather than half of it.
-                  fullWidth={setting.key === 'store.address'}
-                />
-              ))}
+              {group.items.map((setting) =>
+                // The seven nav labels store a string like any other setting,
+                // but "" means "use the built-in label" — a meaning a bare
+                // text input cannot show. They get their own control; see
+                // NavLabelField.
+                setting.key.startsWith(NAV_LABEL_PREFIX) ? (
+                  <NavLabelField
+                    key={setting.key}
+                    setting={setting}
+                    value={values[setting.key] ?? setting.value}
+                    error={fieldErrors[setting.key]}
+                    onChange={(value) => set(setting.key, value)}
+                  />
+                ) : (
+                  <SettingField
+                    key={setting.key}
+                    setting={setting}
+                    value={values[setting.key] ?? setting.value}
+                    error={fieldErrors[setting.key]}
+                    onChange={(value) => set(setting.key, value)}
+                    // Address is the one field genuinely long-form enough to
+                    // want the full row rather than half of it.
+                    fullWidth={setting.key === 'store.address'}
+                  />
+                ),
+              )}
             </div>
           </section>
         ))}
       </div>
 
-      <div className="flex items-center gap-3 border-t pt-4">
-        <Button disabled={isSaving || !isDirty} onClick={() => void submit()}>
+      <div className="bg-background/95 sticky bottom-0 z-20 flex flex-wrap items-center justify-end gap-3 border-t px-3 py-4 shadow-[0_-6px_20px_-12px_rgba(0,0,0,0.3)] backdrop-blur supports-[backdrop-filter]:bg-background/85 rtl:justify-start">
+        <Button className="order-last min-h-11 rtl:order-first" disabled={isSaving || !isDirty} onClick={() => void submit()}>
           {isSaving ? t('saving') : t('save')}
         </Button>
 
@@ -358,11 +399,142 @@ interface SettingFieldProps {
   fullWidth?: boolean;
 }
 
+/**
+ * One nav-label setting: the label in use today, and an opt-in override.
+ *
+ * ─── THE STORED CONTRACT IS UNCHANGED ────────────────────────────────
+ * This control still reads and writes the same single string the registry
+ * declares. Toggle off writes `''` — the existing "use the built-in label"
+ * value — so nothing downstream (`navLabels` in settings-provider.tsx,
+ * `NavLabelHeading`, the breadcrumbs, the permissions matrix) needs to learn
+ * a new shape, and a value saved before this control existed still renders
+ * here as an active override.
+ *
+ * ─── TOGGLE ON WITH AN EMPTY BOX STORES `''`, NOT THE DEFAULT ────────
+ * The alternative — seeding the stored value with the default text the
+ * moment the toggle flips — would FREEZE that text: "Staff" would be saved
+ * as a literal override, so a later correction to the translation (or simply
+ * viewing the app in Arabic) would keep showing the English word someone
+ * never actually chose to type. Storing `''` keeps "not overridden" and
+ * "overridden with nothing" the same state, which is also the only state the
+ * server's `default: ''` can express. The input is PREFILLED with the
+ * default as editable text so the common case (tweak the wording) is still
+ * one gesture, but that text only becomes a stored value once the person
+ * edits it and saves.
+ */
+function NavLabelField({
+  setting,
+  value,
+  error,
+  onChange,
+}: Omit<SettingFieldProps, 'fullWidth'>) {
+  // The built-in label for THIS locale — the same namespace the sidebar
+  // renders from, so what the row calls "current" is what the user sees.
+  const tNav = useTranslations('nav');
+  const t = useTranslations('settings');
+
+  const navKey = setting.key.slice(NAV_LABEL_PREFIX.length);
+  const builtIn = tNav.has(navKey) ? tNav(navKey) : setting.label;
+
+  const stored = String(value);
+  const id = `setting-${setting.key}`;
+  const toggleId = `${id}-toggle`;
+  const errorId = `${id}-error`;
+
+  /**
+   * Draft text while the toggle is on. Kept separate from the STORED value so
+   * clearing the box back to empty does not immediately re-render as "off" —
+   * that would yank the input out from under someone mid-edit. It is seeded
+   * from the stored override when there is one, so reopening an existing
+   * override shows what was saved rather than the built-in default.
+   */
+  const [isOverridden, setIsOverridden] = useState(stored !== '');
+  const [draft, setDraft] = useState(stored === '' ? builtIn : stored);
+
+  function toggle(next: boolean) {
+    setIsOverridden(next);
+
+    if (next) {
+      // Prefill the box, but do NOT store it yet — see the note above on why
+      // seeding the stored value would freeze today's translation.
+      setDraft(stored === '' ? builtIn : stored);
+      return;
+    }
+
+    // Back to the built-in label. `''` is the registry's own default, so this
+    // is a real revert rather than a second way of saying the same thing.
+    onChange('');
+  }
+
+  return (
+    <div className="bg-card/50 space-y-2 rounded-lg border p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-0.5">
+          <Label id={`${id}-label`} htmlFor={isOverridden ? id : toggleId}>
+            {setting.label}
+          </Label>
+          {/* The whole point of the row: what this nav item is called RIGHT
+              NOW, so "not overridden" is a visible state instead of a blank
+              box that reads as missing data. */}
+          <p className="text-muted-foreground truncate text-sm">
+            {isOverridden ? t('labels.overridden') : t('labels.usingDefault', { label: builtIn })}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <Switch
+            id={toggleId}
+            checked={isOverridden}
+            onCheckedChange={toggle}
+            aria-describedby={`${id}-hint`}
+          />
+          <Label htmlFor={toggleId} className="text-sm font-normal">
+            {t('labels.rename')}
+          </Label>
+        </div>
+      </div>
+
+      {isOverridden ? (
+        <Input
+          id={id}
+          type="text"
+          value={draft}
+          maxLength={setting.max}
+          placeholder={builtIn}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            // An emptied box stores `''` — the same "use the built-in label"
+            // value the toggle-off path writes. The input stays open because
+            // `isOverridden` is its own state, so this is recoverable by
+            // typing rather than a control that vanishes mid-edit.
+            onChange(event.target.value);
+          }}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : `${id}-hint`}
+        />
+      ) : null}
+
+      {error ? (
+        <p id={errorId} role="alert" className="text-destructive text-sm">
+          {error}
+        </p>
+      ) : setting.description ? (
+        <p id={`${id}-hint`} className="text-muted-foreground text-sm">
+          {setting.description}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /** One control, chosen by the type the SERVER declared. */
 function SettingField({ setting, value, error, onChange, fullWidth }: SettingFieldProps) {
   // Only the language namespace is needed here — every other label and
   // description comes from the server's registry, already human-readable.
   const tLanguage = useTranslations('language');
+  /** An upload failure from the logo field, hoisted so it shares the one slot
+   *  this wrapper owns — see the same note in resource-form.tsx. */
+  const [imageError, setImageError] = useState<string | null>(null);
   const id = `setting-${setting.key}`;
   const errorId = `${id}-error`;
 
@@ -376,10 +548,10 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
       case 'boolean':
         return (
           <div className="flex items-center gap-2">
-            <Checkbox
+            <Switch
               id={id}
               checked={Boolean(value)}
-              onCheckedChange={(checked) => onChange(checked === true)}
+              onCheckedChange={onChange}
               {...aria}
             />
             <Label htmlFor={id}>{setting.label}</Label>
@@ -479,6 +651,7 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
             value={String(value)}
             min={setting.min}
             max={setting.max}
+            placeholder={setting.placeholder}
             onChange={(event) => {
               const next = Number(event.target.value);
               // Guarded so an empty field does not become NaN, which the API
@@ -501,6 +674,7 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
               onChange={onChange}
               folder="logo"
               shape="square"
+              onError={setImageError}
               {...aria}
             />
           );
@@ -512,6 +686,7 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
             type="text"
             value={String(value)}
             maxLength={setting.max}
+            placeholder={setting.placeholder}
             onChange={(event) => onChange(event.target.value)}
             {...aria}
           />
@@ -520,31 +695,20 @@ function SettingField({ setting, value, error, onChange, fullWidth }: SettingFie
   }
 
   return (
-    <div
-      className={cn(
-        'bg-card/50 space-y-2 rounded-lg border p-4',
-        fullWidth && 'col-span-full',
-      )}
+    <Field
+      id={id}
+      // A boolean renders a switch with its own inline label; a second label
+      // above it would name the same control twice.
+      {...(setting.type === 'boolean' ? {} : { label: setting.label })}
+      // Validation first, same precedence as resource-form.tsx.
+      error={error ?? imageError ?? undefined}
+      description={setting.description}
+      // The settings page is a GRID of independent choices rather than a
+      // sequence of fields in one panel — see `Field`'s note on the variant.
+      card
+      fullWidth={fullWidth}
     >
-      {setting.type === 'boolean' ? null : (
-        // `id` on the label lets the segmented control (a radiogroup, which
-        // can't be the target of htmlFor) name itself via aria-labelledby.
-        <Label id={`${id}-label`} htmlFor={id}>
-          {setting.label}
-        </Label>
-      )}
-
       {control()}
-
-      {error ? (
-        <p id={errorId} role="alert" className="text-destructive text-sm">
-          {error}
-        </p>
-      ) : setting.description ? (
-        <p id={`${id}-hint`} className="text-muted-foreground text-sm">
-          {setting.description}
-        </p>
-      ) : null}
-    </div>
+    </Field>
   );
 }

@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { useRouter } from '@/i18n/navigation';
 import { ApiError } from '@/lib/api';
@@ -124,10 +125,9 @@ export function ResetPasswordForm() {
 
       <div className="space-y-2">
         <Label htmlFor="reset-password">{t('password')}</Label>
-        <Input
+        <PasswordInput
           id="reset-password"
           name="password"
-          type="password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           autoComplete="new-password"
@@ -139,10 +139,9 @@ export function ResetPasswordForm() {
 
       <div className="space-y-2">
         <Label htmlFor="reset-confirm">{t('confirm')}</Label>
-        <Input
+        <PasswordInput
           id="reset-confirm"
           name="confirm"
-          type="password"
           value={confirm}
           onChange={(event) => setConfirm(event.target.value)}
           autoComplete="new-password"

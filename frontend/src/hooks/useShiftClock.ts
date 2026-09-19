@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { ApiError } from '@/lib/api';
 import {
   closeTill,
   endShift,
@@ -34,6 +35,30 @@ import {
  * the moment it is looked at instead of however far behind it drifted.
  */
 
+/**
+ * Reason codes that mean "the server could not tell WHICH branch, and you can
+ * say". Read from the error's own `details.reason` rather than its message, so
+ * the check does not depend on wording that is translated at the client.
+ *
+ * `BRANCH_NOT_ASSIGNED` is included because it is equally answerable — the
+ * cashier picked a branch they do not work at, and the correct next move is
+ * still to choose a different one from the same picker.
+ */
+const BRANCH_CHOICE_REASONS = new Set([
+  'BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS',
+  'BRANCH_REQUIRED_MULTIPLE_BUSINESSES',
+  'BRANCH_NOT_FOUND',
+  'BRANCH_NOT_ASSIGNED',
+]);
+
+function isBranchChoiceRequired(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  const details = error.details;
+  if (typeof details !== 'object' || details === null || !('reason' in details)) return false;
+  const reason = (details as { reason?: unknown }).reason;
+  return typeof reason === 'string' && BRANCH_CHOICE_REASONS.has(reason);
+}
+
 export function elapsedLabel(startedAt: string): string {
   const ms = Date.now() - new Date(startedAt).getTime();
   // A clock skew or an edited start in the future would render as a negative
@@ -53,6 +78,16 @@ export function useShiftClock() {
   const [isBusy, setIsBusy] = useState(false);
   const [variance, setVariance] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  /**
+   * Set when the last start failed BECAUSE the branch was ambiguous — the one
+   * refusal the cashier can actually answer.
+   *
+   * Held separately from the toast: the toast says what happened, this says
+   * the failure is answerable, which is what lets the gate reveal a branch
+   * picker instead of leaving someone reading "choose today's branch" with
+   * nothing on screen to choose from.
+   */
+  const [needsBranchChoice, setNeedsBranchChoice] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -80,18 +115,40 @@ export function useShiftClock() {
     return () => window.clearInterval(id);
   }, [shift]);
 
-  async function start(openingFloat: string) {
+  /**
+   * Clock on.
+   *
+   * `branchId` is passed only when the caller actually has an answer — a
+   * cashier who works at more than one branch and has picked today's from the
+   * gate's selector. Omitted otherwise so the ordinary case keeps letting the
+   * SERVER resolve the branch from the person's roster, which is the one place
+   * that decision is implemented.
+   *
+   * The reason code that drives the selector is surfaced to the caller rather
+   * than swallowed: `start` already turns a failure into a toast, but the gate
+   * additionally needs to know that THIS failure is the answerable one, so it
+   * can show the picker instead of leaving the cashier reading an instruction
+   * with no control to follow it.
+   */
+  async function start(openingFloat: string, branchId?: string) {
     setIsBusy(true);
 
     try {
-      const started = await startShift(
-        openingFloat.trim() === '' ? {} : { openingFloat: openingFloat.trim() },
-      );
+      const started = await startShift({
+        ...(openingFloat.trim() === '' ? {} : { openingFloat: openingFloat.trim() }),
+        ...(branchId ? { branchId } : {}),
+      });
       setShift(started);
+      setNeedsBranchChoice(false);
       toast.success(t('started'));
       return started;
     } catch (caught) {
       toast.error(translateError(caught));
+      // Latched rather than reset on every failure: a cashier who picked a
+      // branch and then hit an unrelated error (network, a second open shift)
+      // must not have the picker yanked away mid-correction, losing the choice
+      // they already made.
+      if (isBranchChoiceRequired(caught)) setNeedsBranchChoice(true);
       return null;
     } finally {
       setIsBusy(false);
@@ -143,6 +200,9 @@ export function useShiftClock() {
     shift,
     isReady,
     isBusy,
+    /** The last start failed on an answerable branch ambiguity — the gate
+     *  shows its branch picker while this is true. */
+    needsBranchChoice,
     variance,
     dismissVariance: () => setVariance(null),
     start,

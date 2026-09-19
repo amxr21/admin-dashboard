@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
 
+import { FIELD_SURFACE } from '@/components/ui/field-surface';
 import { cn } from '@/lib/utils';
 
 /**
@@ -19,14 +20,13 @@ function Input({ className, type, ...props }: ComponentProps<'input'>) {
       type={type}
       data-slot="input"
       className={cn(
-        'border-input bg-card text-foreground placeholder:text-muted-foreground',
-        'flex h-9 w-full min-w-0 rounded-md border ps-3 pe-3 py-1 text-sm text-start',
-        'transition-[color,box-shadow] outline-none',
-        'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
-        // aria-invalid, not a `error` prop: the attribute is what assistive
-        // tech reads, so styling from it keeps the two from drifting apart.
-        'aria-invalid:border-destructive aria-invalid:ring-destructive/20',
-        'disabled:cursor-not-allowed disabled:opacity-50',
+        // Border, fill, focus ring, invalid and disabled states are shared
+        // with every other control — see ui/field-surface.ts. `h-8` comes
+        // with it (URG-012), matching Button so a form row lines up.
+        FIELD_SURFACE,
+        // Layout is this control's own: logical padding, and `min-w-0` so a
+        // flex parent can shrink it.
+        'flex min-w-0 ps-3 pe-3 py-1 text-start',
         'file:text-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium',
         className,
       )}

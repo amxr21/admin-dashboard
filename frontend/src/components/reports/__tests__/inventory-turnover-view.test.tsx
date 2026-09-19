@@ -107,6 +107,27 @@ describe('inventory turnover view (C3.5)', () => {
     expect(await screen.findByText(/nothing is sitting idle/i)).toBeInTheDocument();
   });
 
+  it('shows a "nothing sold" message on the DEFAULT tab when turnover is empty', async () => {
+    /**
+     * The empty message used to be guarded on `tab === 'deadStock'`, so the
+     * default Turnover tab showed headers over nothing with no explanation.
+     * The dead-stock half was always covered (above); this is the half that
+     * was not, which is exactly why the gap survived.
+     *
+     * Deliberately a separate message: "nothing is idle" is good news and
+     * "nothing sold" is not, so one string cannot honestly say both.
+     */
+    fetchInventoryTurnover.mockResolvedValue({
+      range: { from: '2026-01-01', to: '2026-01-31' },
+      turnover: [],
+      deadStock: [],
+    });
+
+    render(<InventoryTurnoverView />);
+
+    expect(await screen.findByText(/nothing sold in this period/i)).toBeInTheDocument();
+  });
+
   it('surfaces a load failure', async () => {
     fetchInventoryTurnover.mockRejectedValue(new ApiError(500, 'SERVER_ERROR', 'boom'));
 

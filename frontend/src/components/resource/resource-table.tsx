@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import { useGSAP } from '@gsap/react';
-import { FilterX, History, Pencil, Plus, Search, SearchX, Trash2, Upload } from 'lucide-react';
+import { FilterX, History, Pencil, Plus, SearchX, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -30,7 +30,7 @@ import type { InventoryRow } from '@/lib/inventory-api';
 import { ResourceCell } from '@/components/resource/resource-cell';
 import { ResourceForm } from '@/components/resource/resource-form';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import {
@@ -40,10 +40,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { canAccessArea, type StaffRole } from '@/config/areas';
+import { type StaffRole } from '@/config/areas';
+import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
 import { useAuth } from '@/hooks/useAuth';
 import { useUrlState } from '@/hooks/useUrlState';
 import { useTableDensity } from '@/hooks/useTableDensity';
+import { useResourceFieldLabel } from '@/hooks/useResourceFieldLabel';
 import { useColumnVisibility } from '@/hooks/useColumnVisibility';
 import { gsap } from '@/lib/gsap';
 import { DURATION, EASE, DISTANCE, STAGGER_TOTAL_MAX } from '@/lib/motion-tokens';
@@ -93,7 +95,9 @@ interface ResourceTableProps {
 
 
 export function ResourceTable({ schema }: ResourceTableProps) {
+  const canAccessArea = useCanAccessArea();
   const t = useTranslations('resource');
+  const fieldLabel = useResourceFieldLabel(schema.resource);
   const tAudit = useTranslations('audit');
   const tTable = useTranslations('table');
   const translateError = useTranslatedApiError();
@@ -625,7 +629,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
 
   const allDataColumns: Column<ResourceRow>[] = listFields(schema).map((field) => ({
     id: field.name,
-    header: field.label,
+    header: fieldLabel(field),
     // Numeric values are end-aligned so digits line up column-wise.
     align: field.type === 'money' || field.type === 'number' ? 'end' : 'start',
     cell: (row) => (
@@ -817,29 +821,25 @@ export function ResourceTable({ schema }: ResourceTableProps) {
                   fetch from before the debounce caught up), so a suggestion
                   can never point at a row that no longer matches. */}
               <Popover open={canUpdate && searchFocused && searchInput.trim() !== '' && search === searchInput.trim() && (result?.rows.length ?? 0) > 0}>
+                {/* `asChild` needs exactly ONE element to anchor to, and
+                    `SearchInput` renders a single relative-positioned wrapper
+                    — the same element this used to spell out by hand. */}
                 <PopoverAnchor asChild>
-                  <div className="relative">
-                    <Search
-                      className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
-                      aria-hidden
-                    />
-                    <Input
-                      id="resource-search"
-                      value={searchInput}
-                      onChange={(event) => setSearchInput(event.target.value)}
-                      onFocus={() => setSearchFocused(true)}
-                      onBlur={() => setSearchFocused(false)}
-                      // Names the actual columns searched, so nobody wonders why a
-                      // description match returns nothing.
-                      placeholder={t('search.placeholder', {
-                        fields: searchableFields(schema)
-                          .map((field) => field.label)
-                          .join(', '),
-                      })}
-                      className="ps-9"
-                      autoComplete="off"
-                    />
-                  </div>
+                  <SearchInput
+                    id="resource-search"
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
+                    // Names the actual columns searched, so nobody wonders why a
+                    // description match returns nothing.
+                    placeholder={t('search.placeholder', {
+                      fields: searchableFields(schema)
+                        .map(fieldLabel)
+                        .join(', '),
+                    })}
+                    autoComplete="off"
+                  />
                 </PopoverAnchor>
 
                 <PopoverContent
@@ -873,7 +873,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
 
           {enumFilters.map((field) => (
             <div key={field.name} className="w-44 space-y-2">
-              <Label htmlFor={`filter-${field.name}`}>{field.label}</Label>
+              <Label htmlFor={`filter-${field.name}`}>{fieldLabel(field)}</Label>
               <Select
                 value={filters[field.name] ?? ALL}
                 onValueChange={(value) => {
@@ -902,7 +902,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
 
           {booleanFilters.map((field) => (
             <div key={field.name} className="w-44 space-y-2">
-              <Label htmlFor={`filter-${field.name}`}>{field.label}</Label>
+              <Label htmlFor={`filter-${field.name}`}>{fieldLabel(field)}</Label>
               <Select
                 value={filters[field.name] ?? ALL}
                 onValueChange={(value) => {
@@ -926,7 +926,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
 
           {relationFilters.map((field) => (
             <div key={field.name} className="w-44 space-y-2">
-              <Label htmlFor={`filter-${field.name}`}>{field.label}</Label>
+              <Label htmlFor={`filter-${field.name}`}>{fieldLabel(field)}</Label>
               <Select
                 value={filters[field.name] ?? ALL}
                 onValueChange={(value) => {

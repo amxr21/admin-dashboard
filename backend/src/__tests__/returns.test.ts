@@ -56,6 +56,10 @@ let customerId = '';
 let branchId = '';
 const businessIds: string[] = [];
 let ownerToken = '';
+/** Captured so the approval snapshot can be asserted against a REAL identity
+ *  rather than merely "not null". */
+let ownerId = '';
+let ownerName = '';
 let demoToken = '';
 let supportToken = '';
 
@@ -69,7 +73,9 @@ async function makeUser(role: StaffRole, tag = role.toLowerCase()) {
     },
   });
   userIds.push(user.id);
-  return { token: signToken(user), id: user.id, email: user.email };
+  // `name` is returned too, so the approval snapshot can be asserted against
+  // the identity actually recorded rather than against "something".
+  return { token: signToken(user), id: user.id, email: user.email, name: user.name };
 }
 
 async function makeProduct(stock = 10) {
@@ -119,6 +125,8 @@ beforeAll(async () => {
     makeUser(StaffRole.SUPPORT, 'support'),
   ]);
   ownerToken = owner.token;
+  ownerId = owner.id;
+  ownerName = owner.name ?? owner.email;
   demoToken = demo.token;
   supportToken = support.token;
 
@@ -143,9 +151,16 @@ afterAll(async () => {
   await prisma.customer.deleteMany({ where: { id: customerId } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.notification.deleteMany({
-    where: { type: 'return.requested', body: { contains: RUN } },
+    where: {
+      type: { in: ['return.requested', 'return.approved', 'return.rejected'] },
+      body: { contains: RUN },
+    },
   });
-  await prisma.setting.deleteMany({ where: { key: 'notifications.returnRequestAlerts' } });
+  await prisma.setting.deleteMany({
+    where: {
+      key: { in: ['notifications.returnRequestAlerts', 'notifications.returnDecisionAlerts'] },
+    },
+  });
   await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
   await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
   await prisma.$disconnect();
@@ -183,6 +198,31 @@ describe('creating a return', () => {
 
     expect(res.status).toBe(400);
     expect((res.body as ErrorBody).error.message).toMatch(/cannot have a return requested/i);
+  });
+
+  it('allows a return on a CONFIRMED point-of-sale order (walk-in return)', async () => {
+    // BUG A: a POS sale is created CONFIRMED and never ships, so before
+    // CONFIRMED -> RETURNED was allowed, the till return sheet 400'd on the
+    // most common physical return. This walks the full request-then-approve
+    // path the till drives, and asserts the order actually reaches RETURNED.
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.CONFIRMED);
+
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'brought it back to the counter', items: [{ orderItemId, quantity: 1 }] });
+    expect(created.status).toBe(201);
+    const id = (created.body as ReturnBody).data.return.id;
+
+    // STORE_CREDIT needs no refund reason, keeping this focused on the lifecycle.
+    const approved = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'STORE_CREDIT', restock: true });
+    expect(approved.status).toBe(200);
+
+    const after = await prisma.order.findUnique({ where: { id: orderId } });
+    expect(after?.status).toBe(OrderStatus.RETURNED);
   });
 
   it('refuses an item that does not belong to the order', async () => {
@@ -318,6 +358,121 @@ describe('approving a return', () => {
     expect(res.status).toBe(400);
   });
 
+  it('requires a refund reason when the resolution is REFUND (URG-009)', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'REFUND', refundAmount: '10.00', restock: false });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/why this refund/i);
+  });
+
+  it('requires a note when the refund reason is OTHER (URG-009)', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '10.00',
+        refundReason: 'OTHER',
+        restock: false,
+      });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/describe the refund reason/i);
+  });
+
+  it('refuses a refund reason on a non-refund resolution (URG-009)', async () => {
+    // A refund reason on a REPLACEMENT would be a stored fact that never
+    // happened.
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'REPLACEMENT', refundReason: 'DAMAGED', restock: false });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('records the refund reason and its note (URG-009)', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '10.00',
+        refundReason: 'OTHER',
+        refundReasonNote: 'Store policy goodwill',
+        restock: false,
+      });
+
+    expect(res.status).toBe(200);
+
+    const row = await prisma.return.findUnique({
+      where: { id },
+      select: { refundReason: true, refundReasonNote: true },
+    });
+    expect(row?.refundReason).toBe('OTHER');
+    expect(row?.refundReasonNote).toBe('Store policy goodwill');
+  });
+
+  it('stores no note for a catalogued refund reason (URG-009)', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${id}/approve`)
+      .set(auth(ownerToken))
+      .send({
+        resolution: 'REFUND',
+        refundAmount: '10.00',
+        refundReason: 'DAMAGED',
+        restock: false,
+      });
+
+    expect(res.status).toBe(200);
+
+    const row = await prisma.return.findUnique({
+      where: { id },
+      select: { refundReason: true, refundReasonNote: true },
+    });
+    expect(row?.refundReason).toBe('DAMAGED');
+    // NULL, never an empty string — "no note" is the real state.
+    expect(row?.refundReasonNote).toBeNull();
+  });
+
   it('requires a refund amount when the resolution is REFUND', async () => {
     const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
     const created = await request(app)
@@ -346,7 +501,7 @@ describe('approving a return', () => {
     const res = await request(app)
       .post(`/api/v1/returns/${id}/approve`)
       .set(auth(ownerToken))
-      .send({ resolution: 'REFUND', refundAmount: '999.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '999.00', restock: false });
 
     expect(res.status).toBe(400);
     expect((res.body as ErrorBody).error.details?.max).toBe('50.00');
@@ -363,13 +518,31 @@ describe('approving a return', () => {
     const res = await request(app)
       .post(`/api/v1/returns/${id}/approve`)
       .set(auth(ownerToken))
-      .send({ resolution: 'REFUND', refundAmount: '50.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '50.00', restock: false });
 
     expect(res.status).toBe(200);
     const body = res.body as ReturnBody;
     expect(body.data.return.status).toBe('APPROVED');
     expect(body.data.return.resolution).toBe('REFUND');
     expect(body.data.return.refundAmount).toBe('50.00');
+
+    // Who signed it off. Until this existed, the ONLY record of that was the
+    // `return.approved` audit entry — which answers a reviewer's question but
+    // not a cashier's ("who handled this one?"), and an audit trail is
+    // evidence, not an application data source.
+    //
+    // The name is snapshotted rather than joined, for the same reason the
+    // refund amount is: a later rename must not rewrite who approved a refund.
+    // Asserted against the real identity rather than "not null" — an approval
+    // credited to the WRONG person fails just as quietly as one credited to
+    // nobody.
+    const approved = await prisma.return.findUnique({
+      where: { id },
+      select: { approvedById: true, approvedByName: true, approvedAt: true },
+    });
+    expect(approved?.approvedById).toBe(ownerId);
+    expect(approved?.approvedByName).toBe(ownerName);
+    expect(approved?.approvedAt).toBeInstanceOf(Date);
 
     const order = await prisma.order.findUnique({ where: { id: orderId } });
     expect(order?.status).toBe(OrderStatus.RETURNED);
@@ -535,14 +708,14 @@ describe('return window and restocking fee (B4.11)', () => {
     const overCap = await request(app)
       .post(`/api/v1/returns/${id}/approve`)
       .set(auth(ownerToken))
-      .send({ resolution: 'REFUND', refundAmount: '45.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '45.00', restock: false });
     expect(overCap.status).toBe(400);
     expect((overCap.body as ErrorBody).error.details?.max).toBe('40.00');
 
     const res = await request(app)
       .post(`/api/v1/returns/${id}/approve`)
       .set(auth(ownerToken))
-      .send({ resolution: 'REFUND', refundAmount: '40.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '40.00', restock: false });
     expect(res.status).toBe(200);
     expect((res.body as ReturnBody).data.return.restockingFeePercent).toBe('20.00');
   });
@@ -567,6 +740,7 @@ describe('return window and restocking fee (B4.11)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '50.00',
         restockingFeePercent: 0,
         restock: false,
@@ -589,6 +763,7 @@ describe('return window and restocking fee (B4.11)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '10.00',
         restockingFeePercent: 150,
         restock: false,
@@ -667,6 +842,119 @@ describe('rejecting a return', () => {
 describe('the engine does not serve returns', () => {
   it('404s /r/returns', async () => {
     expect((await request(app).get('/api/v1/r/returns').set(auth(ownerToken))).status).toBe(404);
+  });
+});
+
+/**
+ * Deciding a return notifies staff too.
+ *
+ * Until this existed, `notify()` fired only when a return was REQUESTED — the
+ * arrival of work was announced and its completion was not, so whoever was
+ * waiting on the answer learned nothing. These pin the outcome reaching the
+ * shared inbox, and pin the reason/resolution being IN the body: "rejected"
+ * with no why is the notification that generates the question it should have
+ * answered.
+ */
+describe('deciding a return notifies staff', () => {
+  function saveSetting(body: Record<string, unknown>) {
+    return request(app).patch('/api/v1/settings').set(auth(ownerToken)).send(body);
+  }
+
+  async function requestReturn(orderId: string, orderItemId: string) {
+    const res = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: `${RUN} decision test`, items: [{ orderItemId, quantity: 1 }] });
+    expect(res.status).toBe(201);
+    return (res.body as ReturnBody).data.return;
+  }
+
+  afterEach(async () => {
+    await prisma.notification.deleteMany({
+      where: {
+        type: { in: ['return.requested', 'return.approved', 'return.rejected'] },
+        body: { contains: RUN },
+      },
+    });
+    await prisma.setting.deleteMany({
+      where: {
+        key: { in: ['notifications.returnRequestAlerts', 'notifications.returnDecisionAlerts'] },
+      },
+    });
+  });
+
+  it('notifies on approval, naming the resolution', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await requestReturn(orderId, orderItemId);
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${created.id}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'STORE_CREDIT', restock: false });
+    expect(res.status).toBe(200);
+
+    // Scoped to THIS return's RMA, not just the type: several tests in this
+    // file approve a return, so an unscoped findFirst matches whichever row
+    // happens to be oldest and reports the wrong RMA.
+    const notification = await waitFor(() =>
+      prisma.notification.findFirst({
+        where: { type: 'return.approved', title: { contains: created.rmaNumber } },
+      }),
+    );
+    expect(notification).not.toBeNull();
+    // The resolution is the first thing a reader needs: "approved" alone does
+    // not say whether money moved, became credit, or shipped a replacement.
+    expect(notification?.body).toContain('STORE_CREDIT');
+  });
+
+  it('notifies on rejection, carrying the reason', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await requestReturn(orderId, orderItemId);
+    const rejectionReason = `${RUN} outside the return window`;
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${created.id}/reject`)
+      .set(auth(ownerToken))
+      .send({ rejectionReason });
+    expect(res.status).toBe(200);
+
+    const notification = await waitFor(() =>
+      prisma.notification.findFirst({
+        where: { type: 'return.rejected', title: { contains: created.rmaNumber } },
+      }),
+    );
+    expect(notification).not.toBeNull();
+    expect(notification?.body).toContain(rejectionReason);
+  });
+
+  it('does not notify a decision when returnDecisionAlerts is off', async () => {
+    const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
+    const created = await requestReturn(orderId, orderItemId);
+    await saveSetting({ 'notifications.returnDecisionAlerts': false });
+
+    const res = await request(app)
+      .post(`/api/v1/returns/${created.id}/approve`)
+      .set(auth(ownerToken))
+      .send({ resolution: 'REPLACEMENT', restock: false });
+    expect(res.status).toBe(200);
+
+    // Scoped to THIS return, so a row left by the approval test above cannot
+    // make this pass or fail depending on execution order.
+    const decision = await prisma.notification.findFirst({
+      where: { type: 'return.approved', title: { contains: created.rmaNumber } },
+    });
+    expect(decision).toBeNull();
+
+    // The request alert is a SEPARATE switch and stays on, so ITS row must
+    // still exist — that is what proves the off-switch silenced the decision
+    // specifically rather than notifications in general.
+    // NOT named `request`: that is supertest's imported helper, and a local
+    // of the same name shadows it for the whole test body — the earlier
+    // `request(app)` call above then hits this declaration's TDZ.
+    const requestAlert = await prisma.notification.findFirst({
+      where: { type: 'return.requested', title: { contains: created.rmaNumber } },
+    });
+    expect(requestAlert).not.toBeNull();
   });
 });
 
@@ -797,7 +1085,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
     const res = await request(app)
       .post(`/api/v1/returns/${returnId}/approve`)
       .set(auth(ownerToken))
-      .send({ resolution: 'REFUND', refundAmount: '50.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '50.00', restock: false });
 
     expect(res.status).toBe(200);
 
@@ -823,6 +1111,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         // 100.00 was the ceiling before the refusal; now only A's 2 count.
         refundAmount: '100.00',
         restock: false,
@@ -851,6 +1140,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: true,
         // Three came back; only ONE was sellable.
@@ -889,6 +1179,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: true,
         items: [
@@ -922,6 +1213,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '0',
         restock: false,
         items: [{ returnItemId: rows[0]!.id, accepted: false }],
@@ -943,6 +1235,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: false,
         items: [{ returnItemId: rows[0]!.id, accepted: true, acceptedQuantity: 5 }],
@@ -965,6 +1258,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '0',
         restock: false,
         items: [{ returnItemId: rows[0]!.id, accepted: false, rejectionReason: 'All damaged' }],
@@ -990,6 +1284,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: false,
         items: [{ returnItemId: 'not-a-line-on-this-return', accepted: true }],
@@ -1015,6 +1310,7 @@ describe('deciding a return line by line (B4.7, B4.8)', () => {
       .set(auth(ownerToken))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: false,
         items: [
@@ -1053,7 +1349,7 @@ describe('a cashier cannot approve or reject alone (O9.7)', () => {
     const res = await request(app)
       .post(`/api/v1/returns/${id}/approve`)
       .set(auth(cashier.token))
-      .send({ resolution: 'REFUND', refundAmount: '25.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '25.00', restock: false });
 
     expect(res.status).toBe(403);
 
@@ -1101,6 +1397,7 @@ describe('a cashier cannot approve or reject alone (O9.7)', () => {
       .set(auth(cashier.token))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: false,
         overrideToken: approval.overrideToken,
@@ -1124,6 +1421,7 @@ describe('a cashier cannot approve or reject alone (O9.7)', () => {
       .set(auth(cashier.token))
       .send({
         resolution: 'REFUND',
+        refundReason: 'DAMAGED',
         refundAmount: '25.00',
         restock: false,
         overrideToken: 'not-a-real-token',
@@ -1146,7 +1444,7 @@ describe('a cashier cannot approve or reject alone (O9.7)', () => {
     const res = await request(app)
       .post(`/api/v1/returns/${id}/approve`)
       .set(auth(manager.token))
-      .send({ resolution: 'REFUND', refundAmount: '25.00', restock: false });
+      .send({ resolution: 'REFUND', refundReason: 'DAMAGED', refundAmount: '25.00', restock: false });
 
     expect(res.status).toBe(200);
   });

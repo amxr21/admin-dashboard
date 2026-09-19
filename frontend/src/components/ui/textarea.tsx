@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
 
+import { FIELD_SURFACE_BOX } from '@/components/ui/field-surface';
 import { cn } from '@/lib/utils';
 
 /**
@@ -18,12 +19,10 @@ function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
     <textarea
       data-slot="textarea"
       className={cn(
-        'border-input bg-card text-foreground placeholder:text-muted-foreground',
-        'flex field-sizing-content min-h-16 w-full rounded-md border ps-3 pe-3 py-2 text-sm text-start',
-        'transition-[color,box-shadow] outline-none',
-        'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
-        'aria-invalid:border-destructive aria-invalid:ring-destructive/20',
-        'disabled:cursor-not-allowed disabled:opacity-50',
+        // The box WITHOUT a height — a textarea sizes to its content, so it
+        // takes `FIELD_SURFACE_BOX` rather than the `h-8` variant.
+        FIELD_SURFACE_BOX,
+        'flex field-sizing-content min-h-16 ps-3 pe-3 py-2 text-start',
         className,
       )}
       {...props}

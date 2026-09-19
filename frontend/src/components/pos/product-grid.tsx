@@ -2,11 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { ImageOff, Search } from 'lucide-react';
+import { ImageOff } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { SearchInput } from '@/components/ui/search-input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
+import { useHideSoldOut } from '@/hooks/useHideSoldOut';
 import {
   browseCategories,
   browseProducts,
@@ -74,6 +77,13 @@ export function ProductGrid({ onAdd, disabled = false, refreshKey }: ProductGrid
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
 
+  /**
+   * Off by default — see `useHideSoldOut` for why the grid shows sold-out
+   * tiles at all, and why hiding them is a per-cashier choice rather than a
+   * change to that behaviour.
+   */
+  const { hideSoldOut, setHideSoldOut } = useHideSoldOut();
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasLoadedOnce = useRef(false);
 
@@ -107,23 +117,46 @@ export function ProductGrid({ onAdd, disabled = false, refreshKey }: ProductGrid
     };
   }, [query, activeCategory, refreshKey]);
 
-  const showEmpty = !isLoading && !error && products.length === 0;
+  /**
+   * Filtered CLIENT-side, not by asking the server for in-stock rows only.
+   *
+   * The same fetch serves both settings of the toggle, so flipping it is
+   * instant and costs no request — and `branchStock === null` (no branch in
+   * context) stays visible either way, since "unknown" is not "none". That
+   * matches how the tile itself decides whether to disable: only a real
+   * number at or below zero counts as sold out.
+   */
+  const visibleProducts = hideSoldOut
+    ? products.filter((product) => product.branchStock === null || product.branchStock > 0)
+    : products;
+
+  const showEmpty = !isLoading && !error && visibleProducts.length === 0;
+  /** Everything the search DID match is sold out, and the toggle is hiding it
+   *  — a different fact from "nothing matched", and one the cashier can undo
+   *  right there rather than wondering why a product they can see on the
+   *  shelf is missing from the till. */
+  const allFilteredOut = showEmpty && hideSoldOut && products.length > 0;
 
   return (
     <div className="space-y-3">
-      <div className="relative">
-        <Search
-          className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
-          aria-hidden
-        />
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={t('searchPlaceholder')}
-          aria-label={t('searchLabel')}
-          className="ps-9"
+      <SearchInput
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder={t('searchPlaceholder')}
+        aria-label={t('searchLabel')}
+        disabled={disabled}
+      />
+
+      <div className="flex items-center justify-end gap-2">
+        <Switch
+          id="pos-hide-sold-out"
+          checked={hideSoldOut}
+          onCheckedChange={setHideSoldOut}
           disabled={disabled}
         />
+        <Label htmlFor="pos-hide-sold-out" className="text-muted-foreground text-sm font-normal">
+          {t('hideSoldOut')}
+        </Label>
       </div>
 
       {categories.length > 0 ? (
@@ -160,7 +193,7 @@ export function ProductGrid({ onAdd, disabled = false, refreshKey }: ProductGrid
 
       {showEmpty ? (
         <p className="text-muted-foreground rounded-lg border border-dashed px-4 py-8 text-center text-sm">
-          {query.trim() ? t('noMatches') : t('empty')}
+          {allFilteredOut ? t('allSoldOut') : query.trim() ? t('noMatches') : t('empty')}
         </p>
       ) : null}
 
@@ -171,7 +204,7 @@ export function ProductGrid({ onAdd, disabled = false, refreshKey }: ProductGrid
             Array.from({ length: 8 }).map((_, index) => (
               <Skeleton key={index} className="aspect-square rounded-lg" />
             ))
-          : products.map((product) => (
+          : visibleProducts.map((product) => (
               <ProductTile
                 key={product.id}
                 product={product}

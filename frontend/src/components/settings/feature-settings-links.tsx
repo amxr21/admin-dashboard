@@ -4,20 +4,25 @@ import { useTranslations } from 'next-intl';
 import { ArrowRight } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { canAccessArea } from '@/config/areas';
+import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
+import { useAppSettings } from '@/components/providers/settings-provider';
+import { isSetupPathEnabled } from '@/lib/setup-visibility';
 
 export function FeatureSettingsLinks() {
+  const canAccessArea = useCanAccessArea();
   const t = useTranslations('settings.features');
   const { user } = useAuth();
+  const { enabledFeatures } = useAppSettings();
   if (!user) return null;
   const owner = user.role === 'OWNER' || user.role === 'DEVELOPER';
   const links = [
+    { key: 'setup', href: '/admin/setup', visible: owner },
     { key: 'businesses', href: '/admin/branches', visible: canAccessArea(user.role, 'settings') },
     { key: 'structure', href: '/admin/settings/organization', visible: owner },
     { key: 'staff', href: '/admin/staff', visible: canAccessArea(user.role, 'staff') },
     { key: 'roles', href: '/admin/staff#staff-permissions-title', visible: owner },
     { key: 'reports', href: '/admin/reports/scheduled', visible: canAccessArea(user.role, 'reports') },
-  ].filter(link => link.visible);
+  ].filter(link => link.visible && isSetupPathEnabled(link.href, enabledFeatures));
   return (
     <section className="space-y-3" aria-labelledby="feature-settings-title">
       <h2 id="feature-settings-title" className="text-lg font-semibold">{t('title')}</h2>

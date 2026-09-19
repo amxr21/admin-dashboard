@@ -15,12 +15,18 @@ import type { StaffMember } from '@/lib/staff-api';
  * it takes effect.
  */
 
-const updateStaff = vi.hoisted(() => vi.fn());
+const { createStaff, fetchBranches, updateStaff } = vi.hoisted(() => ({
+  createStaff: vi.fn(),
+  fetchBranches: vi.fn(),
+  updateStaff: vi.fn(),
+}));
 
 vi.mock('@/lib/staff-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/staff-api')>();
-  return { ...actual, updateStaff };
+  return { ...actual, createStaff, updateStaff };
 });
+
+vi.mock('@/lib/branches-api', () => ({ fetchBranches }));
 
 function makeStaff(overrides: Partial<StaffMember> = {}): StaffMember {
   return {
@@ -41,8 +47,93 @@ function makeStaff(overrides: Partial<StaffMember> = {}): StaffMember {
 }
 
 beforeEach(() => {
+  createStaff.mockReset();
+  fetchBranches.mockReset();
   updateStaff.mockReset();
+  createStaff.mockResolvedValue(makeStaff());
+  fetchBranches.mockResolvedValue([
+    {
+      id: 'branch-1',
+      name: 'Marina',
+      code: 'MAR',
+      city: 'Dubai',
+      isSellingPoint: true,
+      isDefault: true,
+      businessId: 'business-1',
+      businessName: 'Demo Store',
+    },
+  ]);
   updateStaff.mockResolvedValue(makeStaff());
+});
+
+describe('StaffSheet creation', () => {
+  it('assigns a new branch-scoped employee to the selected branch', async () => {
+    render(
+      <StaffSheet
+        member={null}
+        actorRole="OWNER"
+        actorId="me"
+        open
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole('combobox', { name: /branch/i })).toHaveTextContent(
+      /marina/i,
+    );
+    await userEvent.type(screen.getByLabelText(/^email$/i), 'new@example.test');
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'a-sufficiently-long-password');
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(createStaff).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'new@example.test',
+          role: 'SUPPORT',
+          branchId: 'branch-1',
+        }),
+      ),
+    );
+  });
+
+  it('shows a retry action when branches cannot be loaded', async () => {
+    fetchBranches.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([]);
+
+    render(
+      <StaffSheet
+        member={null}
+        actorRole="OWNER"
+        actorId="me"
+        open
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    const retry = await screen.findByRole('button', { name: /retry loading branches/i });
+    await userEvent.click(retry);
+
+    await waitFor(() => expect(fetchBranches).toHaveBeenCalledTimes(2));
+  });
+
+  it('labels the branch picker in Arabic and keeps the selected branch readable', async () => {
+    render(
+      <StaffSheet
+        member={null}
+        actorRole="OWNER"
+        actorId="me"
+        open
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+      { locale: 'ar' },
+    );
+
+    expect(await screen.findByRole('combobox', { name: /الفرع/ })).toHaveTextContent(
+      /marina/i,
+    );
+  });
 });
 
 describe('StaffSheet access expiry', () => {

@@ -184,10 +184,27 @@ export const courierAuthRateLimit = rateLimit({
 /**
  * General API ceiling. Generous — this is a backstop against runaway clients
  * and scrapers, not a security control. Real protection is per-route.
+ *
+ * ─── WHY IT IS SKIPPED UNDER TEST ────────────────────────────────────
+ * 120/min counted per IP, across every `/api/v1` path. An integration suite
+ * drives the whole API from ONE loopback address, so a single file like
+ * `orders.test.ts` (105 tests in ~12s) empties the bucket partway through and
+ * every test after the 120th request gets a 429 — including, in CI, two
+ * goodwill-refund cases that sit near the end of the file and have nothing to
+ * do with rate limiting. That read as a flake for weeks; it is in fact
+ * deterministic and order-dependent.
+ *
+ * Skipped ONLY for this general backstop, and ONLY under `NODE_ENV=test`.
+ * Every per-route security limiter above (login, password reset, courier
+ * access code, self password change) keeps counting in tests — those are real
+ * brute-force controls, and the tests that assert their 429s must keep
+ * passing. Raising the number instead was rejected: any ceiling picked here is
+ * arbitrary and a larger suite would silently cross it again later.
  */
 export const apiRateLimit = rateLimit({
   windowMs: 60_000,
   limit: 120,
+  skip: () => process.env.NODE_ENV === 'test',
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: {

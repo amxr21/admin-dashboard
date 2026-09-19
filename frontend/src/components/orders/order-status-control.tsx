@@ -15,7 +15,9 @@ import {
 } from '@/components/ui/select';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import {
+  CANCELLATION_REASONS,
   changeOrderStatus,
+  type CancellationReason,
   type OrderDetail,
   type OrderStatus,
 } from '@/lib/orders-api';
@@ -54,8 +56,30 @@ export function OrderStatusControl({
   const [note, setNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * URG-010 — a cancellation records WHY, from a fixed catalogue.
+   *
+   * Only ever sent when the target is CANCELED: the server refuses a reason on
+   * any other transition, since a cancellation reason on a SHIPPED move would
+   * be a stored fact that never happened.
+   */
+  const [cancellationReason, setCancellationReason] = useState<CancellationReason | ''>('');
+  const [cancellationReasonNote, setCancellationReasonNote] = useState('');
 
-  if (nextStatuses.length === 0) {
+  const isCanceling = target === 'CANCELED';
+  const needsReasonNote = isCanceling && cancellationReason === 'OTHER';
+  // Mirrors the server's own rule rather than replacing it — the server is
+  // still the authority, this only avoids an avoidable round trip.
+  const reasonIncomplete =
+    isCanceling && (!cancellationReason || (needsReasonNote && !cancellationReasonNote.trim()));
+
+  // RETURNED is handled by the returns flow (Request return), never as a bare
+  // status flip — the server refuses it here too. Filtered out so the dropdown
+  // never offers a button that would 400; if it were the only remaining move,
+  // this surface correctly reads as terminal.
+  const selectableStatuses = nextStatuses.filter((next) => next !== 'RETURNED');
+
+  if (selectableStatuses.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
         {t('terminal', { status: tStatus(status) })}
@@ -70,9 +94,23 @@ export function OrderStatusControl({
     setError(null);
 
     try {
-      onChanged(await changeOrderStatus(orderId, target, note.trim() || undefined));
+      onChanged(
+        await changeOrderStatus(
+          orderId,
+          target,
+          note.trim() || undefined,
+          target === 'CANCELED'
+            ? {
+                cancellationReason: cancellationReason || undefined,
+                cancellationReasonNote: cancellationReasonNote.trim() || undefined,
+              }
+            : undefined,
+        ),
+      );
       setTarget('');
       setNote('');
+      setCancellationReason('');
+      setCancellationReasonNote('');
     } catch (caught) {
       setError(translateError(caught));
     } finally {
@@ -90,7 +128,7 @@ export function OrderStatusControl({
               <SelectValue placeholder={t('placeholder')} />
             </SelectTrigger>
             <SelectContent>
-              {nextStatuses.map((next) => (
+              {selectableStatuses.map((next) => (
                 <SelectItem key={next} value={next}>
                   {tStatus(next)}
                 </SelectItem>
@@ -99,10 +137,55 @@ export function OrderStatusControl({
           </Select>
         </div>
 
-        <Button disabled={!target || isSaving} onClick={() => void submit()}>
+        <Button
+          disabled={!target || isSaving || reasonIncomplete}
+          onClick={() => void submit()}
+        >
           {isSaving ? t('saving') : t('apply')}
         </Button>
       </div>
+
+      {isCanceling ? (
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <Label htmlFor="order-cancellation-reason">{t('cancellationReasonLabel')}</Label>
+            <Select
+              value={cancellationReason}
+              onValueChange={(value) => setCancellationReason(value as CancellationReason)}
+            >
+              <SelectTrigger id="order-cancellation-reason" className="w-64">
+                <SelectValue placeholder={t('cancellationReasonPlaceholder')} />
+              </SelectTrigger>
+              <SelectContent>
+                {CANCELLATION_REASONS.map((reason) => (
+                  <SelectItem key={reason} value={reason}>
+                    {t(`cancellationReasons.${reason}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* The code is what reports group by; this is what a human reads.
+              Only for OTHER — a note beside a catalogued reason would be a
+              second, unqueryable explanation competing with the code. */}
+          {needsReasonNote ? (
+            <div className="space-y-1">
+              <Label htmlFor="order-cancellation-reason-note">
+                {t('cancellationReasonNoteLabel')}
+              </Label>
+              <Textarea
+                id="order-cancellation-reason-note"
+                value={cancellationReasonNote}
+                onChange={(event) => setCancellationReasonNote(event.target.value)}
+                rows={2}
+                maxLength={500}
+                placeholder={t('cancellationReasonNotePlaceholder')}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {target ? (
         <div className="space-y-1">

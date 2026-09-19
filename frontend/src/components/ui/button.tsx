@@ -37,11 +37,14 @@ const buttonVariants = cva(
         ghost: 'hover:bg-secondary hover:text-secondary-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
       },
+      // URG-012 — one step more compact across every size. Each height stays
+      // at or above WCAG 2.2's 24px target-size minimum: icon (the smallest)
+      // is 32px, well clear of the floor.
       size: {
-        default: 'h-9 px-4 py-2',
-        sm: 'h-8 rounded-md px-3 text-xs',
-        lg: 'h-10 rounded-md px-6',
-        icon: 'size-9',
+        default: 'h-8 px-3.5 py-1.5',
+        sm: 'h-7 rounded-md px-2.5 text-xs',
+        lg: 'h-9 rounded-md px-5',
+        icon: 'size-8',
       },
     },
     defaultVariants: {

@@ -114,7 +114,10 @@ export async function fetchBrand(): Promise<ResolvedBrand> {
 export interface BusinessSummary {
   id: string;
   name: string;
+  /** A catalogue code (URG-021), or legacy free text on rows predating it. */
   kind: string | null;
+  /** Required free text when `kind` is `OTHER`; null otherwise. */
+  kindNote: string | null;
   legalName: string | null;
   taxId: string | null;
   email: string | null;

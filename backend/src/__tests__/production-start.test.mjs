@@ -38,15 +38,17 @@ describe('production startup migration gate', () => {
       order.push('schema');
       return 0;
     });
+    const verifyData = vi.fn();
 
     await expect(
-      runProductionStart({ migrate, verify, verifySchema, startServer }),
+      runProductionStart({ migrate, verify, verifySchema, verifyData, startServer }),
     ).resolves.toBe(0);
     expect(order).toEqual(['migrate', 'status', 'schema', 'serve']);
+    expect(verifyData).not.toHaveBeenCalled();
   });
 
   // A database can hold the correct tables while `_prisma_migrations` is
-  // missing or incomplete — a state this project has hit repeatedly. Both
+  // missing or incomplete - a state this project has hit repeatedly. Both
   // `migrate deploy` and `migrate status` fail there, so gating on either
   // would turn a bookkeeping gap into an outage. The live shape check decides.
   it('still serves traffic when migration deployment fails but the live schema matches', async () => {
@@ -58,12 +60,16 @@ describe('production startup migration gate', () => {
         migrate: async () => 17,
         verify: async () => 0,
         verifySchema: async () => 0,
+        verifyData: async () => 0,
         startServer,
         log,
       }),
     ).resolves.toBe(0);
     expect(startServer).toHaveBeenCalledOnce();
     expect(log).toHaveBeenCalledWith(expect.stringContaining('migrate deploy'));
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('MIGRATION_DATA_REVIEW_REQUIRED'),
+    );
   });
 
   it('still serves traffic when migration status is unhealthy but the live schema matches', async () => {
@@ -75,28 +81,86 @@ describe('production startup migration gate', () => {
         migrate: async () => 0,
         verify: async () => 19,
         verifySchema: async () => 0,
+        verifyData: async () => 0,
         startServer,
         log,
       }),
     ).resolves.toBe(0);
     expect(startServer).toHaveBeenCalledOnce();
     expect(log).toHaveBeenCalledWith(expect.stringContaining('migrate status'));
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('MIGRATION_DATA_REVIEW_REQUIRED'),
+    );
   });
 
   it('checks the live schema even after both migration commands fail', async () => {
     const startServer = vi.fn();
     const verifySchema = vi.fn(async () => 2);
+    const verifyData = vi.fn();
 
     await expect(
       runProductionStart({
         migrate: async () => 17,
         verify: async () => 19,
         verifySchema,
+        verifyData,
         startServer,
         log: vi.fn(),
       }),
     ).resolves.toBe(2);
     expect(verifySchema).toHaveBeenCalledOnce();
+    expect(verifyData).not.toHaveBeenCalled();
+    expect(startServer).not.toHaveBeenCalled();
+  });
+
+  it('refuses a matching schema when the known data-only baseline is incomplete', async () => {
+    const order = [];
+    const startServer = vi.fn();
+    const log = vi.fn();
+
+    await expect(
+      runProductionStart({
+        migrate: async () => { order.push('deploy'); return 17; },
+        verify: async () => { order.push('status'); return 19; },
+        verifySchema: async () => { order.push('schema'); return 0; },
+        verifyData: async () => { order.push('data'); return 2; },
+        startServer,
+        log,
+      }),
+    ).resolves.toBe(2);
+    expect(order).toEqual(['deploy', 'status', 'schema', 'data']);
+    expect(startServer).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('data check exited 2'));
+  });
+
+  it('does not treat an unavailable data check as proof of healthy data', async () => {
+    const startServer = vi.fn();
+    await expect(
+      runProductionStart({
+        migrate: async () => 17,
+        verify: async () => 19,
+        verifySchema: async () => 0,
+        verifyData: async () => 1,
+        startServer,
+        log: vi.fn(),
+      }),
+    ).resolves.toBe(1);
+    expect(startServer).not.toHaveBeenCalled();
+  });
+
+  it('does not hide a crashed data-check runner', async () => {
+    const startServer = vi.fn();
+    const failure = new Error('data checker unavailable');
+    await expect(
+      runProductionStart({
+        migrate: async () => 17,
+        verify: async () => 19,
+        verifySchema: async () => 0,
+        verifyData: async () => { throw failure; },
+        startServer,
+        log: vi.fn(),
+      }),
+    ).rejects.toBe(failure);
     expect(startServer).not.toHaveBeenCalled();
   });
 
@@ -118,7 +182,7 @@ describe('production startup migration gate', () => {
   });
 
   // A crashed runner is not evidence the schema is healthy, so a thrown error
-  // still aborts startup — distinct from a non-zero exit code, which is not.
+  // still aborts startup - distinct from a non-zero exit code, which is not.
   it('does not hide a post-deploy status-check failure', async () => {
     const failure = new Error('migration status unavailable');
     const startServer = vi.fn();

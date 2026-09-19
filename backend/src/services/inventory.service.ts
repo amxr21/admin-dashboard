@@ -527,6 +527,9 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
       title: result.product.name,
       body: `${String(result.product.stock)} left — at or below the threshold of ${String(result.effectiveThreshold)}.`,
       link: '/admin/inventory',
+      // Low stock is always AT a location — the same `branchId` the movement
+      // was recorded against, so the alert reaches whoever is standing there.
+      branchId,
     });
   }
 

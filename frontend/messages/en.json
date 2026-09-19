@@ -1,6 +1,179 @@
 {
+  "setup": {
+    "title": "Business setup",
+    "scope": "Applies to all businesses and branches in this installation.",
+    "intro": "Choose recommended features for your business, then adjust them to suit your work. Setup is optional.",
+    "rerun": "You can run setup again from Settings at any time.",
+    "preserve": "Hidden features keep all their existing data. Enabling them again restores access through navigation.",
+    "ownerOnly": "Only an owner or developer can run business setup.",
+    "loading": "Loading business setup…",
+    "empty": "No setup templates are available.",
+    "retry": "Retry",
+    "done": "Setup preferences saved",
+    "settings": "Back to Settings",
+    "stepsLabel": "Setup steps",
+    "stepCounter": "Step {current} of {total}",
+    "lastConfigured": "Last configured {date}.",
+    "lastConfiguredType": "Current business type: {type}. Review or adjust anything below.",
+    "skipSafe": "You can skip this now and finish later — nothing changes until you apply.",
+    "presetEnables": "Turns on:",
+    "presetProducts": "New products start with:",
+    "foreignTenders": "Accept foreign currency at the till",
+    "foreignTendersOff": "off",
+    "foreignTendersActive": "{count} on",
+    "foreignTendersHelp": "A rate is units of that currency per 1 store currency. Leave a currency at 0 to not accept it. Most shops leave these off.",
+    "revokeConsequence": "{role} staff lose access to {areas} the next time they sign in.",
+    "steps": {
+      "entry": "Welcome",
+      "business": "Business type",
+      "features": "Features",
+      "names": "Names",
+      "products": "Catalogue",
+      "people": "People and permissions",
+      "operations": "Defaults",
+      "review": "Review"
+    },
+    "businessType": "Business type",
+    "loadTemplate": "Load recommendations",
+    "recommendations": "Templates preselect features and new-product preferences. You can change every recommendation. Existing permissions are kept unless you edit them.",
+    "requiredBy": "Required by: {features}",
+    "alwaysEnabled": "Always available so you can navigate and change setup.",
+    "displayOnly": "Names change display labels only. Leave a name empty to use the built-in translation.",
+    "catalogueHelp": "These preferences preselect options when creating a product. Existing products are unchanged.",
+    "catalogueExtensions": "Stock locations and supplier cost remain available in product forms. Serial numbers and expiry fields are outside this setup.",
+    "operationsHelp": "Currency changes formatting; it does not convert existing prices. Tax is a percentage. Tender rates are units of the tender currency per 1 store currency; 0 disables that tender. Return window 0 means no time limit.",
+    "branchHelp": "Create or edit branches and warehouses from Settings after applying setup. Existing branch-level currency overrides still apply.",
+    "permissionsHelp": "Only checked permission edits are applied. Hiding a feature does not revoke access permissions. Other areas keep their current grants; role assignments and hierarchy stay unchanged.",
+    "lockedRole": "Owners and developers always retain full access.",
+    "permissionsUnchanged": "No role permission changes.",
+    "enabled": "Enabled",
+    "hidden": "Off",
+    "enabledFeatures": "Enabled sections",
+    "disabledFeatures": "Hidden sections",
+    "none": "None",
+    "grant": "Grant",
+    "revoke": "Revoke",
+    "back": "Back",
+    "skip": "Skip for now",
+    "start": "Start setup",
+    "next": "Next",
+    "reviewAction": "Review changes",
+    "apply": "Apply setup",
+    "cancel": "Return to Settings",
+    "skipped": "Setup skipped. Your feature choices are unchanged.",
+    "saved": "Business setup applied.",
+    "disabledTitle": "This feature is not enabled for this business setup",
+    "disabledOwner": "You can enable this feature in Business setup. Existing data is retained.",
+    "disabledStaff": "Contact an owner to enable this feature. Existing data is retained.",
+    "recommended": {
+      "menu": "Menu items",
+      "tickets": "Tickets",
+      "team": "Team"
+    },
+    "warnings": {
+      "existingData": "{feature} has existing data. Hiding it keeps that data; enable the feature again to use it.",
+      "dependencyEnabled": "{feature} stays enabled because another selected feature requires it."
+    },
+    "roles": {
+      "DEVELOPER": "Developer",
+      "OWNER": "Owner",
+      "MANAGER": "Manager",
+      "FULFILLMENT": "Fulfillment",
+      "CASHIER": "Cashier",
+      "SUPPORT": "Support",
+      "DEMO": "Demo (read-only)"
+    },
+    "areas": {
+      "orders": "Orders",
+      "products": "Products",
+      "inventory": "Inventory",
+      "customers": "Customers",
+      "categories": "Categories",
+      "discounts": "Discounts",
+      "reviews": "Reviews",
+      "delivery": "Delivery",
+      "returns": "Returns",
+      "reports": "Reports",
+      "settings": "Settings",
+      "staff": "Staff",
+      "shifts": "Shift approvals"
+    },
+    "defaults": {
+      "products_defaultHasVariants": "New products have variants",
+      "products_defaultHasColors": "New products have colours",
+      "products_defaultHasBarcode": "New products have barcodes",
+      "store_currency": "Store currency",
+      "store_taxRate": "Tax / VAT (%)",
+      "returns_windowDays": "Return window (days; 0 = no limit)",
+      "inventory_lowStockThreshold": "Low-stock threshold",
+      "pos_maxCashierDiscountPercent": "Maximum cashier discount (%)",
+      "pos_tenderRate_AED": "AED per 1 store currency (0 = off)",
+      "pos_tenderRate_SAR": "SAR per 1 store currency (0 = off)",
+      "pos_tenderRate_USD": "USD per 1 store currency (0 = off)",
+      "pos_tenderRate_EUR": "EUR per 1 store currency (0 = off)",
+      "pos_tenderRate_GBP": "GBP per 1 store currency (0 = off)"
+    },
+    "features": {
+      "dashboard": {
+        "title": "Dashboard",
+        "description": "Business overview and summaries."
+      },
+      "pos": {
+        "title": "Point of sale",
+        "description": "Till, checkout, and shift clock. Requires orders and inventory."
+      },
+      "orders": {
+        "title": "Orders",
+        "description": "Sales orders and their history."
+      },
+      "inventory": {
+        "title": "Inventory",
+        "description": "Stock movements, receiving, and low-stock views."
+      },
+      "suppliers": {
+        "title": "Suppliers",
+        "description": "Supplier directory and restock outreach."
+      },
+      "delivery": {
+        "title": "Delivery",
+        "description": "Couriers and delivery assignments."
+      },
+      "returns": {
+        "title": "Returns",
+        "description": "Return requests and refunds."
+      },
+      "reports": {
+        "title": "Reports",
+        "description": "Sales and operational reporting."
+      },
+      "scheduledReports": {
+        "title": "Scheduled reports",
+        "description": "Scheduled report configuration. Existing schedules keep running."
+      },
+      "customerCases": {
+        "title": "Customer cases",
+        "description": "Customer support cases and follow-up."
+      },
+      "staff": {
+        "title": "Staff",
+        "description": "Staff, permissions, and shift management screens."
+      },
+      "branches": {
+        "title": "Branches",
+        "description": "Business, branch, and organization settings screens."
+      },
+      "settings": {
+        "title": "Settings",
+        "description": "Preferences and the entry to rerun setup."
+      }
+    }
+  },
   "common": {
     "appName": "admin-dashboard",
+    "password": {
+      "show": "Show password",
+      "hide": "Hide password"
+    },
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
@@ -20,7 +193,27 @@
     "savedNotice": "Saved.",
     "saving": "Saving…",
     "unsavedChangesPlain": "Unsaved changes",
-    "unsavedChanges": "{count, plural, one {# unsaved change} other {# unsaved changes}}"
+    "unsavedChanges": "{count, plural, one {# unsaved change} other {# unsaved changes}}",
+    "placeholders": {
+      "email": "name@example.com",
+      "phone": "+1 555 123 4567",
+      "url": "https://example.com",
+      "personName": "e.g. Sarah Haddad",
+      "branchName": "e.g. Downtown",
+      "branchCode": "e.g. DT-01",
+      "addressLine": "e.g. 12 Al Wasl Road, Shop 3",
+      "city": "e.g. Dubai",
+      "legalName": "e.g. Haddad Trading LLC",
+      "taxId": "e.g. 100123456700003"
+    },
+    "combobox": {
+      "search": "Search…",
+      "empty": "No matches",
+      "none": "Not set"
+    },
+    "phoneInvalid": "That does not look like a valid phone number for the selected country.",
+    "phoneInvalidNoCountry": "That does not look like a valid international phone number.",
+    "requiredField": "required"
   },
   "language": {
     "label": "Language",
@@ -55,7 +248,9 @@
         "BRANCH_REQUIRED_MULTIPLE_BUSINESSES": "Choose the branch where you are working, then start the shift again.",
         "BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS": "Your account is assigned to more than one branch. Choose today's branch, or ask a manager which one to use.",
         "NO_ACTIVE_BRANCH": "No active branch is available for this shift. Ask an owner to configure or assign one.",
-        "BRANCH_NOT_FOUND": "That branch is no longer available. Choose another branch and try again."
+        "BRANCH_NOT_FOUND": "That branch is no longer available. Choose another branch and try again.",
+        "SESSION_LIMIT_REACHED": "This account is already signed in on {limit} devices. Sign out of one of them, then try again.",
+        "BRANCH_NOT_ASSIGNED": "You are not assigned to that branch. Choose one of your own, or ask a manager to assign you."
       }
     },
     "readOnlyDemo": {
@@ -113,7 +308,8 @@
       "backupHint": "Lost your device? A backup code works here too.",
       "verify": "Verify",
       "startOver": "Use a different account"
-    }
+    },
+    "sessionLimitReached": "This account is already signed in on the maximum number of devices. Sign out on one of them first — you can do that from Settings on any device that is still signed in."
   },
   "courier": {
     "login": {
@@ -153,6 +349,7 @@
     }
   },
   "nav": {
+    "breadcrumb": "Breadcrumb",
     "configuration": "Configuration",
     "dashboard": "Dashboard",
     "orders": "Orders",
@@ -316,7 +513,16 @@
           "title": "Brand",
           "hint": "The logo shown on this business's invoices and letterhead."
         }
-      }
+      },
+      "kindNoteLabel": "Describe the business type",
+      "kindNotePlaceholder": "e.g. Cloud kitchen",
+      "kindPlaceholder": "Choose a type",
+      "kindLegacyReview": "Stored as \"{value}\" before types were standardized. Choose the closest match to update it.",
+      "chooseCountry": "Choose a country",
+      "chooseCurrency": "Choose a currency",
+      "chooseTimezone": "Choose a time zone",
+      "taxIdHintAE": "A UAE TRN is 15 digits.",
+      "taxIdHintSA": "A Saudi VAT number is 15 digits."
     },
     "roster": {
       "title": "Who works at {name}",
@@ -462,6 +668,18 @@
     "costCoverageAll": "All order lines costed",
     "noCostRecorded": "No cost recorded in this period",
     "marginLevelNote": "A level, not a trend",
+    "diagrams": {
+      "margin": {
+        "title": "What the margin is measured against",
+        "allRevenue": "All revenue",
+        "costedRevenue": "Revenue from costed lines",
+        "cogs": "Cost of those same lines",
+        "profit": "Gross profit",
+        "marginIs": "Margin = gross profit ÷ costed revenue",
+        "why": "The uncosted lines are left out of both sides. Dividing by all revenue instead would count them as pure profit and understate the margin.",
+        "coverage": "{costed} of {total} order lines have a cost recorded"
+      }
+    },
     "valueUnavailable": "Not available",
     "totalRevenue": "Total revenue",
     "totalOrders": "Orders",
@@ -504,7 +722,8 @@
         "returnRate": "Returns as a share of orders PLACED in this period — both halves counted the same way, so it agrees with the RETURNED count in Order outcomes. A cohort rate: of what was ordered here, how much came back.",
         "refundValue": "Refunds that flowed out DURING this period, whenever the order was placed. A deliberately different window from Return rate above — 'what did we pay out this month' and 'how much of this month's orders came back' are different questions, and one figure cannot answer both.",
         "unitsReturned": "Items received back during this period, on the same window as Refund value. Counts units, not orders — one return of three items counts as three."
-      }
+      },
+      "mostReturned": "Most returned, by units"
     },
     "orderValue": {
       "title": "Order value distribution"
@@ -513,6 +732,22 @@
       "title": "Recent activity",
       "viewAll": "View all",
       "system": "System"
+    },
+    "onShift": {
+      "title": "On shift now",
+      "viewAll": "View all",
+      "empty": "Nobody is clocked in right now."
+    },
+    "latestOrders": {
+      "title": "Latest orders",
+      "viewAll": "View all",
+      "empty": "No orders yet."
+    },
+    "latestNotifications": {
+      "title": "Latest notifications",
+      "viewAll": "View all",
+      "empty": "Nothing to report.",
+      "untitled": "Notification"
     },
     "quickActions": {
       "title": "Quick actions",
@@ -531,7 +766,112 @@
     },
     "noReportsTitle": "Your work is elsewhere",
     "noReportsBody": "This page shows revenue and business performance, which your role doesn't cover. Everything you need is one click away.",
-    "noReportsAction": "Go to my work"
+    "noReportsAction": "Go to my work",
+    "floor": {
+      "title": "On the floor now",
+      "summary": "{tills, plural, one {# till} other {# tills}} across {branches, plural, one {# branch} other {# branches}}",
+      "takenToday": "{amount} taken",
+      "liveNote": "Live — the date range does not apply here",
+      "allShifts": "All shifts",
+      "empty": "No tills are open right now.",
+      "elapsed": "{hours}h {minutes}m in",
+      "closedAt": "closed {time}",
+      "salesCount": "{count, plural, one {# sale} other {# sales}}",
+      "averageSale": "avg {amount}",
+      "shareOfToday": "{percent}% of today",
+      "drawer": "drawer {amount}",
+      "counted": "counted {amount}",
+      "noTill": "no till",
+      "shiftNote": "Shift note —",
+      "flags": {
+        "clean": "Balanced",
+        "variance": "Off by {amount}",
+        "voids": "{count, plural, one {# void} other {# voids}}",
+        "noSale": "{count, plural, one {# no-sale} other {# no-sales}}"
+      },
+      "figures": {
+        "onShift": "On the floor",
+        "acrossBranches": "{count, plural, one {# branch} other {# branches}}",
+        "taken": "Taken today",
+        "salesCount": "{count, plural, one {# sale} other {# sales}}",
+        "inDrawers": "In drawers",
+        "expected": "Expected, open tills",
+        "noSale": "No-sale opens",
+        "noSaleSub": "Drawer opened with no sale",
+        "voids": "Voids",
+        "voidsSub": "Sales reversed today"
+      },
+      "table": {
+        "who": "Cashier",
+        "branch": "Branch",
+        "in": "On for",
+        "sales": "Sales",
+        "taken": "Taken",
+        "average": "Avg. sale",
+        "drawer": "Drawer",
+        "flags": "Flags"
+      },
+      "triage": {
+        "eyebrow": "Right now",
+        "title": "{count, plural, one {# thing needs you} other {# things need you}}",
+        "allClearTitle": "Nothing needs you right now.",
+        "variance": "{name}'s drawer is off by {amount}",
+        "varianceDetail": "{branch} · awaiting your approval",
+        "voids": "{name} reversed a sale",
+        "voidsDetail": "{branch} · review the void",
+        "noSale": "{name} opened the drawer with no sale",
+        "noSaleDetail": "{branch} · unexplained drawer opens",
+        "quiet": "{tills, plural, one {# till} other {# tills}} open, {taken} taken today."
+      }
+    },
+    "templates": {
+      "label": "Live section layout",
+      "combo": {
+        "name": "Overview + tills",
+        "description": "Totals across the top, then a card for every cashier."
+      },
+      "tills": {
+        "name": "Till cards only",
+        "description": "Straight to the cashiers, no summary row."
+      },
+      "figures": {
+        "name": "Figures only",
+        "description": "Five numbers, nothing else. The most compact."
+      },
+      "roster": {
+        "name": "Roster table",
+        "description": "Dense and comparable. Scales past ten tills."
+      },
+      "triage": {
+        "name": "Triage first",
+        "description": "Only what needs you. Quiet days look almost empty."
+      }
+    },
+    "attention": {
+      "label": "Needs attention",
+      "allClear": "Nothing is waiting on you.",
+      "queues": {
+        "outOfStock": "Sold, out of stock",
+        "unassigned": "No courier assigned",
+        "returns": "Returns to approve",
+        "reviews": "Reviews to moderate"
+      }
+    },
+    "liveBadge": "live",
+    "lowStock": {
+      "title": "Running low",
+      "outOfStock": "Out",
+      "noSku": "No SKU",
+      "neverReceived": "never received",
+      "lastReceived": "{days, plural, one {last in # day ago} other {last in # days ago}}",
+      "atOrBelow": "{count, plural, one {# product} other {# products}} at or below {threshold}",
+      "allStocked": "Everything is above the low-stock threshold.",
+      "reorder": "Reorder"
+    },
+    "topProducts": {
+      "showing": "{shown, plural, one {top # product} other {top # products}} by revenue",
+      "allProducts": "All products"
+    }
   },
   "products": {
     "title": "Products",
@@ -581,10 +921,10 @@
       "description": "Your device looks offline, or the server is briefly unavailable. Check your connection and try again."
     },
     "forbidden": {
-  "title": "You don't have access to this",
-  "description": "Your account role doesn’t include this area. If you think it should, ask an owner to update your permissions.",
-  "descriptionWithArea": "Your account role doesn’t include {area}. If you think it should, ask an owner to update your permissions."
-}
+      "title": "You don't have access to this",
+      "description": "Your account role doesn’t include this area. If you think it should, ask an owner to update your permissions.",
+      "descriptionWithArea": "Your account role doesn’t include {area}. If you think it should, ask an owner to update your permissions."
+    }
   },
   "resource": {
     "yes": "Yes",
@@ -652,6 +992,78 @@
       "confirmImport": "{count, plural, one {Import # row} other {Import # rows}}",
       "importing": "Importing…",
       "close": "Close"
+    },
+    "barcodeHintEAN13": "An EAN-13 is 13 digits, and the last digit must match its check digit.",
+    "barcodeHintEAN8": "An EAN-8 is 8 digits, and the last digit must match its check digit.",
+    "barcodeHintUPCA": "A UPC-A is 12 digits, and the last digit must match its check digit.",
+    "barcodeHintUPCE": "A UPC-E is 8 digits.",
+    "barcodeHintITF14": "An ITF-14 is 14 digits, and the last digit must match its check digit.",
+    "barcodeHintCODE128": "A CODE128 label can hold up to 48 characters.",
+    "fieldLabels": {
+      "id": "ID",
+      "imageUrl": "Image",
+      "name": "Name",
+      "sku": "SKU",
+      "description": "Description",
+      "price": "Price",
+      "cost": "Cost",
+      "stock": "Stock",
+      "lowStockThreshold": "Low stock alert at",
+      "storageLocation": "Stored at",
+      "categoryId": "Category",
+      "tags": "Tags",
+      "hasVariants": "This product has variants",
+      "hasColors": "This product has colours",
+      "status": "Status",
+      "barcode": "Barcode (EAN/UPC)",
+      "weightKg": "Weight (kg)",
+      "lengthCm": "Length (cm)",
+      "widthCm": "Width (cm)",
+      "heightCm": "Height (cm)",
+      "hsCode": "HS code",
+      "countryOfOrigin": "Country of origin",
+      "slug": "Slug",
+      "metaTitle": "Meta title",
+      "metaDescription": "Meta description",
+      "createdAt": "Created",
+      "type": "Type",
+      "title": "Title",
+      "body": "Body",
+      "link": "Link",
+      "isRead": "Read",
+      "parentId": "Parent category",
+      "isActive": "Active",
+      "email": "Email",
+      "phone": "Phone",
+      "city": "City",
+      "country": "Country",
+      "internalNotes": "Internal notes",
+      "code": "Code",
+      "value": "Value",
+      "maxUses": "Max uses",
+      "usedCount": "Used",
+      "expiresAt": "Expires",
+      "scope": "Scope",
+      "categories": "Categories (used only when Scope = Category)",
+      "products": "Products (used only when Scope = Product)",
+      "customers": "Customers (used only when Scope = Customer)",
+      "rating": "Rating",
+      "productId": "Product"
+    },
+    "fieldLabelOverrides": {
+      "reviews": {
+        "body": "Comment"
+      }
+    },
+    "fieldGroups": {
+      "pricing": "Cost & margin",
+      "identifiers": "Codes & identifiers",
+      "inventory": "Stock settings",
+      "physical": "Dimensions & weight",
+      "shipping": "Shipping & customs",
+      "seo": "Search & links",
+      "organisation": "Tags & organisation",
+      "options": "Variants & options"
     }
   },
   "placeholder": {
@@ -718,6 +1130,8 @@
     "cancel": "Cancel",
     "choose": "Choose…",
     "manageVariants": "Manage variants",
+    "createCategory": "Create a category in a new tab",
+    "refreshCategories": "Refresh categories",
     "manageGallery": "Manage gallery",
     "manageLocalizedContent": "Localized content",
     "viewHistory": "Version history",
@@ -738,7 +1152,11 @@
       "confirm": "Discard",
       "cancel": "Keep editing"
     },
-    "none": "— None —"
+    "none": "— None —",
+    "enableGroup": "Use {group}",
+    "groupDisabled": "Not used for this record. Switch it on to fill these in.",
+    "barcodeUnclassified": "Saved before barcode types were recorded. Choose the type that matches this code so it can be checked.",
+    "variantOptOutWarning": "Any variants already saved keep their stock and sales history, but this hides the builder that reaches them. Switch this back on to manage them again."
   },
   "datePicker": {
     "choose": "Pick a date",
@@ -756,7 +1174,10 @@
       "body": "Money handed back with no return — nothing needs to come back for this. Capped at what remains paid on this order.",
       "amountLabel": "Amount",
       "reasonLabel": "Reason",
-      "reasonPlaceholder": "e.g. arrived late, price-matched a competitor",
+      "refundReasonLabel": "Why is this refund being given?",
+      "refundReasonPlaceholder": "Choose a reason",
+      "refundReasonNoteLabel": "Describe the reason",
+      "refundReasonNotePlaceholder": "e.g. price-matched a competitor",
       "cancel": "Cancel",
       "confirm": "Refund",
       "saving": "Refunding…",
@@ -801,6 +1222,8 @@
       "quantity": "Qty",
       "price": "Unit price",
       "lineTotal": "Line total",
+      "subtotal": "Subtotal",
+      "tax": "Tax",
       "total": "Order total",
       "productRemoved": "Product no longer available"
     },
@@ -868,7 +1291,21 @@
       "saving": "Saving…",
       "note": "Note (optional)",
       "notePlaceholder": "Why is this changing?",
-      "terminal": "This order is {status} and cannot move further."
+      "terminal": "This order is {status} and cannot move further.",
+      "cancellationReasonLabel": "Cancellation reason",
+      "cancellationReasonPlaceholder": "Choose a reason",
+      "cancellationReasonNoteLabel": "Describe the reason",
+      "cancellationReasonNotePlaceholder": "What happened?",
+      "cancellationReasonRequired": "Choose why this order is being canceled",
+      "cancellationReasonNoteRequired": "Describe the cancellation reason",
+      "cancellationReasons": {
+        "OUT_OF_STOCK": "Out of stock",
+        "CUSTOMER_REQUEST": "Customer asked to cancel",
+        "DUPLICATE_ORDER": "Duplicate order",
+        "PAYMENT_FAILED": "Payment failed",
+        "UNABLE_TO_FULFILL": "Cannot fulfil",
+        "OTHER": "Other"
+      }
     },
     "bulkStatus": {
       "selected": "{count, plural, one {# selected} other {# selected}}",
@@ -914,7 +1351,8 @@
       "category": "Category",
       "stock": "In stock",
       "actions": "Actions",
-      "cost": "Unit cost"
+      "cost": "Unit cost",
+      "location": "Location"
     },
     "search": {
       "label": "Search",
@@ -974,6 +1412,11 @@
     },
     "log": {
       "title": "Stock history",
+      "supplier": "From {name}",
+      "reference": "Ref {reference}",
+      "unitCost": "{amount} per unit",
+      "delivered": "Delivered {date}",
+      "purchased": "Ordered {date}",
       "current": "now {stock} in stock",
       "empty": "No movements recorded yet.",
       "close": "Close",
@@ -1001,28 +1444,63 @@
     "total": "{count, plural, one {# supplier} other {# suppliers}}",
     "emptyTitle": "No suppliers match this view",
     "emptyBody": "Add a supplier or remove the current filters.",
-    "search": { "label": "Search suppliers", "placeholder": "Name, contact, email, or phone" },
-    "columns": { "name": "Supplier", "contact": "Contact", "products": "Products", "receipts": "Receipts", "lastReceived": "Last received", "status": "Status", "actions": "Actions" },
-    "actions": { "create": "New supplier", "edit": "Edit", "deactivate": "Deactivate", "reactivate": "Reactivate" },
-    "notice": { "saved": "Supplier saved.", "deactivated": "Supplier deactivated.", "reactivated": "Supplier reactivated." },
+    "search": {
+      "label": "Search suppliers",
+      "placeholder": "Name, contact, email, or phone"
+    },
+    "columns": {
+      "name": "Supplier",
+      "contact": "Contact",
+      "products": "Products",
+      "receipts": "Receipts",
+      "lastReceived": "Last received",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "actions": {
+      "create": "New supplier",
+      "edit": "Edit",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate"
+    },
+    "notice": {
+      "saved": "Supplier saved.",
+      "deactivated": "Supplier deactivated.",
+      "reactivated": "Supplier reactivated."
+    },
     "form": {
-      "createTitle": "New supplier", "editTitle": "Edit supplier",
+      "createTitle": "New supplier",
+      "editTitle": "Edit supplier",
       "description": "Keep only the contact details needed to receive and reorder stock.",
-      "name": "Supplier name", "email": "Email", "phone": "Phone", "contactName": "Contact person", "note": "Note",
-      "nameRequired": "Supplier name is required.", "saveFailed": "Could not save supplier",
-      "cancel": "Cancel", "save": "Save supplier", "saving": "Saving…"
+      "name": "Supplier name",
+      "email": "Email",
+      "phone": "Phone",
+      "contactName": "Contact person",
+      "note": "Note",
+      "nameRequired": "Supplier name is required.",
+      "saveFailed": "Could not save supplier",
+      "cancel": "Cancel",
+      "save": "Save supplier",
+      "saving": "Saving…"
     },
     "outreach": {
       "title": "Email supplier — {product}",
       "description": "Choose a supplier from this product's receiving history, then review the message before sending.",
-      "supplier": "Supplier", "subject": "Subject", "message": "Message",
+      "supplier": "Supplier",
+      "subject": "Subject",
+      "message": "Message",
       "defaultSubject": "Restock request: {product}",
       "defaultMessage": "Hello,\n\nWe currently have {stock} units of {product} in stock. Please confirm availability and expected delivery timing for a restock.\n\nThank you.",
       "editableHint": "This message is a starting point. Review quantities and details before sending.",
-      "loading": "Loading suppliers", "sendFailed": "Email was not sent",
-      "noHistoryTitle": "No supplier history for this product", "noHistoryBody": "Receive this product from a supplier first so the relationship is recorded.",
-      "noEmailTitle": "No supplier can be emailed", "noEmailBody": "Add an email address to an active supplier in the directory, then try again.",
-      "cancel": "Cancel", "send": "Send email", "sending": "Sending…"
+      "loading": "Loading suppliers",
+      "sendFailed": "Email was not sent",
+      "noHistoryTitle": "No supplier history for this product",
+      "noHistoryBody": "Receive this product from a supplier first so the relationship is recorded.",
+      "noEmailTitle": "No supplier can be emailed",
+      "noEmailBody": "Add an email address to an active supplier in the directory, then try again.",
+      "cancel": "Cancel",
+      "send": "Send email",
+      "sending": "Sending…"
     }
   },
   "stockReason": {
@@ -1038,6 +1516,7 @@
     "subtitle": "Own price, stock and SKU per variant. Inventory only — not yet part of any checkout.",
     "empty": "No variants yet.",
     "name": "Name",
+    "colourHint": "Common colour names are suggested. Type any other colour if none fit.",
     "sku": "SKU",
     "price": "Price",
     "stock": "{count, plural, one {# in stock} other {# in stock}}",
@@ -1086,6 +1565,10 @@
     "subtitle": "Arabic catalogue copy. English remains the default content and fills any field left blank here.",
     "fallbackHelp": "Blank fields automatically use the English value. Clearing every field removes this translation without affecting the product.",
     "loading": "Loading localized content",
+    "empty": {
+      "title": "Nothing to translate yet",
+      "description": "Add English content to this product first — Arabic copy is written against it."
+    },
     "retry": "Try again",
     "save": "Save Arabic content",
     "saving": "Saving…",
@@ -1225,6 +1708,7 @@
       "description": "Assignment and delivery status changes, oldest first.",
       "loading": "Loading delivery timeline",
       "loadFailed": "Could not load the delivery timeline",
+      "empty": "Nothing recorded for this delivery yet.",
       "byActor": "By {actor}",
       "actions": {
         "assigned": "Courier assigned",
@@ -1366,6 +1850,17 @@
       "title": "Store settings",
       "description": "These apply to everyone. Save to apply them."
     },
+    "developerVisibility": {
+      "title": "Developer business area access",
+      "description": "Choose which business areas the Developer account can open in the dashboard and API.",
+      "infrastructureNote": "This controls app access only. Anyone with deployment, server, or database credentials can still access the underlying data.",
+      "accessNote": "Hidden areas are removed from Developer navigation and their business endpoints are restricted. Related information may still appear in allowed areas. Diagnostics and deployment support remain available.",
+      "legend": "Business areas hidden from Developer",
+      "hideArea": "Hide from Developer",
+      "save": "Save visibility",
+      "saving": "Saving…",
+      "saved": "Visibility saved."
+    },
     "groups": {
       "brand": {
         "title": "Brand",
@@ -1377,11 +1872,14 @@
       },
       "notifications": {
         "title": "Notifications",
-        "description": "Which events alert the team."
+        "description": "Which events alert the team.",
+        "sharedInbox": "Alerts appear in one shared staff inbox. Reading or dismissing an alert changes it for everyone with access.",
+        "refresh": "The bell checks for new alerts every 30 seconds and when you return to this tab.",
+        "emailDelivery": "Email alerts also go to the store support address when email is enabled, a sender address is set, and server SMTP is configured."
       },
       "email": {
         "title": "Email",
-        "description": "Send alerts by email in addition to the in-app notification."
+        "description": "How alerts are sent by email: whether to send at all, the address they come from, and where replies go. SMTP credentials are set on the server, not here."
       },
       "operations": {
         "title": "Operations",
@@ -1449,11 +1947,12 @@
         "description": "This device will need to sign in again. Every other device stays signed in.",
         "cancel": "Cancel",
         "action": "Sign out"
-      }
+      },
+      "limitNote": "Up to {limit} devices can be signed in at once. Sign one out here to make room for another."
     },
     "apiKeys": {
       "title": "API keys",
-      "description": "Keys for scripts and integrations. A key can do exactly what your account can do — nothing more.",
+      "description": "Keys for scripts and integrations. A key can never do more than your account — and you can limit it to specific areas, so it is safe to hand to someone else.",
       "create": "Create key",
       "creating": "Creating…",
       "retry": "Retry",
@@ -1464,9 +1963,17 @@
       "revoked": "That key was revoked.",
       "alreadyGone": "That key was already revoked.",
       "createTitle": "Create an API key",
-      "createDescription": "This key will be able to do anything your own account can do. Give it a name that says what it’s for.",
+      "createDescription": "The key is generated automatically. Record why it is needed and who will hold it, and limit it to the areas it actually needs.",
+      "scopesLabel": "Areas this key may reach",
+      "scopesHint": "Leave all unchecked to let the key reach everything your account can. Choosing areas only ever removes access — a key can never do more than you.",
+      "scopesAll": "Everything your account can reach",
+      "scopesSummary": "{count, plural, =1 {1 area} other {# areas}}",
       "nameLabel": "Name",
       "namePlaceholder": "e.g. Inventory sync script",
+      "purposeLabel": "Reason for this key",
+      "purposePlaceholder": "e.g. Sync stock with the warehouse",
+      "recipientLabel": "Who will hold or receive it?",
+      "recipientPlaceholder": "e.g. Warehouse integration team",
       "cancel": "Cancel",
       "revealTitle": "Your new API key",
       "shownOnce": "Shown once. Save it somewhere safe — it cannot be viewed again, only revoked and replaced.",
@@ -1481,14 +1988,13 @@
         "action": "Revoke"
       }
     },
-    "localisation": {
-      "title": "Localisation",
-      "description": "Whether the English and Arabic interface text are fully in sync.",
-      "inSync": "All {count} keys are translated in both languages.",
-      "outOfSync": "{count, plural, one {# key is} other {# keys are}} out of sync between languages.",
-      "totalKeys": "{count} total interface text keys.",
-      "missingFromAr": "{count, plural, one {# key} other {# keys}} missing from Arabic",
-      "missingFromEn": "{count, plural, one {# key} other {# keys}} missing from English"
+    "activeSessions": {
+      "title": "Staff signed in now",
+      "description": "Active staff devices across the dashboard. Refreshes every 15 seconds while this page is open.",
+      "refresh": "Refresh",
+      "loading": "Loading sessions…",
+      "empty": "No staff sessions are active.",
+      "unknownDevice": "Unknown device"
     },
     "dangerZone": {
       "title": "Danger zone",
@@ -1564,19 +2070,37 @@
       "title": "Data",
       "description": "Export any resource you can access as a CSV file.",
       "exportTitle": "Export centre",
-      "exportDescription": "Choose a resource and download every row you have access to as CSV.",
-      "resourceLabel": "Resource",
+      "exportDescription": "Pick what to export. Each resource downloads as its own CSV file.",
+      "resourceLabel": "What to export",
       "export": "Export CSV",
       "exporting": "Exporting…",
       "exported": "{resource} exported.",
       "historyTitle": "Recent exports",
       "historyEmpty": "No exports yet.",
       "unknownActor": "Unknown",
-      "retry": "Retry"
+      "retry": "Retry",
+      "selectAllResources": "Select all",
+      "clearResources": "Clear",
+      "noResourceSelected": "Choose at least one resource to export.",
+      "selectedCount": "{count, plural, =0 {Nothing selected} one {# resource selected} other {# resources selected}}",
+      "columnsTitle": "Columns",
+      "columnsDescription": "Leave every column ticked to export the whole record.",
+      "columnsAll": "All columns",
+      "columnsFor": "Columns in {resource}",
+      "columnsSelected": "{count} of {total} columns",
+      "columnsNoneWarning": "At least one column has to stay ticked.",
+      "dateTitle": "Date range",
+      "dateDescription": "Optional. Limits rows to a window on the date field you choose.",
+      "dateFieldLabel": "Date field",
+      "dateFieldNone": "No date limit",
+      "dateUnavailable": "This resource has no date field to filter on.",
+      "exportMultiple": "Export {count} files",
+      "exportedMultiple": "{count} files exported.",
+      "exportFailedFor": "Couldn’t export {resource}."
     },
     "policies": {
       "title": "Policies",
-      "description": "Return, privacy, terms, and shipping policy text — per locale, versioned.",
+      "description": "The return, privacy, terms and shipping text customers read. Each language is saved separately, and every publish keeps the previous version.",
       "types": {
         "RETURN": "Return policy",
         "PRIVACY": "Privacy policy",
@@ -1590,7 +2114,7 @@
       "historyEmpty": "No versions yet.",
       "current": "Current",
       "revert": "Revert",
-      "contentPlaceholder": "Write the policy text…",
+      "contentPlaceholder": "Write what customers should know — for example, how many days they have to return something, and who pays return postage.",
       "publish": "Publish",
       "publishing": "Publishing…",
       "published": "Policy published.",
@@ -1605,6 +2129,10 @@
     },
     "features": {
       "title": "Business and feature setup",
+      "setup": {
+        "title": "Business setup",
+        "description": "Choose recommended features, names and defaults, or rerun setup."
+      },
       "businesses": {
         "title": "Businesses and branches",
         "description": "Edit business details, shops, warehouses and branch assignments."
@@ -1625,6 +2153,11 @@
         "title": "Scheduled reports",
         "description": "Manage report recipients, schedules and formats."
       }
+    },
+    "labels": {
+      "rename": "Rename",
+      "usingDefault": "Currently shown as \"{label}\".",
+      "overridden": "Using your own name for this page."
     }
   },
   "audit": {
@@ -1745,11 +2278,18 @@
       "emailRequired": "Email is required.",
       "emailInvalid": "Enter a valid email address.",
       "passwordHint": "At least {min} characters. You will need to give it to them directly.",
+      "branchHint": "This is the branch where this employee will work. You can add more branch assignments later.",
+      "chooseBranch": "Choose a branch",
+      "loadingBranches": "Loading branches…",
+      "branchLoadFailed": "Branches could not be loaded. Try again.",
+      "noBranches": "No active branches are available. Create or reactivate a branch first.",
+      "retryBranches": "Retry loading branches",
       "fields": {
         "email": "Email",
         "name": "Name",
         "phone": "Phone",
         "role": "Role",
+        "branch": "Branch",
         "password": "Password",
         "isActive": "Can sign in",
         "accessExpiresAt": "Access expires"
@@ -1845,11 +2385,29 @@
     "permissions": {
       "title": "Permissions",
       "description": "Which areas each role can reach. Enforced by the server — this is a read-only view of that model.",
+      "descriptionEditable": "Which areas each role can reach. Changes apply the next time that person loads a page.",
       "area": "Area",
       "readOnly": "Read-only",
+      "readOnlyExplained": "Reaches these areas but cannot change anything in them.",
       "granted": "{role} can reach {area}",
       "notGranted": "{role} cannot reach {area}",
       "alwaysFull": "Always full",
+      "alwaysFullExplained": "always reach every area, and cannot be narrowed.",
+      "coverage": "{count} of {total}",
+      "customised": "Changed",
+      "customisedExplained": "Changed from the default that shipped with this version.",
+      "grantAll": "Give {role} every area",
+      "revokeAll": "Remove every area from {role}",
+      "resetRole": "Return {role} to the default",
+      "ownerOnly": "Owner only",
+      "ownerOnlyExplained": "No other role reaches {area} right now — this is a deliberate setting, not a missing one.",
+      "groups": {
+        "selling": "Selling",
+        "fulfilment": "Fulfilment",
+        "catalogue": "Customers & catalogue",
+        "oversight": "Oversight",
+        "other": "Other"
+      },
       "reset": "Reset",
       "resetDone": "Returned to the default",
       "toggle": "{role} can open {area}"
@@ -1968,6 +2526,7 @@
       "description": "What's selling, and what's sitting on the shelf.",
       "subtitle": "Units sold in the window against current stock, read from the stock movement ledger.",
       "noDeadStock": "Nothing is sitting idle in this period.",
+      "noTurnover": "Nothing sold in this period.",
       "tabs": {
         "turnover": "Turnover",
         "deadStock": "Dead stock ({count})"
@@ -2346,6 +2905,10 @@
       "title": "Courier workload",
       "description": "Live roster status and open assignment count per courier.",
       "subtitle": "Live state, not scoped to a date range.",
+      "empty": {
+        "title": "No couriers on the roster",
+        "description": "Add a courier on the Delivery page and their workload appears here."
+      },
       "columns": {
         "courier": "Courier",
         "status": "Status",
@@ -2375,7 +2938,8 @@
         "count": "Count"
       }
     },
-    "definitionLabel": "What {label} means"
+    "definitionLabel": "What {label} means",
+    "diagramLabel": "How {label} is calculated"
   },
   "imageUpload": {
     "upload": "Upload",
@@ -2456,7 +3020,16 @@
     "migrationsPending": "{count, plural, one {# migration on disk hasn't applied} other {# migrations on disk haven't applied}}",
     "migrationsInSync": "Applied migrations match disk",
     "largestTables": "Largest tables",
-    "approxRows": "~{count} rows"
+    "approxRows": "~{count} rows",
+    "localisation": {
+      "title": "Localisation",
+      "description": "Whether the English and Arabic interface text are fully in sync.",
+      "inSync": "All {count} keys are translated in both languages.",
+      "outOfSync": "{count, plural, one {# key is} other {# keys are}} out of sync between languages.",
+      "totalKeys": "{count} total interface text keys.",
+      "missingFromAr": "{count, plural, one {# key} other {# keys}} missing from Arabic",
+      "missingFromEn": "{count, plural, one {# key} other {# keys}} missing from English"
+    }
   },
   "viewAs": {
     "label": "View as",
@@ -2520,6 +3093,20 @@
       "restockingFeeApplied": "Restocking fee",
       "pastWindowBody": "This order was placed {days, plural, one {# day} other {# days}} ago, past the store's return window. It can still be approved.",
       "refundAmountLabel": "Refund amount (up to {max})",
+      "refundReasonLabel": "Why is this refund being given?",
+      "refundReasonPlaceholder": "Choose a reason",
+      "refundReasonNoteLabel": "Describe the reason",
+      "refundReasonNotePlaceholder": "What was the problem?",
+      "refundReasonRequired": "Choose why this refund is being given",
+      "refundReasonNoteRequired": "Describe the refund reason",
+      "refundReasons": {
+        "DAMAGED": "Arrived damaged",
+        "WRONG_ITEM": "Wrong item sent",
+        "NOT_AS_DESCRIBED": "Not as described",
+        "FAULTY": "Faulty or defective",
+        "CHANGED_MIND": "Customer changed their mind",
+        "OTHER": "Other"
+      },
       "restock": "Put the returned items back in stock",
       "reject": "Reject",
       "confirmReject": "Confirm rejection",
@@ -2654,6 +3241,8 @@
       "started": "Started",
       "ended": "Ended",
       "duration": "Hours",
+      "sales": "Sales",
+      "taken": "Taken",
       "edited": "Record",
       "onNow": "On now",
       "corrected": "Corrected",
@@ -2663,13 +3252,27 @@
       "emptyBody": "A shift is recorded when someone clocks on from the top bar. Nothing here yet.",
       "emptyOpenTitle": "Nobody is on shift",
       "emptyOpenBody": "When someone clocks on, they appear here until they clock off.",
-      "summaryFor": "View what {name} did"
+      "summaryFor": "View what {name} did",
+      "approval": "Approval",
+      "approvalPending": "Pending",
+      "approvalApproved": "Approved",
+      "approvalRejected": "Rejected",
+      "approvedBy": "Approved by {name}",
+      "rejectedBy": "Rejected by {name} — {reason}",
+      "variance": "Till",
+      "varianceShort": "{amount} short",
+      "varianceOver": "{amount} over",
+      "varianceBalanced": "Balanced",
+      "varianceDetail": "Float {float} · counted {counted}",
+      "noTill": "No drawer"
     },
     "summary": {
       "title": "Shift summary",
       "subtitle": "{name} at {branch}",
       "changesLabel": "Changes recorded",
       "changesCaveat": "Counts what was changed, not time spent — a shift spent answering questions records little and is no less work.",
+      "salesHeading": "Sales this shift",
+      "voided": "Voided",
       "breakdown": "What was done",
       "recent": "Most recent",
       "empty": "Nothing was changed during this shift."
@@ -2711,6 +3314,8 @@
     "lastTillVariance": "Last till closed with a variance of",
     "floatOnRecord": "Opened with a {float} float",
     "elapsedHint": "Time on shift",
+    "dialRunning": "Shift started at {time}",
+    "dialIdle": "No shift running",
     "notOnShiftShort": "Off shift",
     "tillEvents": {
       "noSale": "No sale",
@@ -2743,6 +3348,10 @@
       "started": "Started",
       "ended": "Ended",
       "salesByMethod": "Sales by method",
+      "salesSummary": "Sales summary",
+      "salesCount": "Sales",
+      "averageSale": "Average sale",
+      "voids": "Voids",
       "noSales": "No sales yet",
       "openingFloat": "Opening float",
       "cashSales": "Cash sales",
@@ -2751,6 +3360,8 @@
       "expectedInDrawer": "Expected in drawer",
       "counted": "Counted",
       "variance": "Variance",
+      "foreignCash": "Other currencies in drawer",
+      "foreignCashHint": "Counted separately, in its own notes — not converted.",
       "noSaleOpens": "No-sale opens",
       "printedAt": "Printed {time}"
     }
@@ -2832,6 +3443,10 @@
       "transfer": "Transfer"
     },
     "tendered": "Cash received",
+    "tenderCurrency": "Paid in",
+    "tenderCurrencyBase": "{currency} (store currency)",
+    "tenderedInCurrency": "Cash received ({currency})",
+    "tenderRateHint": "1 store currency = {rate} {currency}",
     "takePayment": "Take payment",
     "taking": "Taking payment…",
     "sold": "Sale complete — {total}",
@@ -2839,6 +3454,11 @@
     "change": "Change {amount}",
     "overStock": "Only {available} in stock here",
     "scanOutOfStock": "{name} is out of stock at this branch",
+    "tenderedPlaceholder": "Cash received",
+    "tenderedMissing": "Enter the cash received",
+    "tenderedShort": "That is {short} less than the total",
+    "splitTenderedLabel": "Cash received for payment {index}",
+    "splitTenderedMissing": "Enter the cash received for payment {index}",
     "archived": "This product is archived",
     "increase": "One more {name}",
     "decrease": "One fewer {name}",
@@ -2852,6 +3472,9 @@
       "paidBy": "Paid by",
       "tendered": "Cash",
       "change": "Change",
+      "tenderTotal": "TOTAL ({currency})",
+      "tenderChange": "Change ({currency})",
+      "tenderRate": "Rate applied",
       "thanks": "Thank you"
     },
     "printReceipt": "Print receipt",
@@ -2862,7 +3485,9 @@
       "loadFailed": "Could not load products. Try again.",
       "empty": "No products yet. Add one from Products.",
       "noMatches": "No products match that search.",
-      "outOfStock": "Out of stock here"
+      "outOfStock": "Out of stock here",
+      "hideSoldOut": "Hide sold out",
+      "allSoldOut": "Everything here is sold out. Turn off \"Hide sold out\" to see it."
     },
     "confirmTitle": "Confirm sale",
     "confirmTotal": "Total",
@@ -2878,7 +3503,13 @@
       "openingFloat": "Opening float (optional)",
       "floatPlaceholder": "0.00",
       "startAndOpen": "Start shift & open till",
-      "skip": "Not right now — just let me sell"
+      "skip": "Skip the cash count — start without a till",
+      "floatRequired": "Count the drawer to start",
+      "floatRequiredHint": "Enter the cash you are starting with. This is what your drawer is checked against at the end of your shift.",
+      "floatMissing": "Enter the opening cash amount before starting.",
+      "chooseBranch": "Which branch are you working at today?",
+      "chooseBranchHint": "You are assigned to more than one branch, so your sales cannot be attributed automatically.",
+      "chooseBranchPlaceholder": "Select a branch"
     },
     "managerOverride": {
       "title": "Manager approval needed",
@@ -2920,7 +3551,15 @@
       "process": "Process return",
       "processing": "Processing...",
       "done": "Return processed",
-      "managerOverrideReason": "A return needs a manager's approval."
+      "managerOverrideReason": "A return needs a manager's approval.",
+      "recentTitle": "Recent returns here",
+      "recentEmpty": "No returns processed at this branch yet.",
+      "recentFailed": "Could not load recent returns.",
+      "priorTitle": "{count, plural, one {# previous return on this order} other {# previous returns on this order}}",
+      "priorHint": "Check this was not already refunded before processing another.",
+      "handledBy": "Handled by {name}",
+      "handledByUnknown": "Approver not recorded",
+      "awaitingApproval": "Not yet approved"
     },
     "voided": "Sale voided",
     "voiding": "Voiding...",
@@ -2994,5 +3633,25 @@
     "yes": "Yes",
     "no": "No",
     "noFields": "No custom fields yet. Add them in the Custom fields tab."
+  },
+  "businessTypes": {
+    "RESTAURANT": "Restaurant",
+    "CAFE": "Cafe",
+    "BAKERY": "Bakery",
+    "FOOD_TRUCK": "Food truck",
+    "GROCERY": "Grocery",
+    "SUPERMARKET": "Supermarket",
+    "PHARMACY": "Pharmacy",
+    "CLOTHING": "Clothing",
+    "ELECTRONICS": "Electronics",
+    "FURNITURE": "Furniture",
+    "JEWELLERY": "Jewellery",
+    "BOOKSTORE": "Bookstore",
+    "SALON": "Salon",
+    "BARBERSHOP": "Barbershop",
+    "SPA": "Spa",
+    "GYM": "Gym",
+    "LAUNDRY": "Laundry",
+    "OTHER": "Other"
   }
 }

@@ -43,6 +43,9 @@ import { isAccountEmailValid, normalizeAccountEmail } from '@/lib/identity-valid
  */
 export function ForgotPasswordForm() {
   const t = useTranslations('auth.forgot');
+  // URG-013 — shared format-example placeholder (see resource-form.tsx's
+  // placeholderFor).
+  const tCommon = useTranslations('common');
   const tStates = useTranslations('states.error');
 
   const [email, setEmail] = useState('');
@@ -113,6 +116,7 @@ export function ForgotPasswordForm() {
           id="forgot-email"
           name="email"
           type="email"
+          placeholder={tCommon('placeholders.email')}
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           // An address must not reorder under an Arabic layout.

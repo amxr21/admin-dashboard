@@ -320,6 +320,64 @@ export function requireArea(area: Area) {
         throw AppError.forbidden('You do not have access to this area');
       }
 
+      /**
+       * An API key may NARROW what its owner can reach, never widen it.
+       *
+       * Checked after the role check, not instead of it, so the two compose as
+       * an intersection — exactly the discipline `assertCanWrite` uses for
+       * read-only roles, where a restriction from either direction holds.
+       * Reversing that (a scope GRANTING an area) would turn every key into a
+       * privilege-escalation path, which is the one thing this must not be.
+       *
+       * `undefined` (a session) and `null` (an unscoped key) both skip it.
+       */
+      const scopes = req.apiKeyScopes;
+      if (scopes && !scopes.includes(area)) {
+        req.log.warn({
+          event: 'authz.scope.denied',
+          role,
+          area,
+          scopes: [...scopes],
+          method: req.method,
+          path: req.path,
+        });
+
+        auditDenied(req, {
+          action: 'authz.scope.denied',
+          entity: 'authz',
+          entityId: area,
+          changes: { area, scopes: [...scopes], method: req.method, path: req.path },
+        });
+
+        // Same 403 and same wording as the role denial above: which of the two
+        // rules refused is an internal detail, and spelling it out would tell
+        // the holder of a narrow key exactly which areas exist to aim at.
+        throw AppError.forbidden('You do not have access to this area');
+      }
+
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+/** Apply an owner's visibility choice to role-specific routes that bypass requireArea. */
+export function requireDeveloperVisible(...areas: readonly Area[]) {
+  return async function developerVisibilityGuard(
+    req: Request,
+    _res: Response,
+    next: NextFunction,
+  ): Promise<void> {
+    try {
+      const user = requireUser(req);
+      if (user.role === StaffRole.DEVELOPER) {
+        for (const area of areas) {
+          if (!(await canAccessAreaResolved(user.role, area))) {
+            throw AppError.forbidden('The owner has hidden this business area from developer access');
+          }
+        }
+      }
       next();
     } catch (err) {
       next(err);

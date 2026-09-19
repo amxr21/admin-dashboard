@@ -99,6 +99,13 @@ describe('Arabic is actually translated', () => {
       'reports.exportFormats.csv',
       'reports.exportFormats.pdf',
       'reports.scheduled.form.recipientsPlaceholder',
+      // URG-013 — shared email/phone/URL format-example placeholders, reused
+      // across every form in the app (resource-form.tsx's placeholderFor and
+      // its bespoke-form callers). Same reasoning as auth.emailPlaceholder
+      // and imageUpload.urlPlaceholder above.
+      'common.placeholders.email',
+      'common.placeholders.phone',
+      'common.placeholders.url',
     ]);
 
     const untranslated = enKeys.filter(

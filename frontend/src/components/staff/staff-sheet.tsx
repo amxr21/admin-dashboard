@@ -6,8 +6,11 @@ import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
+import { PhoneField } from '@/components/ui/phone-field';
 import {
   Select,
   SelectContent,
@@ -17,9 +20,12 @@ import {
 } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ApiError } from '@/lib/api';
+import { readBranchId } from '@/lib/auth-storage';
+import { fetchBranches, type BranchSummary } from '@/lib/branches-api';
 import { isAccountEmailValid, normalizeAccountEmail } from '@/lib/identity-validation';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import {
   STAFF_ROLES,
   canAssign,
@@ -62,6 +68,9 @@ export function StaffSheet({
   onSaved,
 }: StaffSheetProps) {
   const t = useTranslations('staff');
+  // URG-013 — shared format-example placeholders (see resource-form.tsx's
+  // placeholderFor).
+  const tCommon = useTranslations('common');
   const tRole = useTranslations('roles');
   const translateError = useTranslatedApiError();
   // The LIVE `security.minPasswordLength`, not a hardcoded 12 — the server
@@ -75,6 +84,13 @@ export function StaffSheet({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<StaffRole>('SUPPORT');
+  const [branchId, setBranchId] = useState('');
+  const [initialBranchId, setInitialBranchId] = useState('');
+  const [branches, setBranches] = useState<BranchSummary[]>([]);
+  const [branchesError, setBranchesError] = useState<string | null>(null);
+  const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const [hasLoadedBranches, setHasLoadedBranches] = useState(false);
+  const [branchLoadVersion, setBranchLoadVersion] = useState(0);
   const [isActive, setIsActive] = useState(true);
   // Calendar date only — the picker works in whole days. Sent as end-of-day
   // UTC on that date, the same "inclusive to-date" convention the audit
@@ -84,6 +100,9 @@ export function StaffSheet({
 
   const [error, setError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
+  /** Hoisted out of PhoneField so the phone's own validation message shares
+   *  the one slot its Field owns — see ui/field.tsx. */
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -93,15 +112,84 @@ export function StaffSheet({
     setName(member?.name ?? '');
     setPhone(member?.phone ?? '');
     setRole(member?.role ?? 'SUPPORT');
+    setBranchId('');
+    setInitialBranchId('');
+    setHasLoadedBranches(false);
     setIsActive(member?.isActive ?? true);
     setAccessExpiresAt(member?.accessExpiresAt ? member.accessExpiresAt.slice(0, 10) : '');
     setPassword('');
     setError(null);
     setEmailError(null);
+    setPhoneError(null);
   }, [open, member]);
+
+  useEffect(() => {
+    if (!open || isEdit) return;
+
+    let cancelled = false;
+    setIsLoadingBranches(true);
+    setHasLoadedBranches(false);
+    setBranchesError(null);
+
+    void fetchBranches()
+      .then((loaded) => {
+        if (cancelled) return;
+        setBranches(loaded);
+        setHasLoadedBranches(true);
+
+        const activeBranchId = readBranchId();
+        const preferred =
+          loaded.find((branch) => branch.id === activeBranchId) ??
+          loaded.find((branch) => branch.isDefault) ??
+          (loaded.length === 1 ? loaded[0] : undefined);
+        const preferredId = preferred?.id ?? '';
+        setBranchId(preferredId);
+        setInitialBranchId(preferredId);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBranches([]);
+        setBranchId('');
+        setInitialBranchId('');
+        setHasLoadedBranches(true);
+        setBranchesError(t('form.branchLoadFailed'));
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingBranches(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [branchLoadVersion, isEdit, open, t]);
+
+  /**
+   * Compared against the same expressions the effect above seeds from, so
+   * "dirty" means exactly "differs from what this sheet opened with" — no
+   * second copy of the initial values to fall out of step with the first.
+   *
+   * `password` counts even though it seeds empty: a typed-but-unsaved
+   * password is precisely the edit worth warning about losing.
+   */
+  const isDirty =
+    open &&
+    (email !== (member?.email ?? '') ||
+      name !== (member?.name ?? '') ||
+      phone !== (member?.phone ?? '') ||
+      role !== (member?.role ?? 'SUPPORT') ||
+      branchId !== initialBranchId ||
+      isActive !== (member?.isActive ?? true) ||
+      accessExpiresAt !== (member?.accessExpiresAt ? member.accessExpiresAt.slice(0, 10) : '') ||
+      password !== '');
+
+  useUnsavedChangesGuard(isDirty && !isSaving);
 
   /** Only roles at or below the actor's own rank — rule 1, mirrored. */
   const assignable = STAFF_ROLES.filter((candidate) => canAssign(actorRole, candidate));
+  const requiresBranch = role !== 'OWNER' && role !== 'DEVELOPER';
+  const branchFieldError =
+    branchesError ??
+    (hasLoadedBranches && branches.length === 0 ? t('form.noBranches') : undefined);
 
   async function submit() {
     if (!isEdit) {
@@ -145,6 +233,7 @@ export function StaffSheet({
           ...(phone.trim() ? { phone: phone.trim() } : {}),
           role,
           password,
+          ...(requiresBranch && branchId ? { branchId } : {}),
         });
         onSaved(t('notice.created', { name: saved.name ?? saved.email }));
       }
@@ -165,7 +254,9 @@ export function StaffSheet({
 
   const canSubmit = isEdit
     ? true
-    : email.trim().length > 0 && password.length >= MIN_PASSWORD;
+    : email.trim().length > 0 &&
+      password.length >= MIN_PASSWORD &&
+      (!requiresBranch || Boolean(branchId));
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -197,12 +288,16 @@ export function StaffSheet({
             </p>
           ) : null}
 
-          <div className="space-y-2">
-            <Label htmlFor="staff-email">{t('form.fields.email')}</Label>
+          <Field
+            id="staff-email"
+            label={t('form.fields.email')}
+            error={emailError ?? undefined}
+          >
             <Input
               id="staff-email"
               // A real type so globals.css forces LTR on the address.
               type="email"
+              placeholder={tCommon('placeholders.email')}
               value={email}
               maxLength={255}
               // The email IS the identity here; changing it would silently move
@@ -218,39 +313,41 @@ export function StaffSheet({
                 if (email && !isAccountEmailValid(email)) setEmailError(t('form.emailInvalid'));
               }}
             />
-            {emailError ? (
-              <p id="staff-email-error" role="alert" className="text-destructive text-sm">
-                {emailError}
-              </p>
-            ) : null}
-          </div>
+          </Field>
 
-          <div className="space-y-2">
-            <Label htmlFor="staff-name">{t('form.fields.name')}</Label>
+          <Field id="staff-name" label={t('form.fields.name')}>
             <Input
               id="staff-name"
               type="text"
+              placeholder={tCommon('placeholders.personName')}
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
-          </div>
+          </Field>
 
-          <div className="space-y-2">
-            <Label htmlFor="staff-phone">{t('form.fields.phone')}</Label>
-            <Input
+          {/* URG-020/022. No country context here — a staff record has no
+              country field — so this validates against international rules
+              rather than assuming one. `onError` hoists the message into the
+              Field's one slot rather than PhoneField printing its own. */}
+          <Field
+            id="staff-phone"
+            label={t('form.fields.phone')}
+            error={phoneError ?? undefined}
+          >
+            <PhoneField
               id="staff-phone"
-              type="tel"
               value={phone}
-              onChange={(event) => setPhone(event.target.value)}
+              onChange={setPhone}
+              country={null}
+              onError={setPhoneError}
             />
-          </div>
+          </Field>
 
           {!isEdit ? (
             <div className="space-y-2">
               <Label htmlFor="staff-password">{t('form.fields.password')}</Label>
-              <Input
+              <PasswordInput
                 id="staff-password"
-                type="password"
                 autoComplete="new-password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -284,6 +381,55 @@ export function StaffSheet({
               <p className="text-muted-foreground text-sm">{t('form.selfRoleNote')}</p>
             ) : null}
           </div>
+
+          {!isEdit && requiresBranch ? (
+            <Field
+              id="staff-branch"
+              label={t('form.fields.branch')}
+              required
+              error={branchFieldError}
+              description={t('form.branchHint')}
+            >
+              <Select
+                value={branchId}
+                disabled={isLoadingBranches || branches.length === 0}
+                onValueChange={setBranchId}
+              >
+                <SelectTrigger
+                  id="staff-branch"
+                  aria-invalid={branchFieldError ? true : undefined}
+                  aria-describedby={
+                    branchFieldError ? 'staff-branch-error' : 'staff-branch-hint'
+                  }
+                >
+                  <SelectValue
+                    placeholder={
+                      isLoadingBranches
+                        ? t('form.loadingBranches')
+                        : t('form.chooseBranch')
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {branches.map((branch) => (
+                    <SelectItem key={branch.id} value={branch.id}>
+                      {branch.businessName} · {branch.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {branchesError ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBranchLoadVersion((version) => version + 1)}
+                >
+                  {t('form.retryBranches')}
+                </Button>
+              ) : null}
+            </Field>
+          ) : null}
 
           {isEdit && !isSelf ? (
             <div className="flex items-center gap-2">

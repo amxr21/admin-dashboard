@@ -1,4 +1,10 @@
-import { ReturnCategory, ReturnResolution, ReturnStatus, StaffRole } from '@prisma/client';
+import {
+  RefundReason,
+  ReturnCategory,
+  ReturnResolution,
+  ReturnStatus,
+  StaffRole,
+} from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -80,6 +86,15 @@ const approveBody = z
       .string()
       .regex(/^\d+(\.\d{1,2})?$/, 'Enter an amount like 49.99')
       .optional(),
+    /**
+     * Why the refund is being given (URG-009). Optional HERE because whether
+     * it is required depends on `resolution`, which the service decides — the
+     * same split the refund amount above already uses.
+     */
+    refundReason: z
+      .nativeEnum(RefundReason, { message: 'Unknown refund reason' })
+      .optional(),
+    refundReasonNote: z.string().trim().max(500).optional(),
     /** A restocking fee (B4.11), 0-100. Omit to use the store default. */
     restockingFeePercent: z.number().min(0).max(100).optional(),
     restock: z.boolean(),

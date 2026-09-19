@@ -98,9 +98,28 @@ describe('PermissionsMatrix', () => {
     render(<PermissionsMatrix />);
 
     expect(await screen.findByLabelText('Support cannot reach Staff')).toBeInTheDocument();
-    expect(screen.getByLabelText('Owner can reach Staff')).toBeInTheDocument();
 
     currentRole.value = 'OWNER';
+  });
+
+  it('states locked roles once instead of giving them a column of identical ticks', async () => {
+    // A column exists to be compared down its length. OWNER's every cell is
+    // full BY DEFINITION, so as a column it carried no information per row and
+    // cost a third of the table's width — it is now stated once, above the
+    // grid. The fact itself must survive that move, which is what this pins.
+    render(<PermissionsMatrix />);
+
+    await screen.findByText('Support');
+
+    // Still named, still explained...
+    expect(screen.getByText('Owner')).toBeInTheDocument();
+    expect(
+      screen.getByText(/always reach every area, and cannot be narrowed/i),
+    ).toBeInTheDocument();
+
+    // ...but no longer a per-area cell, in either the icon or checkbox form.
+    expect(screen.queryByLabelText('Owner can reach Staff')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Owner can open Staff')).not.toBeInTheDocument();
   });
 
   it('flags a read-only role distinctly — DEMO reaches every area but can write to none', async () => {
@@ -163,13 +182,15 @@ describe('editing permissions (O8.4)', () => {
   });
 
   it('never offers a checkbox for a LOCKED role', async () => {
-    // OWNER always keeps full access. Its cells stay icons.
+    // OWNER always keeps full access, so it must never become editable. Since
+    // the redesign states locked roles above the grid rather than as a column,
+    // "no checkbox" is now the whole assertion — that the fact is still SHOWN
+    // is covered by its own test above.
     render(<PermissionsMatrix />);
 
     await screen.findByText('Owner');
 
     expect(screen.queryByLabelText('Owner can open Staff')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Owner can reach Staff')).toBeInTheDocument();
   });
 
   it('shows no controls at all to a non-owner', async () => {

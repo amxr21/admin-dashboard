@@ -128,6 +128,52 @@ export interface NeedsAttention {
   };
 }
 
+/** Who is on a till, and what their drawer should hold. */
+export interface FloorTill {
+  shiftId: string;
+  startedAt: string;
+  /** The worker's own note — "covered for Sara", "terminal 2 is flaky". */
+  note: string | null;
+  user: { id: string; name: string | null; email: string };
+  branch: { id: string; name: string };
+  salesCount: number;
+  taken: string;
+  averageSale: string;
+  cash: string;
+  /** `openingFloat + (cash − drops − payouts)` — the same sum `closeTill`
+   *  reconciles a count against, so the two screens cannot disagree. */
+  expectedCash: string;
+  cashRemoved: string;
+  noSaleCount: number;
+  voidCount: number;
+  /** Null means NO TILL on this shift, never a float of zero. */
+  openingFloat: string | null;
+}
+
+/** A shift that ended but still awaits a manager's decision. */
+export interface FloorClosedTill extends FloorTill {
+  endedAt: string | null;
+  closingCount: string | null;
+  /** STORED at close, never recomputed — a later refund must not rewrite
+   *  what the cashier signed off. Null when the shift handled no cash. */
+  variance: string | null;
+}
+
+export interface FloorStatus {
+  openShifts: FloorTill[];
+  recentlyClosed: FloorClosedTill[];
+  /** Open tills only — a counted-and-put-away drawer is not money on the floor. */
+  totals: {
+    onShift: number;
+    branches: number;
+    taken: string;
+    salesCount: number;
+    expectedInDrawers: string;
+    noSaleCount: number;
+    voidCount: number;
+  };
+}
+
 export interface StaffActivity {
   range: DateRange;
   staff: {
@@ -270,6 +316,12 @@ export async function fetchOrderValueDistribution(range: DateRange): Promise<Ord
  *  selected window. See `getNeedsAttention`'s own doc comment. */
 export async function fetchNeedsAttention(): Promise<NeedsAttention> {
   return apiFetch<NeedsAttention>('/reports/needs-attention');
+}
+
+/** No range params — "who is on now" has no date window, same category as
+ *  `fetchNeedsAttention` above. Branch scoping is applied server-side. */
+export async function fetchFloorStatus(): Promise<FloorStatus> {
+  return apiFetch<FloorStatus>('/reports/floor-status');
 }
 
 export async function fetchStaffActivity(range: DateRange): Promise<StaffActivity> {

@@ -17,6 +17,7 @@ import type { LucideIcon } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Link } from '@/i18n/navigation';
+import { useAppSettings } from '@/components/providers/settings-provider';
 
 /**
  * The report catalogue (C3.1) — every report grouped by domain, each a
@@ -251,6 +252,7 @@ function startHereEntries(): ReportEntry[] {
 }
 
 export function ReportCatalogue() {
+  const { enabledFeatures } = useAppSettings();
   const t = useTranslations('reports');
   const tDomains = useTranslations('reports.catalogue.domains');
   const tCatalogue = useTranslations('reports.catalogue');
@@ -264,12 +266,12 @@ export function ReportCatalogue() {
             {tCatalogue('openExplorer')}
           </Link>
         </Button>
-        <Button variant="outline" size="sm" asChild>
+        {enabledFeatures?.scheduledReports !== false ? <Button variant="outline" size="sm" asChild>
           <Link href="/admin/reports/scheduled">
             <CalendarClock className="size-4" aria-hidden />
             {tCatalogue('manageSchedules')}
           </Link>
-        </Button>
+        </Button> : null}
       </div>
 
       <section aria-labelledby="report-domain-start-here">

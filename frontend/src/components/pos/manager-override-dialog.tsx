@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { ApiError } from '@/lib/api';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
@@ -52,6 +53,9 @@ export function ManagerOverrideDialog({
   onApproved,
 }: ManagerOverrideDialogProps) {
   const t = useTranslations('pos.managerOverride');
+  // URG-013 — shared format-example placeholder (see resource-form.tsx's
+  // placeholderFor).
+  const tCommon = useTranslations('common');
   const translateError = useTranslatedApiError();
 
   const [email, setEmail] = useState('');
@@ -113,6 +117,7 @@ export function ManagerOverrideDialog({
                 <Input
                   id="override-email"
                   type="email"
+                  placeholder={tCommon('placeholders.email')}
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   autoComplete="off"
@@ -123,13 +128,14 @@ export function ManagerOverrideDialog({
 
               <div className="space-y-2 text-start">
                 <Label htmlFor="override-password">{t('passwordLabel')}</Label>
-                <Input
+                <PasswordInput
                   id="override-password"
-                  type="password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   autoComplete="off"
-                  className="force-ltr"
+                  // `force-ltr` is applied by PasswordInput itself, in both the
+                  // masked and revealed states — see its note on why the
+                  // attribute selector alone is not enough.
                   disabled={isBusy}
                 />
               </div>

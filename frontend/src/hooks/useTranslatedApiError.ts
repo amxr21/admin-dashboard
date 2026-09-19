@@ -10,6 +10,11 @@ const ACTIONABLE_REASON_VALUES = [
   'BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS',
   'NO_ACTIVE_BRANCH',
   'BRANCH_NOT_FOUND',
+  // Naming a branch you hold no assignment at. Actionable in exactly the same
+  // way as the ambiguity codes above — pick a different branch — so it is
+  // translated rather than collapsed into the generic "forbidden".
+  'BRANCH_NOT_ASSIGNED',
+  'SESSION_LIMIT_REACHED',
 ] as const;
 
 type ActionableReason = (typeof ACTIONABLE_REASON_VALUES)[number];

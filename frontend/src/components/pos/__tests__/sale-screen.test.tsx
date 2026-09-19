@@ -39,9 +39,11 @@ const {
   createReturn,
   approveReturn,
   searchPosCustomers,
+  fetchTenders,
 } = vi.hoisted(() => ({
   scanProduct: vi.fn(),
   checkout: vi.fn(),
+  fetchTenders: vi.fn(),
   browseProducts: vi.fn(),
   browseCategories: vi.fn(),
   requestManagerOverride: vi.fn(),
@@ -70,6 +72,10 @@ vi.mock('@/lib/pos-api', async (importOriginal) => ({
   resumeParkedSale,
   discardParkedSale,
   searchPosCustomers,
+  // URG-034 — the sale screen loads accepted tenders on mount. Stubbed
+  // because the spread above keeps the REAL implementation otherwise, which
+  // would fire a network call in jsdom on every render in this file.
+  fetchTenders,
 }));
 
 vi.mock('@/lib/auth-api', async (importOriginal) => ({
@@ -114,6 +120,11 @@ beforeEach(() => {
   // for tests that aren't about parking (see the dedicated describe below).
   listParkedSales.mockResolvedValue([]);
   searchPosCustomers.mockResolvedValue([]);
+  // URG-034 — also fetched once on mount. Base currency ONLY, which is the
+  // state of every install that has not configured a rate: the selector then
+  // hides itself and every test in this file behaves exactly as it did
+  // before multi-currency existed. The dedicated describe below overrides it.
+  fetchTenders.mockResolvedValue([{ currency: 'AED', rate: '1', isBase: true }]);
 });
 
 async function scan(code: string) {
@@ -128,6 +139,15 @@ async function scan(code: string) {
  * every existing checkout test still exercises the real path.
  */
 async function takePaymentThroughConfirm() {
+  // URG-007 — a cash sale will not proceed until the cash received covers the
+  // total, so fill it in the way a cashier would before reaching the dialog.
+  // Only when the field is actually on screen: a card sale has none, and a
+  // test that already typed its own amount must not have it overwritten.
+  const cashField = screen.queryByLabelText(/^cash received$/i);
+  if (cashField && (cashField as HTMLInputElement).value.trim() === '') {
+    await userEvent.type(cashField, '9999.00');
+  }
+
   await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
   await userEvent.click(await screen.findByRole('button', { name: /confirm & charge/i }));
 }
@@ -171,6 +191,110 @@ describe('building a sale', () => {
     await scan('5012345678900');
 
     expect(await screen.findByText('Flat white')).toBeInTheDocument();
+  });
+});
+
+/**
+ * URG-034 — taking payment in another currency.
+ *
+ * The two properties worth pinning are the ones that decide whether this is
+ * safe to ship to installs that never asked for it: the control is INVISIBLE
+ * when only the store currency is accepted (so nothing changes for them), and
+ * an ordinary sale sends no `tenderCurrency` at all, keeping it on the
+ * unchanged server path rather than a conversion path with a rate of 1.
+ */
+describe('paying in another currency', () => {
+  const twoTenders = [
+    { currency: 'AED', rate: '1', isBase: true },
+    { currency: 'USD', rate: '0.2723', isBase: false },
+  ];
+
+  it('hides the currency control when only the store currency is accepted', async () => {
+    render(<SaleScreen />);
+
+    // The default from beforeEach is base-only — one choice is not a choice.
+    await waitFor(() => expect(fetchTenders).toHaveBeenCalled());
+    expect(screen.queryByLabelText(/paid in/i)).toBeNull();
+  });
+
+  it('offers the control, and the rate, once a second currency is configured', async () => {
+    fetchTenders.mockResolvedValue(twoTenders);
+    render(<SaleScreen />);
+
+    const control = await screen.findByLabelText(/paid in/i);
+    expect(control).toBeInTheDocument();
+    // The rate is shown only once a foreign currency is actually selected —
+    // the base needs none.
+    expect(screen.queryByText(/0\.2723/)).toBeNull();
+  });
+
+  it('sends no tenderCurrency on an ordinary store-currency sale', async () => {
+    fetchTenders.mockResolvedValue(twoTenders);
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({
+      orderId: 'o1',
+      orderNumber: 'POS-1',
+      subtotal: '4.50',
+      taxAmount: '0.00',
+      total: '4.50',
+      change: null,
+      tenderCurrency: null,
+      tenderTotal: null,
+      tenderChange: null,
+      tenderRate: null,
+    });
+    render(<SaleScreen />);
+
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+    await takePaymentThroughConfirm();
+
+    await waitFor(() => expect(checkout).toHaveBeenCalled());
+    const [payload] = checkout.mock.calls[0] as [Record<string, unknown>];
+    // Absent, not 'AED': the server treats a missing currency as the base and
+    // stores no tender columns, which is what keeps every existing revenue
+    // and shift query summing one comparable unit.
+    expect(payload).not.toHaveProperty('tenderCurrency');
+  });
+
+  it('carries the chosen currency into checkout and prints it on the receipt', async () => {
+    fetchTenders.mockResolvedValue(twoTenders);
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({
+      orderId: 'o1',
+      orderNumber: 'POS-1',
+      subtotal: '4.50',
+      taxAmount: '0.00',
+      total: '4.50',
+      change: '0.27',
+      // Server-computed, never derived by the till — see CheckoutResult.
+      tenderCurrency: 'USD',
+      tenderTotal: '1.23',
+      tenderChange: '0.27',
+      tenderRate: '0.2723',
+    });
+    render(<SaleScreen />);
+
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+
+    await userEvent.click(await screen.findByLabelText(/paid in/i));
+    await userEvent.click(await screen.findByRole('option', { name: 'USD' }));
+
+    // The rate the server will apply, surfaced before charging: a
+    // wrong-direction rate is silently wrong rather than obviously broken.
+    expect(await screen.findByText(/0\.2723/)).toBeInTheDocument();
+    // The cash field now names the currency it is asking for, so the cashier
+    // cannot type dirhams into a field that means dollars.
+    await userEvent.type(screen.getByLabelText(/cash received \(usd\)/i), '1.50');
+
+    await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /confirm & charge/i }));
+
+    await waitFor(() => expect(checkout).toHaveBeenCalled());
+    const [payload] = checkout.mock.calls[0] as [Record<string, unknown>];
+    expect(payload.tenderCurrency).toBe('USD');
+    expect(payload.tendered).toBe('1.50');
   });
 
   it('scanning the same item twice adds ONE, not a second line', async () => {
@@ -235,6 +359,47 @@ describe('building a sale', () => {
     });
   });
 
+  it('blocks a cash sale until the cash received covers the total (URG-007)', async () => {
+    scanProduct.mockResolvedValue(makeProduct());
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+
+    // Cash is the default method, and nothing has been entered yet.
+    expect(await screen.findByText(/enter the cash received/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /take payment/i })).toBeDisabled();
+
+    // Still short: 4.50 owed, 3.00 offered.
+    await userEvent.type(screen.getByLabelText(/cash received/i), '3.00');
+    expect(await screen.findByText(/1\.50 less than the total/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /take payment/i })).toBeDisabled();
+
+    // Covers it — the sale may proceed.
+    await userEvent.clear(screen.getByLabelText(/cash received/i));
+    await userEvent.type(screen.getByLabelText(/cash received/i), '5.00');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /take payment/i })).toBeEnabled();
+    });
+  });
+
+  it('does not ask for cash on a card sale (URG-007)', async () => {
+    scanProduct.mockResolvedValue(makeProduct());
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+
+    await userEvent.click(screen.getByLabelText(/^payment$/i));
+    await userEvent.click(await screen.findByRole('option', { name: /card/i }));
+
+    // Nothing is handed over on a card sale, so there is nothing to be short of.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /take payment/i })).toBeEnabled();
+    });
+    expect(screen.queryByText(/enter the cash received/i)).not.toBeInTheDocument();
+  });
+
   it('refuses to add a scanned product the branch has none of (URG-006)', async () => {
     // Unlike the quantity warning below, this BLOCKS — adding a line at all is
     // a different decision from correcting the quantity of one already added,
@@ -275,8 +440,14 @@ describe('building a sale', () => {
     await userEvent.click(screen.getByRole('button', { name: /one more flat white/i }));
 
     expect(await screen.findByText(/only 1 in stock here/i)).toBeInTheDocument();
-    // Still sellable — the button is not disabled by this warning.
-    expect(screen.getByRole('button', { name: /take payment/i })).toBeEnabled();
+
+    // Still sellable — the button is not disabled by THIS warning. The cash
+    // amount is filled in only so URG-007's separate guard is not what keeps
+    // the button disabled; the over-stock warning itself never blocks.
+    await userEvent.type(screen.getByLabelText(/^cash received$/i), '99.00');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /take payment/i })).toBeEnabled();
+    });
   });
 });
 
@@ -419,6 +590,54 @@ describe('taking payment', () => {
     expect(screen.getAllByText('Flat white').length).toBeGreaterThan(0);
   });
 
+  it('keeps focus inside the dialog when a charge is refused (URG-008)', async () => {
+    // The dialog stays open on a refusal, and Radix marks everything outside
+    // it aria-hidden. Pulling focus back to the scan field therefore put focus
+    // on an element hidden from assistive technology, and took the cashier out
+    // of the dialog they were still reading.
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockRejectedValue(
+      new ApiError(400, 'BAD_REQUEST', 'Only 2 of Flat white left at this branch'),
+    );
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+    await takePaymentThroughConfirm();
+
+    await screen.findByRole('alert');
+
+    expect(screen.getByLabelText(/scan or type a code/i)).not.toHaveFocus();
+    expect(document.activeElement).not.toBe(null);
+    // Focus is still within the open dialog, not stranded on the page behind.
+    expect(screen.getByRole('alertdialog')).toContainElement(
+      document.activeElement as HTMLElement,
+    );
+  });
+
+  it('returns focus to the scan field after a successful sale (URG-008)', async () => {
+    // The other half of the same rule: once the dialog is gone the scan field
+    // is visible again, and the next thing a cashier does is scan.
+    scanProduct.mockResolvedValue(makeProduct());
+    checkout.mockResolvedValue({
+      orderId: 'o1',
+      orderNumber: 'POS-1',
+      subtotal: '4.50',
+      taxAmount: '0.00',
+      total: '4.50',
+      change: null,
+    });
+
+    render(<SaleScreen />);
+    await scan('5012345678900');
+    await screen.findByText('Flat white');
+    await takePaymentThroughConfirm();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/scan or type a code/i)).toHaveFocus();
+    });
+  });
+
   it('cannot take payment on an empty cart', async () => {
     render(<SaleScreen />);
 
@@ -465,6 +684,9 @@ describe('discounts (O9 Tier 3)', () => {
     await screen.findByText('Flat white');
 
     await userEvent.type(screen.getByLabelText(/discount on flat white/i), '50');
+    // URG-007 — cash must be recorded before the button is live at all. This
+    // test is about the override dialog, not the tender.
+    await userEvent.type(screen.getByLabelText(/^cash received$/i), '99.00');
     await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
 
     expect(await screen.findByText(/manager approval needed/i)).toBeInTheDocument();
@@ -494,6 +716,8 @@ describe('discounts (O9 Tier 3)', () => {
     await screen.findByText('Flat white');
 
     await userEvent.type(screen.getByLabelText(/discount on flat white/i), '50');
+    // URG-007 — see the note in the test above.
+    await userEvent.type(screen.getByLabelText(/^cash received$/i), '99.00');
     await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
 
     await userEvent.type(await screen.findByLabelText(/manager email/i), 'sara@example.test');
@@ -520,6 +744,8 @@ describe('discounts (O9 Tier 3)', () => {
     await screen.findByText('Flat white');
 
     await userEvent.type(screen.getByLabelText(/discount on flat white/i), '20');
+    // URG-007 — see the note in the override test above.
+    await userEvent.type(screen.getByLabelText(/^cash received$/i), '99.00');
     await userEvent.click(screen.getByRole('button', { name: /take payment/i }));
 
     expect(await screen.findByText(/confirm sale/i)).toBeInTheDocument();
@@ -682,13 +908,22 @@ describe('split payment (O9 Tier 3)', () => {
     await userEvent.type(amountFields[0]!, '2.00');
     await userEvent.type(amountFields[1]!, '2.50');
 
+    // URG-007 — the first leg defaults to cash, and a cash leg now records
+    // what was handed over before the sale may proceed.
+    await userEvent.type(
+      screen.getByLabelText(/cash received for payment 1/i),
+      '2.00',
+    );
+
     await takePaymentThroughConfirm();
 
     await waitFor(() => {
       expect(checkout).toHaveBeenCalledWith(
         expect.objectContaining({
           splitPayments: [
-            { method: 'cash', amount: '2.00' },
+            // The cash leg carries what was handed over (URG-007); the card
+            // leg hands nothing over, so it sends no tender at all.
+            { method: 'cash', amount: '2.00', tendered: '2.00' },
             { method: 'card', amount: '2.50' },
           ],
         }),

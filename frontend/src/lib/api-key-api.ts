@@ -2,17 +2,22 @@ import { apiFetch } from '@/lib/api';
 
 /**
  * Self-service API keys (B3.2). Self-only (`/auth/me/api-keys/*`) — same
- * reasoning as sessions and 2FA: a key authenticates as ITS OWNER exactly,
- * with no scope of its own (see `ApiKey`'s schema doc comment), so managing
- * your own keys needs only a session, no area grant.
+ * reasoning as sessions and 2FA: a key authenticates as ITS OWNER, optionally
+ * narrowed to `scopes`, so managing your own keys needs only a session and no
+ * area grant. A key can never reach past what its owner holds: scopes only
+ * ever REMOVE areas (see `ApiKey`'s schema doc comment).
  */
 
 export interface ApiKeySummary {
   id: string;
   name: string;
+  purpose: string;
+  recipient: string;
   /** e.g. "adk_a1b2c3d4…9x8y" — the plaintext itself is never returned again
    * after creation. */
   keyPreview: string;
+  /** Areas this key may reach. Null means "everything its owner can". */
+  scopes: string[] | null;
   lastUsedAt: string | null;
   createdAt: string;
 }
@@ -24,15 +29,33 @@ export async function fetchApiKeys(): Promise<ApiKeySummary[]> {
 export interface CreatedApiKey {
   id: string;
   name: string;
+  purpose: string;
+  recipient: string;
+  /** Areas this key may reach. Null means "everything its owner can". */
+  scopes: string[] | null;
   /** Plaintext, returned exactly once — same one-time-reveal contract as a
    * courier access code, password-reset token, or 2FA backup code. */
   key: string;
 }
 
-export async function createApiKey(name: string): Promise<CreatedApiKey> {
+export async function createApiKey(
+  name: string,
+  purpose: string,
+  recipient: string,
+  /** Omit (or pass an empty list) to leave the key unscoped — it then reaches
+   *  everything its owner can, which is the pre-scopes behaviour. */
+  scopes?: readonly string[],
+): Promise<CreatedApiKey> {
   return apiFetch<CreatedApiKey>('/auth/me/api-keys', {
     method: 'POST',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({
+      name,
+      purpose,
+      recipient,
+      // Omitted entirely rather than sent as null/[]: the endpoint's schema is
+      // `.strict()` and treats absence as "no narrowing".
+      ...(scopes && scopes.length > 0 ? { scopes } : {}),
+    }),
   });
 }
 

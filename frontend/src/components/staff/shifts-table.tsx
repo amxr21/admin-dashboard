@@ -118,6 +118,115 @@ export function ShiftsTable({ openOnly = false, page: controlledPage, onPageChan
       cell: (shift) => <span className="tabular-nums">{duration(shift)}</span>,
     },
     {
+      id: 'sales',
+      header: t('sales'),
+      align: 'end',
+      cell: (shift) => <span className="tabular-nums">{shift.salesCount}</span>,
+    },
+    {
+      id: 'taken',
+      header: t('taken'),
+      align: 'end',
+      // Bare 2dp string, matching the till report's money columns — no symbol.
+      cell: (shift) => <span className="tabular-nums">{shift.taken}</span>,
+    },
+    {
+      /**
+       * Whether anyone confirmed this shift was legitimate (O9.19).
+       *
+       * The approval queue REQUIRES a reason before it will reject — and that
+       * reason was then displayed nowhere, so the history could not tell an
+       * approved shift from a rejected one, and the note a manager was forced
+       * to type was write-only. Both facts live in the title, matching what
+       * the `edited` column below already does with its correction reason.
+       */
+      id: 'approval',
+      header: t('approval'),
+      cell: (shift) => {
+        if (shift.approvalStatus === 'APPROVED') {
+          const name = shift.approvedBy?.name ?? shift.approvedBy?.email ?? '';
+          return (
+            <Badge variant="success" title={name ? t('approvedBy', { name }) : undefined}>
+              {t('approvalApproved')}
+            </Badge>
+          );
+        }
+
+        if (shift.approvalStatus === 'REJECTED') {
+          return (
+            <Badge
+              variant="destructive"
+              title={t('rejectedBy', {
+                name: shift.approvedBy?.name ?? shift.approvedBy?.email ?? '',
+                reason: shift.approvalNote ?? '',
+              })}
+            >
+              {t('approvalRejected')}
+            </Badge>
+          );
+        }
+
+        // Pending is the ordinary resting state, not a warning — a shift works
+        // whether or not anyone has got round to confirming it.
+        return <Badge variant="muted">{t('approvalPending')}</Badge>;
+      },
+    },
+    {
+      /**
+       * Did the drawer balance?
+       *
+       * These figures existed only on the POS surfaces — visible to the
+       * cashier at the till, in the moment — while the manager reviewing shift
+       * history, who is exactly the person who cares whether a drawer came up
+       * short, saw neither the count nor the variance.
+       *
+       * NULL means the shift had no drawer at all, which is most of them. That
+       * is a different fact from a variance of zero, so it renders as "no
+       * drawer" rather than as a balanced till.
+       */
+      id: 'variance',
+      header: t('variance'),
+      align: 'end',
+      cell: (shift) => {
+        if (shift.variance === null) {
+          return <span className="text-muted-foreground text-sm">{t('noTill')}</span>;
+        }
+
+        const amount = Number(shift.variance);
+        // The float and the count are what make a variance auditable — a
+        // figure with nothing behind it invites a second lookup.
+        const detail =
+          shift.openingFloat !== null && shift.closingCount !== null
+            ? t('varianceDetail', {
+                float: shift.openingFloat,
+                counted: shift.closingCount,
+              })
+            : undefined;
+
+        if (amount === 0) {
+          return (
+            <span className="text-muted-foreground text-sm tabular-nums" title={detail}>
+              {t('varianceBalanced')}
+            </span>
+          );
+        }
+
+        // Sign carries the meaning, so it is spelled out rather than left as a
+        // bare minus a reader has to interpret. Short is the one worth
+        // noticing; over is unusual but not a loss.
+        return (
+          <span
+            className={`text-sm tabular-nums ${amount < 0 ? 'text-destructive' : 'text-warning'}`}
+            title={detail}
+          >
+            {amount < 0
+              ? t('varianceShort', { amount: Math.abs(amount).toFixed(2) })
+              : t('varianceOver', { amount: amount.toFixed(2) })}
+          </span>
+        );
+      },
+    },
+    {
       id: 'summary',
       header: '',
       cell: (shift) => (

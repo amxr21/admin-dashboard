@@ -41,7 +41,7 @@ beforeEach(() => {
 async function submit(email = 'a@b.com', password = 'secret123') {
   const user = userEvent.setup();
   await user.type(screen.getByLabelText(/email/i), email);
-  await user.type(screen.getByLabelText(/password/i), password);
+  await user.type(screen.getByLabelText(/^password$/i), password);
   await user.click(screen.getByRole('button', { name: /sign in/i }));
   return user;
 }
@@ -147,7 +147,7 @@ describe('two-step verification (O3b.1)', () => {
     signIn.mockResolvedValue({ status: 'TWO_FACTOR_REQUIRED', pendingToken: 'secret-pending' });
     render(<LoginForm />);
 
-    await screen.findByLabelText(/password/i);
+    await screen.findByLabelText(/^password$/i);
     await submit('twofa@example.com', 'correct-password');
     await screen.findByLabelText(/verification code/i);
 
@@ -165,7 +165,7 @@ describe('two-step verification (O3b.1)', () => {
     await userEvent.click(screen.getByRole('button', { name: /different account/i }));
 
     // Back to the password form — a genuine restart, not a hidden half-login.
-    expect(await screen.findByLabelText(/password/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText(/^password$/i)).toBeInTheDocument();
   });
 });
 
@@ -267,7 +267,7 @@ describe('form behaviour', () => {
     await screen.findByRole('alert');
 
     expect(screen.getByLabelText(/email/i)).toHaveValue('keep@me.com');
-    expect(screen.getByLabelText(/password/i)).toHaveValue('');
+    expect(screen.getByLabelText(/^password$/i)).toHaveValue('');
   });
 
   it('marks both fields invalid after a failure', async () => {

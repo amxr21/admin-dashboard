@@ -15,9 +15,12 @@ import {
   RESOURCE_ICON_FALLBACK,
   type NavItem,
 } from '@/config/navigation';
-import { canAccessArea, type StaffRole } from '@/config/areas';
+import { type StaffRole } from '@/config/areas';
+import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
 import { search as searchContent, type SearchHit } from '@/lib/search-api';
 import { cn } from '@/lib/utils';
+import { useAppSettings } from '@/components/providers/settings-provider';
+import { isSetupPathEnabled } from '@/lib/setup-visibility';
 
 /**
  * Quick-nav + content search, in one box.
@@ -62,9 +65,11 @@ interface ContentResult {
 type Result = PageResult | ContentResult;
 
 export function GlobalSearch({ role }: { role: StaffRole }) {
+  const canAccessArea = useCanAccessArea();
   const t = useTranslations('nav');
   const router = useRouter();
   const { resources } = useResourceSchema();
+  const { enabledFeatures } = useAppSettings();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -113,14 +118,14 @@ export function GlobalSearch({ role }: { role: StaffRole }) {
       }));
 
     return [...navItems, ...resourceItems]
-      .filter((item) => !item.area || canAccessArea(role, item.area))
+      .filter((item) => (!item.area || canAccessArea(role, item.area)) && isSetupPathEnabled(item.href, enabledFeatures))
       .map((item) => ({
         kind: 'page' as const,
         href: item.href,
         label: t.has(item.labelKey) ? t(item.labelKey) : item.labelKey,
         icon: item.icon,
       }));
-  }, [resources, role, t]);
+  }, [resources, role, t, enabledFeatures, canAccessArea]);
 
   const pageResults = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -176,8 +181,8 @@ export function GlobalSearch({ role }: { role: StaffRole }) {
       ...contentGroups.products.map(toResult('product')),
       ...contentGroups.suppliers.map(toResult('supplier')),
       ...contentGroups.customerCases.map(toResult('customerCase')),
-    ];
-  }, [contentGroups]);
+    ].filter(item => isSetupPathEnabled(item.href, enabledFeatures));
+  }, [contentGroups, enabledFeatures]);
 
   const results = useMemo<Result[]>(
     () => [...pageResults, ...contentResults],

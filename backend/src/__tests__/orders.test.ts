@@ -182,26 +182,38 @@ describe('the transition matrix, walked exhaustively', () => {
     for (const to of ALL) {
       if (from === to) continue;
 
-      const legal = ORDER_TRANSITIONS[from].includes(to);
+      // RETURNED is reachable ONLY through the returns flow (`approveReturn`),
+      // never as a bare status flip — the status endpoint refuses it even
+      // where the transition table permits it (see changeOrderStatus). So for
+      // THIS endpoint a move to RETURNED is always a refusal, table or not.
+      const tableLegal = ORDER_TRANSITIONS[from].includes(to);
+      const legalHere = tableLegal && to !== OrderStatus.RETURNED;
 
-      it(`${legal ? 'allows' : 'refuses'} ${from} -> ${to}`, async () => {
+      it(`${legalHere ? 'allows' : 'refuses'} ${from} -> ${to}`, async () => {
         const id = await makeOrder(from);
 
         const res = await request(app)
           .patch(`/api/v1/orders/${id}/status`)
           .set(auth(ownerToken))
-          .send({ to });
+          // URG-010 — a cancellation must say why, and ONLY a cancellation may:
+          // sending a reason on any other transition is itself refused, so this
+          // cannot be applied unconditionally.
+          .send(to === OrderStatus.CANCELED ? { to, cancellationReason: 'OUT_OF_STOCK' } : { to });
 
-        if (legal) {
+        if (legalHere) {
           expect(res.status).toBe(200);
           expect((res.body as OrderBody).data.order.status).toBe(to);
         } else {
           expect(res.status).toBe(400);
-          // The refusal names what WOULD have worked — a bare "invalid
-          // transition" leaves the caller guessing.
-          expect((res.body as ErrorBody).error.details).toMatchObject({
-            allowed: ORDER_TRANSITIONS[from],
-          });
+          // Two refusal shapes, by which guard fires. A move to RETURNED is
+          // refused by the returns-flow guard, whose `allowed` list drops
+          // RETURNED. Any other illegal move is refused by the transition
+          // check, whose `allowed` is the raw table for that state.
+          const expectedAllowed =
+            to === OrderStatus.RETURNED
+              ? ORDER_TRANSITIONS[from].filter((status) => status !== OrderStatus.RETURNED)
+              : ORDER_TRANSITIONS[from];
+          expect((res.body as ErrorBody).error.details).toMatchObject({ allowed: expectedAllowed });
 
           const after = await prisma.order.findUnique({ where: { id } });
           expect(after?.status).toBe(from);
@@ -209,6 +221,100 @@ describe('the transition matrix, walked exhaustively', () => {
       });
     }
   }
+
+  it('requires a reason when canceling (URG-010)', async () => {
+    const id = await makeOrder(OrderStatus.PENDING);
+
+    const res = await request(app)
+      .patch(`/api/v1/orders/${id}/status`)
+      .set(auth(ownerToken))
+      .send({ to: OrderStatus.CANCELED });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/why this order is being canceled/i);
+
+    // Nothing moved — the refusal happens before the transaction.
+    const after = await prisma.order.findUnique({ where: { id } });
+    expect(after?.status).toBe(OrderStatus.PENDING);
+  });
+
+  it('requires a note when the cancellation reason is OTHER (URG-010)', async () => {
+    const id = await makeOrder(OrderStatus.PENDING);
+
+    const res = await request(app)
+      .patch(`/api/v1/orders/${id}/status`)
+      .set(auth(ownerToken))
+      .send({ to: OrderStatus.CANCELED, cancellationReason: 'OTHER' });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/describe the cancellation reason/i);
+  });
+
+  it('refuses a cancellation reason on a non-cancelling move (URG-010)', async () => {
+    const id = await makeOrder(OrderStatus.PENDING);
+
+    const res = await request(app)
+      .patch(`/api/v1/orders/${id}/status`)
+      .set(auth(ownerToken))
+      .send({ to: OrderStatus.CONFIRMED, cancellationReason: 'OUT_OF_STOCK' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('records the cancellation reason on the order (URG-010)', async () => {
+    const id = await makeOrder(OrderStatus.PENDING);
+
+    const res = await request(app)
+      .patch(`/api/v1/orders/${id}/status`)
+      .set(auth(ownerToken))
+      .send({ to: OrderStatus.CANCELED, cancellationReason: 'OUT_OF_STOCK' });
+
+    expect(res.status).toBe(200);
+
+    const after = await prisma.order.findUnique({
+      where: { id },
+      select: { status: true, cancellationReason: true, cancellationReasonNote: true },
+    });
+    expect(after?.status).toBe(OrderStatus.CANCELED);
+    expect(after?.cancellationReason).toBe('OUT_OF_STOCK');
+    expect(after?.cancellationReasonNote).toBeNull();
+  });
+
+  it('applies one reason to every order in a bulk cancel (URG-010)', async () => {
+    // The bulk path routes through the same changeOrderStatus, so the rule
+    // cannot be bypassed by posting a set of ids instead of one.
+    const first = await makeOrder(OrderStatus.PENDING);
+    const second = await makeOrder(OrderStatus.PENDING);
+
+    const refused = await request(app)
+      .post('/api/v1/orders/bulk-status')
+      .set(auth(ownerToken))
+      .send({ ids: [first, second], to: OrderStatus.CANCELED });
+
+    // Every id is skipped rather than silently canceled with no reason.
+    expect((refused.body as { data: { succeeded: string[] } }).data.succeeded).toHaveLength(0);
+
+    const res = await request(app)
+      .post('/api/v1/orders/bulk-status')
+      .set(auth(ownerToken))
+      .send({
+        ids: [first, second],
+        to: OrderStatus.CANCELED,
+        cancellationReason: 'UNABLE_TO_FULFILL',
+      });
+
+    expect(res.status).toBe(200);
+    expect((res.body as { data: { succeeded: string[] } }).data.succeeded).toHaveLength(2);
+
+    const rows = await prisma.order.findMany({
+      where: { id: { in: [first, second] } },
+      select: { cancellationReason: true },
+    });
+    expect(rows.map((row) => row.cancellationReason)).toEqual([
+      'UNABLE_TO_FULFILL',
+      'UNABLE_TO_FULFILL',
+    ]);
+  });
 
   it('refuses a move to the status it already has', async () => {
     const id = await makeOrder(OrderStatus.PENDING);
@@ -1267,14 +1373,39 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     });
   }
 
-  it('writes a negative Payment row with the reason as its note', async () => {
+  it('refuses a goodwill refund on a CANCELED order (BUG B — other direction)', async () => {
+    // A CANCELED order was voided and its payments already reversed; a
+    // RETURNED order refunded through the returns flow. Refunding either again
+    // here would be a second money-back on an order that no longer stands.
+    const canceled = await makeOrder(OrderStatus.CANCELED);
+    await makePayment(canceled, '59.98');
+
+    const res = await request(app)
+      .post(`/api/v1/orders/${canceled}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '10.00', refundReason: 'CHANGED_MIND' });
+
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorBody).error.message).toMatch(/canceled order cannot be refunded/i);
+
+    const returned = await makeOrder(OrderStatus.RETURNED);
+    await makePayment(returned, '59.98');
+    const res2 = await request(app)
+      .post(`/api/v1/orders/${returned}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '10.00', refundReason: 'CHANGED_MIND' });
+    expect(res2.status).toBe(400);
+    expect((res2.body as ErrorBody).error.message).toMatch(/returned order cannot be refunded/i);
+  });
+
+  it('writes a negative Payment row with the coded reason', async () => {
     const id = await makeOrder();
     await makePayment(id, '59.98');
 
     const res = await request(app)
       .post(`/api/v1/orders/${id}/refund`)
       .set(auth(ownerToken))
-      .send({ amount: '20.00', reason: 'Goodwill — arrived late' });
+      .send({ amount: '20.00', refundReason: 'CHANGED_MIND' });
 
     expect(res.status).toBe(200);
 
@@ -1283,7 +1414,29 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     });
     expect(payment).not.toBeNull();
     expect(payment?.amount.toFixed(2)).toBe('-20.00');
-    expect(payment?.note).toBe('Goodwill — arrived late');
+    expect(payment?.refundReason).toBe('CHANGED_MIND');
+  });
+
+  it('requires and persists a note when the reason is OTHER', async () => {
+    const id = await makeOrder();
+    await makePayment(id, '59.98');
+
+    const missingNote = await request(app)
+      .post(`/api/v1/orders/${id}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '10.00', refundReason: 'OTHER' });
+    expect(missingNote.status).toBe(400);
+
+    const withNote = await request(app)
+      .post(`/api/v1/orders/${id}/refund`)
+      .set(auth(ownerToken))
+      .send({ amount: '10.00', refundReason: 'OTHER', refundReasonNote: 'Price-matched a competitor' });
+    expect(withNote.status).toBe(200);
+
+    const payment = await prisma.payment.findFirst({
+      where: { orderId: id, method: 'goodwill-refund' },
+    });
+    expect(payment?.refundReasonNote).toBe('Price-matched a competitor');
   });
 
   it('caps at what remains paid, not the raw order total', async () => {
@@ -1294,7 +1447,7 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     const first = await request(app)
       .post(`/api/v1/orders/${id}/refund`)
       .set(auth(ownerToken))
-      .send({ amount: '40.00', reason: 'Partial goodwill' });
+      .send({ amount: '40.00', refundReason: 'FAULTY' });
     expect(first.status).toBe(200);
 
     // A second refund for MORE than what remains (19.98) must be refused —
@@ -1303,24 +1456,12 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     const overCap = await request(app)
       .post(`/api/v1/orders/${id}/refund`)
       .set(auth(ownerToken))
-      .send({ amount: '25.00', reason: 'Second goodwill' });
+      .send({ amount: '25.00', refundReason: 'FAULTY' });
 
     expect(overCap.status).toBe(400);
     expect((overCap.body as { error: { details?: { max?: string } } }).error.details?.max).toBe(
       '19.98',
     );
-  });
-
-  it('refuses a reason left blank', async () => {
-    const id = await makeOrder();
-    await makePayment(id, '59.98');
-
-    const res = await request(app)
-      .post(`/api/v1/orders/${id}/refund`)
-      .set(auth(ownerToken))
-      .send({ amount: '10.00', reason: '   ' });
-
-    expect(res.status).toBe(400);
   });
 
   it('refuses a zero or negative amount', async () => {
@@ -1330,7 +1471,7 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     const zero = await request(app)
       .post(`/api/v1/orders/${id}/refund`)
       .set(auth(ownerToken))
-      .send({ amount: '0.00', reason: 'x' });
+      .send({ amount: '0.00', refundReason: 'DAMAGED' });
     expect(zero.status).toBe(400);
   });
 
@@ -1341,7 +1482,7 @@ describe('a goodwill refund, no return behind it (B4.10)', () => {
     await request(app)
       .post(`/api/v1/orders/${id}/refund`)
       .set(auth(ownerToken))
-      .send({ amount: '10.00', reason: 'Goodwill' });
+      .send({ amount: '10.00', refundReason: 'WRONG_ITEM' });
 
     const entry = await waitFor(() =>
       prisma.auditLog.findFirst({

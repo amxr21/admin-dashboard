@@ -469,6 +469,24 @@ describe('PATCH /api/v1/auth/me/password', () => {
  * `/auth/login` itself creates a session end to end.
  */
 describe('sessions & devices', () => {
+  it('allows only one of two simultaneous sign-ins for the fourth slot', async () => {
+    const user = await makeUser(`session-cap-${Math.random().toString(36).slice(2, 7)}`);
+    for (let index = 0; index < 3; index += 1) {
+      await login(user.email, PASSWORD, { userAgent: `device-${index}` });
+    }
+
+    const attempts = await Promise.allSettled([
+      login(user.email, PASSWORD, { userAgent: 'device-3' }),
+      login(user.email, PASSWORD, { userAgent: 'device-4' }),
+    ]);
+    expect(attempts.filter((attempt) => attempt.status === 'fulfilled')).toHaveLength(1);
+    const refused = attempts.find((attempt) => attempt.status === 'rejected');
+    expect(refused).toMatchObject({
+      reason: { statusCode: 403, details: { reason: 'SESSION_LIMIT_REACHED' } },
+    });
+    expect(await prisma.session.count({ where: { userId: user.id, revokedAt: null } })).toBe(4);
+  });
+
   it('a real login (through the actual HTTP route) creates a session, visible in the list', async () => {
     const user = await makeUser(`session-login-${Math.random().toString(36).slice(2, 7)}`);
 

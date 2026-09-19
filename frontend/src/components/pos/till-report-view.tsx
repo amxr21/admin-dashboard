@@ -71,6 +71,26 @@ export function TillReportView({ report }: { report: TillReport }) {
           )}
         </div>
 
+        {/* Order-level breakdown (Task 2) — how many sales the money above was,
+            their average, and voids. Voids shown only when there were any. */}
+        <div className="border-t border-dashed pt-2">
+          <p className="font-semibold">{t('salesSummary')}</p>
+          <div className="flex justify-between">
+            <span>{t('salesCount')}</span>
+            <span className="tabular-nums">{report.salesCount}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>{t('averageSale')}</span>
+            <span className="tabular-nums">{report.averageSale}</span>
+          </div>
+          {report.voidCount > 0 ? (
+            <div className="flex justify-between">
+              <span>{t('voids')}</span>
+              <span className="tabular-nums">{report.voidCount}</span>
+            </div>
+          ) : null}
+        </div>
+
         {shift.openingFloat !== null ? (
           <div className="border-t border-dashed pt-2">
             <div className="flex justify-between">
@@ -106,6 +126,33 @@ export function TillReportView({ report }: { report: TillReport }) {
                 </div>
               </>
             ) : null}
+          </div>
+        ) : null}
+
+        {/*
+          URG-034 — foreign cash, counted per currency in its OWN units.
+
+          Deliberately OUTSIDE the `openingFloat` block above: that group is
+          the base-currency drawer reconciliation, and a till opened without a
+          float would otherwise hide foreign notes that are physically sitting
+          in the drawer.
+
+          Never summed into one figure, and never converted: the owner's rule
+          is that a genuine shortfall must stay distinguishable from the rate
+          having moved during the shift, and a combined total makes those two
+          indistinguishable. Each row is "what should still be here, in this
+          currency" — taken minus change given back.
+        */}
+        {report.byTenderCurrency.length > 0 ? (
+          <div className="border-t border-dashed pt-2">
+            <p className="font-semibold">{t('foreignCash')}</p>
+            {report.byTenderCurrency.map((row) => (
+              <div key={row.currency} className="flex justify-between">
+                <span>{row.currency}</span>
+                <span className="tabular-nums">{row.expected}</span>
+              </div>
+            ))}
+            <p className="text-muted-foreground mt-1">{t('foreignCashHint')}</p>
           </div>
         ) : null}
 

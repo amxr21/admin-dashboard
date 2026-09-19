@@ -8,6 +8,10 @@ import { prisma } from '../db/prisma.js';
 import { signToken } from '../services/auth.service.js';
 import { ADMIN_RESOURCES, getResourceConfig, writableFields } from '../config/admin.config.js';
 import { waitFor } from './helpers/wait-for.js';
+// The create-path slug tests assert against the SAME slugifier the hook uses,
+// rather than a hand-written expected string — a second copy of the rule in
+// the test is a copy that can disagree with the one under test.
+import { slugify } from '../lib/slug.js';
 
 /**
  * The generic resource engine.
@@ -626,6 +630,93 @@ describe('product slug + redirect recording (A5.7)', () => {
     await prisma.product.delete({ where: { id: other.id } });
   });
 
+  /**
+   * C1/C2 — a product created with no slug gets one derived from its name.
+   *
+   * The owner asked for "the slug must be same as name with - in spaces and
+   * some kind of id". `uniqueSlug` is the existing answer to both halves: it
+   * slugifies, and it resolves a clash with a readable `-2` suffix rather than
+   * a hash nobody can read back. These pin the three behaviours that make the
+   * feature safe rather than merely present — derive when blank, NEVER
+   * overwrite a typed value, and never collide.
+   */
+  it('derives the slug from the name when a product is created without one', async () => {
+    const res = await request(app)
+      .post('/api/v1/r/products')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} Blue Mug`, price: '5.00' });
+
+    expect(res.status).toBe(201);
+    const created = (res.body as RowBody).data.row;
+    // Spaces become hyphens and the case is normalised — the owner's own
+    // description of what a slug should look like.
+    expect(String(created.slug)).toBe(slugify(`${RUN} Blue Mug`));
+
+    await prisma.product.delete({ where: { id: String(created.id) } });
+  });
+
+  it('leaves a slug the user typed exactly as typed', async () => {
+    // Deliberate input always wins over generation: someone who took the
+    // trouble to type a slug has made a decision the form must not silently
+    // overwrite with a prettier one.
+    const res = await request(app)
+      .post('/api/v1/r/products')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} Red Mug`, price: '5.00', slug: `${RUN}-chosen-by-hand` });
+
+    expect(res.status).toBe(201);
+    const created = (res.body as RowBody).data.row;
+    expect(created.slug).toBe(`${RUN}-chosen-by-hand`);
+
+    await prisma.product.delete({ where: { id: String(created.id) } });
+  });
+
+  it('suffixes rather than fails when two products share a name', async () => {
+    // `Product.slug` is @unique, so the second create would be a 409 the user
+    // never asked for — two products legitimately can share a name.
+    const first = await request(app)
+      .post('/api/v1/r/products')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} Same Name`, price: '5.00' });
+    const second = await request(app)
+      .post('/api/v1/r/products')
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} Same Name`, price: '5.00' });
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+
+    const firstRow = (first.body as RowBody).data.row;
+    const secondRow = (second.body as RowBody).data.row;
+    const base = slugify(`${RUN} Same Name`);
+
+    expect(firstRow.slug).toBe(base);
+    // Readable, not a hash — `blue-mug-2` is a slug a human recognises.
+    expect(secondRow.slug).toBe(`${base}-2`);
+
+    await prisma.product.delete({ where: { id: String(firstRow.id) } });
+    await prisma.product.delete({ where: { id: String(secondRow.id) } });
+  });
+
+  it('never re-derives a slug when an existing product is renamed', async () => {
+    // The rule the admin.config.ts comment protects: an existing slug is a URL
+    // someone may have linked, so a rename must not silently move it.
+    const product = await prisma.product.create({
+      data: { name: `${RUN} original name`, price: '5.00', slug: `${RUN}-original` },
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/r/products/${product.id}`)
+      .set(auth(ownerToken))
+      .send({ name: `${RUN} renamed entirely` });
+
+    expect(res.status).toBe(200);
+    const after = await prisma.product.findUnique({ where: { id: product.id } });
+    expect(after?.slug).toBe(`${RUN}-original`);
+
+    await prisma.product.delete({ where: { id: product.id } });
+  });
+
   it('exposes slug/metaTitle/metaDescription in the schema for the generic form', async () => {
     const res = await request(app).get('/api/v1/r/_schema').set(auth(ownerToken));
 
@@ -637,6 +728,25 @@ describe('product slug + redirect recording (A5.7)', () => {
     expect(fieldNames).toEqual(
       expect.arrayContaining(['slug', 'metaTitle', 'metaDescription']),
     );
+  });
+
+  it('carries a field description through to the client', async () => {
+    // The route serialises `fields: config.fields` wholesale, so this passes
+    // today by construction — which is exactly why it is worth pinning. The
+    // moment someone hand-picks properties there (as the RESOURCE level above
+    // already does), a field's description would vanish silently and the form
+    // would simply stop explaining itself, with nothing failing.
+    const res = await request(app).get('/api/v1/r/_schema').set(auth(ownerToken));
+
+    const products = (
+      res.body as {
+        data: { resources: { resource: string; fields: { name: string; description?: string }[] }[] };
+      }
+    ).data.resources.find((r) => r.resource === 'products');
+
+    const cost = products?.fields.find((f) => f.name === 'cost');
+
+    expect(cost?.description).toMatch(/blank is not zero/i);
   });
 });
 
@@ -669,6 +779,112 @@ describe('resource export (B3.3)', () => {
   it('404s an unconfigured resource the same as the list endpoint', async () => {
     const res = await request(app).get('/api/v1/r/users/export').set(auth(ownerToken));
     expect(res.status).toBe(404);
+  });
+
+  it('exports only the requested columns, in the config\'s own order', async () => {
+    const category = await prisma.category.create({
+      data: { name: `${RUN} exportcols`, slug: `${RUN}-exportcols` },
+    });
+
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?columns=name&columns=slug')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    const [headerLine] = res.text.split('\r\n');
+    expect(headerLine.split(',')).toEqual(['Name', 'Slug']);
+
+    await prisma.category.delete({ where: { id: category.id } });
+  });
+
+  it('refuses a column the resource does not declare, rather than ignoring it', async () => {
+    // Silently dropping it would hand back a file that LOOKS like it honoured
+    // the request — the same rule the unknown-filter-key check follows.
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?columns=passwordHash')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses to range-filter a field that is not a date', async () => {
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?dateField=name&dateFrom=2026-01-01')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a malformed date bound', async () => {
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?dateField=createdAt&dateFrom=last-tuesday')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a date bound without a field instead of exporting unfiltered rows', async () => {
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?dateFrom=2026-01-01')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a calendar date that JavaScript would normalize', async () => {
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?dateField=createdAt&dateFrom=2026-02-31')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(400);
+  });
+
+  it('treats the "to" bound as the whole of that day, not midnight', async () => {
+    /**
+     * The boundary that makes or breaks this feature: a row created at 14:00
+     * on the 10th must appear in a window ending ON the 10th. Comparing
+     * `lte 2026-…-10T00:00:00` would drop it, and the person exporting would
+     * never know the day was missing.
+     */
+    const category = await prisma.category.create({
+      data: { name: `${RUN} exportday`, slug: `${RUN}-exportday` },
+    });
+
+    const createdAt = category.createdAt;
+    const day = createdAt.toISOString().slice(0, 10);
+
+    const res = await request(app)
+      .get(`/api/v1/r/categories/export?dateField=createdAt&dateFrom=${day}&dateTo=${day}`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain(`${RUN} exportday`);
+
+    await prisma.category.delete({ where: { id: category.id } });
+  });
+
+  it('excludes rows outside the window', async () => {
+    const category = await prisma.category.create({
+      data: { name: `${RUN} exportoutside`, slug: `${RUN}-exportoutside` },
+    });
+
+    // A window that ended before this row existed must not contain it.
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?dateField=createdAt&dateFrom=2020-01-01&dateTo=2020-01-02')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain(`${RUN} exportoutside`);
+
+    await prisma.category.delete({ where: { id: category.id } });
+  });
+
+  it('refuses a range whose start is after its end', async () => {
+    const res = await request(app)
+      .get('/api/v1/r/categories/export?dateField=createdAt&dateFrom=2026-05-01&dateTo=2026-04-01')
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(400);
   });
 
   it('is gated by the resource permission area, same as the list endpoint', async () => {

@@ -1,6 +1,7 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { ConfigurationView } from '@/components/diagnostics/configuration-view';
+import { TranslationCompletenessPanel } from '@/components/settings/translation-completeness-panel';
 
 /**
  * Configuration reference — the owner's own list of what this deployment
@@ -30,6 +31,19 @@ export default async function ConfigurationPage({
       </div>
 
       <ConfigurationView />
+
+      {/*
+        English/Arabic key parity — moved off the settings page, where it was
+        asking a shop owner to act on something only a developer can fix. It
+        belongs with the other deployment-state readouts: same audience, same
+        read-only nature, and the Arabic catalogue being unreviewed is still a
+        real release blocker worth seeing here.
+
+        A Server Component among client ones, which is fine — it reads both
+        message catalogues at render time precisely so neither reaches the
+        browser bundle.
+      */}
+      <TranslationCompletenessPanel />
     </div>
   );
 }

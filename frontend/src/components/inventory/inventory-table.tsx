@@ -2,17 +2,18 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { Boxes, FilterX, History, MailPlus, PackagePlus, Search, SearchX, SlidersHorizontal, Truck } from 'lucide-react';
+import { Boxes, FilterX, History, MailPlus, PackagePlus, SearchX, SlidersHorizontal, Truck } from 'lucide-react';
 
 import { DataTable, type Column } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
+import { TablePagination } from '@/components/table-pagination';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useResourceSchema } from '@/components/providers/schema-provider';
 import { MovementLogSheet } from '@/components/inventory/movement-log-sheet';
 import { StockAdjustSheet } from '@/components/inventory/stock-adjust-sheet';
 import { SupplierOutreachSheet } from '@/components/suppliers/supplier-outreach-sheet';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
@@ -175,6 +176,30 @@ export function InventoryTable() {
       sortValue: (row) => row.stock,
     },
     {
+      /**
+       * Where the stock physically lives.
+       *
+       * Declared on `InventoryRow` and selected by the backend, but rendered
+       * nowhere — so somebody picking an order had no way to see where the
+       * item is kept, despite the column being populated and shipped on every
+       * row.
+       *
+       * Free text for now; becomes a relation when a Location model exists
+       * (MASTER_TODO F7.9), which is why this sorts as a plain string.
+       */
+      id: 'location',
+      header: t('columns.location'),
+      cell: (row) =>
+        row.storageLocation ? (
+          <span className="truncate">{row.storageLocation}</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+      // Nulls sort together rather than among the As — an unset location is a
+      // thing to go and fill in, not a name that happens to be empty.
+      sortValue: (row) => row.storageLocation,
+    },
+    {
       id: 'cost',
       header: t('columns.cost'),
       align: 'end',
@@ -255,19 +280,12 @@ export function InventoryTable() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-56 flex-1 space-y-2">
           <Label htmlFor="inventory-search">{t('search.label')}</Label>
-          <div className="relative">
-            <Search
-              className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
-              aria-hidden
-            />
-            <Input
-              id="inventory-search"
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              placeholder={t('search.placeholder')}
-              className="ps-9"
-            />
-          </div>
+          <SearchInput
+            id="inventory-search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder={t('search.placeholder')}
+          />
         </div>
 
         <Button
@@ -377,33 +395,23 @@ export function InventoryTable() {
         }
       />
 
-      {result && result.totalPages > 1 ? (
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-muted-foreground text-sm tabular-nums">
-            {t('total', { count: result.total })}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1 || isLoading}
-              onClick={() => setValues({ page: String(Math.max(1, page - 1)) }, { history: 'push' })}
-            >
-              {t('pagination.previous')}
-            </Button>
-            <span className="text-sm tabular-nums">
-              {tTable('pageOf', { page, total: result.totalPages })}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= result.totalPages || isLoading}
-              onClick={() => setValues({ page: String(Math.min(result.totalPages, page + 1)) }, { history: 'push' })}
-            >
-              {t('pagination.next')}
-            </Button>
-          </div>
-        </div>
+      {result ? (
+        // The shared footer, not a local copy — see the note in audit-table.tsx
+        // on why the old one hid the very control that would have explained a
+        // short list. `history: 'push'` is deliberately dropped with it: the
+        // shared component replaces rather than pushes, matching every other
+        // list in the app, so Back leaves the table instead of walking the
+        // user backwards through their own paging.
+        <TablePagination
+          page={page}
+          totalPages={result.totalPages}
+          total={result.total}
+          pageSize={pageSize}
+          isLoading={isLoading}
+          onPageChange={(next) => setValues({ page: String(next) })}
+          onPageSizeChange={(next) => setValues({ pageSize: String(next), page: null })}
+          totalLabel={t('total', { count: result.total })}
+        />
       ) : null}
 
       <StockAdjustSheet
