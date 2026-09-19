@@ -2,8 +2,8 @@
 
 import { useFormatter, useTranslations } from 'next-intl';
 
-import { Link } from '@/i18n/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
+import { WidgetSection } from '@/components/dashboard/widget-section';
 import type { ResourceRow } from '@/lib/resource-api';
 
 /**
@@ -40,25 +40,22 @@ export function LatestNotificationsWidget({
   const formatter = useFormatter();
 
   return (
-    <section className="bg-card rounded-lg border p-4" aria-label={t('title')}>
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium">{t('title')}</h2>
-        <Link
-          href="/admin/notifications"
-          className="text-muted-foreground text-xs hover:underline"
-        >
-          {t('viewAll')}
-        </Link>
-      </div>
+    <WidgetSection
+      title={t('title')}
+      icon="alert"
+      tone="neutral"
+      live
+      action={{ href: '/admin/notifications', label: t('viewAll') }}
+    >
 
       {isLoading ? (
-        <div className="mt-3 space-y-2">
+        <div className="space-y-2">
           {Array.from({ length: 5 }, (_, index) => (
             <Skeleton key={index} className="h-8 w-full" />
           ))}
         </div>
       ) : rows && rows.length > 0 ? (
-        <ul className="mt-3 space-y-3">
+        <ul className="space-y-3">
           {rows.map((row, index) => {
             const id = text(row.id) ?? `row-${String(index)}`;
             const title = text(row.title);
@@ -88,8 +85,8 @@ export function LatestNotificationsWidget({
           })}
         </ul>
       ) : (
-        <p className="text-muted-foreground mt-3 text-sm">{t('empty')}</p>
+        <p className="text-muted-foreground text-sm">{t('empty')}</p>
       )}
-    </section>
+    </WidgetSection>
   );
 }

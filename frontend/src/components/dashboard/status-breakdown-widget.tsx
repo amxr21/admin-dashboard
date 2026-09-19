@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import { Skeleton } from '@/components/ui/skeleton';
+import { WidgetSection } from '@/components/dashboard/widget-section';
 import { StatusBadge } from '@/components/status-badge';
 import type { StatusBreakdown } from '@/lib/reports-api';
 
@@ -51,17 +52,20 @@ export function StatusBreakdownWidget({ data, isLoading = false }: StatusBreakdo
   const formatter = useFormatter();
 
   return (
-    <section className="bg-card rounded-lg border p-4" aria-label={t('statusBreakdown')}>
-      <h2 className="text-sm font-medium">{t('statusBreakdown')}</h2>
+    <WidgetSection
+      title={t('statusBreakdown')}
+      icon="orders"
+      tone="neutral"
+    >
 
       {isLoading ? (
-        <div className="mt-3 grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           {Array.from({ length: 6 }, (_, index) => (
             <Skeleton key={index} className="h-16 w-full" />
           ))}
         </div>
       ) : data && data.statuses.length > 0 ? (
-        <ul className="mt-3 grid grid-cols-3 gap-y-4">
+        <ul className="grid grid-cols-3 gap-y-4">
           {data.statuses.map((row) => {
             const Icon = STATUS_ICONS[row.status as keyof typeof STATUS_ICONS] as
               | LucideIcon
@@ -83,8 +87,8 @@ export function StatusBreakdownWidget({ data, isLoading = false }: StatusBreakdo
           })}
         </ul>
       ) : (
-        <p className="text-muted-foreground mt-3 text-sm">{tStates('empty.title')}</p>
+        <p className="text-muted-foreground text-sm">{tStates('empty.title')}</p>
       )}
-    </section>
+    </WidgetSection>
   );
 }

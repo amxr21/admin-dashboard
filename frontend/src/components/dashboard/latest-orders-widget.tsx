@@ -4,6 +4,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
+import { WidgetSection } from '@/components/dashboard/widget-section';
 import { StatusBadge } from '@/components/status-badge';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import type { OrderListRow } from '@/lib/orders-api';
@@ -34,22 +35,22 @@ export function LatestOrdersWidget({ orders, isLoading = false }: LatestOrdersWi
   const formatCurrency = useCurrencyFormat();
 
   return (
-    <section className="bg-card rounded-lg border p-4" aria-label={t('title')}>
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium">{t('title')}</h2>
-        <Link href="/admin/orders" className="text-muted-foreground text-xs hover:underline">
-          {t('viewAll')}
-        </Link>
-      </div>
+    <WidgetSection
+      title={t('title')}
+      icon="orders"
+      tone="accent"
+      live
+      action={{ href: '/admin/orders', label: t('viewAll') }}
+    >
 
       {isLoading ? (
-        <div className="mt-3 space-y-2">
+        <div className="space-y-2">
           {Array.from({ length: 5 }, (_, index) => (
             <Skeleton key={index} className="h-8 w-full" />
           ))}
         </div>
       ) : orders && orders.length > 0 ? (
-        <ul className="mt-3 space-y-3">
+        <ul className="space-y-3">
           {orders.map((order) => (
             <li key={order.id} className="text-sm">
               <div className="flex items-baseline justify-between gap-3">
@@ -79,8 +80,8 @@ export function LatestOrdersWidget({ orders, isLoading = false }: LatestOrdersWi
           ))}
         </ul>
       ) : (
-        <p className="text-muted-foreground mt-3 text-sm">{t('empty')}</p>
+        <p className="text-muted-foreground text-sm">{t('empty')}</p>
       )}
-    </section>
+    </WidgetSection>
   );
 }
