@@ -20,6 +20,8 @@ import {
 } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ApiError } from '@/lib/api';
+import { readBranchId } from '@/lib/auth-storage';
+import { fetchBranches, type BranchSummary } from '@/lib/branches-api';
 import { isAccountEmailValid, normalizeAccountEmail } from '@/lib/identity-validation';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
@@ -82,6 +84,13 @@ export function StaffSheet({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<StaffRole>('SUPPORT');
+  const [branchId, setBranchId] = useState('');
+  const [initialBranchId, setInitialBranchId] = useState('');
+  const [branches, setBranches] = useState<BranchSummary[]>([]);
+  const [branchesError, setBranchesError] = useState<string | null>(null);
+  const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const [hasLoadedBranches, setHasLoadedBranches] = useState(false);
+  const [branchLoadVersion, setBranchLoadVersion] = useState(0);
   const [isActive, setIsActive] = useState(true);
   // Calendar date only — the picker works in whole days. Sent as end-of-day
   // UTC on that date, the same "inclusive to-date" convention the audit
@@ -103,6 +112,9 @@ export function StaffSheet({
     setName(member?.name ?? '');
     setPhone(member?.phone ?? '');
     setRole(member?.role ?? 'SUPPORT');
+    setBranchId('');
+    setInitialBranchId('');
+    setHasLoadedBranches(false);
     setIsActive(member?.isActive ?? true);
     setAccessExpiresAt(member?.accessExpiresAt ? member.accessExpiresAt.slice(0, 10) : '');
     setPassword('');
@@ -110,6 +122,46 @@ export function StaffSheet({
     setEmailError(null);
     setPhoneError(null);
   }, [open, member]);
+
+  useEffect(() => {
+    if (!open || isEdit) return;
+
+    let cancelled = false;
+    setIsLoadingBranches(true);
+    setHasLoadedBranches(false);
+    setBranchesError(null);
+
+    void fetchBranches()
+      .then((loaded) => {
+        if (cancelled) return;
+        setBranches(loaded);
+        setHasLoadedBranches(true);
+
+        const activeBranchId = readBranchId();
+        const preferred =
+          loaded.find((branch) => branch.id === activeBranchId) ??
+          loaded.find((branch) => branch.isDefault) ??
+          (loaded.length === 1 ? loaded[0] : undefined);
+        const preferredId = preferred?.id ?? '';
+        setBranchId(preferredId);
+        setInitialBranchId(preferredId);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBranches([]);
+        setBranchId('');
+        setInitialBranchId('');
+        setHasLoadedBranches(true);
+        setBranchesError(t('form.branchLoadFailed'));
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingBranches(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [branchLoadVersion, isEdit, open, t]);
 
   /**
    * Compared against the same expressions the effect above seeds from, so
@@ -125,6 +177,7 @@ export function StaffSheet({
       name !== (member?.name ?? '') ||
       phone !== (member?.phone ?? '') ||
       role !== (member?.role ?? 'SUPPORT') ||
+      branchId !== initialBranchId ||
       isActive !== (member?.isActive ?? true) ||
       accessExpiresAt !== (member?.accessExpiresAt ? member.accessExpiresAt.slice(0, 10) : '') ||
       password !== '');
@@ -133,6 +186,10 @@ export function StaffSheet({
 
   /** Only roles at or below the actor's own rank — rule 1, mirrored. */
   const assignable = STAFF_ROLES.filter((candidate) => canAssign(actorRole, candidate));
+  const requiresBranch = role !== 'OWNER' && role !== 'DEVELOPER';
+  const branchFieldError =
+    branchesError ??
+    (hasLoadedBranches && branches.length === 0 ? t('form.noBranches') : undefined);
 
   async function submit() {
     if (!isEdit) {
@@ -176,6 +233,7 @@ export function StaffSheet({
           ...(phone.trim() ? { phone: phone.trim() } : {}),
           role,
           password,
+          ...(requiresBranch && branchId ? { branchId } : {}),
         });
         onSaved(t('notice.created', { name: saved.name ?? saved.email }));
       }
@@ -196,7 +254,9 @@ export function StaffSheet({
 
   const canSubmit = isEdit
     ? true
-    : email.trim().length > 0 && password.length >= MIN_PASSWORD;
+    : email.trim().length > 0 &&
+      password.length >= MIN_PASSWORD &&
+      (!requiresBranch || Boolean(branchId));
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -321,6 +381,55 @@ export function StaffSheet({
               <p className="text-muted-foreground text-sm">{t('form.selfRoleNote')}</p>
             ) : null}
           </div>
+
+          {!isEdit && requiresBranch ? (
+            <Field
+              id="staff-branch"
+              label={t('form.fields.branch')}
+              required
+              error={branchFieldError}
+              description={t('form.branchHint')}
+            >
+              <Select
+                value={branchId}
+                disabled={isLoadingBranches || branches.length === 0}
+                onValueChange={setBranchId}
+              >
+                <SelectTrigger
+                  id="staff-branch"
+                  aria-invalid={branchFieldError ? true : undefined}
+                  aria-describedby={
+                    branchFieldError ? 'staff-branch-error' : 'staff-branch-hint'
+                  }
+                >
+                  <SelectValue
+                    placeholder={
+                      isLoadingBranches
+                        ? t('form.loadingBranches')
+                        : t('form.chooseBranch')
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {branches.map((branch) => (
+                    <SelectItem key={branch.id} value={branch.id}>
+                      {branch.businessName} · {branch.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {branchesError ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBranchLoadVersion((version) => version + 1)}
+                >
+                  {t('form.retryBranches')}
+                </Button>
+              ) : null}
+            </Field>
+          ) : null}
 
           {isEdit && !isSelf ? (
             <div className="flex items-center gap-2">

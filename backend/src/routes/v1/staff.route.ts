@@ -78,9 +78,23 @@ const createBody = z
     phone: z.string().trim().max(48).optional(),
     role: z.nativeEnum(StaffRole, { message: 'Choose a role' }),
     password,
+    branchId: z.string().trim().min(1, 'Choose a branch').optional(),
     accessExpiresAt: z.string().datetime().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((input, context) => {
+    if (
+      input.role !== StaffRole.OWNER &&
+      input.role !== StaffRole.DEVELOPER &&
+      !input.branchId
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['branchId'],
+        message: 'Choose a branch',
+      });
+    }
+  });
 
 const inviteBody = z
   .object({
