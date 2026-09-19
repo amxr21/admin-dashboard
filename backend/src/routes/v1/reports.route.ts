@@ -26,6 +26,7 @@ import {
   getGuestVsRegistered,
   getInventoryTurnover,
   getLowStockSnapshot,
+  getFloorStatus,
   getNeedsAttention,
   getOrderValueDistribution,
   getBranchComparison,
@@ -366,6 +367,17 @@ reportsRouter.get('/reports/status-breakdown', ...guard, async (req, res) => {
  */
 reportsRouter.get('/reports/needs-attention', ...guard, async (_req, res) => {
   res.json({ data: await getNeedsAttention() });
+});
+
+/**
+ * Who is on the till right now (dashboard floor band). Live state, so no
+ * range params — same category as `/reports/needs-attention` above.
+ *
+ * Branch-scoped through `scoped()` like every other endpoint here: a manager
+ * pinned to one branch sees that branch's tills, not the whole estate.
+ */
+reportsRouter.get('/reports/floor-status', ...guard, async (req, res) => {
+  res.json({ data: await getFloorStatus(scoped(req, {})) });
 });
 
 // ─── C3.5 — new domain reports, same range/CSV shape as everything above ──
