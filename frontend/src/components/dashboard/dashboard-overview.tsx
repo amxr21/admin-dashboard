@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { ArrowLeft, ArrowRight, PackagePlus, RefreshCw } from 'lucide-react';
 
+import { AttentionPills } from '@/components/dashboard/attention-pills';
+import { FloorBand } from '@/components/dashboard/floor-band';
 import { FulfillmentHealthWidget } from '@/components/dashboard/fulfillment-health-widget';
 import { LatestNotificationsWidget } from '@/components/dashboard/latest-notifications-widget';
 import { LatestOrdersWidget } from '@/components/dashboard/latest-orders-widget';
@@ -15,6 +17,7 @@ import { ReturnsSummaryWidget } from '@/components/dashboard/returns-summary-wid
 import { StatTile } from '@/components/dashboard/stat-tile';
 import { BranchSummary } from '@/components/dashboard/branch-summary';
 import { StatusBreakdownWidget } from '@/components/dashboard/status-breakdown-widget';
+import { TemplateSwitcher } from '@/components/dashboard/template-switcher';
 import { TopProductsWidget } from '@/components/dashboard/top-products-widget';
 import { Link } from '@/i18n/navigation';
 import { Reveal } from '@/components/motion/reveal';
@@ -38,13 +41,21 @@ import {
   parseDashboardState,
   rangeToDashboardParams,
 } from '@/lib/dashboard-state';
+import {
+  DEFAULT_DASHBOARD_TEMPLATE,
+  readTemplate,
+  writeTemplate,
+  type DashboardTemplate,
+} from '@/lib/dashboard-template';
 import { fetchAudit, type AuditEntry } from '@/lib/audit-api';
 import { fetchOrders, type OrderListRow } from '@/lib/orders-api';
 import { fetchRows, type ResourceRow } from '@/lib/resource-api';
 import { fetchShifts, type Shift } from '@/lib/shifts-api';
 import {
   deltaPercent,
+  fetchFloorStatus,
   fetchFulfillmentHealth,
+  fetchNeedsAttention,
   fetchOrderValueDistribution,
   fetchOverview,
   fetchReturnsSummary,
@@ -56,7 +67,9 @@ import {
   profitCoverageOf,
   previousPeriod,
   samePeriodLastYear,
+  type FloorStatus,
   type FulfillmentHealth,
+  type NeedsAttention,
   type OrderValueDistribution,
   type Overview,
   type ReturnsSummary,
@@ -117,6 +130,16 @@ export function DashboardOverview() {
   );
   const { range, comparison } = dashboardState;
 
+  /**
+   * Which shape the live band takes. Read from `localStorage` in an effect
+   * rather than in the initialiser: the server render has no `window`, and
+   * seeding state from it directly would hydrate-mismatch the first paint.
+   */
+  const [template, setTemplate] = useState<DashboardTemplate>(DEFAULT_DASHBOARD_TEMPLATE);
+  useEffect(() => {
+    setTemplate(readTemplate());
+  }, []);
+
   const [overview, setOverview] = useState<Overview | null>(null);
   const [previousOverview, setPreviousOverview] = useState<Overview | null>(null);
   const [points, setPoints] = useState<RevenuePoint[]>([]);
@@ -140,6 +163,13 @@ export function DashboardOverview() {
    * page rather than leaving three panels on an older clock.
    */
   const [onShift, setOnShift] = useState<Shift[] | null>(null);
+  /**
+   * The floor band and the attention queues. Neither is period-scoped — both
+   * describe "right now" — but both load inside the same `load()` as
+   * everything else so one refresh moves the whole page to one clock.
+   */
+  const [floor, setFloor] = useState<FloorStatus | null>(null);
+  const [attention, setAttention] = useState<NeedsAttention | null>(null);
   const [latestOrders, setLatestOrders] = useState<OrderListRow[] | null>(null);
   const [latestNotifications, setLatestNotifications] = useState<ResourceRow[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -181,6 +211,8 @@ export function DashboardOverview() {
         loadedOnShift,
         loadedLatestOrders,
         loadedLatestNotifications,
+        loadedFloor,
+        loadedAttention,
       ] = await Promise.all([
         fetchOverview(range),
         comparisonRange ? fetchOverview(comparisonRange) : Promise.resolve(null),
@@ -201,6 +233,10 @@ export function DashboardOverview() {
         // Branch scoping is applied server-side by the resource engine, so no
         // branch filter is passed here — see `branchScopeField`.
         fetchRows('notifications', { pageSize: 5, sort: 'createdAt', dir: 'desc' }),
+        // Live state, like the three panels above — no range params, and
+        // branch scoping is applied server-side.
+        fetchFloorStatus(),
+        fetchNeedsAttention(),
       ]);
 
       setOverview(loadedOverview);
@@ -235,6 +271,8 @@ export function DashboardOverview() {
       setOnShift(loadedOnShift.shifts);
       setLatestOrders(loadedLatestOrders.orders);
       setLatestNotifications(loadedLatestNotifications.rows);
+      setFloor(loadedFloor);
+      setAttention(loadedAttention);
       setLastUpdated(new Date());
     } catch (caught) {
       setError(translateError(caught));
@@ -367,6 +405,17 @@ export function DashboardOverview() {
                   })
                 : t('refresh')}
             </Button>
+            {/* Sits with the range/comparison controls because it is the same
+                kind of thing: it changes what the page shows, not the data. */}
+            {canSeeReports ? (
+              <TemplateSwitcher
+                value={template}
+                onChange={(next) => {
+                  setTemplate(next);
+                  writeTemplate(next);
+                }}
+              />
+            ) : null}
             <Button asChild size="sm">
               <Link href="/admin/r/products">
                 <PackagePlus className="size-4" aria-hidden />
@@ -422,6 +471,25 @@ export function DashboardOverview() {
        * or 3-up. At 4-up the last row would be a two-tile orphan. Three
        * columns keeps both rows full at every breakpoint.
        */}
+      {/*
+        Above the grid, and above the KPI strip, because it answers a
+        different question from everything below it: not "how did the
+        selected period go" but "what is happening on the floor right now".
+        Putting it inside the grid would place it under the range picker's
+        implied scope, which does not reach it.
+      */}
+      {canSeeReports ? (
+        <Reveal>
+          <FloorBand data={floor} template={template} isLoading={isLoading} />
+        </Reveal>
+      ) : null}
+
+      {canSeeReports ? (
+        <Reveal>
+          <AttentionPills data={attention} isLoading={isLoading} />
+        </Reveal>
+      ) : null}
+
       {canSeeReports ? (
       <div className="grid grid-cols-12 items-stretch gap-4">
         {/* `contents`: a semantic landmark for the KPI strip that does NOT

@@ -765,7 +765,97 @@
     },
     "noReportsTitle": "عملك في مكان آخر",
     "noReportsBody": "تعرض هذه الصفحة الإيرادات وأداء العمل، وهي خارج نطاق دورك. كل ما تحتاجه على بُعد نقرة واحدة.",
-    "noReportsAction": "اذهب إلى عملي"
+    "noReportsAction": "اذهب إلى عملي",
+    "floor": {
+      "title": "على الأرض الآن",
+      "summary": "{tills, plural, zero {لا صناديق} one {صندوق واحد} two {صندوقان} few {# صناديق} many {# صندوقاً} other {# صندوق}} في {branches, plural, zero {لا فروع} one {فرع واحد} two {فرعين} few {# فروع} many {# فرعاً} other {# فرع}}",
+      "takenToday": "حُصِّل {amount}",
+      "liveNote": "مباشر — النطاق الزمني لا ينطبق هنا",
+      "allShifts": "كل الورديات",
+      "empty": "لا توجد صناديق مفتوحة الآن.",
+      "elapsed": "مضت {hours}س {minutes}د",
+      "closedAt": "أُغلق {time}",
+      "salesCount": "{count, plural, zero {لا مبيعات} one {عملية بيع واحدة} two {عمليتا بيع} few {# عمليات بيع} many {# عملية بيع} other {# عملية بيع}}",
+      "averageSale": "المتوسط {amount}",
+      "shareOfToday": "{percent}٪ من اليوم",
+      "drawer": "الدرج {amount}",
+      "counted": "العدّ {amount}",
+      "noTill": "لا صندوق",
+      "shiftNote": "ملاحظة الوردية —",
+      "flags": {
+        "clean": "متوازن",
+        "variance": "فرق {amount}",
+        "voids": "{count, plural, zero {لا عمليات إلغاء} one {إلغاء واحد} two {إلغاءان} few {# إلغاءات} many {# إلغاءً} other {# إلغاء}}",
+        "noSale": "{count, plural, zero {لا فتحات بلا بيع} one {فتحة واحدة بلا بيع} two {فتحتان بلا بيع} few {# فتحات بلا بيع} many {# فتحة بلا بيع} other {# فتحة بلا بيع}}"
+      },
+      "figures": {
+        "onShift": "على الأرض",
+        "acrossBranches": "{count, plural, zero {لا فروع} one {فرع واحد} two {فرعان} few {# فروع} many {# فرعاً} other {# فرع}}",
+        "taken": "حُصِّل اليوم",
+        "salesCount": "{count, plural, zero {لا مبيعات} one {عملية بيع واحدة} two {عمليتا بيع} few {# عمليات بيع} many {# عملية بيع} other {# عملية بيع}}",
+        "inDrawers": "في الأدراج",
+        "expected": "المتوقَّع، الصناديق المفتوحة",
+        "noSale": "فتحات بلا بيع",
+        "noSaleSub": "فُتح الدرج دون عملية بيع",
+        "voids": "الإلغاءات",
+        "voidsSub": "مبيعات عُكست اليوم"
+      },
+      "table": {
+        "who": "أمين الصندوق",
+        "branch": "الفرع",
+        "in": "منذ",
+        "sales": "المبيعات",
+        "taken": "المُحصَّل",
+        "average": "متوسط البيع",
+        "drawer": "الدرج",
+        "flags": "التنبيهات"
+      },
+      "triage": {
+        "eyebrow": "الآن",
+        "title": "{count, plural, zero {لا شيء يحتاجك} one {أمر واحد يحتاجك} two {أمران يحتاجانك} few {# أمور تحتاجك} many {# أمراً يحتاجك} other {# أمر يحتاجك}}",
+        "allClearTitle": "لا شيء يحتاجك الآن.",
+        "variance": "درج {name} به فرق {amount}",
+        "varianceDetail": "{branch} · بانتظار موافقتك",
+        "voids": "{name} عكس عملية بيع",
+        "voidsDetail": "{branch} · راجع الإلغاء",
+        "noSale": "{name} فتح الدرج دون بيع",
+        "noSaleDetail": "{branch} · فتحات درج غير مبرَّرة",
+        "quiet": "{tills, plural, zero {لا صناديق} one {صندوق واحد} two {صندوقان} few {# صناديق} many {# صندوقاً} other {# صندوق}} مفتوح، وحُصِّل {taken} اليوم."
+      }
+    },
+    "templates": {
+      "label": "تخطيط القسم المباشر",
+      "combo": {
+        "name": "نظرة عامة + الصناديق",
+        "description": "الإجماليات في الأعلى، ثم بطاقة لكل أمين صندوق."
+      },
+      "tills": {
+        "name": "بطاقات الصناديق فقط",
+        "description": "مباشرة إلى أمناء الصناديق، دون صف إجماليات."
+      },
+      "figures": {
+        "name": "الأرقام فقط",
+        "description": "خمسة أرقام لا غير. الأكثر إيجازاً."
+      },
+      "roster": {
+        "name": "جدول المناوبات",
+        "description": "كثيف وقابل للمقارنة. يتّسع لأكثر من عشرة صناديق."
+      },
+      "triage": {
+        "name": "الأولويات أولاً",
+        "description": "ما يحتاجك فقط. الأيام الهادئة تبدو شبه فارغة."
+      }
+    },
+    "attention": {
+      "label": "يحتاج انتباهك",
+      "allClear": "لا شيء بانتظارك.",
+      "queues": {
+        "outOfStock": "مُباع ونفد المخزون",
+        "unassigned": "دون مندوب توصيل",
+        "returns": "مرتجعات بانتظار الموافقة",
+        "reviews": "مراجعات بانتظار التدقيق"
+      }
+    }
   },
   "products": {
     "title": "المنتجات",
@@ -1858,10 +1948,10 @@
       "alreadyGone": "كان ذلك المفتاح مُبطلًا بالفعل.",
       "createTitle": "إنشاء مفتاح API",
       "createDescription": "يُنشأ المفتاح تلقائيًا. سجّل سبب الحاجة إليه ومن سيحتفظ به، واحصره في المجالات التي يحتاجها فعلًا.",
-    "scopesLabel": "المجالات التي يصل إليها هذا المفتاح",
-    "scopesHint": "اترك الكل دون تحديد ليصل المفتاح إلى كل ما يستطيع حسابك الوصول إليه. تحديد المجالات لا يؤدي إلا إلى تقليل الصلاحيات — لا يمكن للمفتاح تجاوز صلاحياتك.",
-    "scopesAll": "كل ما يستطيع حسابك الوصول إليه",
-    "scopesSummary": "{count, plural, zero {لا مجالات} one {مجال واحد} two {مجالان} few {# مجالات} many {# مجالًا} other {# مجال}}",
+      "scopesLabel": "المجالات التي يصل إليها هذا المفتاح",
+      "scopesHint": "اترك الكل دون تحديد ليصل المفتاح إلى كل ما يستطيع حسابك الوصول إليه. تحديد المجالات لا يؤدي إلا إلى تقليل الصلاحيات — لا يمكن للمفتاح تجاوز صلاحياتك.",
+      "scopesAll": "كل ما يستطيع حسابك الوصول إليه",
+      "scopesSummary": "{count, plural, zero {لا مجالات} one {مجال واحد} two {مجالان} few {# مجالات} many {# مجالًا} other {# مجال}}",
       "nameLabel": "الاسم",
       "namePlaceholder": "مثال: سكربت مزامنة المخزون",
       "purposeLabel": "سبب إنشاء المفتاح",
