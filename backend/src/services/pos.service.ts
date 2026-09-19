@@ -192,6 +192,13 @@ export async function browseProducts(
   const products = await prisma.product.findMany({
     where: {
       status: 'ACTIVE',
+      // A selected till belongs to one branch, so its grid must be built from
+      // that branch's catalogue footprint. The existence of a BranchStock row
+      // means the product is carried there; quantity may still be zero, which
+      // preserves the grid's separate "show sold out" choice.
+      ...(params.branchId !== null
+        ? { branchStock: { some: { branchId: params.branchId } } }
+        : {}),
       ...(q
         ? {
             OR: [
@@ -243,9 +250,8 @@ export async function browseProducts(
     price: (product.price as { toFixed: (digits: number) => string }).toFixed(2),
     imageUrl: product.imageUrl,
     categoryId: product.categoryId,
-    // Missing row means the branch holds none of it — same reasoning as the
-    // scan path's `?? 0` (see inventory.service.ts's comment on the same
-    // question). Only meaningful when a branch is in context at all.
+    // The branch-scoped query above guarantees a row exists when a branch is
+    // selected. `?? 0` remains defensive against a concurrent row removal.
     branchStock: params.branchId === null ? null : (stockByProductId.get(product.id) ?? 0),
     status: product.status,
   }));

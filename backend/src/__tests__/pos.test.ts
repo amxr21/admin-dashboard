@@ -1063,14 +1063,28 @@ describe('browsing the grid (O9.10)', () => {
     expect(row?.branchStock).toBe(7);
   });
 
-  it('reports a missing branch row as 0, same as scanProduct', async () => {
+  it('excludes a product that is not carried by the active branch', async () => {
     const product = await makeProduct({ name: `${RUN} No Branch Row Grid`, stock: 5 });
 
     const res = await browse({ q: `${RUN} No Branch Row Grid` }, ownerToken, branchId);
 
     const body = res.body as { data: { products: { id: string; branchStock: number | null }[] } };
     const row = body.data.products.find((p) => p.id === product.id);
-    expect(row?.branchStock).toBe(0);
+    expect(row).toBeUndefined();
+  });
+
+  it('keeps a sold-out product that belongs to the active branch', async () => {
+    const product = await makeProduct({ name: `${RUN} Sold Out Branch Grid`, stock: 0 });
+    await prisma.branchStock.create({
+      data: { productId: product.id, branchId, quantity: 0 },
+    });
+
+    const res = await browse({ q: `${RUN} Sold Out Branch Grid` }, ownerToken, branchId);
+
+    const body = res.body as { data: { products: { id: string; branchStock: number | null }[] } };
+    expect(body.data.products).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: product.id, branchStock: 0 })]),
+    );
   });
 
   it('reports null stock when no branch is in context', async () => {
