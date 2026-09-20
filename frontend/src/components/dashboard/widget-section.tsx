@@ -8,6 +8,7 @@ import {
   ArrowRight,
   BarChart3,
   Boxes,
+  Building2,
   ClipboardList,
   Coins,
   CreditCard,
@@ -51,6 +52,7 @@ const ICONS = {
   delivery: Truck,
   payments: CreditCard,
   activity: ClipboardList,
+  branches: Building2,
   alert: AlertTriangle,
 } satisfies Record<string, LucideIcon>;
 

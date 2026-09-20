@@ -6,6 +6,7 @@ import { RefreshCw, Store, Warehouse } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { WidgetSection } from '@/components/dashboard/widget-section';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { writeBranchId } from '@/lib/auth-storage';
 import {
@@ -97,17 +98,19 @@ export function BranchSummary({ range }: { range: DateRange }) {
   }
 
   return (
-    <section className="space-y-3" aria-labelledby="branch-summary-heading">
-      <div>
-        <h2 id="branch-summary-heading" className="text-sm font-medium">
-          {t('title')}
-        </h2>
-        <p className="text-muted-foreground mt-1 text-xs">{t('subtitle')}</p>
-      </div>
-
+    <WidgetSection
+      title={t('title')}
+      icon="branches"
+      tone="accent"
+      footNote={t('subtitle')}
+    >
       {/* The table scrolls on its own rather than the page: three numeric
           columns do not fit a phone, and a horizontally scrolling document
-          would move the whole dashboard. */}
+          would move the whole dashboard.
+
+          It keeps its own border, unlike the other panels: this is a data
+          grid with header cells and rows, and the border is what binds the
+          header to the body rather than decoration on a container. */}
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
@@ -163,6 +166,6 @@ export function BranchSummary({ range }: { range: DateRange }) {
           </tbody>
         </table>
       </div>
-    </section>
+    </WidgetSection>
   );
 }

@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 
 import { Skeleton } from '@/components/ui/skeleton';
+import { WidgetSection } from '@/components/dashboard/widget-section';
 import { useRouter } from '@/i18n/navigation';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
@@ -398,10 +399,9 @@ export function RevenueChart({
 
   if (isLoading) {
     return (
-      <div className="bg-card rounded-lg border p-4">
-        <Skeleton className="h-5 w-32" />
-        <Skeleton className="mt-4 h-64 w-full" />
-      </div>
+      <WidgetSection title={t('revenueOverTime')} icon="revenue" tone="accent">
+        <Skeleton className="h-64 w-full" />
+      </WidgetSection>
     );
   }
 
@@ -410,8 +410,7 @@ export function RevenueChart({
   if (chartData.length === 1) {
     const only = chartData[0]!;
     return (
-      <div className="bg-card rounded-lg border p-4">
-        <h2 className="mb-4 text-sm font-medium">{t('revenueOverTime')}</h2>
+      <WidgetSection title={t('revenueOverTime')} icon="revenue" tone="accent">
         {error ? (
           <p className="text-destructive flex h-64 items-center justify-center text-sm">
             {error}
@@ -429,20 +428,18 @@ export function RevenueChart({
             </p>
           </div>
         )}
-      </div>
+      </WidgetSection>
     );
   }
 
   return (
-    <div className="bg-card rounded-lg border p-4">
-      {/* The heading names the series, which is why no legend is needed for a
-          single line — ChartLegend itself stays silent in that case. Once a
-          comparison overlay or an in-progress tail is on screen, "the
-          heading names the series" stops being true (there are up to three
-          strokes now), so the legend picks up exactly the entries the
-          heading no longer covers alone. */}
-      <h2 className="mb-4 text-sm font-medium">{t('revenueOverTime')}</h2>
-
+    /* The heading names the series, which is why no legend is needed for a
+       single line — ChartLegend itself stays silent in that case. Once a
+       comparison overlay or an in-progress tail is on screen, "the heading
+       names the series" stops being true (there are up to three strokes
+       now), so the legend picks up exactly the entries the heading no longer
+       covers alone. */
+    <WidgetSection title={t('revenueOverTime')} icon="revenue" tone="accent">
       {error ? (
         <p className="text-destructive flex h-64 items-center justify-center text-sm">
           {error}
@@ -614,6 +611,6 @@ export function RevenueChart({
         </ResponsiveContainer>
         </>
       )}
-    </div>
+    </WidgetSection>
   );
 }
