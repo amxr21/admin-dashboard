@@ -150,6 +150,12 @@ beforeAll(async () => {
     data: { businessId: business.id, name: `${RUN} branch` },
   });
   branchId = branch.id;
+  await prisma.userBranch.createMany({
+    data: [
+      { userId: demo.id, branchId, role: StaffRole.DEMO },
+      { userId: support.id, branchId, role: StaffRole.SUPPORT },
+    ],
+  });
 });
 
 afterAll(async () => {
@@ -159,6 +165,7 @@ afterAll(async () => {
   await prisma.auditLog.deleteMany({ where: { entityId: { in: productIds } } });
   // Movements cascade from the product.
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
+  await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
   await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
@@ -179,7 +186,10 @@ describe('authorisation runs before anything else', () => {
   });
 
   it('denies a role without the inventory area', async () => {
-    const res = await request(app).get('/api/v1/inventory').set(auth(supportToken));
+    const res = await request(app)
+      .get('/api/v1/inventory')
+      .set(auth(supportToken))
+      .set('X-Branch-Id', branchId);
     expect(res.status).toBe(403);
   });
 

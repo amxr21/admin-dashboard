@@ -110,7 +110,7 @@ async function makeOrder(status: OrderStatus, quantity = 4, placedAt?: Date) {
 }
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 /** For an assertion expecting nothing to have landed — nothing to poll for. */
@@ -141,6 +141,12 @@ beforeAll(async () => {
     data: { businessId: business.id, name: `${RUN} branch` },
   });
   branchId = branch.id;
+  await prisma.userBranch.createMany({
+    data: [
+      { userId: demo.id, branchId, role: StaffRole.DEMO },
+      { userId: support.id, branchId, role: StaffRole.SUPPORT },
+    ],
+  });
 });
 
 afterAll(async () => {

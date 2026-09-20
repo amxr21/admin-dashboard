@@ -56,6 +56,7 @@ async function makeUser(role: StaffRole, label: string) {
     },
   });
   userIds.push(user.id);
+  await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
   return user;
 }
 
@@ -156,6 +157,7 @@ afterAll(async () => {
   await prisma.branchStock.deleteMany({ where: { productId: { in: productIds } } });
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.category.deleteMany({ where: { id: { in: categoryIds } } });
+  await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
   await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
   await prisma.idempotencyRecord.deleteMany({ where: { actorId: { in: userIds } } });

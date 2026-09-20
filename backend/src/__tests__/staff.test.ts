@@ -58,7 +58,7 @@ async function makeUser(role: StaffRole, tag = role.toLowerCase()) {
 }
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 function patch(id: string, body: Record<string, unknown>, token = ownerToken) {
@@ -83,6 +83,12 @@ beforeAll(async () => {
   secondOwnerId = secondOwner.id;
   managerToken = manager.token;
   supportId = support.id;
+  await prisma.userBranch.createMany({
+    data: [
+      { userId: manager.id, branchId, role: StaffRole.MANAGER },
+      { userId: support.id, branchId, role: StaffRole.SUPPORT },
+    ],
+  });
 });
 
 afterAll(async () => {

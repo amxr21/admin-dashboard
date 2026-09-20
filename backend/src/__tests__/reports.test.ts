@@ -50,6 +50,8 @@ const SHORT_RUN = Math.random().toString(36).slice(2, 10);
 
 const userIds: string[] = [];
 const orderIds: string[] = [];
+let businessId = '';
+let branchId = '';
 let productId = '';
 let ownerToken = '';
 let fulfillmentToken = '';
@@ -68,6 +70,7 @@ async function makeUser(role: StaffRole) {
     },
   });
   userIds.push(user.id);
+  await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
   return signToken(user);
 }
 
@@ -112,6 +115,9 @@ function get(path: string, token = ownerToken) {
 }
 
 beforeAll(async () => {
+  const business = await prisma.business.create({ data: { name: `${RUN} Business` } });
+  businessId = business.id;
+  branchId = (await prisma.branch.create({ data: { businessId, name: `${RUN} Branch`, isDefault: true } })).id;
   [ownerToken, fulfillmentToken] = await Promise.all([
     makeUser(StaffRole.OWNER),
     // FULFILLMENT picks orders and has no business reading turnover.
@@ -138,7 +144,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
   await prisma.product.deleteMany({ where: { id: productId } });
+  await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.branch.deleteMany({ where: { id: branchId } });
+  await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.$disconnect();
 });
 

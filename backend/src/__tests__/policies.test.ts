@@ -32,6 +32,8 @@ interface VersionsBody {
 const RUN = `policiestest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const userIds: string[] = [];
+let businessId = '';
+let branchId = '';
 let ownerToken = '';
 let supportToken = '';
 let ownerId = '';
@@ -46,10 +48,14 @@ async function makeUser(role: StaffRole) {
     },
   });
   userIds.push(user.id);
+  await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
   return { id: user.id, token: signToken(user) };
 }
 
 beforeAll(async () => {
+  const business = await prisma.business.create({ data: { name: `${RUN} Business` } });
+  businessId = business.id;
+  branchId = (await prisma.branch.create({ data: { businessId, name: `${RUN} Branch`, isDefault: true } })).id;
   const owner = await makeUser(StaffRole.OWNER);
   ownerToken = owner.token;
   ownerId = owner.id;
@@ -57,7 +63,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.branch.deleteMany({ where: { id: branchId } });
+  await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.$disconnect();
 });
 
@@ -73,7 +82,7 @@ afterEach(async () => {
 });
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 describe('GET /api/v1/policies', () => {

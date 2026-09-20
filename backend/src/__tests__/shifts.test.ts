@@ -65,7 +65,7 @@ function auth(token: string) {
   return { Authorization: `Bearer ${token}` } as const;
 }
 
-async function makeUser(role: StaffRole, label: string) {
+async function makeUser(role: StaffRole, label: string, assignToPrimaryBranch = true) {
   const user = await prisma.user.create({
     data: {
       email: `${RUN}-${label}@example.test`,
@@ -75,6 +75,9 @@ async function makeUser(role: StaffRole, label: string) {
     },
   });
   userIds.push(user.id);
+  if (branchId && assignToPrimaryBranch && role !== StaffRole.OWNER && role !== StaffRole.DEVELOPER) {
+    await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
+  }
   return user;
 }
 
@@ -116,6 +119,7 @@ afterAll(async () => {
   await prisma.payment.deleteMany({ where: { orderId: { in: orderIds } } });
   await prisma.shift.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
+  await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
   await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -243,7 +247,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
   });
 
   it('a branch-scoped role assigned to exactly one branch defaults to it, no header needed', async () => {
-    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-one-branch');
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-one-branch', false);
     await prisma.userBranch.create({
       data: { userId: cashier.id, branchId: otherBranchId, role: StaffRole.CASHIER },
     });
@@ -258,7 +262,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
   });
 
   it('a branch-scoped role assigned to more than one branch must pick', async () => {
-    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-two-branches');
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-two-branches', false);
     await prisma.userBranch.createMany({
       data: [
         { userId: cashier.id, branchId, role: StaffRole.CASHIER },
@@ -282,7 +286,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
     // choose a branch; before this, `startShift` had no `branchId` field to
     // send and the till rendered no picker, so the instruction could not be
     // followed and a two-branch cashier simply could not clock on.
-    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-picks-branch');
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-picks-branch', false);
     await prisma.userBranch.createMany({
       data: [
         { userId: cashier.id, branchId, role: StaffRole.CASHIER },
@@ -306,7 +310,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
     // Without this check that same field would let a cashier attribute their
     // shift — and its cash — to a shop they have no business working at,
     // reintroducing the exact misattribution the refusal exists to prevent.
-    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-wrong-branch');
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-wrong-branch', false);
     await prisma.userBranch.create({
       data: { userId: cashier.id, branchId, role: StaffRole.CASHIER },
     });
@@ -322,15 +326,15 @@ describe('starting a shift with no branch header, in a multi-business install', 
   });
 
   it('a branch-scoped role with no roster row still gets the ambiguity error', async () => {
-    const unassigned = await makeUser(StaffRole.CASHIER, 'cashier-unassigned');
+    const unassigned = await makeUser(StaffRole.CASHIER, 'cashier-unassigned', false);
 
     const res = await request(app)
       .post('/api/v1/shifts')
       .set(auth(signToken(unassigned)))
       .send({});
 
-    expect(res.status).toBe(400);
-    expect((res.body as { error: { message: string } }).error.message).toMatch(/more than one business/);
+    expect(res.status).toBe(404);
+    expect((res.body as { error: { message: string } }).error.message).toMatch(/branch context/i);
   });
 
   afterAll(async () => {

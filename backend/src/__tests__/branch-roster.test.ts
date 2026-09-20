@@ -415,7 +415,8 @@ describe('the roster read', () => {
   it('lets a MANAGER read a roster even though they cannot change it', async () => {
     const res = await request(app)
       .get(`/api/v1/branches/${marina}/staff`)
-      .set(auth(managerToken));
+      .set(auth(managerToken))
+      .set('X-Branch-Id', marina);
 
     expect(res.status).toBe(200);
   });

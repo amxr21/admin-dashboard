@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { StaffRole } from '@prisma/client';
@@ -31,6 +31,8 @@ const app = createApp();
 const RUN = `apikeytest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const PASSWORD = 'correct-horse-battery-staple';
 const createdUserIds: string[] = [];
+const createdBusinessIds: string[] = [];
+let staffBranchId = '';
 
 interface CreatedKeyBody {
   data: { id: string; name: string; key: string; scopes: string[] | null };
@@ -55,6 +57,11 @@ async function makeUser(role: StaffRole, label: string) {
     },
   });
   createdUserIds.push(user.id);
+  if (role !== StaffRole.OWNER && role !== StaffRole.DEVELOPER) {
+    await prisma.userBranch.create({
+      data: { userId: user.id, branchId: staffBranchId, role },
+    });
+  }
   return user;
 }
 
@@ -62,9 +69,21 @@ function auth(token: string) {
   return { Authorization: `Bearer ${token}` } as const;
 }
 
+beforeAll(async () => {
+  const business = await prisma.business.create({ data: { name: `${RUN} business` } });
+  createdBusinessIds.push(business.id);
+  const branch = await prisma.branch.create({
+    data: { businessId: business.id, name: `${RUN} branch` },
+  });
+  staffBranchId = branch.id;
+});
+
 afterAll(async () => {
   await prisma.apiKey.deleteMany({ where: { userId: { in: createdUserIds } } });
+  await prisma.userBranch.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+  await prisma.branch.deleteMany({ where: { businessId: { in: createdBusinessIds } } });
+  await prisma.business.deleteMany({ where: { id: { in: createdBusinessIds } } });
   await prisma.$disconnect();
 });
 
@@ -184,7 +203,10 @@ describe('a key authenticates as its OWNER, exactly', () => {
     // SUPPORT does not hold the `staff` area — a key inheriting MORE than
     // its owner would be the actual security bug this design exists to
     // prevent.
-    const res = await request(app).get('/api/v1/staff').set(auth(key));
+    const res = await request(app)
+      .get('/api/v1/staff')
+      .set(auth(key))
+      .set('X-Branch-Id', staffBranchId);
     expect(res.status).toBe(403);
   });
 
@@ -327,7 +349,10 @@ describe('scopes NARROW a key, and can never widen it', () => {
     const res = await makeKey(signToken(support), 'Escalation attempt', ['staff']);
     const { key } = (res.body as CreatedKeyBody).data;
 
-    const staffRes = await request(app).get('/api/v1/staff').set(auth(key));
+    const staffRes = await request(app)
+      .get('/api/v1/staff')
+      .set(auth(key))
+      .set('X-Branch-Id', staffBranchId);
     expect(staffRes.status).toBe(403);
   });
 

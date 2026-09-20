@@ -46,6 +46,7 @@ const businessIds: string[] = [];
 
 let ownerToken = '';
 let managerToken = '';
+let managerBranchId = '';
 
 function auth(token: string) {
   return { Authorization: `Bearer ${token}` } as const;
@@ -79,9 +80,22 @@ beforeAll(async () => {
 
   ownerToken = signToken(owner);
   managerToken = signToken(manager);
+
+  const managerBusiness = await prisma.business.create({
+    data: { name: `${RUN} manager context` },
+  });
+  businessIds.push(managerBusiness.id);
+  const managerBranch = await prisma.branch.create({
+    data: { businessId: managerBusiness.id, name: `${RUN} manager branch context` },
+  });
+  managerBranchId = managerBranch.id;
+  await prisma.userBranch.create({
+    data: { userId: manager.id, branchId: managerBranchId, role: StaffRole.MANAGER },
+  });
 });
 
 afterAll(async () => {
+  await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
   await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -96,6 +110,7 @@ describe('who may open a shop', () => {
     const res = await request(app)
       .post('/api/v1/businesses')
       .set(auth(managerToken))
+      .set('X-Branch-Id', managerBranchId)
       .send({ name: `${RUN} manager attempt` });
 
     expect(res.status).toBe(403);
@@ -107,6 +122,7 @@ describe('who may open a shop', () => {
     const res = await request(app)
       .post('/api/v1/branches')
       .set(auth(managerToken))
+      .set('X-Branch-Id', managerBranchId)
       .send({ businessId, name: `${RUN} manager branch` });
 
     expect(res.status).toBe(403);
@@ -135,7 +151,10 @@ describe('who may open a shop', () => {
   });
 
   it('still lets a MANAGER READ the org chart — only writes are owner-shaped', async () => {
-    const res = await request(app).get('/api/v1/businesses').set(auth(managerToken));
+    const res = await request(app)
+      .get('/api/v1/businesses')
+      .set(auth(managerToken))
+      .set('X-Branch-Id', managerBranchId);
 
     expect(res.status).toBe(200);
   });
@@ -370,6 +389,7 @@ describe('editing a business', () => {
     const res = await request(app)
       .patch(`/api/v1/businesses/${businessId}`)
       .set(auth(managerToken))
+      .set('X-Branch-Id', managerBranchId)
       .send({ name: `${RUN} manager rename` });
 
     expect(res.status).toBe(403);

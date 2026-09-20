@@ -47,7 +47,7 @@ async function makeUser(role: StaffRole) {
 }
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchA } as const;
 }
 
 beforeAll(async () => {
@@ -82,6 +82,12 @@ beforeAll(async () => {
   businessId = business.id;
   branchA = business.branches.find((branch) => branch.isDefault)!.id;
   branchB = business.branches.find((branch) => !branch.isDefault)!.id;
+  await prisma.userBranch.createMany({
+    data: [
+      { userId: userIds[1]!, branchId: branchA, role: StaffRole.SUPPORT },
+      { userId: userIds[2]!, branchId: branchA, role: StaffRole.FULFILLMENT },
+    ],
+  });
 
   const order = await prisma.order.create({
     data: {

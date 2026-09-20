@@ -33,6 +33,8 @@ const RUN = `staffpolicytest-${Date.now()}-${Math.random().toString(36).slice(2,
 const userIds: string[] = [];
 let ownerToken = '';
 let supportToken = '';
+let businessId = '';
+let branchId = '';
 
 async function makeUser(role: StaffRole, overrides: { twoFactorEnabled?: boolean } = {}) {
   const user = await prisma.user.create({
@@ -45,10 +47,17 @@ async function makeUser(role: StaffRole, overrides: { twoFactorEnabled?: boolean
     },
   });
   userIds.push(user.id);
+  if (branchId && role !== StaffRole.OWNER && role !== StaffRole.DEVELOPER) {
+    await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
+  }
   return signToken(user);
 }
 
 beforeAll(async () => {
+  const business = await prisma.business.create({ data: { name: `${RUN} business` } });
+  const branch = await prisma.branch.create({ data: { businessId: business.id, name: `${RUN} branch` } });
+  businessId = business.id;
+  branchId = branch.id;
   [ownerToken, supportToken] = await Promise.all([
     makeUser(StaffRole.OWNER),
     makeUser(StaffRole.SUPPORT),
@@ -61,11 +70,13 @@ afterEach(async () => {
 
 afterAll(async () => {
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.branch.deleteMany({ where: { businessId } });
+  await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.$disconnect();
 });
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 function save(body: Record<string, unknown>, token = ownerToken) {

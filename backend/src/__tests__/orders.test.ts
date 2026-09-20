@@ -49,6 +49,8 @@ const RUN = `orderstest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
 const userIds: string[] = [];
 const orderIds: string[] = [];
+let businessId = '';
+let branchId = '';
 let productId = '';
 let customerId = '';
 let ownerToken = '';
@@ -66,6 +68,7 @@ async function makeUser(role: StaffRole) {
     },
   });
   userIds.push(user.id);
+  await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
   return { token: signToken(user), id: user.id };
 }
 
@@ -84,6 +87,7 @@ async function makeOrder(status: OrderStatus = OrderStatus.PENDING, orderNumberP
         ? `${orderNumberPrefix}-${orderIds.length}`
         : `${RUN}-${orderIds.length}`,
       status,
+      branchId,
       total: new Prisma.Decimal('59.98'),
       customerId,
       items: {
@@ -96,10 +100,15 @@ async function makeOrder(status: OrderStatus = OrderStatus.PENDING, orderNumberP
 }
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 beforeAll(async () => {
+  const business = await prisma.business.create({ data: { name: `${RUN} Business` } });
+  businessId = business.id;
+  const branch = await prisma.branch.create({ data: { businessId, name: `${RUN} Branch`, isDefault: true } });
+  branchId = branch.id;
+
   const [owner, demo, fulfilment] = await Promise.all([
     makeUser(StaffRole.OWNER),
     makeUser(StaffRole.DEMO),
@@ -134,7 +143,10 @@ afterAll(async () => {
   await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
   await prisma.product.deleteMany({ where: { id: productId } });
   await prisma.customer.deleteMany({ where: { id: customerId } });
+  await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.branch.deleteMany({ where: { id: branchId } });
+  await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.$disconnect();
 });
 

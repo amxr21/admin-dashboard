@@ -358,9 +358,13 @@ describe('floor status', () => {
 
   it('refuses a role without the reports area', async () => {
     const picker = await makeUser(StaffRole.FULFILLMENT, 'picker');
+    await prisma.userBranch.create({
+      data: { userId: picker.id, branchId, role: StaffRole.FULFILLMENT },
+    });
     const res = await request(app)
       .get('/api/v1/reports/floor-status')
-      .set(auth(signToken(picker)));
+      .set(auth(signToken(picker)))
+      .set('X-Branch-Id', branchId);
 
     expect(res.status).toBe(403);
   });

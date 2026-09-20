@@ -38,7 +38,7 @@ async function user(role: StaffRole) {
   return signToken(row);
 }
 
-function auth(token = ownerToken) { return { Authorization: `Bearer ${token}` } as const; }
+function auth(token = ownerToken) { return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchA } as const; }
 
 beforeAll(async () => {
   [ownerToken, supportToken] = await Promise.all([user(StaffRole.OWNER), user(StaffRole.SUPPORT)]);
@@ -49,6 +49,9 @@ beforeAll(async () => {
     prisma.branch.create({ data: { businessId, name: `${RUN} Downtown` } }),
   ]);
   branchA = branches[0].id; branchB = branches[1].id;
+  await prisma.userBranch.create({
+    data: { userId: userIds[1]!, branchId: branchA, role: StaffRole.SUPPORT },
+  });
 });
 
 beforeEach(() => { sendEmailToRecipients.mockReset(); sendEmailToRecipients.mockResolvedValue(true); });
