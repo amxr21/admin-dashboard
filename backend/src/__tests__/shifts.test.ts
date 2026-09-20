@@ -62,6 +62,10 @@ let ownerId = '';
 let workerId = '';
 
 function auth(token: string) {
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
+}
+
+function authOnly(token: string) {
   return { Authorization: `Bearer ${token}` } as const;
 }
 
@@ -238,7 +242,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
   });
 
   it('a business-wide role still gets the ambiguity error, no header, no roster row', async () => {
-    const res = await request(app).post('/api/v1/shifts').set(auth(ownerToken)).send({});
+    const res = await request(app).post('/api/v1/shifts').set(authOnly(ownerToken)).send({});
 
     expect(res.status).toBe(400);
     expect((res.body as { error: { message: string } }).error.message).toMatch(/more than one business/);
@@ -246,15 +250,22 @@ describe('starting a shift with no branch header, in a multi-business install', 
       .toBe('BRANCH_REQUIRED_MULTIPLE_BUSINESSES');
   });
 
-  it('a branch-scoped role assigned to exactly one branch defaults to it, no header needed', async () => {
+  it('a branch-scoped role assigned to exactly one branch still sends its active branch', async () => {
     const cashier = await makeUser(StaffRole.CASHIER, 'cashier-one-branch', false);
     await prisma.userBranch.create({
       data: { userId: cashier.id, branchId: otherBranchId, role: StaffRole.CASHIER },
     });
 
+    const missing = await request(app)
+      .post('/api/v1/shifts')
+      .set(authOnly(signToken(cashier)))
+      .send({});
+
+    expect(missing.status).toBe(404);
+
     const res = await request(app)
       .post('/api/v1/shifts')
-      .set(auth(signToken(cashier)))
+      .set({ Authorization: `Bearer ${signToken(cashier)}`, 'X-Branch-Id': otherBranchId })
       .send({});
 
     expect(res.status).toBe(201);
@@ -272,7 +283,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
 
     const res = await request(app)
       .post('/api/v1/shifts')
-      .set(auth(signToken(cashier)))
+      .set(authOnly(signToken(cashier)))
       .send({});
 
     expect(res.status).toBe(400);
@@ -296,7 +307,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
 
     const res = await request(app)
       .post('/api/v1/shifts')
-      .set(auth(signToken(cashier)))
+      .set({ Authorization: `Bearer ${signToken(cashier)}`, 'X-Branch-Id': otherBranchId })
       .send({ branchId: otherBranchId });
 
     expect(res.status).toBe(201);
@@ -317,7 +328,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
 
     const res = await request(app)
       .post('/api/v1/shifts')
-      .set(auth(signToken(cashier)))
+      .set({ Authorization: `Bearer ${signToken(cashier)}`, 'X-Branch-Id': otherBranchId })
       .send({ branchId: otherBranchId });
 
     expect(res.status).toBe(403);
@@ -330,7 +341,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
 
     const res = await request(app)
       .post('/api/v1/shifts')
-      .set(auth(signToken(unassigned)))
+      .set(authOnly(signToken(unassigned)))
       .send({});
 
     expect(res.status).toBe(404);

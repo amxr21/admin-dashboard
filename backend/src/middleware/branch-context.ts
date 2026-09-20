@@ -1,10 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 
-import { prisma } from '../db/prisma.js';
-import {
-  isBusinessWideRole,
-  resolveRoleAtBranch,
-} from '../services/branch-roles.service.js';
+import { resolveRoleAtBranch } from '../services/branch-roles.service.js';
 import { requireUser } from './authenticate.js';
 
 /**
@@ -42,23 +38,7 @@ export async function withBranchContext(
     // An empty or whitespace-only header is "no branch", not a branch whose id
     // is the empty string — a lookup on `''` would be a guaranteed miss that
     // reads like a real one.
-    let branchId = header?.trim() ? header.trim() : null;
-
-    // A staff member assigned to exactly one active branch has no ambiguous
-    // choice to make. Resolve that branch server-side so clock-in and other
-    // authenticated clients remain usable before the switcher has hydrated,
-    // while zero or multiple assignments still fail closed below.
-    if (!branchId && !isBusinessWideRole(user.role)) {
-      const assignments = await prisma.userBranch.findMany({
-        where: {
-          userId: user.id,
-          branch: { isActive: true, business: { isActive: true } },
-        },
-        select: { branchId: true },
-        take: 2,
-      });
-      if (assignments.length === 1) branchId = assignments[0]!.branchId;
-    }
+    const branchId = header?.trim() ? header.trim() : null;
 
     req.branchId = branchId;
     req.branchRole = await resolveRoleAtBranch(user.id, branchId);
