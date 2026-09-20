@@ -6,6 +6,7 @@ import { Prisma, StaffRole } from '@prisma/client';
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { signToken } from '../services/auth.service.js';
+import { createApiKey } from '../services/api-key.service.js';
 import { getResolvedProductContent } from '../services/product-content.service.js';
 import { waitFor } from './helpers/wait-for.js';
 
@@ -16,6 +17,7 @@ const productIds: string[] = [];
 const categoryIds: string[] = [];
 let ownerToken = '';
 let supportToken = '';
+let storefrontKey = '';
 
 interface ContentResponseBody {
   data: {
@@ -77,12 +79,19 @@ beforeAll(async () => {
     makeUser(StaffRole.OWNER),
     makeUser(StaffRole.SUPPORT),
   ]);
+  const owner = await prisma.user.findFirstOrThrow({
+    where: { email: `${RUN}-${StaffRole.OWNER.toLowerCase()}@example.test` },
+  });
+  storefrontKey = (
+    await createApiKey(owner.id, 'Storefront tests', 'Localized catalogue', 'Vitest')
+  ).key;
 });
 
 afterAll(async () => {
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.category.deleteMany({ where: { id: { in: categoryIds } } });
   await prisma.auditLog.deleteMany({ where: { actorId: { in: userIds } } });
+  await prisma.apiKey.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.$disconnect();
 });
@@ -202,7 +211,10 @@ describe('product localized content', () => {
         .get(`/api/v1/pos/browse?q=${encodeURIComponent(arabicName)}`)
         .set(auth(ownerToken))
         .set('Accept-Language', 'ar'),
-      request(app).get('/api/v1/public/products').set('Accept-Language', 'ar'),
+      request(app)
+        .get('/api/v1/public/products')
+        .set('X-API-Key', storefrontKey)
+        .set('Accept-Language', 'ar'),
     ]);
 
     expect(resourceList.status).toBe(200);

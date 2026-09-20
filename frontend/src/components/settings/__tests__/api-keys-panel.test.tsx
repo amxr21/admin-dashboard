@@ -106,6 +106,24 @@ describe('ApiKeysPanel — creation and one-time reveal', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows server-only usage guidance in a viewport-safe reveal dialog', async () => {
+    render(<ApiKeysPanel />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /create key/i }));
+    await userEvent.type(screen.getByLabelText(/^name$/i), 'Storefront');
+    await userEvent.type(screen.getByLabelText(/reason for this key/i), 'Read catalogue');
+    await userEvent.type(screen.getByLabelText(/who will hold/i), 'Storefront server');
+    await userEvent.click(screen.getByRole('button', { name: /^create key$/i }));
+
+    expect(await screen.findByText(/use it from your storefront server/i)).toBeInTheDocument();
+    expect(screen.getByText('X-API-Key: your_generated_key')).toBeInTheDocument();
+    expect(screen.getByRole('alertdialog')).toHaveClass(
+      'max-h-[calc(100vh-2rem)]',
+      'overflow-y-auto',
+    );
+    expect(screen.getByRole('button', { name: /^done$/i })).toHaveClass('w-full');
+  });
+
   it('refreshes the list after the reveal is dismissed, so the new key becomes visible', async () => {
     render(<ApiKeysPanel />);
 
