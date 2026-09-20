@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PhoneField } from '@/components/ui/phone-field';
@@ -17,6 +18,8 @@ import {
 } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ApiError } from '@/lib/api';
+import { readBranchId } from '@/lib/auth-storage';
+import { fetchBranches, type BranchSummary } from '@/lib/branches-api';
 import { isAccountEmailValid, normalizeAccountEmail } from '@/lib/identity-validation';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
@@ -86,6 +89,12 @@ export function InviteStaffSheet({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<StaffRole>(initialRole);
+  const [branchId, setBranchId] = useState('');
+  const [branches, setBranches] = useState<BranchSummary[]>([]);
+  const [branchesError, setBranchesError] = useState<string | null>(null);
+  const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const [hasLoadedBranches, setHasLoadedBranches] = useState(false);
+  const [branchLoadVersion, setBranchLoadVersion] = useState(0);
   const [accessExpiresAt, setAccessExpiresAt] = useState('');
 
   const [error, setError] = useState<string | null>(null);
@@ -93,11 +102,50 @@ export function InviteStaffSheet({
   const [isSaving, setIsSaving] = useState(false);
   const [issued, setIssued] = useState<ResetTokenResult | null>(null);
 
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    setIsLoadingBranches(true);
+    setHasLoadedBranches(false);
+    setBranchesError(null);
+
+    void fetchBranches()
+      .then((loaded) => {
+        if (cancelled) return;
+        setBranches(loaded);
+        setHasLoadedBranches(true);
+        const activeBranchId = readBranchId();
+        const preferred =
+          loaded.find((branch) => branch.id === activeBranchId) ??
+          loaded.find((branch) => branch.isDefault) ??
+          (loaded.length === 1 ? loaded[0] : undefined);
+        setBranchId(preferred?.id ?? '');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBranches([]);
+        setBranchId('');
+        setHasLoadedBranches(true);
+        setBranchesError(t('form.branchLoadFailed'));
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingBranches(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [branchLoadVersion, open, t]);
+
   function reset() {
     setEmail('');
     setName('');
     setPhone('');
     setRole(initialRole());
+    setBranchId('');
+    setBranchesError(null);
+    setHasLoadedBranches(false);
     setAccessExpiresAt('');
     setError(null);
     setEmailError(null);
@@ -114,6 +162,12 @@ export function InviteStaffSheet({
       return;
     }
 
+    const requiresBranch = role !== 'OWNER' && role !== 'DEVELOPER';
+    if (requiresBranch && !branchId) {
+      setError(branchesError ?? t('form.chooseBranch'));
+      return;
+    }
+
     setIsSaving(true);
     setError(null);
 
@@ -123,6 +177,7 @@ export function InviteStaffSheet({
         ...(name.trim() ? { name: name.trim() } : {}),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
         role,
+        ...(requiresBranch && branchId ? { branchId } : {}),
         ...(accessExpiresAt ? { accessExpiresAt: `${accessExpiresAt}T23:59:59.999Z` } : {}),
       });
 
@@ -155,6 +210,11 @@ export function InviteStaffSheet({
       />
     );
   }
+
+  const requiresBranch = role !== 'OWNER' && role !== 'DEVELOPER';
+  const branchFieldError =
+    branchesError ??
+    (hasLoadedBranches && branches.length === 0 ? t('form.noBranches') : undefined);
 
   return (
     <Sheet
@@ -212,6 +272,50 @@ export function InviteStaffSheet({
             ) : null}
           </div>
 
+          {requiresBranch ? (
+            <Field
+              id="invite-branch"
+              label={t('form.fields.branch')}
+              required
+              error={branchFieldError}
+              description={t('form.branchHint')}
+            >
+              <Select
+                value={branchId}
+                disabled={isLoadingBranches || branches.length === 0}
+                onValueChange={setBranchId}
+              >
+                <SelectTrigger
+                  id="invite-branch"
+                  aria-invalid={branchFieldError ? true : undefined}
+                >
+                  <SelectValue
+                    placeholder={
+                      isLoadingBranches ? t('form.loadingBranches') : t('form.chooseBranch')
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {branches.map((branch) => (
+                    <SelectItem key={branch.id} value={branch.id}>
+                      {branch.businessName} · {branch.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {branchesError ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBranchLoadVersion((version) => version + 1)}
+                >
+                  {t('form.retryBranches')}
+                </Button>
+              ) : null}
+            </Field>
+          ) : null}
+
           <div className="space-y-2">
             <Label htmlFor="invite-name">{t('form.fields.name')}</Label>
             <Input id="invite-name" value={name} onChange={(event) => setName(event.target.value)} />
@@ -259,7 +363,10 @@ export function InviteStaffSheet({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               {t('form.cancel')}
             </Button>
-            <Button disabled={isSaving || !email.trim()} onClick={() => void submit()}>
+            <Button
+              disabled={isSaving || !email.trim() || (requiresBranch && !branchId)}
+              onClick={() => void submit()}
+            >
               {isSaving ? t('form.saving') : t('invite.send')}
             </Button>
           </div>

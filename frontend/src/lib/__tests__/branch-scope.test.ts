@@ -23,9 +23,23 @@ describe('reconcileBranchScope', () => {
     ).toBe('downtown');
   });
 
-  it('clears a branch that is no longer assigned', () => {
+  it('selects the first assignment when a limited role has several and no selection', () => {
+    expect(
+      reconcileBranchScope('CASHIER', [{ id: 'marina' }, { id: 'downtown' }]),
+    ).toBe('marina');
+    expect(readBranchId()).toBe('marina');
+  });
+
+  it('replaces a branch that is no longer assigned without widening scope', () => {
     writeBranchId('closed');
-    expect(reconcileBranchScope('CASHIER', [{ id: 'marina' }, { id: 'downtown' }])).toBeNull();
+    expect(reconcileBranchScope('CASHIER', [{ id: 'marina' }, { id: 'downtown' }])).toBe(
+      'marina',
+    );
+    expect(readBranchId()).toBe('marina');
+  });
+
+  it('keeps All branches available to an owner with several branches', () => {
+    expect(reconcileBranchScope('OWNER', [{ id: 'marina' }, { id: 'downtown' }])).toBeNull();
     expect(readBranchId()).toBeNull();
   });
 });

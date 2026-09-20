@@ -27,10 +27,9 @@ import { isBusinessWideRole } from './branch-roles.service.js';
  * So: a business-wide role (OWNER/DEVELOPER) sees every active branch; anyone
  * else sees only branches they hold an explicit `UserBranch` row at.
  *
- * A user with a global role but no assignments sees NOTHING here, and that is
- * correct rather than a bug: they can still work unscoped (the header is
- * optional, and every unscoped request answers for the whole business as it
- * always did), but they have not been placed anywhere in particular.
+ * A user with a global role but no assignments sees NOTHING here and cannot
+ * enter branch-owned routes until an owner assigns them. This list endpoint
+ * intentionally remains unscoped so it can bootstrap the first valid header.
  */
 export async function listBranchesFor(userId: string, role: StaffRole) {
   const branches = await prisma.branch.findMany({
@@ -225,6 +224,17 @@ export async function updateBusiness(businessId: string, input: Partial<Business
 
   if (!before) throw AppError.notFound('Business not found');
 
+  if (input.isActive === false && before.isActive) {
+    const openShift = await prisma.shift.findFirst({
+      where: { endedAt: null, branch: { businessId, isActive: true } },
+      select: { id: true },
+    });
+
+    if (openShift) {
+      throw AppError.conflict('End all open shifts before deactivating this business');
+    }
+  }
+
   /**
    * URG-023 — the jurisdiction check, completed here.
    *
@@ -364,9 +374,19 @@ export async function updateBranch(branchId: string, input: Partial<BranchInput>
   if (!before) throw AppError.notFound('Branch not found');
 
   if (input.isActive === false && before.isActive) {
-    const remaining = await prisma.branch.count({
-      where: { businessId: before.businessId, isActive: true, id: { not: branchId } },
-    });
+    const [remaining, openShift] = await Promise.all([
+      prisma.branch.count({
+        where: { businessId: before.businessId, isActive: true, id: { not: branchId } },
+      }),
+      prisma.shift.findFirst({
+        where: { branchId, endedAt: null },
+        select: { id: true },
+      }),
+    ]);
+
+    if (openShift) {
+      throw AppError.conflict('End all open shifts before deactivating this branch');
+    }
 
     if (remaining === 0) {
       throw AppError.badRequest(

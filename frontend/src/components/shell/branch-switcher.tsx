@@ -15,6 +15,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { StaffRole } from '@/config/areas';
+import { isBusinessWideRole, reconcileBranchScope } from '@/lib/branch-scope';
 import { fetchBranches, type BranchSummary } from '@/lib/branches-api';
 import { readBranchId, writeBranchId } from '@/lib/auth-storage';
 
@@ -38,7 +40,7 @@ import { readBranchId, writeBranchId } from '@/lib/auth-storage';
  * otherwise — never auto-selected to the first branch, which would silently
  * narrow every number an owner sees on their first visit.
  */
-export function BranchSwitcher() {
+export function BranchSwitcher({ role }: { role: StaffRole }) {
   const t = useTranslations('branches');
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [active, setActive] = useState<string | null>(null);
@@ -47,20 +49,23 @@ export function BranchSwitcher() {
   useEffect(() => {
     setActive(readBranchId());
 
-    // A failure here is not worth an error state: the switcher simply does not
-    // appear, and everything keeps working unscoped, which is what an install
-    // with no branches does anyway.
     void fetchBranches()
-      .then(setBranches)
+      .then((loaded) => {
+        setBranches(loaded);
+        setActive(reconcileBranchScope(role, loaded));
+      })
+      // Keep the last explicit branch on a transient failure. The API now
+      // rejects missing/stale assignments server-side, so hiding this control
+      // can never widen a limited user to all-branch data.
       .catch(() => setBranches([]));
-  }, []);
+  }, [role]);
 
   // Nothing to switch between — a single-branch install should not carry a
   // control that can only ever have one answer.
   if (branches.length < 2) return null;
 
   function choose(value: string) {
-    const next = value === 'all' ? null : value;
+    const next = value === 'all' && isBusinessWideRole(role) ? null : value;
     if (isSwitching || next === active) return;
     flushSync(() => setIsSwitching(true));
     writeBranchId(next);
@@ -152,7 +157,9 @@ export function BranchSwitcher() {
       </Tooltip>
 
       <SelectContent>
-        <SelectItem value="all">{t('allBranches')}</SelectItem>
+        {isBusinessWideRole(role) ? (
+          <SelectItem value="all">{t('allBranches')}</SelectItem>
+        ) : null}
 
         {[...byBusiness.entries()].map(([business, list]) => (
           <SelectGroup key={business}>

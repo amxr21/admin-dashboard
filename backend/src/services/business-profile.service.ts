@@ -1,4 +1,5 @@
 import { prisma } from '../db/prisma.js';
+import { AppError } from '../errors/AppError.js';
 import { getSettingValue } from './settings.service.js';
 import { resolveBrand, type BrandSource } from './branches.service.js';
 
@@ -32,12 +33,10 @@ import { resolveBrand, type BrandSource } from './branches.service.js';
  * that precedence here would produce a second answer to "what is this
  * store's name" that could disagree with the invoice letterhead.
  *
- * This endpoint is not branch-scoped — an external integrator has no branch
- * context and no `X-Branch-Id` header — so it passes `null`, which
- * `resolveBrand` short-circuits straight to the settings-level fallback.
- * Passing the settings through it anyway (rather than reading them directly)
- * keeps the two surfaces on one code path, so a later change to the chain
- * cannot move the invoice and leave this behind.
+ * Integrators use the same `X-Branch-Id` context as staff sessions. It
+ * selects the business and applies the branch -> business -> settings chain.
+ * An unscoped call is accepted only with zero or one active business; several
+ * businesses require an explicit branch instead of a default/first-row guess.
  */
 
 export interface BusinessProfileBranch {
@@ -70,7 +69,38 @@ export interface BusinessProfile {
   branches: BusinessProfileBranch[];
 }
 
-export async function getBusinessProfile(): Promise<BusinessProfile> {
+async function resolveProfileBusiness(branchId?: string) {
+  if (branchId) {
+    const selected = await prisma.branch.findFirst({
+      where: { id: branchId, isActive: true, business: { isActive: true } },
+      select: { business: { select: { id: true, name: true, legalName: true } } },
+    });
+    if (!selected) throw AppError.notFound('Branch context is unavailable');
+    return selected.business;
+  }
+
+  const candidates = await prisma.business.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true, legalName: true },
+    orderBy: { name: 'asc' },
+    take: 2,
+  });
+
+  if (candidates.length > 1) {
+    throw AppError.badRequest('Select a branch to choose which business profile to read', {
+      field: 'branchId',
+      reason: 'BRANCH_REQUIRED_MULTIPLE_BUSINESSES',
+    });
+  }
+
+  // Zero businesses is the supported pre-setup/settings-only state.
+  return candidates[0] ?? null;
+}
+
+export async function getBusinessProfile(branchId?: string): Promise<BusinessProfile> {
+  // Resolve ownership before reading even allowlisted profile settings. This
+  // keeps an ambiguous or unknown scope fail-closed at the service boundary.
+  const business = await resolveProfileBusiness(branchId);
   const [
     storeName,
     storeAddress,
@@ -107,41 +137,9 @@ export async function getBusinessProfile(): Promise<BusinessProfile> {
     storeCurrency: String(storeCurrency),
   };
 
-  /**
-   * The primary business, and it may legitimately not exist.
-   *
-   * A single-shop install that never opened the branches page has zero
-   * `Business` rows and runs entirely on the settings registry. That is a
-   * supported state, not a misconfiguration, so this resolves to the
-   * settings-level brand rather than 404ing — an integrator asking "who are
-   * you" should get an answer from a working install.
-   *
-   * `isDefault` picks the branch, and its business is the primary one. The
-   * flag exists precisely because ordering by `createdAt` returned the wrong
-   * row on a machine offset from UTC (see `Branch.isDefault`'s schema
-   * comment), so it is read here rather than re-deriving "the oldest".
-   */
-  const defaultBranch = await prisma.branch.findFirst({
-    where: { isActive: true, isDefault: true, business: { isActive: true } },
-    select: { businessId: true },
-  });
-
-  const business = defaultBranch
-    ? await prisma.business.findUnique({
-        where: { id: defaultBranch.businessId },
-        select: { id: true, name: true, legalName: true },
-      })
-    : await prisma.business.findFirst({
-        where: { isActive: true },
-        select: { id: true, name: true, legalName: true },
-        orderBy: { name: 'asc' },
-      });
-
-  // Branch-level detail is deliberately not applied: `resolveBrand(null, …)`
-  // returns the settings fallback, and the business-level overlay is applied
-  // by reading the business row above. An external integrator is asking about
-  // the business as a whole, not about one till's letterhead.
-  const brand = await resolveBrand(null, settingsBrand);
+  // A scoped profile follows the same branch -> business -> settings brand
+  // chain as invoices. The unscoped compatibility path uses settings only.
+  const brand = await resolveBrand(branchId ?? null, settingsBrand);
 
   const branches = business
     ? await prisma.branch.findMany({

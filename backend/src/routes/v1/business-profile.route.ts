@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 
 import { authenticate } from '../../middleware/authenticate.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import { getBusinessProfile } from '../../services/business-profile.service.js';
 
 /**
@@ -73,8 +74,9 @@ businessProfileRouter.get(
   '/business/profile',
   businessProfileRateLimit,
   authenticate,
+  withBranchContext,
   async (req, res) => {
-    const profile = await getBusinessProfile();
+    const profile = await getBusinessProfile(req.branchId ?? undefined);
 
     // Identifiers only, never the profile body — it carries a support email
     // and phone, and logging response bodies is how contact details end up in

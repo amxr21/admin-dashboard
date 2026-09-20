@@ -289,6 +289,7 @@ export interface InviteStaffInput {
   name?: string;
   phone?: string;
   role: StaffRole;
+  branchId?: string;
   accessExpiresAt?: string;
 }
 

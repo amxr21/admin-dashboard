@@ -742,7 +742,7 @@ describe('POST /api/v1/staff/invite', () => {
     const res = await request(app)
       .post('/api/v1/staff/invite')
       .set(auth(ownerToken))
-      .send({ email, role: StaffRole.SUPPORT, name: 'Invitee' });
+      .send({ email, role: StaffRole.SUPPORT, name: 'Invitee', branchId });
 
     expect(res.status).toBe(201);
 
@@ -770,6 +770,7 @@ describe('POST /api/v1/staff/invite', () => {
       .send({
         email: `${RUN}-invite-strict@example.test`,
         role: StaffRole.SUPPORT,
+        branchId,
         password: 'whatever-they-sent',
       });
 
@@ -782,7 +783,7 @@ describe('POST /api/v1/staff/invite', () => {
     const inviteRes = await request(app)
       .post('/api/v1/staff/invite')
       .set(auth(ownerToken))
-      .send({ email, role: StaffRole.SUPPORT });
+      .send({ email, role: StaffRole.SUPPORT, branchId });
 
     const inviteBody = inviteRes.body as { data: { staff: { id: string }; token: string } };
     userIds.push(inviteBody.data.staff.id);
@@ -813,7 +814,7 @@ describe('POST /api/v1/staff/invite', () => {
     const res = await request(app)
       .post('/api/v1/staff/invite')
       .set(auth(ownerToken))
-      .send({ email: owner.email, role: StaffRole.SUPPORT });
+      .send({ email: owner.email, role: StaffRole.SUPPORT, branchId });
 
     expect(res.status).toBe(409);
   });
@@ -822,7 +823,7 @@ describe('POST /api/v1/staff/invite', () => {
     const inviteRes = await request(app)
       .post('/api/v1/staff/invite')
       .set(auth(ownerToken))
-      .send({ email: `${RUN}-invite-ttl@example.test`, role: StaffRole.SUPPORT });
+      .send({ email: `${RUN}-invite-ttl@example.test`, role: StaffRole.SUPPORT, branchId });
 
     const body = inviteRes.body as { data: { staff: { id: string }; expiresAt: string } };
     userIds.push(body.data.staff.id);

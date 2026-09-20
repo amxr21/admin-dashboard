@@ -24,11 +24,11 @@ import { canAssignRole, outranks } from '../config/roles.js';
  *
  * This is checked FIRST, so it holds even if such a row exists.
  *
- * ─── NO ROW MEANS NO CHANGE ──────────────────────────────────────────
- * Someone with no assignment keeps their global role exactly. That is what
- * makes the migration a no-op: every user who existed before this shipped is
- * as privileged as they were, and F8.4 grants nothing until an owner
- * deliberately assigns someone to a branch.
+ * ─── NO ROW MEANS NO ACCESS ──────────────────────────────────────────
+ * Branch assignment is the server-side access boundary for every role except
+ * OWNER and DEVELOPER. A missing, inactive, unknown, or unselected branch is
+ * deliberately reported with the same generic 404 so callers cannot use the
+ * response to discover which branch ids exist.
  */
 
 /** Roles that apply across the whole business and are never branch-scoped. */
@@ -40,9 +40,7 @@ export function isBusinessWideRole(role: StaffRole): boolean {
 
 /**
  * @param branchId The branch being acted on, or `null` for an unscoped
- *   ("all branches") request — which resolves to the global role, because
- *   "how is the business doing" is a real question and refusing it outright
- *   is how a filter gets bypassed everywhere it is inconvenient.
+ *   ("all branches") request. Only business-wide roles may be unscoped.
  */
 export async function resolveRoleAtBranch(
   userId: string,
@@ -59,7 +57,12 @@ export async function resolveRoleAtBranch(
   if (!user) return StaffRole.DEMO;
 
   if (isBusinessWideRole(user.role)) return user.role;
-  if (!branchId) return user.role;
+
+  const denyBranchAccess = () => {
+    throw AppError.notFound('Branch context is unavailable');
+  };
+
+  if (!branchId) return denyBranchAccess();
 
   const assignment = await prisma.userBranch.findUnique({
     where: { userId_branchId: { userId, branchId } },
@@ -68,11 +71,19 @@ export async function resolveRoleAtBranch(
       // A closed branch must stop granting what it granted. Deactivating a
       // branch is the lightweight way to end its roster's access, and it
       // would be worth very little if the rows kept working.
-      branch: { select: { isActive: true } },
+      branch: {
+        select: { isActive: true, business: { select: { isActive: true } } },
+      },
     },
   });
 
-  if (!assignment || !assignment.branch.isActive) return user.role;
+  if (
+    !assignment ||
+    !assignment.branch.isActive ||
+    !assignment.branch.business.isActive
+  ) {
+    return denyBranchAccess();
+  }
 
   return assignment.role;
 }
@@ -88,7 +99,7 @@ export async function resolveRoleAtBranch(
  */
 export async function listBranchRoles(userId: string) {
   return prisma.userBranch.findMany({
-    where: { userId, branch: { isActive: true } },
+    where: { userId, branch: { isActive: true, business: { isActive: true } } },
     select: {
       branchId: true,
       role: true,
@@ -178,8 +189,8 @@ async function assertCanAssign(actor: RosterActor, userId: string, role: StaffRo
 }
 
 async function requireBranch(branchId: string) {
-  const branch = await prisma.branch.findUnique({
-    where: { id: branchId },
+  const branch = await prisma.branch.findFirst({
+    where: { id: branchId, isActive: true, business: { isActive: true } },
     select: { id: true, name: true },
   });
 
@@ -226,9 +237,8 @@ export async function assignUserToBranch(
 /**
  * Take someone off a branch's roster.
  *
- * They keep their GLOBAL role — removing the row means "no longer placed
- * here", not "demoted". `resolveRoleAtBranch` falls back to `User.role` with
- * no row present, which is the same state as someone who was never assigned.
+ * They keep their GLOBAL role, but removing the row also removes their access
+ * to this branch. Only OWNER and DEVELOPER can act without an assignment.
  */
 export async function removeUserFromBranch(
   actor: RosterActor,
@@ -257,6 +267,15 @@ export async function removeUserFromBranch(
 
   if (outranks(subject.role, actor.role)) {
     throw AppError.forbidden('You cannot modify someone with more access than you');
+  }
+
+  const openShift = await prisma.shift.findFirst({
+    where: { userId, branchId, endedAt: null },
+    select: { id: true },
+  });
+
+  if (openShift) {
+    throw AppError.conflict('End this employee\'s open shift before removing the assignment');
   }
 
   await prisma.userBranch.delete({ where: { userId_branchId: { userId, branchId } } });

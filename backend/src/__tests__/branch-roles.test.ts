@@ -19,8 +19,8 @@ import { canAccessArea } from '../config/roles.js';
  * whatever I wrote passes; writing them first states the contract.
  *
  * ─── THE CONTRACT ────────────────────────────────────────────────────
- * 1. No `UserBranch` row  -> the global `User.role`, unchanged. This migration
- *    must grant nothing and revoke nothing from anyone who existed before it.
+ * 1. No `UserBranch` row  -> access denied with the same generic 404 used for
+ *    unknown and inactive branches.
  * 2. A row for THIS branch -> that row's role, instead of the global one.
  * 3. A row for ANOTHER branch -> does NOT apply here. This is the escalation
  *    case: a manager at Marina asking about Downtown gets Downtown's answer,
@@ -74,13 +74,17 @@ afterAll(async () => {
 });
 
 describe('a role is resolved from the branch being acted on', () => {
-  it('falls back to the global role when the person has no branch row', async () => {
-    // The migration must be a no-op for everyone who already existed. If this
-    // fails, upgrading revoked access from real staff.
+  it('rejects a person with no assignment without revealing branch existence', async () => {
     const userId = await makeUser(StaffRole.MANAGER, 'no-rows');
 
-    await expect(resolveRoleAtBranch(userId, marina)).resolves.toBe(StaffRole.MANAGER);
-    await expect(resolveRoleAtBranch(userId, downtown)).resolves.toBe(StaffRole.MANAGER);
+    await expect(resolveRoleAtBranch(userId, marina)).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Branch context is unavailable',
+    });
+    await expect(resolveRoleAtBranch(userId, 'unknown-branch')).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Branch context is unavailable',
+    });
   });
 
   it('uses the branch role in place of the global one', async () => {
@@ -93,14 +97,17 @@ describe('a role is resolved from the branch being acted on', () => {
   });
 
   it('does NOT apply one branch role at another branch', async () => {
-    // The escalation case. A manager at Marina asking about Downtown must get
-    // Downtown's answer — here, the global SUPPORT they hold everywhere else.
+    // The escalation case. A manager at Marina asking about Downtown must be
+    // denied rather than falling back to their global role.
     const userId = await makeUser(StaffRole.SUPPORT, 'marina-only');
     await prisma.userBranch.create({
       data: { userId, branchId: marina, role: StaffRole.MANAGER },
     });
 
-    await expect(resolveRoleAtBranch(userId, downtown)).resolves.toBe(StaffRole.SUPPORT);
+    await expect(resolveRoleAtBranch(userId, downtown)).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Branch context is unavailable',
+    });
   });
 
   it('lets the same person hold different roles at two branches', async () => {
@@ -152,18 +159,19 @@ describe('a role is resolved from the branch being acted on', () => {
     await expect(resolveRoleAtBranch(userId, downtown)).resolves.toBe(StaffRole.DEVELOPER);
   });
 
-  it('falls back to the global role when no branch is named', async () => {
-    // "All branches" is a real question — the unscoped reports still answer it
-    // — so a request with no active branch must not be denied outright.
+  it('rejects an unscoped request from a limited role', async () => {
     const userId = await makeUser(StaffRole.SUPPORT, 'unscoped');
     await prisma.userBranch.create({
       data: { userId, branchId: marina, role: StaffRole.MANAGER },
     });
 
-    await expect(resolveRoleAtBranch(userId, null)).resolves.toBe(StaffRole.SUPPORT);
+    await expect(resolveRoleAtBranch(userId, null)).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Branch context is unavailable',
+    });
   });
 
-  it('never grants more than the global role to an inactive assignment', async () => {
+  it('rejects an inactive assignment with the same generic response', async () => {
     // A branch row on a deactivated branch must not keep working. Closing a
     // branch has to actually remove what it granted.
     const userId = await makeUser(StaffRole.SUPPORT, 'closed-branch');
@@ -179,6 +187,39 @@ describe('a role is resolved from the branch being acted on', () => {
       data: { userId, branchId: closed.id, role: StaffRole.MANAGER },
     });
 
-    await expect(resolveRoleAtBranch(userId, closed.id)).resolves.toBe(StaffRole.SUPPORT);
+    await expect(resolveRoleAtBranch(userId, closed.id)).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Branch context is unavailable',
+    });
+  });
+
+  it('rejects an assignment when its business is inactive', async () => {
+    const userId = await makeUser(StaffRole.SUPPORT, 'closed-business');
+    const business = await prisma.business.create({
+      data: { name: `${RUN} closed business`, isActive: false },
+    });
+    const branch = await prisma.branch.create({
+      data: { businessId: business.id, name: `${RUN} stranded branch` },
+    });
+    await prisma.userBranch.create({
+      data: { userId, branchId: branch.id, role: StaffRole.MANAGER },
+    });
+
+    await expect(resolveRoleAtBranch(userId, branch.id)).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Branch context is unavailable',
+    });
+
+    await prisma.userBranch.deleteMany({ where: { branchId: branch.id } });
+    await prisma.branch.delete({ where: { id: branch.id } });
+    await prisma.business.delete({ where: { id: business.id } });
+  });
+
+  it('keeps business-wide roles unscoped', async () => {
+    const ownerId = await makeUser(StaffRole.OWNER, 'unscoped-owner');
+    const developerId = await makeUser(StaffRole.DEVELOPER, 'unscoped-developer');
+
+    await expect(resolveRoleAtBranch(ownerId, null)).resolves.toBe(StaffRole.OWNER);
+    await expect(resolveRoleAtBranch(developerId, null)).resolves.toBe(StaffRole.DEVELOPER);
   });
 });

@@ -18,10 +18,21 @@ import { InviteStaffSheet } from '../invite-staff-sheet';
  */
 
 const inviteStaff = vi.hoisted(() => vi.fn());
+const fetchBranches = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/staff-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/staff-api')>();
   return { ...actual, inviteStaff };
+});
+
+vi.mock('@/lib/branches-api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/branches-api')>();
+  return { ...actual, fetchBranches };
+});
+
+vi.mock('@/lib/auth-storage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth-storage')>();
+  return { ...actual, readBranchId: () => 'branch-1' };
 });
 
 const mockDefaultInviteRole = vi.hoisted(() => ({ current: 'SUPPORT' }));
@@ -40,6 +51,19 @@ vi.mock('@/components/providers/settings-provider', async (importOriginal) => {
 
 beforeEach(() => {
   inviteStaff.mockReset();
+  fetchBranches.mockReset();
+  fetchBranches.mockResolvedValue([
+    {
+      id: 'branch-1',
+      name: 'Main',
+      code: 'MAIN',
+      city: 'Dubai',
+      isSellingPoint: true,
+      isDefault: true,
+      businessId: 'business-1',
+      businessName: 'Example Business',
+    },
+  ]);
   mockDefaultInviteRole.current = 'SUPPORT';
   inviteStaff.mockResolvedValue({
     staff: { id: 's9', email: 'new@example.test' },

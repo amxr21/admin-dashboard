@@ -384,6 +384,7 @@ export interface InviteStaffInput {
   name?: string | undefined;
   phone?: string | undefined;
   role: StaffRole;
+  branchId?: string | undefined;
   accessExpiresAt?: string | undefined;
 }
 
@@ -409,6 +410,18 @@ const INVITE_TOKEN_TTL_MINUTES = 24 * 60;
 export async function inviteStaff(actor: Actor, input: InviteStaffInput) {
   await assertCanCreate(actor, input.email, input.role);
 
+  if (input.branchId) {
+    const branch = await prisma.branch.findFirst({
+      where: { id: input.branchId, isActive: true, business: { isActive: true } },
+      select: { id: true },
+    });
+    if (!branch) {
+      throw AppError.badRequest('Choose an active branch', { field: 'branchId' });
+    }
+  } else if (input.role !== StaffRole.OWNER && input.role !== StaffRole.DEVELOPER) {
+    throw AppError.badRequest('Choose a branch', { field: 'branchId' });
+  }
+
   // 32 random bytes, hashed and thrown away — never logged, returned, or
   // reachable again. Long enough that even a modelling mistake elsewhere
   // could not make it guessable within the token's lifetime.
@@ -422,6 +435,9 @@ export async function inviteStaff(actor: Actor, input: InviteStaffInput) {
       role: input.role,
       passwordHash: await bcrypt.hash(unusedPassword, 10),
       accessExpiresAt: input.accessExpiresAt ? new Date(input.accessExpiresAt) : null,
+      ...(input.branchId
+        ? { branchRoles: { create: { branchId: input.branchId, role: input.role } } }
+        : {}),
     },
     select: STAFF_FIELDS,
   });

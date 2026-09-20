@@ -359,7 +359,8 @@ model Branch {
   /// refusing to record stock.
   isDefault Boolean @default(false) @map("is_default")
 
-  stock       BranchStock[]
+  stock        BranchStock[]
+  variantStock BranchVariantStock[]
   /// Who works here, and in what capacity (F8.4).
   staff       UserBranch[]
   /// Which couriers serve this branch (O2).
@@ -989,6 +990,7 @@ model ProductVariant {
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   stockMovements StockMovement[]
+  branchStock    BranchVariantStock[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1880,6 +1882,28 @@ model BranchStock {
   @@map("branch_stock")
 }
 
+/// The running quantity of one product variant at one branch. The variant's
+/// `stock` column remains the all-branch total; branch-scoped reads and writes
+/// use this row so stock at one location can never satisfy another location.
+model BranchVariantStock {
+  id String @id @default(cuid())
+
+  variantId String         @map("variant_id")
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  quantity Int @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([variantId, branchId])
+  @@index([branchId])
+  @@map("branch_variant_stock")
+}
+
 /// Stock as a LOG, not a number you overwrite.
 ///
 /// `product.stock` is a denormalised running total kept in step by the same
@@ -2017,6 +2041,11 @@ model AuditLog {
   actorEmail String? @map("actor_email") @db.VarChar(255)
   actorRole  String? @map("actor_role") @db.VarChar(32)
 
+  /// Branch context in which the action happened. Null is reserved for
+  /// genuinely business-wide/authentication events and legacy entries whose
+  /// branch cannot be reconstructed honestly.
+  branchId String? @map("branch_id") @db.VarChar(64)
+
   /// Changed fields only, never the whole row: a full snapshot of a customer
   /// would copy their personal data into a table with a longer retention than
   /// the record itself. Values are redacted for sensitive fields.
@@ -2047,6 +2076,7 @@ model AuditLog {
   /// to successes — without this the one filter that matters most scans hardest.
   @@index([outcome, createdAt])
   @@index([requestId])
+  @@index([branchId, createdAt])
   @@map("audit_log")
 }
 
@@ -2175,10 +2205,15 @@ model ScheduledReport {
   /// member being deleted" rule as every other actor reference in this file.
   createdById String? @map("created_by_id")
 
+  /// The branch whose data is generated and emailed. Null means an explicitly
+  /// business-wide schedule created by a business-wide role.
+  branchId String? @map("branch_id") @db.VarChar(64)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([isActive, frequency])
+  @@index([branchId, createdAt])
   @@map("scheduled_reports")
 }
 

@@ -103,24 +103,7 @@ export async function authenticate(
       req.user = await authenticateViaSession(req, token);
     }
 
-    const user = req.user;
-
-    // userId on every subsequent log line for this request, so an audit trail
-    // exists even before the audit-log feature does.
-    req.log = req.log.child({ userId: user.id });
-
-    // Read-only roles (DEMO) are blocked from writes HERE, immediately after
-    // identity is established. Deliberately not app-level middleware: that
-    // would run before req.user exists and silently pass every write through.
-    // Every authenticated route therefore gets this for free.
-    assertCanWrite(req);
-    await assertNotInMaintenance(req);
-    // Unlike the two checks above, this runs for READS too — an allowlist
-    // that only gated writes would still let a blocked network browse every
-    // page, which defeats the point of a network-level restriction.
-    await assertIpAllowed(req);
-    await assertTwoFactorCompliant(req);
-
+    await finishAuthentication(req);
     next();
   } catch (err) {
     next(err);
@@ -128,8 +111,9 @@ export async function authenticate(
 }
 
 /**
- * Authenticates a storefront integration without consuming the Authorization
- * header, which remains available for an optional customer JWT.
+ * Authenticate the storefront integration independently from the shopper.
+ * Customer routes already use `Authorization: Bearer <customer-token>`, so a
+ * generated integration key has one unambiguous home: `X-API-Key`.
  */
 export async function authenticateStorefrontApiKey(
   req: Request,
@@ -137,28 +121,35 @@ export async function authenticateStorefrontApiKey(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const key = req.header('x-api-key');
+    const key = req.header('x-api-key')?.trim();
     if (!key) throw AppError.unauthorized('API key required');
     if (!key.startsWith(API_KEY_PREFIX)) throw AppError.unauthorized('Invalid API key');
 
     const authenticated = await authenticateApiKey(key);
     if (!authenticated) throw AppError.unauthorized('Invalid API key');
 
+    // Keep the integration identity separate from `req.customer`. Ordinary
+    // area guards can now apply the key owner's role AND its narrowed scopes.
     req.user = authenticated.user;
     req.apiKeyScopes = authenticated.scopes;
-    req.log = req.log.child({ userId: authenticated.user.id });
-
-    assertCanWrite(req);
-    await assertNotInMaintenance(req);
-    await assertIpAllowed(req);
-    await assertTwoFactorCompliant(req);
-
+    await finishAuthentication(req);
     next();
   } catch (err) {
     next(err);
   }
 }
 
+async function finishAuthentication(req: Request): Promise<void> {
+  const user = requireUser(req);
+  req.log = req.log.child({ userId: user.id });
+
+  // A storefront key must not become a path around the account and
+  // environment checks applied to the same key on admin endpoints.
+  assertCanWrite(req);
+  await assertNotInMaintenance(req);
+  await assertIpAllowed(req);
+  await assertTwoFactorCompliant(req);
+}
 async function authenticateViaSession(req: Request, token: string): Promise<SafeUser> {
   const payload = verifyToken(token);
 

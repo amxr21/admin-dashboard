@@ -55,20 +55,20 @@ describe('BranchSwitcher', () => {
     // A control that can only ever have one answer is noise in the topbar.
     fetchBranches.mockResolvedValue([branch()]);
 
-    const { container } = render(<BranchSwitcher />);
+    const { container } = render(<BranchSwitcher role="OWNER" />);
 
     await waitFor(() => expect(fetchBranches).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
   });
 
   it('renders the switcher once there is more than one branch', async () => {
-    render(<BranchSwitcher />);
+    render(<BranchSwitcher role="OWNER" />);
 
     expect(await screen.findByRole('combobox')).toBeInTheDocument();
   });
 
   it('shows no overlay until a branch is actually chosen', async () => {
-    render(<BranchSwitcher />);
+    render(<BranchSwitcher role="OWNER" />);
 
     await screen.findByRole('combobox');
     expect(screen.queryByRole('status')).toBeNull();
@@ -82,7 +82,7 @@ describe('BranchSwitcher', () => {
     const reload = vi.fn();
     vi.stubGlobal('location', { reload });
 
-    render(<BranchSwitcher />);
+    render(<BranchSwitcher role="OWNER" />);
     const trigger = await screen.findByRole('combobox');
 
     // Radix Select opens on keyboard too; selecting via the listbox is what a
@@ -108,9 +108,20 @@ describe('BranchSwitcher', () => {
     // does anyway.
     fetchBranches.mockRejectedValue(new Error('offline'));
 
-    const { container } = render(<BranchSwitcher />);
+    const { container } = render(<BranchSwitcher role="OWNER" />);
 
     await waitFor(() => expect(fetchBranches).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('does not offer All branches to a limited role', async () => {
+    render(<BranchSwitcher role="CASHIER" />);
+
+    const trigger = await screen.findByRole('combobox');
+    const user = (await import('@testing-library/user-event')).default;
+    await user.click(trigger);
+
+    expect(screen.queryByRole('option', { name: /All branches/i })).toBeNull();
+    expect(writeBranchId).toHaveBeenCalledWith('b1');
   });
 });
