@@ -6,6 +6,7 @@ import { Link } from '@/i18n/navigation';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { RefreshButton } from '@/components/refresh-button';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -111,6 +112,7 @@ export function OrdersTable() {
     useTableDensity('orders');
   const [result, setResult] = useState<OrderListResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -262,6 +264,7 @@ export function OrdersTable() {
           ...(sortField ? { sort: sortField, dir: sort?.direction } : {}),
         }),
       );
+      setLastUpdated(new Date());
     } catch (caught) {
       setError(translateError(caught));
       setResult(null);
@@ -702,6 +705,11 @@ export function OrdersTable() {
           }}
         />
         <div className="ms-auto flex shrink-0 items-center gap-2">
+          <RefreshButton
+            onRefresh={() => void load()}
+            isLoading={isLoading}
+            lastUpdated={lastUpdated}
+          />
           <Button
             type="button"
             variant="outline"

@@ -5,6 +5,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { Download, Link2, ShieldCheck, X } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { RefreshButton } from '@/components/refresh-button';
 import { DataTable, type Column } from '@/components/data-table';
 import { StatusBadge } from '@/components/status-badge';
 import { TablePagination } from '@/components/table-pagination';
@@ -82,6 +83,7 @@ export function AuditTable() {
 
   const [result, setResult] = useState<AuditListResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   /**
    * Every filter lives in the URL.
@@ -157,6 +159,7 @@ export function AuditTable() {
 
     try {
       setResult(await fetchAudit({ page, pageSize: effectivePageSize, ...filters }));
+      setLastUpdated(new Date());
     } catch (caught) {
       setError(translateError(caught));
       setResult(null);
@@ -543,6 +546,11 @@ export function AuditTable() {
           <Download aria-hidden className="me-1 size-4" />
           {isExporting ? t('exporting') : t('exportCsv')}
         </Button>
+        <RefreshButton
+          onRefresh={() => void load()}
+          isLoading={isLoading}
+          lastUpdated={lastUpdated}
+        />
       </div>
 
       <DataTable

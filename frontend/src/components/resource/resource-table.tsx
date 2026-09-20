@@ -22,6 +22,7 @@ import { ColumnManager } from '@/components/column-manager';
 import { DensityToggle } from '@/components/density-toggle';
 import { EmptyState } from '@/components/empty-state';
 import { FilterChips, type AppliedFilter } from '@/components/filter-chips';
+import { RefreshButton } from '@/components/refresh-button';
 import { RowActions, type RowAction } from '@/components/row-actions';
 import { TablePagination } from '@/components/table-pagination';
 import { ImportResourceSheet } from '@/components/resource/import-resource-sheet';
@@ -124,6 +125,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
   const [result, setResult] = useState<ResourceListResult | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   /**
@@ -355,6 +357,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
           filters: active,
         }),
       );
+      setLastUpdated(new Date());
     } catch (caught) {
       setError(translateError(caught));
       setResult(null);
@@ -956,6 +959,11 @@ export function ResourceTable({ schema }: ResourceTableProps) {
       <div className="flex items-center justify-between gap-3">
         <FilterChips filters={appliedFilters} onClearAll={clearFilters} />
         <div className="ms-auto flex shrink-0 items-center gap-2">
+          <RefreshButton
+            onRefresh={() => void load()}
+            isLoading={isLoading}
+            lastUpdated={lastUpdated}
+          />
           <ColumnManager
             columns={allDataColumns.map((column) => ({
               id: column.id,

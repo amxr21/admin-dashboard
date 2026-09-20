@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { DataTable, type Column } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { FilterChips, type AppliedFilter } from '@/components/filter-chips';
+import { RefreshButton } from '@/components/refresh-button';
 import { SupplierSheet } from '@/components/suppliers/supplier-sheet';
 import { TablePagination } from '@/components/table-pagination';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +37,7 @@ export function SuppliersTable() {
   const [searchInput, setSearchInput] = useState(search);
   const [result, setResult] = useState<Awaited<ReturnType<typeof fetchSuppliers>> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [creating, setCreating] = useState(false);
@@ -44,6 +46,7 @@ export function SuppliersTable() {
     setLoading(true); setError(null);
     try {
       setResult(await fetchSuppliers({ page, pageSize, ...(search ? { search } : {}), ...(status === 'all' ? {} : { active: status === 'active' }) }));
+      setLastUpdated(new Date());
     } catch (caught) { setResult(null); setError(translateError(caught)); }
     finally { setLoading(false); }
   }, [page, pageSize, search, status, translateError]);
@@ -78,7 +81,7 @@ export function SuppliersTable() {
       <div className="min-w-56 flex-1 space-y-2"><Label htmlFor="supplier-search">{t('search.label')}</Label><SearchInput id="supplier-search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t('search.placeholder')} /></div>
       <Button onClick={() => setCreating(true)}><Plus aria-hidden />{t('actions.create')}</Button>
     </div>
-    <div className="flex flex-wrap items-center gap-3"><SegmentedControl value={status} onChange={(value) => setValues({ status: value === 'active' ? null : value, page: null })} aria-label={t('statusLabel')} className="max-w-sm" options={[{ value: 'active', label: t('active') }, { value: 'inactive', label: t('inactive') }, { value: 'all', label: t('all') }]} /><FilterChips filters={filters} onClearAll={() => { setSearchInput(''); clear(['search', 'page']); }} /></div>
+    <div className="flex flex-wrap items-center gap-3"><SegmentedControl value={status} onChange={(value) => setValues({ status: value === 'active' ? null : value, page: null })} aria-label={t('statusLabel')} className="max-w-sm" options={[{ value: 'active', label: t('active') }, { value: 'inactive', label: t('inactive') }, { value: 'all', label: t('all') }]} /><FilterChips filters={filters} onClearAll={() => { setSearchInput(''); clear(['search', 'page']); }} /><RefreshButton onRefresh={() => void load()} isLoading={loading} lastUpdated={lastUpdated} className="ms-auto" /></div>
     <DataTable data={result?.suppliers ?? []} columns={columns} getRowId={(row) => row.id} isLoading={loading} error={error} onRetry={() => void load()} emptyMessage={<EmptyState icon={Mail} title={t('emptyTitle')} description={t('emptyBody')} action={{ label: t('actions.create'), onClick: () => setCreating(true), icon: Plus }} />} />
     {result ? <TablePagination page={page} totalPages={result.totalPages} total={result.total} pageSize={pageSize} isLoading={loading} onPageChange={(next) => setValues({ page: String(next) })} onPageSizeChange={(next) => setValues({ pageSize: String(next), page: null })} totalLabel={t('total', { count: result.total })} /> : null}
     <SupplierSheet supplier={editing} open={creating || editing !== null} onOpenChange={(open) => { if (!open) { setCreating(false); setEditing(null); } }} onSaved={() => { toast.success(t('notice.saved')); void load(); }} />

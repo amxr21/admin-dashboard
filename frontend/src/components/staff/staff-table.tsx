@@ -52,6 +52,7 @@ import { Timestamp } from '@/components/timestamp';
 import { RowActions, type RowAction } from '@/components/row-actions';
 import { TablePagination } from '@/components/table-pagination';
 import { DensityToggle } from '@/components/density-toggle';
+import { RefreshButton } from '@/components/refresh-button';
 import { getGlobalDensity } from '@/lib/apply-appearance';
 import { useTableDensity } from '@/hooks/useTableDensity';
 import { useAppSettings } from '@/components/providers/settings-provider';
@@ -117,6 +118,7 @@ export function StaffTable() {
 
   const [result, setResult] = useState<StaffListResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   /** Page and search live in the URL so a filtered view is shareable. */
   const { values, setValues } = useUrlState(URL_DEFAULTS);
@@ -169,6 +171,7 @@ export function StaffTable() {
               : {}),
         }),
       );
+      setLastUpdated(new Date());
     } catch (caught) {
       setError(translateError(caught));
       setResult(null);
@@ -530,11 +533,17 @@ export function StaffTable() {
             ].filter(Boolean) as AppliedFilter[]
           }
         />
-        <DensityToggle
-          value={densityOverride ?? getGlobalDensity()}
-          onChange={setDensityOverride}
-          className="ms-auto shrink-0"
-        />
+        <div className="ms-auto flex shrink-0 items-center gap-2">
+          <RefreshButton
+            onRefresh={() => void load()}
+            isLoading={isLoading}
+            lastUpdated={lastUpdated}
+          />
+          <DensityToggle
+            value={densityOverride ?? getGlobalDensity()}
+            onChange={setDensityOverride}
+          />
+        </div>
       </div>
 
       <DataTable
