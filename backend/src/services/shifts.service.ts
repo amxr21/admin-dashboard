@@ -2,6 +2,7 @@ import { Prisma, ShiftApprovalStatus, StaffRole, TillEventType } from '@prisma/c
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
+import { optionalDateOnlyBounds } from '../lib/date-range.js';
 import { outranks } from '../config/roles.js';
 import { defaultBranchId } from './inventory.service.js';
 import { isBusinessWideRole } from './branch-roles.service.js';
@@ -76,9 +77,9 @@ function serialise(shift: ShiftRow) {
 }
 
 /** The caller's own open shift, or null. Drives the shell's shift control. */
-export async function getOpenShift(userId: string) {
+export async function getOpenShift(userId: string, branchId?: string) {
   const shift = await prisma.shift.findFirst({
-    where: { userId, ...OPEN },
+    where: { userId, ...OPEN, ...(branchId ? { branchId } : {}) },
     orderBy: { startedAt: 'desc' },
     select: SHIFT_SELECT,
   });
@@ -117,11 +118,7 @@ async function resolveShiftBranchId(userId: string, actorRole: StaffRole): Promi
     );
   }
 
-  // No roster row at all: fall back to the same single-business shortcut a
-  // business-wide role gets, so a one-branch install with no explicit roster
-  // (the common case before anyone has touched F8's staff assignment screen)
-  // keeps working exactly as it did before per-branch roles existed.
-  return defaultBranchId();
+  throw AppError.notFound('Branch context is unavailable');
 }
 
 /**
@@ -136,13 +133,6 @@ export async function startShift(
   actor: ShiftActor,
   input: {
     branchId?: string | undefined;
-    /**
-     * True when `branchId` came from the REQUEST BODY — the cashier actively
-     * picked it — rather than from the `X-Branch-Id` header the client sends
-     * on every request. Only the former is newly client-controlled input, and
-     * only it is roster-checked below.
-     */
-    branchChosenByClient?: boolean | undefined;
     forUserId?: string | undefined;
     note?: string | undefined;
     /** Cash in the drawer at open (O5.3). Omitted for a shift with no till,
@@ -217,45 +207,22 @@ export async function startShift(
     });
   }
 
-  /**
-   * A NAMED branch still has to be one this person may work at (URG — cashier
-   * shift start).
-   *
-   * `branchId` became reachable from the till so an ambiguous cashier can
-   * answer the "which branch?" refusal below instead of being stuck. That
-   * makes it caller-supplied input on a path where it previously could only
-   * come from the server's own resolution, so it needs the check the resolved
-   * path got for free: without it, naming any branch id would attribute a
-   * shift's cash and takings to a shop the cashier has no assignment at —
-   * which is precisely the misattribution the ambiguity refusal exists to
-   * prevent, reintroduced through the fix for it.
-   *
-   * ─── WHY A FLAG AND NOT `input.branchId` BEING SET ───────────────────
-   * The route fills `branchId` from the `X-Branch-Id` HEADER when the body
-   * names none, so "a branch id is present" does NOT mean "the client chose
-   * one". Keying off that conflated the two and made this check fire on the
-   * long-standing header path, where a branch-scoped user with no roster row
-   * (a FULFILLMENT picker, say) had always been able to clock on — seven
-   * existing tests caught it. Only a branch named in the BODY is the new
-   * client-controlled input this guard exists for; the header path is already
-   * constrained by `withBranchContext` and keeps its previous behaviour.
-   *
-   * Business-wide roles are exempt for the same reason they skip the roster
-   * everywhere else: an OWNER is not scoped to a branch, and `UserBranch`
-   * rows for them are deliberately refused (see `assertCanAssign`), so
-   * requiring one would lock an owner out of their own branches.
-   */
-  if (input.branchChosenByClient && !isBusinessWideRole(actor.role) && userId === actor.id) {
+  /** The subject, not only the actor, must be rostered at the branch. Without
+   * this check a manager could attribute another employee's hours and till to
+   * a location where that employee does not work. Business-wide subjects are
+   * exempt because they deliberately do not have UserBranch rows. */
+  const subjectRole = userId === actor.id
+    ? actor.role
+    : (await prisma.user.findUnique({ where: { id: userId }, select: { role: true } }))?.role;
+
+  if (subjectRole && !isBusinessWideRole(subjectRole)) {
     const assignment = await prisma.userBranch.findUnique({
       where: { userId_branchId: { userId, branchId } },
-      select: { userId: true },
+      select: { userId: true, branch: { select: { isActive: true } } },
     });
 
-    if (!assignment) {
-      throw AppError.forbidden('You are not assigned to that branch', {
-        field: 'branchId',
-        reason: 'BRANCH_NOT_ASSIGNED',
-      });
+    if (!assignment || !assignment.branch.isActive) {
+      throw AppError.notFound('Branch context is unavailable');
     }
   }
 
@@ -498,6 +465,7 @@ export interface ShiftListParams {
   pageSize?: number;
   userId?: string;
   branchId?: string;
+  timezone?: string;
   /** Only shifts that are still open — "who is on right now". */
   openOnly?: boolean;
   /** A manager's pending-approval queue (O9.19) when set to PENDING. */
@@ -518,12 +486,7 @@ export async function listShifts(params: ShiftListParams) {
     ...(params.openOnly ? OPEN : {}),
     ...(params.approvalStatus ? { approvalStatus: params.approvalStatus } : {}),
     ...(params.from || params.to
-      ? {
-          startedAt: {
-            ...(params.from ? { gte: new Date(params.from) } : {}),
-            ...(params.to ? { lte: new Date(`${params.to}T23:59:59.999Z`) } : {}),
-          },
-        }
+      ? { startedAt: optionalDateOnlyBounds(params.from, params.to, params.timezone ?? 'UTC') }
       : {}),
   };
 

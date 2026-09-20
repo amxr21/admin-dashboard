@@ -57,7 +57,11 @@ const adjustBody = z
   .strict();
 
 variantsRouter.get('/products/:productId/variants', ...catalogueGuard, async (req, res) => {
-  res.json({ data: { variants: await listVariants(String(req.params.productId)) } });
+  res.json({
+    data: {
+      variants: await listVariants(String(req.params.productId), req.branchId ?? undefined),
+    },
+  });
 });
 
 variantsRouter.post('/products/:productId/variants', ...catalogueGuard, async (req, res) => {
@@ -76,7 +80,12 @@ variantsRouter.patch('/variants/:id', ...catalogueGuard, async (req, res) => {
     throw AppError.badRequest('Provide at least one field to write');
   }
 
-  const variant = await updateVariant(String(req.params.id), parsed.data, req);
+  const variant = await updateVariant(
+    String(req.params.id),
+    parsed.data,
+    req,
+    req.branchId ?? undefined,
+  );
   res.json({ data: { variant } });
 });
 
@@ -89,7 +98,13 @@ variantsRouter.get('/variants/:id/movements', ...stockGuard, async (req, res) =>
   const parsed = listQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid query', parsed.error.flatten());
 
-  res.json({ data: await listVariantMovements(String(req.params.id), parsed.data) });
+  res.json({
+    data: await listVariantMovements(
+      String(req.params.id),
+      parsed.data,
+      req.branchId ?? undefined,
+    ),
+  });
 });
 
 variantsRouter.post('/variants/:id/movements', ...stockGuard, async (req, res) => {
@@ -104,7 +119,7 @@ variantsRouter.post('/variants/:id/movements', ...stockGuard, async (req, res) =
     reason: parsed.data.reason,
     note: parsed.data.note,
     actorId: user.id,
-  }, req);
+  }, req, req.branchId ?? undefined);
 
   req.log.info({
     event: 'variant.stock.adjusted',
@@ -119,5 +134,7 @@ variantsRouter.post('/variants/:id/movements', ...stockGuard, async (req, res) =
 });
 
 variantsRouter.get('/variants/:id/reconcile', ...stockGuard, async (req, res) => {
-  res.json({ data: await reconcileVariant(String(req.params.id)) });
+  res.json({
+    data: await reconcileVariant(String(req.params.id), req.branchId ?? undefined),
+  });
 });

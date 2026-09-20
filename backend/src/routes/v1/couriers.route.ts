@@ -1,11 +1,12 @@
-import { DeliveryStaffStatus, DeliveryStatus } from '@prisma/client';
+import { DeliveryStaffStatus, DeliveryStatus, StaffRole } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
-import { requireArea } from '../../middleware/authorize.js';
+import { requireArea, requireRole } from '../../middleware/authorize.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
+import { withBranchTimezone } from '../../middleware/branch-timezone.js';
 import {
   assignOrder,
   createCourier,
@@ -99,14 +100,20 @@ couriersRouter.get('/couriers', ...guard, async (req, res) => {
 });
 
 couriersRouter.get('/couriers/:id', ...guard, async (req, res) => {
-  res.json({ data: { courier: await getCourier(String(req.params.id)) } });
+  res.json({
+    data: {
+      courier: await getCourier(String(req.params.id), req.branchId ?? undefined),
+    },
+  });
 });
 
 couriersRouter.post('/couriers', ...guard, async (req, res) => {
   const parsed = courierBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
 
-  res.status(201).json({ data: { courier: await createCourier(parsed.data) } });
+  res.status(201).json({
+    data: { courier: await createCourier(parsed.data, req.branchId ?? undefined) },
+  });
 });
 
 couriersRouter.patch('/couriers/:id', ...guard, async (req, res) => {
@@ -117,7 +124,16 @@ couriersRouter.patch('/couriers/:id', ...guard, async (req, res) => {
     throw AppError.badRequest('Provide at least one field to write');
   }
 
-  res.json({ data: { courier: await updateCourier(String(req.params.id), parsed.data, req) } });
+  res.json({
+    data: {
+      courier: await updateCourier(
+        String(req.params.id),
+        parsed.data,
+        req,
+        req.branchId ?? undefined,
+      ),
+    },
+  });
 });
 
 /**
@@ -129,34 +145,47 @@ couriersRouter.patch('/couriers/:id', ...guard, async (req, res) => {
  * the last writer win predictably instead of partially.
  */
 couriersRouter.get('/couriers/:id/branches', ...guard, async (req, res) => {
-  res.json({ data: { branches: await listCourierBranches(String(req.params.id)) } });
-});
-
-couriersRouter.put('/couriers/:id/branches', ...guard, async (req, res) => {
-  const parsed = z
-    .object({ branchIds: z.array(z.string().trim().min(1)).max(50) })
-    .safeParse(req.body);
-
-  if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
-
-  const id = String(req.params.id);
-  const before = await listCourierBranches(id);
-  const branches = await setCourierBranches(id, parsed.data.branchIds);
-
-  audit(req, {
-    action: 'delivery.courier.branches_changed',
-    entity: 'couriers',
-    entityId: id,
-    changes: {
-      branches: {
-        from: before.map((branch) => branch.name),
-        to: branches.map((branch) => branch.name),
-      },
+  await getCourier(String(req.params.id), req.branchId ?? undefined);
+  const branches = await listCourierBranches(String(req.params.id));
+  res.json({
+    data: {
+      branches: req.branchId
+        ? branches.filter((branch) => branch.id === req.branchId)
+        : branches,
     },
   });
-
-  res.json({ data: { branches } });
 });
+
+couriersRouter.put(
+  '/couriers/:id/branches',
+  ...guard,
+  requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  async (req, res) => {
+    const parsed = z
+      .object({ branchIds: z.array(z.string().trim().min(1)).max(50) })
+      .safeParse(req.body);
+
+    if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
+
+    const id = String(req.params.id);
+    const before = await listCourierBranches(id);
+    const branches = await setCourierBranches(id, parsed.data.branchIds);
+
+    audit(req, {
+      action: 'delivery.courier.branches_changed',
+      entity: 'couriers',
+      entityId: id,
+      changes: {
+        branches: {
+          from: before.map((branch) => branch.name),
+          to: branches.map((branch) => branch.name),
+        },
+      },
+    });
+
+    res.json({ data: { branches } });
+  },
+);
 
 /**
  * Issue a new access code.
@@ -169,7 +198,7 @@ couriersRouter.post('/couriers/:id/access-code', ...guard, async (req, res) => {
   const user = requireUser(req);
   const id = String(req.params.id);
 
-  const result = await regenerateAccessCode(id);
+  const result = await regenerateAccessCode(id, req.branchId ?? undefined);
 
   // The code itself is NEVER logged — that would put the credential straight
   // back into plain text, in a place with a longer retention than the database.
@@ -186,7 +215,7 @@ couriersRouter.delete('/couriers/:id/access-code', ...guard, async (req, res) =>
   const user = requireUser(req);
   const id = String(req.params.id);
 
-  await revokeAccessCode(id);
+  await revokeAccessCode(id, req.branchId ?? undefined);
 
   req.log.info({ event: 'delivery.access_code.revoked', courierId: id, userId: user.id });
 
@@ -195,7 +224,7 @@ couriersRouter.delete('/couriers/:id/access-code', ...guard, async (req, res) =>
 
 /** The assignment-centred operational board. The older courier routes remain
  * the roster; neither endpoint is overloaded with two unrelated jobs. */
-couriersRouter.get('/assignments', ...guard, async (req, res) => {
+couriersRouter.get('/assignments', ...guard, withBranchTimezone, async (req, res) => {
   const parsed = deliveryBoardQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid query', parsed.error.flatten());
 
@@ -203,6 +232,7 @@ couriersRouter.get('/assignments', ...guard, async (req, res) => {
     data: await listDeliveryBoard({
       ...parsed.data,
       branchId: req.branchId ?? undefined,
+      timezone: req.branchTimezone ?? 'UTC',
     }),
   });
 });
@@ -221,7 +251,7 @@ couriersRouter.post('/assignments', ...guard, async (req, res) => {
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
 
   const user = requireUser(req);
-  const assignment = await assignOrder(parsed.data, req);
+  const assignment = await assignOrder(parsed.data, req, req.branchId ?? undefined);
 
   req.log.info({
     event: 'delivery.order.assigned',
@@ -249,7 +279,12 @@ couriersRouter.patch('/assignments/:id', ...guard, async (req, res) => {
 
   const user = requireUser(req);
   const id = String(req.params.id);
-  const assignment = await updateAssignment(id, parsed.data, req);
+  const assignment = await updateAssignment(
+    id,
+    parsed.data,
+    req,
+    req.branchId ?? undefined,
+  );
 
   req.log.info({ event: 'delivery.assignment.updated', assignmentId: id, userId: user.id });
 
@@ -260,7 +295,7 @@ couriersRouter.delete('/assignments/:id', ...guard, async (req, res) => {
   const user = requireUser(req);
   const id = String(req.params.id);
 
-  await unassignOrder(id);
+  await unassignOrder(id, req.branchId ?? undefined);
 
   req.log.info({ event: 'delivery.order.unassigned', assignmentId: id, userId: user.id });
 

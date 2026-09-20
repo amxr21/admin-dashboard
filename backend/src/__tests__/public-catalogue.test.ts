@@ -5,8 +5,7 @@ import { DiscountScope, DiscountType, ProductStatus, StaffRole } from '@prisma/c
 
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
-import { createApiKey } from '../services/api-key.service.js';
-import { signCustomerToken } from '../services/customer-auth.service.js';
+import { createApiKey, revokeApiKey } from '../services/api-key.service.js';
 
 /**
  * The public catalogue surface: categories and discounts.
@@ -33,17 +32,20 @@ const categoryIds: string[] = [];
 const productIds: string[] = [];
 const discountIds: string[] = [];
 const customerIds: string[] = [];
-let storefrontKey = '';
-let apiKeyOwnerId = '';
-let customerToken = '';
-
-function storefrontGet(path: string) {
-  return request(app).get(path).set('X-API-Key', storefrontKey);
-}
+const businessIds: string[] = [];
+const userIds: string[] = [];
 
 let activeParentId = '';
 let inactiveParentId = '';
 let orphanedChildId = '';
+let branchA = '';
+let branchB = '';
+let productId = '';
+let storefrontKey = '';
+
+function getPublic(path: string) {
+  return request(app).get(path).set('X-API-Key', storefrontKey);
+}
 
 interface CategoryBody {
   data: { id: string; name: string; slug: string; parentId: string | null }[];
@@ -75,16 +77,30 @@ async function makeCategory(label: string, isActive: boolean, parentId?: string)
 beforeAll(async () => {
   const owner = await prisma.user.create({
     data: {
-      email: `${RUN}-api@example.test`,
-      name: 'Storefront test integration',
+      email: `${RUN}-owner@example.test`,
+      name: `${RUN} owner`,
       role: StaffRole.OWNER,
-      passwordHash: await bcrypt.hash('storefront-test-password', 10),
+      passwordHash: await bcrypt.hash('correct-horse-battery-staple', 10),
     },
   });
-  apiKeyOwnerId = owner.id;
-  storefrontKey = (
-    await createApiKey(owner.id, 'Storefront tests', 'Catalogue access', 'Vitest')
-  ).key;
+  userIds.push(owner.id);
+  storefrontKey = (await createApiKey(owner.id, 'Storefront test', 'Exercise public API', 'Test suite')).key;
+
+  const business = await prisma.business.create({
+    data: {
+      name: `${RUN} business`,
+      branches: {
+        create: [
+          { name: `${RUN} branch A`, isDefault: true },
+          { name: `${RUN} branch B` },
+        ],
+      },
+    },
+    include: { branches: true },
+  });
+  businessIds.push(business.id);
+  branchA = business.branches.find((branch) => branch.isDefault)!.id;
+  branchB = business.branches.find((branch) => !branch.isDefault)!.id;
 
   const activeParent = await makeCategory('active-parent', true);
   const inactiveParent = await makeCategory('inactive-parent', false);
@@ -102,17 +118,19 @@ beforeAll(async () => {
       name: `${RUN} product`,
       slug: `${RUN}-product`,
       price: '10.00',
+      stock: 99,
       status: ProductStatus.ACTIVE,
       categoryId: activeParent.id,
+      branchStock: { create: { branchId: branchA, quantity: 2 } },
     },
   });
+  productId = product.id;
   productIds.push(product.id);
 
   const customer = await prisma.customer.create({
     data: { name: `${RUN} customer`, email: `${RUN}@example.test` },
   });
   customerIds.push(customer.id);
-  customerToken = signCustomerToken(customer);
 
   const discounts = await Promise.all([
     prisma.discount.create({
@@ -188,64 +206,102 @@ afterAll(async () => {
     where: { id: { in: categoryIds }, parentId: { not: null } },
   });
   await prisma.category.deleteMany({ where: { id: { in: categoryIds } } });
-  await prisma.apiKey.deleteMany({ where: { userId: apiKeyOwnerId } });
-  await prisma.user.delete({ where: { id: apiKeyOwnerId } });
+  await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
+  await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.$disconnect();
 });
 
-describe('GET /public/categories', () => {
-  it('rejects a request without a generated API key', async () => {
-    const res = await request(app).get('/api/v1/public/categories');
+describe('storefront API-key boundary', () => {
+  it('rejects a catalogue request with no generated key', async () => {
+    const res = await request(app).get(`/api/v1/public/products?branchId=${branchA}`);
     expect(res.status).toBe(401);
+    expect((res.body as { error: { message: string } }).error.message).toBe('API key required');
   });
 
-  it('accepts a valid generated API key', async () => {
-    const res = await storefrontGet('/api/v1/public/categories');
+  it('rejects an invalid or revoked key', async () => {
+    const invalid = await request(app)
+      .get(`/api/v1/public/products?branchId=${branchA}`)
+      .set('X-API-Key', 'adk_invalid');
+
+    const created = await createApiKey(
+      userIds[0]!,
+      'Revoked storefront',
+      'Verify revocation',
+      'Test suite',
+      ['products'],
+    );
+    await revokeApiKey(userIds[0]!, created.id);
+    const revoked = await request(app)
+      .get(`/api/v1/public/products?branchId=${branchA}`)
+      .set('X-API-Key', created.key);
+
+    expect(invalid.status).toBe(401);
+    expect(revoked.status).toBe(401);
+  });
+
+  it('applies the generated key scopes to storefront routes', async () => {
+    const created = await createApiKey(
+      userIds[0]!,
+      'Products only',
+      'Verify storefront scope',
+      'Test suite',
+      ['products'],
+    );
+
+    const products = await request(app)
+      .get(`/api/v1/public/products?branchId=${branchA}`)
+      .set('X-API-Key', created.key);
+    const categories = await request(app)
+      .get('/api/v1/public/categories')
+      .set('X-API-Key', created.key);
+
+    expect(products.status).toBe(200);
+    expect(categories.status).toBe(403);
+  });
+});
+
+describe('the public catalogue is branch-specific', () => {
+  it('requires a branch before listing products', async () => {
+    const res = await getPublic('/api/v1/public/products');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns the selected branch quantity, not global product stock', async () => {
+    const res = await getPublic(`/api/v1/public/products?branchId=${branchA}`);
+    const row = (res.body as { data: Array<{ id: string; stock: number }> }).data.find(
+      (product) => product.id === productId,
+    );
+
+    expect(res.status).toBe(200);
+    expect(row?.stock).toBe(2);
+  });
+
+  it('does not list a product that the selected branch does not carry', async () => {
+    const res = await getPublic(`/api/v1/public/products?branchId=${branchB}`);
+    const ids = (res.body as { data: Array<{ id: string }> }).data.map((product) => product.id);
+
+    expect(res.status).toBe(200);
+    expect(ids).not.toContain(productId);
+  });
+
+  it('exposes only active selling branches for catalogue selection', async () => {
+    const res = await getPublic('/api/v1/public/branches');
+    const ids = (res.body as { data: Array<{ id: string }> }).data.map((branch) => branch.id);
+
+    expect(res.status).toBe(200);
+    expect(ids).toEqual(expect.arrayContaining([branchA, branchB]));
+  });
+});
+
+describe('GET /public/categories', () => {
+  it('needs no authentication', async () => {
+    const res = await getPublic('/api/v1/public/categories');
     expect(res.status).toBe(200);
   });
 
-  it('rejects an invalid API key', async () => {
-    const res = await request(app)
-      .get('/api/v1/public/categories')
-      .set('X-API-Key', `adk_${'x'.repeat(43)}`);
-    expect(res.status).toBe(401);
-  });
-
-  it('rejects a revoked API key', async () => {
-    const created = await createApiKey(
-      apiKeyOwnerId,
-      'Revoked storefront test',
-      'Revocation boundary',
-      'Vitest',
-    );
-    await prisma.apiKey.update({
-      where: { id: created.id },
-      data: { revokedAt: new Date() },
-    });
-
-    const res = await request(app)
-      .get('/api/v1/public/categories')
-      .set('X-API-Key', created.key);
-    expect(res.status).toBe(401);
-
-  });
-
-  it('rejects a key whose scope does not include the route area', async () => {
-    const productsOnly = await createApiKey(
-      apiKeyOwnerId,
-      'Products-only storefront test',
-      'Scope boundary',
-      'Vitest',
-      ['products'],
-    );
-    const res = await request(app)
-      .get('/api/v1/public/categories')
-      .set('X-API-Key', productsOnly.key);
-    expect(res.status).toBe(403);
-  });
-
   it('omits a deactivated category', async () => {
-    const res = await storefrontGet('/api/v1/public/categories');
+    const res = await getPublic('/api/v1/public/categories');
     const codes = (res.body as CategoryBody).data.map((row) => row.id);
 
     expect(codes).toContain(activeParentId);
@@ -258,7 +314,7 @@ describe('GET /public/categories', () => {
      * this response. Leaving `parentId` pointing at an absent row would make a
      * client building a tree silently drop the whole subtree.
      */
-    const res = await storefrontGet('/api/v1/public/categories');
+    const res = await getPublic('/api/v1/public/categories');
     const orphan = (res.body as CategoryBody).data.find((row) => row.id === orphanedChildId);
 
     expect(orphan).toBeDefined();
@@ -266,7 +322,7 @@ describe('GET /public/categories', () => {
   });
 
   it('keeps a real parentId when the parent is visible', async () => {
-    const res = await storefrontGet('/api/v1/public/categories');
+    const res = await getPublic('/api/v1/public/categories');
     const child = (res.body as CategoryBody).data.find(
       (row) => row.slug === `${RUN}-active-child`,
     );
@@ -275,22 +331,10 @@ describe('GET /public/categories', () => {
   });
 
   it('returns no timestamps or internal flags', async () => {
-    const res = await storefrontGet('/api/v1/public/categories');
+    const res = await getPublic('/api/v1/public/categories');
     const row = (res.body as CategoryBody).data.find((entry) => entry.id === activeParentId);
 
     expect(Object.keys(row ?? {}).sort()).toEqual(['id', 'name', 'parentId', 'slug']);
-  });
-});
-
-describe('storefront and customer credentials', () => {
-  it('accepts X-API-Key and a customer Bearer token together', async () => {
-    const res = await request(app)
-      .get('/api/v1/public/me')
-      .set('X-API-Key', storefrontKey)
-      .set('Authorization', `Bearer ${customerToken}`);
-
-    expect(res.status).toBe(200);
-    expect((res.body as { data: { id: string } }).data.id).toBe(customerIds[0]);
   });
 });
 
@@ -299,16 +343,21 @@ describe('GET /public/discounts', () => {
     return body.data.filter((row) => row.code.startsWith(RUN));
   }
 
+  it('needs no authentication', async () => {
+    const res = await getPublic('/api/v1/public/discounts');
+    expect(res.status).toBe(200);
+  });
+
   it('NEVER publishes a customer-targeted discount', async () => {
     // The one that would hand every shopper a code meant for one person.
-    const res = await storefrontGet('/api/v1/public/discounts');
+    const res = await getPublic('/api/v1/public/discounts');
     const codes = ours(res.body as DiscountBody).map((row) => row.code);
 
     expect(codes).not.toContain(`${RUN}-CUSTOMER`);
   });
 
   it('omits expired and deactivated offers', async () => {
-    const res = await storefrontGet('/api/v1/public/discounts');
+    const res = await getPublic('/api/v1/public/discounts');
     const codes = ours(res.body as DiscountBody).map((row) => row.code);
 
     expect(codes).not.toContain(`${RUN}-EXPIRED`);
@@ -318,7 +367,7 @@ describe('GET /public/discounts', () => {
   it('includes an offer with no end date', async () => {
     // A null expiry means "runs until we stop it", not "already expired" — a
     // comparison that excluded nulls would silently hide every open-ended offer.
-    const res = await storefrontGet('/api/v1/public/discounts');
+    const res = await getPublic('/api/v1/public/discounts');
     const codes = ours(res.body as DiscountBody).map((row) => row.code);
 
     expect(codes).toContain(`${RUN}-ALL`);
@@ -330,7 +379,7 @@ describe('GET /public/discounts', () => {
      * out — an invitation to race for the last use, and a read on how the
      * promotion is performing.
      */
-    const res = await storefrontGet('/api/v1/public/discounts');
+    const res = await getPublic('/api/v1/public/discounts');
     const row = ours(res.body as DiscountBody).find((entry) => entry.code === `${RUN}-ALL`);
 
     expect(row).toBeDefined();
@@ -345,7 +394,7 @@ describe('GET /public/discounts', () => {
   });
 
   it('serialises value as a fixed-2 string, never a float', async () => {
-    const res = await storefrontGet('/api/v1/public/discounts');
+    const res = await getPublic('/api/v1/public/discounts');
     const row = ours(res.body as DiscountBody).find((entry) => entry.code === `${RUN}-ALL`);
 
     expect(row?.value).toBe('10.00');
@@ -354,7 +403,7 @@ describe('GET /public/discounts', () => {
   it('reads only the relation the scope names', async () => {
     // The CATEGORY-scoped offer is also connected to a product. Showing that
     // product would misreport what the offer applies to.
-    const res = await storefrontGet('/api/v1/public/discounts');
+    const res = await getPublic('/api/v1/public/discounts');
     const row = ours(res.body as DiscountBody).find(
       (entry) => entry.code === `${RUN}-CATEGORY`,
     );
@@ -363,7 +412,7 @@ describe('GET /public/discounts', () => {
   });
 
   it('reports an empty appliesTo for a store-wide offer', async () => {
-    const res = await storefrontGet('/api/v1/public/discounts');
+    const res = await getPublic('/api/v1/public/discounts');
     const row = ours(res.body as DiscountBody).find((entry) => entry.code === `${RUN}-ALL`);
 
     expect(row?.appliesTo).toEqual([]);

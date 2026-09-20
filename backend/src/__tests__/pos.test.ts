@@ -32,6 +32,7 @@ const shiftIds: string[] = [];
 const orderIds: string[] = [];
 
 let branchId = '';
+let otherBranchId = '';
 let ownerToken = '';
 /** Captured so the sale's `soldBy` snapshot can be asserted against a REAL
  *  identity rather than merely "not null". */
@@ -101,8 +102,9 @@ function browse(query: Record<string, string> = {}, token = ownerToken, branch?:
   return branch ? req.set('X-Branch-Id', branch) : req;
 }
 
-function browseCategoriesReq(token = ownerToken) {
-  return request(app).get('/api/v1/pos/browse/categories').set(auth(token));
+function browseCategoriesReq(token = ownerToken, branch?: string) {
+  const req = request(app).get('/api/v1/pos/browse/categories').set(auth(token));
+  return branch ? req.set('X-Branch-Id', branch) : req;
 }
 
 function scan(code: string, token = ownerToken, branch?: string) {
@@ -121,6 +123,10 @@ beforeAll(async () => {
     data: { businessId: business.id, name: `${RUN} Till Branch` },
   });
   branchId = branch.id;
+  const otherBranch = await prisma.branch.create({
+    data: { businessId: business.id, name: `${RUN} Other Branch` },
+  });
+  otherBranchId = otherBranch.id;
 
   const [owner, support] = await Promise.all([
     makeUser(StaffRole.OWNER, 'owner'),
@@ -249,15 +255,12 @@ describe('what the till is told about stock', () => {
     expect(body.data.product.totalStock).toBe(100);
   });
 
-  it('reports zero, not null, for a branch holding none', async () => {
-    // A branch with no BranchStock row genuinely has none of it. Null there
-    // would be indistinguishable from "no branch selected".
+  it('does not scan a product that is not carried by the active branch', async () => {
     await makeProduct({ barcode: `${RUN}-6660001112223`, stock: 50 });
 
     const res = await scan(`${RUN}-6660001112223`, ownerToken, branchId);
 
-    expect((res.body as { data: { product: { branchStock: number } } }).data.product.branchStock)
-      .toBe(0);
+    expect(res.status).toBe(404);
   });
 
   it('returns null branch stock when no branch is in context', async () => {
@@ -1119,6 +1122,24 @@ describe('browsing the grid (O9.10)', () => {
     expect(ids).not.toContain(inactive.id);
   });
 
+  it('lists only categories with products carried by the active branch', async () => {
+    const carried = await makeCategory(`${RUN} Carried Tab`);
+    const elsewhere = await makeCategory(`${RUN} Elsewhere Tab`);
+    const product = await makeProduct({ name: `${RUN} carried category product`, categoryId: carried.id });
+    await makeProduct({ name: `${RUN} elsewhere category product`, categoryId: elsewhere.id });
+    await prisma.branchStock.create({
+      data: { productId: product.id, branchId, quantity: 0 },
+    });
+
+    const res = await browseCategoriesReq(ownerToken, branchId);
+    const ids = (res.body as { data: { categories: { id: string }[] } }).data.categories.map(
+      (category) => category.id,
+    );
+
+    expect(ids).toContain(carried.id);
+    expect(ids).not.toContain(elsewhere.id);
+  });
+
   it('is reachable by the CASHIER role, same as scan and checkout', async () => {
     // The owner confirmed the cashier's job is scanning and counting only —
     // this endpoint has to be part of that job, gated the same way scan is.
@@ -1250,9 +1271,13 @@ describe('discounts at the till (O9 Tier 3)', () => {
   it('approves a discount above the cap with a real manager override token', async () => {
     await withCap(10, async () => {
       const manager = await makeUser(StaffRole.MANAGER, 'discount-manager');
+      await prisma.userBranch.create({
+        data: { userId: manager.id, branchId, role: StaffRole.MANAGER },
+      });
       const approval = await verifyManagerOverride(
         manager.email,
         'correct-horse-battery-staple',
+        branchId,
       );
 
       const product = await makeProduct({ sku: `${RUN}-DISC-5`, price: '10.00', stock: 5 });
@@ -1455,9 +1480,16 @@ describe('voiding a sale at the till (O9 Tier 3)', () => {
   it('approves once a real manager override token verifies', async () => {
     const cashier = await makeUser(StaffRole.CASHIER, 'void-cashier-2');
     const manager = await makeUser(StaffRole.MANAGER, 'void-manager-1');
+    await prisma.userBranch.createMany({
+      data: [
+        { userId: cashier.id, branchId, role: StaffRole.CASHIER },
+        { userId: manager.id, branchId, role: StaffRole.MANAGER },
+      ],
+    });
     const approval = await verifyManagerOverride(
       manager.email,
       'correct-horse-battery-staple',
+      branchId,
     );
 
     const product = await makeProduct({ sku: `${RUN}-VOID-5`, price: '5.00', stock: 3 });
@@ -1912,5 +1944,44 @@ describe('exchange (O9.8)', () => {
     });
 
     expect(res.status).toBe(404);
+  });
+
+  it('refuses linking a replacement return owned by another branch', async () => {
+    const original = await makeProduct({ sku: `${RUN}-EXCH-FOREIGN`, price: '10.00', stock: 5 });
+    const foreignOrder = await prisma.order.create({
+      data: {
+        orderNumber: `${RUN}-foreign-exchange`,
+        branchId: otherBranchId,
+        status: 'RETURNED',
+        total: new Prisma.Decimal('10.00'),
+        items: { create: [{ productId: original.id, quantity: 1, price: new Prisma.Decimal('10.00') }] },
+      },
+      include: { items: true },
+    });
+    orderIds.push(foreignOrder.id);
+
+    const foreignReturn = await prisma.return.create({
+      data: {
+        rmaNumber: `RMA-${RUN.slice(-6).toUpperCase()}X`,
+        reason: 'Replacement at another branch',
+        status: 'APPROVED',
+        resolution: ReturnResolution.REPLACEMENT,
+        orderId: foreignOrder.id,
+        items: { create: [{ orderItemId: foreignOrder.items[0]!.id, quantity: 1 }] },
+      },
+    });
+
+    const replacement = await makeProduct({ sku: `${RUN}-EXCH-LOCAL`, price: '12.00', stock: 5 });
+    await stockAt(replacement.id, 5);
+
+    const response = await sell({
+      lines: [{ productId: replacement.id, quantity: 1 }],
+      method: 'cash',
+      tendered: '12.00',
+      exchangeReturnId: foreignReturn.id,
+    });
+
+    expect(response.status).toBe(404);
+    expect((await prisma.return.findUnique({ where: { id: foreignReturn.id } }))?.exchangeOrderId).toBeNull();
   });
 });

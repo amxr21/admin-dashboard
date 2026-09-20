@@ -6,6 +6,7 @@ import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import { effectiveRole, withBranchContext } from '../../middleware/branch-context.js';
+import { withBranchTimezone } from '../../middleware/branch-timezone.js';
 import { verifyOverrideToken } from '../../services/auth.service.js';
 import { listAcceptedTenders } from '../../services/tender-currency.service.js';
 import {
@@ -117,8 +118,8 @@ posRouter.get('/pos/browse', ...guard, async (req, res) => {
  * so the two have different natural refetch rates and belong in different
  * requests.
  */
-posRouter.get('/pos/browse/categories', ...guard, async (_req, res) => {
-  const categories = await browseCategories();
+posRouter.get('/pos/browse/categories', ...guard, async (req, res) => {
+  const categories = await browseCategories(req.branchId ?? null);
 
   res.status(200).json({ data: { categories } });
 });
@@ -240,7 +241,7 @@ const idempotencyKeySchema = z.string().uuid().max(64);
  * transaction: a sale that recorded the money but not the stock leaves books
  * and shelves disagreeing with nothing to say which half happened.
  */
-posRouter.post('/pos/checkout', ...guard, async (req, res) => {
+posRouter.post('/pos/checkout', ...guard, withBranchTimezone, async (req, res) => {
   const parsed = checkoutSchema.safeParse(req.body);
 
   if (!parsed.success) {
@@ -266,12 +267,13 @@ posRouter.post('/pos/checkout', ...guard, async (req, res) => {
   //
   // No open shift is not an error: an owner ringing up a sale outside any
   // session is real, and that payment simply belongs to no drawer.
-  const openShift = await getOpenShift(user.id);
+  const openShift = await getOpenShift(user.id, req.branchId ?? undefined);
 
   const execution = await checkout(
     {
       ...parsed.data,
       branchId: req.branchId ?? undefined,
+      timezone: req.branchTimezone ?? 'UTC',
       shiftId: openShift?.id,
     },
     user.id,
@@ -313,12 +315,12 @@ posRouter.post('/pos/orders/:orderId/void', ...guard, async (req, res) => {
       throw AppError.forbidden('A manager needs to approve this in place');
     }
 
-    if (!verifyOverrideToken(parsed.data.overrideToken)) {
+    if (!verifyOverrideToken(parsed.data.overrideToken, req.branchId ?? undefined)) {
       throw AppError.forbidden('The manager approval could not be verified');
     }
   }
 
-  const result = await voidSale(orderId, user.id, req);
+  const result = await voidSale(orderId, user.id, req, req.branchId ?? undefined);
 
   res.json({ data: result });
 });
@@ -374,7 +376,12 @@ posRouter.get('/pos/parked', ...guard, async (req, res) => {
 /** POST /api/v1/pos/parked/:id/resume — bring it back and forget it was parked. */
 posRouter.post('/pos/parked/:id/resume', ...guard, async (req, res) => {
   const user = requireUser(req);
-  const result = await resumeParkedSale(String(req.params.id), user.id);
+
+  if (!req.branchId) {
+    throw AppError.badRequest('No branch is in context — choose one before resuming a cart');
+  }
+
+  const result = await resumeParkedSale(String(req.params.id), user.id, req.branchId);
 
   res.json({ data: result });
 });
@@ -382,7 +389,12 @@ posRouter.post('/pos/parked/:id/resume', ...guard, async (req, res) => {
 /** DELETE /api/v1/pos/parked/:id — give up on it, the customer never came back. */
 posRouter.delete('/pos/parked/:id', ...guard, async (req, res) => {
   const user = requireUser(req);
-  await discardParkedSale(String(req.params.id), user.id);
+
+  if (!req.branchId) {
+    throw AppError.badRequest('No branch is in context — choose one before discarding a cart');
+  }
+
+  await discardParkedSale(String(req.params.id), user.id, req.branchId);
 
   res.status(204).send();
 });

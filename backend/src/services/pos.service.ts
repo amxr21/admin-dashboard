@@ -15,6 +15,7 @@ import { verifyOverrideToken } from './auth.service.js';
 import { defaultBranchId } from './inventory.service.js';
 import { executeIdempotently } from './idempotency.service.js';
 import { normalizePhone } from '../lib/phone.js';
+import { dateOnlyInTimeZone } from '../lib/date-range.js';
 import { computeOrderTotals, getTaxRate } from './order-math.service.js';
 import { getSettingValue } from './settings.service.js';
 import { resolveTenderRate } from './tender-currency.service.js';
@@ -80,7 +81,10 @@ export async function scanProduct(
   }
 
   const product = await prisma.product.findFirst({
-    where: { OR: [{ barcode: trimmed }, { sku: trimmed }] },
+    where: {
+      OR: [{ barcode: trimmed }, { sku: trimmed }],
+      ...(branchId !== null ? { branchStock: { some: { branchId } } } : {}),
+    },
     select: {
       id: true,
       name: true,
@@ -260,9 +264,23 @@ export async function browseProducts(
 /** Active categories, for the grid's tabs. Excludes inactive ones the same
  *  way browseProducts excludes archived products — a tab for a category
  *  nobody may sell into is a dead end, not a filter. */
-export async function browseCategories(): Promise<{ id: string; name: string }[]> {
+export async function browseCategories(
+  branchId: string | null,
+): Promise<{ id: string; name: string }[]> {
   return prisma.category.findMany({
-    where: { isActive: true },
+    where: {
+      isActive: true,
+      ...(branchId !== null
+        ? {
+            products: {
+              some: {
+                status: 'ACTIVE',
+                branchStock: { some: { branchId } },
+              },
+            },
+          }
+        : {}),
+    },
     orderBy: { name: 'asc' },
     select: { id: true, name: true },
   });
@@ -339,6 +357,8 @@ export interface CheckoutInput {
    * steal the link from the first.
    */
   exchangeReturnId?: string | undefined;
+  /** Effective branch timezone used for the human-facing order-number date. */
+  timezone?: string | undefined;
 }
 
 export interface SplitPaymentInput {
@@ -360,8 +380,8 @@ export interface SplitPaymentInput {
  * collision inside one day is vanishingly unlikely — and if one ever happens
  * the `@unique` constraint rejects it rather than overwriting a real sale.
  */
-function generateOrderNumber(): string {
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+function generateOrderNumber(timezone = 'UTC'): string {
+  const today = dateOnlyInTimeZone(new Date(), timezone).replace(/-/g, '');
   const suffix = randomBytes(4).toString('hex').toUpperCase();
 
   return `POS-${today}-${suffix}`;
@@ -502,7 +522,7 @@ async function checkoutOnce(
           );
         }
 
-        const verified = verifyOverrideToken(input.overrideToken);
+        const verified = verifyOverrideToken(input.overrideToken, branchId);
 
         if (!verified) {
           // Same generic shape as every other "your proof did not check
@@ -520,8 +540,8 @@ async function checkoutOnce(
   // discounts above: a bad return id must never get as far as touching
   // stock.
   if (input.exchangeReturnId) {
-    const linkedReturn = await tx.return.findUnique({
-      where: { id: input.exchangeReturnId },
+    const linkedReturn = await tx.return.findFirst({
+      where: { id: input.exchangeReturnId, order: { branchId } },
       select: { id: true, resolution: true, exchangeOrderId: true },
     });
 
@@ -587,6 +607,13 @@ async function checkoutOnce(
         });
       }
 
+      if (!stockById.has(line.productId)) {
+        throw AppError.badRequest('Product is not carried by this branch', {
+          field: 'productId',
+          productId: line.productId,
+        });
+      }
+
       const available = stockById.get(line.productId) ?? 0;
 
       if (!allowNegative && line.quantity > available) {
@@ -646,7 +673,7 @@ async function checkoutOnce(
 
     const order = await tx.order.create({
       data: {
-        orderNumber: generateOrderNumber(),
+        orderNumber: generateOrderNumber(input.timezone),
         status: OrderStatus.CONFIRMED,
         subtotal: totals.subtotal,
         taxAmount: totals.taxAmount,
@@ -1078,9 +1105,14 @@ export async function checkout(
  * the stock, and the payment.
  * ───────────────────────────────────────────────────────────────────── */
 
-export async function voidSale(orderId: string, actorId: string, req: Request) {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
+export async function voidSale(
+  orderId: string,
+  actorId: string,
+  req: Request,
+  activeBranchId?: string,
+) {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, ...(activeBranchId ? { branchId: activeBranchId } : {}) },
     select: {
       id: true,
       orderNumber: true,
@@ -1297,9 +1329,10 @@ export async function listParkedSales(
 export async function resumeParkedSale(
   id: string,
   cashierId: string,
+  branchId: string,
 ): Promise<ParkedSaleSummary> {
-  const row = await prisma.parkedSale.findUnique({
-    where: { id },
+  const row = await prisma.parkedSale.findFirst({
+    where: { id, branchId },
     select: { id: true, cashierId: true, label: true, lines: true, createdAt: true },
   });
 
@@ -1318,9 +1351,13 @@ export async function resumeParkedSale(
 
 /** Give up on a parked cart without resuming it — the customer never came
  *  back. Same ownership rule as resuming. */
-export async function discardParkedSale(id: string, cashierId: string): Promise<void> {
-  const row = await prisma.parkedSale.findUnique({
-    where: { id },
+export async function discardParkedSale(
+  id: string,
+  cashierId: string,
+  branchId: string,
+): Promise<void> {
+  const row = await prisma.parkedSale.findFirst({
+    where: { id, branchId },
     select: { cashierId: true },
   });
 

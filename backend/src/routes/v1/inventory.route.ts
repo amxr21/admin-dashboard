@@ -267,7 +267,9 @@ inventoryRouter.post('/inventory/:productId/movements', ...guard, async (req, re
  * database access. Read-only and cheap.
  */
 inventoryRouter.get('/inventory/:productId/reconcile', ...guard, async (req, res) => {
-  res.json({ data: await reconcile(String(req.params.productId)) });
+  res.json({
+    data: await reconcile(String(req.params.productId), req.branchId ?? undefined),
+  });
 });
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -311,7 +313,18 @@ inventoryRouter.post('/inventory/receive/preview', ...guard, async (req, res) =>
 
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
 
-  res.status(200).json({ data: await previewReceive(parsed.data) });
+  if (req.branchId && parsed.data.branchId && parsed.data.branchId !== req.branchId) {
+    throw AppError.badRequest('The delivery branch must match the active branch', {
+      field: 'branchId',
+    });
+  }
+
+  res.status(200).json({
+    data: await previewReceive({
+      ...parsed.data,
+      branchId: req.branchId ?? parsed.data.branchId,
+    }),
+  });
 });
 
 /**
@@ -327,10 +340,16 @@ inventoryRouter.post('/inventory/receive', ...guard, async (req, res) => {
 
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
 
+  if (req.branchId && parsed.data.branchId && parsed.data.branchId !== req.branchId) {
+    throw AppError.badRequest('The delivery branch must match the active branch', {
+      field: 'branchId',
+    });
+  }
+
   const user = requireUser(req);
 
   const result = await applyReceive(
-    { ...parsed.data, branchId: parsed.data.branchId ?? req.branchId ?? undefined },
+    { ...parsed.data, branchId: req.branchId ?? parsed.data.branchId },
     user.id,
     req,
   );

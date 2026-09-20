@@ -20,6 +20,8 @@ let branchId = '';
 let ownerToken = '';
 let supportToken = '';
 let storefrontKey = '';
+let businessId = '';
+let branchId = '';
 
 interface ContentResponseBody {
   data: {
@@ -79,18 +81,18 @@ function auth(token: string) {
 }
 
 beforeAll(async () => {
-  const business = await prisma.business.create({ data: { name: `${RUN} Business` } });
+  const business = await prisma.business.create({
+    data: { name: `${RUN} business`, branches: { create: { name: `${RUN} branch` } } },
+    include: { branches: true },
+  });
   businessId = business.id;
-  branchId = (await prisma.branch.create({ data: { businessId, name: `${RUN} Branch`, isDefault: true } })).id;
+  branchId = business.branches[0]!.id;
   [ownerToken, supportToken] = await Promise.all([
     makeUser(StaffRole.OWNER),
     makeUser(StaffRole.SUPPORT),
   ]);
-  const owner = await prisma.user.findFirstOrThrow({
-    where: { email: `${RUN}-${StaffRole.OWNER.toLowerCase()}@example.test` },
-  });
   storefrontKey = (
-    await createApiKey(owner.id, 'Storefront tests', 'Localized catalogue', 'Vitest')
+    await createApiKey(userIds[0]!, 'Storefront test', 'Exercise localized catalogue', 'Test suite')
   ).key;
 });
 
@@ -101,8 +103,8 @@ afterAll(async () => {
   await prisma.apiKey.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-  await prisma.branch.deleteMany({ where: { id: branchId } });
-  await prisma.business.deleteMany({ where: { id: businessId } });
+  await prisma.branch.deleteMany({ where: { businessId } });
+  await prisma.business.delete({ where: { id: businessId } });
   await prisma.$disconnect();
 });
 

@@ -32,8 +32,10 @@ const productIds: string[] = [];
 const discountIds: string[] = [];
 const customerIds: string[] = [];
 const categoryIds: string[] = [];
+let businessId = '';
+let branchId = '';
+let ownerId = '';
 let storefrontKey = '';
-let apiKeyOwnerId = '';
 
 interface CheckoutBody {
   data: {
@@ -59,6 +61,9 @@ async function makeProduct(price: string, stock = 100, categoryId?: string) {
     },
   });
   productIds.push(product.id);
+  await prisma.branchStock.create({
+    data: { productId: product.id, branchId, quantity: stock },
+  });
   return product;
 }
 
@@ -91,6 +96,7 @@ function order(productId: string, quantity: number, discountCode?: string) {
     .post('/api/v1/public/orders')
     .set('X-API-Key', storefrontKey)
     .send({
+      branchId,
       items: [{ productId, quantity }],
       contact: { name: 'Ali', phone: '+971500000000' },
       paymentMethod: 'cash',
@@ -111,16 +117,24 @@ async function setTaxRate(percent: string) {
 beforeAll(async () => {
   const owner = await prisma.user.create({
     data: {
-      email: `${RUN}-api@example.test`,
-      name: 'Storefront checkout integration',
+      email: `${RUN}-owner@example.test`,
+      name: `${RUN} owner`,
       role: StaffRole.OWNER,
-      passwordHash: await bcrypt.hash('storefront-test-password', 10),
+      passwordHash: await bcrypt.hash('correct-horse-battery-staple', 10),
     },
   });
-  apiKeyOwnerId = owner.id;
-  storefrontKey = (
-    await createApiKey(owner.id, 'Storefront tests', 'Checkout access', 'Vitest')
-  ).key;
+  ownerId = owner.id;
+  storefrontKey = (await createApiKey(owner.id, 'Storefront test', 'Exercise checkout API', 'Test suite')).key;
+
+  const business = await prisma.business.create({
+    data: {
+      name: `${RUN} business`,
+      branches: { create: { name: `${RUN} branch`, isDefault: true } },
+    },
+    include: { branches: true },
+  });
+  businessId = business.id;
+  branchId = business.branches[0]!.id;
   await setTaxRate('0');
 });
 
@@ -144,8 +158,9 @@ afterAll(async () => {
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.category.deleteMany({ where: { id: { in: categoryIds } } });
   await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
-  await prisma.apiKey.deleteMany({ where: { userId: apiKeyOwnerId } });
-  await prisma.user.delete({ where: { id: apiKeyOwnerId } });
+  await prisma.branch.deleteMany({ where: { businessId } });
+  await prisma.business.deleteMany({ where: { id: businessId } });
+  await prisma.user.delete({ where: { id: ownerId } });
   await setTaxRate('0');
   await prisma.$disconnect();
 });
@@ -171,6 +186,61 @@ describe('checkout without a discount', () => {
     expect(saved?.discountAmount).toBeNull();
     expect(saved?.discountCode).toBeNull();
     expect(saved?.discountId).toBeNull();
+  });
+
+  it('attributes the order and stock movement to the selected branch', async () => {
+    const product = await makeProduct('12.00', 4);
+
+    const res = await order(product.id, 2);
+
+    expect(res.status).toBe(201);
+    const orderNumber = (res.body as CheckoutBody).data.orderNumber;
+    const saved = await prisma.order.findUnique({
+      where: { orderNumber },
+      select: { branchId: true },
+    });
+    const branchStock = await prisma.branchStock.findUnique({
+      where: { productId_branchId: { productId: product.id, branchId } },
+      select: { quantity: true },
+    });
+    const movement = await prisma.stockMovement.findFirst({
+      where: { productId: product.id, reason: 'SOLD' },
+      orderBy: { createdAt: 'desc' },
+      select: { branchId: true, delta: true },
+    });
+
+    expect(saved?.branchId).toBe(branchId);
+    expect(branchStock?.quantity).toBe(2);
+    expect(movement).toMatchObject({ branchId, delta: -2 });
+  });
+
+  it('requires an explicit active branch', async () => {
+    const product = await makeProduct('12.00', 4);
+    const res = await request(app).post('/api/v1/public/orders').set('X-API-Key', storefrontKey).send({
+      items: [{ productId: product.id, quantity: 1 }],
+      contact: { name: 'Ali', phone: '+971500000000' },
+      paymentMethod: 'cash',
+      fulfillment: 'Pickup',
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a product that is not carried by the selected branch', async () => {
+    const product = await makeProduct('12.00', 4);
+    const otherBranch = await prisma.branch.create({
+      data: { businessId, name: `${RUN} other branch` },
+    });
+
+    const res = await request(app).post('/api/v1/public/orders').set('X-API-Key', storefrontKey).send({
+      branchId: otherBranch.id,
+      items: [{ productId: product.id, quantity: 1 }],
+      contact: { name: 'Ali', phone: '+971500000000' },
+      paymentMethod: 'cash',
+      fulfillment: 'Pickup',
+    });
+
+    expect(res.status).toBe(400);
   });
 });
 

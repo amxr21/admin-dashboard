@@ -167,9 +167,9 @@ export async function listReturns(params: ReturnListParams) {
   };
 }
 
-async function serialiseReturn(id: string) {
-  const row = await prisma.return.findUnique({
-    where: { id },
+async function serialiseReturn(id: string, branchId?: string) {
+  const row = await prisma.return.findFirst({
+    where: { id, ...(branchId ? { order: { branchId } } : {}) },
     select: {
       id: true,
       rmaNumber: true,
@@ -243,8 +243,8 @@ async function serialiseReturn(id: string) {
   };
 }
 
-export async function getReturn(id: string) {
-  return serialiseReturn(id);
+export async function getReturn(id: string, branchId?: string) {
+  return serialiseReturn(id, branchId);
 }
 
 export interface CreateReturnInput {
@@ -254,14 +254,14 @@ export interface CreateReturnInput {
   items: { orderItemId: string; quantity: number }[];
 }
 
-export async function createReturn(input: CreateReturnInput) {
+export async function createReturn(input: CreateReturnInput, branchId?: string) {
   if (input.items.length === 0) {
     throw AppError.badRequest('Select at least one item to return', { field: 'items' });
   }
 
   const id = await prisma.$transaction(async (tx) => {
-    const order = await tx.order.findUnique({
-      where: { id: input.orderId },
+    const order = await tx.order.findFirst({
+      where: { id: input.orderId, ...(branchId ? { branchId } : {}) },
       select: {
         id: true,
         status: true,
@@ -348,7 +348,7 @@ export async function createReturn(input: CreateReturnInput) {
     return created.id;
   });
 
-  const created = await serialiseReturn(id);
+  const created = await serialiseReturn(id, branchId);
 
   if (await getSettingValue('notifications.returnRequestAlerts')) {
     notify({
@@ -441,8 +441,8 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
   let appliedRestockingFeePercent: Prisma.Decimal | null = null;
 
   await prisma.$transaction(async (tx) => {
-    const existing = await tx.return.findUnique({
-      where: { id },
+    const existing = await tx.return.findFirst({
+      where: { id, ...(input.branchId ? { order: { branchId: input.branchId } } : {}) },
       select: {
         id: true,
         status: true,
@@ -735,7 +735,7 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
     },
   });
 
-  const approved = await serialiseReturn(id);
+  const approved = await serialiseReturn(id, input.branchId);
 
   /**
    * A return was DECIDED. Until now `notify()` fired only when one was
@@ -766,10 +766,15 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
   return approved;
 }
 
-export async function rejectReturn(id: string, rejectionReason: string, req: Request) {
+export async function rejectReturn(
+  id: string,
+  rejectionReason: string,
+  req: Request,
+  branchId?: string,
+) {
   await prisma.$transaction(async (tx) => {
-    const existing = await tx.return.findUnique({
-      where: { id },
+    const existing = await tx.return.findFirst({
+      where: { id, ...(branchId ? { order: { branchId } } : {}) },
       select: { id: true, status: true },
     });
 
@@ -798,7 +803,7 @@ export async function rejectReturn(id: string, rejectionReason: string, req: Req
     },
   });
 
-  const rejected = await serialiseReturn(id);
+  const rejected = await serialiseReturn(id, branchId);
 
   // Same gate and same placement as the approval above — a refusal is a
   // decision too, and the one people chase. The reason is IN the body rather

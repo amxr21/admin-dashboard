@@ -91,6 +91,9 @@ beforeAll(async () => {
       { userId: fulfillment.id, branchId: branchA, role: StaffRole.FULFILLMENT },
     ],
   });
+  await prisma.branchStock.create({
+    data: { productId, branchId: branchA, quantity: 5 },
+  });
 
   const order = await prisma.order.create({
     data: {
@@ -209,6 +212,7 @@ describe('matches across categories', () => {
     const body = res.body as SearchBody;
     expect(body.data.orders.map((row) => row.id)).not.toContain(orderId);
     expect(body.data.customerCases.map((row) => row.id)).not.toContain(customerCaseId);
+    expect(body.data.products.map((row) => row.id)).not.toContain(productId);
   });
 });
 

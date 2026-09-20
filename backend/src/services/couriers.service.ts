@@ -13,6 +13,7 @@ import { AppError } from '../errors/AppError.js';
 import { ASSIGNMENT_ON_ORDER_STATUS } from '../config/orders.config.js';
 import { audit, diff } from './audit.service.js';
 import { resolveBranchLabels } from './branches.service.js';
+import { optionalDateOnlyBounds } from '../lib/date-range.js';
 
 /**
  * Couriers and their assignments.
@@ -195,9 +196,9 @@ export async function listCouriers(params: CourierListParams) {
   };
 }
 
-export async function getCourier(id: string) {
-  const courier = await prisma.deliveryStaff.findUnique({
-    where: { id },
+export async function getCourier(id: string, branchId?: string) {
+  const courier = await prisma.deliveryStaff.findFirst({
+    where: { id, ...courierBranchWhere(branchId) },
     select: {
       ...COURIER_FIELDS,
       accessCodeHash: true,
@@ -205,6 +206,7 @@ export async function getCourier(id: string) {
       // disagree about where somebody works.
       branches: { select: { branch: { select: { id: true, name: true } } } },
       assignments: {
+        ...(branchId ? { where: { order: { branchId } } } : {}),
         orderBy: { createdAt: 'desc' },
         take: 20,
         select: {
@@ -247,6 +249,7 @@ export interface DeliveryBoardParams {
   from?: string;
   to?: string;
   branchId?: string;
+  timezone?: string;
 }
 
 /**
@@ -260,13 +263,7 @@ export interface DeliveryBoardParams {
 export async function listDeliveryBoard(params: DeliveryBoardParams) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, params.pageSize ?? 50));
-  const createdAt =
-    params.from || params.to
-      ? {
-          ...(params.from ? { gte: new Date(`${params.from}T00:00:00.000Z`) } : {}),
-          ...(params.to ? { lte: new Date(`${params.to}T23:59:59.999Z`) } : {}),
-        }
-      : undefined;
+  const createdAt = optionalDateOnlyBounds(params.from, params.to, params.timezone ?? 'UTC');
 
   const baseWhere: Prisma.DeliveryAssignmentWhereInput = {
     ...(params.driverId ? { driverId: params.driverId } : {}),
@@ -511,18 +508,26 @@ export interface CourierInput {
   status?: DeliveryStaffStatus | undefined;
 }
 
-export async function createCourier(input: CourierInput) {
+export async function createCourier(input: CourierInput, branchId?: string) {
   const courier = await prisma.deliveryStaff.create({
-    data: { ...input },
+    data: {
+      ...input,
+      ...(branchId ? { branches: { create: { branchId } } } : {}),
+    },
     select: COURIER_FIELDS,
   });
 
   return { ...courier, createdAt: courier.createdAt.toISOString(), hasAccessCode: false };
 }
 
-export async function updateCourier(id: string, input: Partial<CourierInput>, req: Request) {
-  const before = await prisma.deliveryStaff.findUnique({
-    where: { id },
+export async function updateCourier(
+  id: string,
+  input: Partial<CourierInput>,
+  req: Request,
+  branchId?: string,
+) {
+  const before = await prisma.deliveryStaff.findFirst({
+    where: { id, ...courierBranchWhere(branchId) },
     select: { name: true, email: true, phone: true, zone: true, region: true, country: true, status: true },
   });
   if (!before) throw AppError.notFound('Courier not found');
@@ -554,9 +559,9 @@ export async function updateCourier(id: string, input: Partial<CourierInput>, re
  * reads it back, because there is nothing stored to read — losing it means
  * issuing another, which is the correct behaviour for a credential.
  */
-export async function regenerateAccessCode(id: string) {
-  const courier = await prisma.deliveryStaff.findUnique({
-    where: { id },
+export async function regenerateAccessCode(id: string, branchId?: string) {
+  const courier = await prisma.deliveryStaff.findFirst({
+    where: { id, ...courierBranchWhere(branchId) },
     select: { id: true, name: true, status: true },
   });
 
@@ -581,8 +586,11 @@ export async function regenerateAccessCode(id: string) {
 }
 
 /** Remove a courier's ability to sign in, without deleting them. */
-export async function revokeAccessCode(id: string) {
-  const exists = await prisma.deliveryStaff.findUnique({ where: { id }, select: { id: true } });
+export async function revokeAccessCode(id: string, branchId?: string) {
+  const exists = await prisma.deliveryStaff.findFirst({
+    where: { id, ...courierBranchWhere(branchId) },
+    select: { id: true },
+  });
   if (!exists) throw AppError.notFound('Courier not found');
 
   await prisma.deliveryStaff.update({ where: { id }, data: { accessCodeHash: null } });
@@ -625,14 +633,14 @@ export interface AssignInput {
  * updates the existing row rather than creating a second — two couriers
  * holding the same parcel is a real-world failure, not just a data one.
  */
-export async function assignOrder(input: AssignInput, req?: Request) {
+export async function assignOrder(input: AssignInput, req?: Request, branchId?: string) {
   const [order, courier, existing] = await Promise.all([
-    prisma.order.findUnique({
-      where: { id: input.orderId },
-      select: { id: true, status: true, total: true, customer: { select: { name: true, phone: true } } },
+    prisma.order.findFirst({
+      where: { id: input.orderId, ...(branchId ? { branchId } : {}) },
+      select: { id: true, branchId: true, status: true, total: true, customer: { select: { name: true, phone: true } } },
     }),
-    prisma.deliveryStaff.findUnique({
-      where: { id: input.driverId },
+    prisma.deliveryStaff.findFirst({
+      where: { id: input.driverId, ...courierBranchWhere(branchId) },
       select: { id: true, name: true, status: true },
     }),
     prisma.deliveryAssignment.findUnique({
@@ -746,9 +754,10 @@ export async function updateAssignment(
   assignmentId: string,
   input: UpdateAssignmentInput,
   req?: Request,
+  branchId?: string,
 ) {
-  const existing = await prisma.deliveryAssignment.findUnique({
-    where: { id: assignmentId },
+  const existing = await prisma.deliveryAssignment.findFirst({
+    where: { id: assignmentId, ...(branchId ? { order: { branchId } } : {}) },
     select: {
       id: true,
       orderId: true,
@@ -960,9 +969,9 @@ export async function updateAssignmentStatus(
   return toCourierAssignment(updated);
 }
 
-export async function unassignOrder(assignmentId: string) {
-  const assignment = await prisma.deliveryAssignment.findUnique({
-    where: { id: assignmentId },
+export async function unassignOrder(assignmentId: string, branchId?: string) {
+  const assignment = await prisma.deliveryAssignment.findFirst({
+    where: { id: assignmentId, ...(branchId ? { order: { branchId } } : {}) },
     select: { id: true, status: true },
   });
 
@@ -1060,9 +1069,10 @@ export async function setCourierBranches(courierId: string, branchIds: string[])
  * an upgrade grants nothing and takes nothing away.
  */
 export function courierBranchWhere(branchId: string | undefined) {
+  // Security rule superseding the legacy comment above: no roster row means
+  // unassigned, never business-wide. Only an explicit branch row grants a
+  // branch-scoped dispatcher visibility.
   if (!branchId) return {};
 
-  return {
-    OR: [{ branches: { some: { branchId } } }, { branches: { none: {} } }],
-  };
+  return { branches: { some: { branchId } } };
 }

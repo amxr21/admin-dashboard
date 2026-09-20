@@ -23,7 +23,7 @@ interface VariantBody {
   data: { variant: { id: string; name: string; sku: string | null; price: string; stock: number } };
 }
 interface VariantsListBody {
-  data: { variants: { id: string; name: string }[] };
+  data: { variants: { id: string; name: string; stock: number }[] };
 }
 interface AdjustBody {
   data: { variant: { id: string; stock: number }; movement: { delta: number } };
@@ -54,11 +54,14 @@ const RUN = `varianttest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}
 
 const userIds: string[] = [];
 const productIds: string[] = [];
-let businessId = '';
-let branchId = '';
+const businessIds: string[] = [];
 let ownerToken = '';
 let demoToken = '';
 let supportToken = '';
+let demoId = '';
+let supportId = '';
+let branchId = '';
+let otherBranchId = '';
 
 async function makeUser(role: StaffRole) {
   const user = await prisma.user.create({
@@ -70,9 +73,6 @@ async function makeUser(role: StaffRole) {
     },
   });
   userIds.push(user.id);
-  if (role !== StaffRole.OWNER && role !== StaffRole.DEVELOPER) {
-    await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
-  }
   return signToken(user);
 }
 
@@ -89,16 +89,36 @@ function auth(token: string) {
 }
 
 beforeAll(async () => {
-  const business = await prisma.business.create({ data: { name: `${RUN} business` } });
-  businessId = business.id;
-  const branch = await prisma.branch.create({ data: { businessId, name: `${RUN} branch` } });
-  branchId = branch.id;
-  [ownerToken, demoToken, supportToken] = await Promise.all([
+  const [owner, demo, support] = await Promise.all([
     makeUser(StaffRole.OWNER),
     makeUser(StaffRole.DEMO),
     // SUPPORT has neither `products` nor `inventory`.
     makeUser(StaffRole.SUPPORT),
   ]);
+  ownerToken = owner;
+  demoToken = demo;
+  supportToken = support;
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, role: true },
+  });
+  demoId = users.find((user) => user.role === StaffRole.DEMO)?.id ?? '';
+  supportId = users.find((user) => user.role === StaffRole.SUPPORT)?.id ?? '';
+
+  const business = await prisma.business.create({ data: { name: `${RUN} business` } });
+  businessIds.push(business.id);
+  const [branch, otherBranch] = await Promise.all([
+    prisma.branch.create({ data: { businessId: business.id, name: `${RUN} branch A` } }),
+    prisma.branch.create({ data: { businessId: business.id, name: `${RUN} branch B` } }),
+  ]);
+  branchId = branch.id;
+  otherBranchId = otherBranch.id;
+  await prisma.userBranch.createMany({
+    data: [
+      { userId: demoId, branchId, role: StaffRole.DEMO },
+      { userId: supportId, branchId, role: StaffRole.SUPPORT },
+    ],
+  });
 });
 
 afterAll(async () => {
@@ -106,8 +126,8 @@ afterAll(async () => {
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-  await prisma.branch.deleteMany({ where: { id: branchId } });
-  await prisma.business.deleteMany({ where: { id: businessId } });
+  await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
+  await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
   await prisma.$disconnect();
 });
 
@@ -123,6 +143,7 @@ describe('authorisation', () => {
     const res = await request(app)
       .post(`/api/v1/products/${productId}/variants`)
       .set(auth(supportToken))
+      .set('X-Branch-Id', branchId)
       .send({ name: 'Red', price: '10.00' });
     expect(res.status).toBe(403);
   });
@@ -132,6 +153,7 @@ describe('authorisation', () => {
     const res = await request(app)
       .post(`/api/v1/products/${productId}/variants`)
       .set(auth(demoToken))
+      .set('X-Branch-Id', branchId)
       .send({ name: 'Red', price: '10.00' });
     expect(res.status).toBe(403);
   });
@@ -151,6 +173,7 @@ describe('authorisation', () => {
     const res = await request(app)
       .post(`/api/v1/variants/${variantId}/movements`)
       .set(auth(supportToken))
+      .set('X-Branch-Id', branchId)
       .send({ delta: 5, reason: 'RECEIVED' });
     expect(res.status).toBe(403);
   });
@@ -269,6 +292,7 @@ describe('stock: the log explains the number, same rule as products', () => {
     const res = await request(app)
       .post(`/api/v1/variants/${variantId}/movements`)
       .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
       .send({ delta: 20, reason: 'RECEIVED', note: 'first batch' });
 
     expect(res.status).toBe(201);
@@ -286,12 +310,14 @@ describe('stock: the log explains the number, same rule as products', () => {
       await request(app)
         .post(`/api/v1/variants/${variantId}/movements`)
         .set(auth(ownerToken))
+        .set('X-Branch-Id', branchId)
         .send({ delta, reason });
     }
 
     const res = await request(app)
       .get(`/api/v1/variants/${variantId}/reconcile`)
-      .set(auth(ownerToken));
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId);
 
     const body = (res.body as ReconcileBody).data;
     expect(body.stock).toBe(35);
@@ -304,11 +330,13 @@ describe('stock: the log explains the number, same rule as products', () => {
     await request(app)
       .post(`/api/v1/variants/${variantId}/movements`)
       .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
       .send({ delta: 10, reason: 'RECEIVED' });
 
     const res = await request(app)
       .get(`/api/v1/variants/${variantId}/movements`)
-      .set(auth(ownerToken));
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId);
 
     expect(res.status).toBe(200);
     const body = (res.body as MovementsListBody).data;
@@ -324,12 +352,14 @@ describe('stock: the log explains the number, same rule as products', () => {
       await request(app)
         .post(`/api/v1/variants/${variantId}/movements`)
         .set(auth(ownerToken))
+        .set('X-Branch-Id', branchId)
         .send({ delta: 1, reason: 'RECEIVED' });
     }
 
     const res = await request(app)
       .get(`/api/v1/variants/${variantId}/movements?page=1&pageSize=2`)
-      .set(auth(ownerToken));
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId);
 
     const body = (res.body as MovementsListBody).data;
     expect(body.movements).toHaveLength(2);
@@ -342,11 +372,13 @@ describe('stock: the log explains the number, same rule as products', () => {
     await request(app)
       .post(`/api/v1/variants/${variantId}/movements`)
       .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
       .send({ delta: 3, reason: 'RECEIVED' });
 
     const res = await request(app)
       .post(`/api/v1/variants/${variantId}/movements`)
       .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
       .send({ delta: -5, reason: 'DAMAGED' });
 
     expect(res.status).toBe(400);
@@ -361,6 +393,7 @@ describe('stock: the log explains the number, same rule as products', () => {
     await request(app)
       .post(`/api/v1/variants/${variantId}/movements`)
       .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
       .send({ delta: 5, reason: 'RECEIVED' });
 
     for (const method of ['patch', 'put', 'delete'] as const) {
@@ -379,9 +412,59 @@ describe('stock: the log explains the number, same rule as products', () => {
     await request(app)
       .post(`/api/v1/variants/${variantA}/movements`)
       .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
       .send({ delta: 100, reason: 'RECEIVED' });
 
     const b = await prisma.productVariant.findUnique({ where: { id: variantB } });
     expect(b?.stock).toBe(0);
+  });
+
+  it('keeps variant quantities and movement history isolated by branch', async () => {
+    const variantId = await makeVariant();
+    await request(app)
+      .post(`/api/v1/variants/${variantId}/movements`)
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
+      .send({ delta: 8, reason: 'RECEIVED' });
+
+    const product = await prisma.productVariant.findUniqueOrThrow({
+      where: { id: variantId },
+      select: { productId: true },
+    });
+    const list = await request(app)
+      .get(`/api/v1/products/${product.productId}/variants`)
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', otherBranchId);
+    const row = (list.body as VariantsListBody).data.variants.find(
+      (variant) => variant.id === variantId,
+    );
+    const movements = await request(app)
+      .get(`/api/v1/variants/${variantId}/movements`)
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', otherBranchId);
+
+    expect(row?.stock).toBe(0);
+    expect((movements.body as MovementsListBody).data.movements).toHaveLength(0);
+  });
+
+  it('cannot consume another branch variant stock', async () => {
+    const variantId = await makeVariant();
+    await request(app)
+      .post(`/api/v1/variants/${variantId}/movements`)
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
+      .send({ delta: 5, reason: 'RECEIVED' });
+
+    const res = await request(app)
+      .post(`/api/v1/variants/${variantId}/movements`)
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', otherBranchId)
+      .send({ delta: -1, reason: 'SOLD' });
+
+    expect(res.status).toBe(400);
+    const otherStock = await prisma.branchVariantStock.findUnique({
+      where: { variantId_branchId: { variantId, branchId: otherBranchId } },
+    });
+    expect(otherStock).toBeNull();
   });
 });

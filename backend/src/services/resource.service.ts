@@ -53,6 +53,7 @@ type DelegateName =
 /** Minimal shape shared by every Prisma model delegate we use. */
 interface ModelDelegate {
   findMany: (args: unknown) => Promise<Record<string, unknown>[]>;
+  findFirst: (args: unknown) => Promise<Record<string, unknown> | null>;
   findUnique: (args: unknown) => Promise<Record<string, unknown> | null>;
   count: (args: unknown) => Promise<number>;
   create: (args: unknown) => Promise<Record<string, unknown>>;
@@ -502,9 +503,20 @@ async function attachRelationLabels(
 export async function getResourceRow(
   config: ResourceConfig,
   id: string,
+  branchScope?: string | null,
 ): Promise<Record<string, unknown>> {
-  const row = await delegateFor(config).findUnique({
-    where: { id },
+  const row = await delegateFor(config).findFirst({
+    where: {
+      id,
+      ...(config.branchScopeField && branchScope
+        ? {
+            OR: [
+              { [config.branchScopeField]: branchScope },
+              { [config.branchScopeField]: null },
+            ],
+          }
+        : {}),
+    },
     select: selectFor(config),
   });
 
@@ -893,12 +905,13 @@ export async function updateResourceRow(
   id: string,
   body: Record<string, unknown>,
   req: Request,
+  branchScope?: string | null,
 ): Promise<Record<string, unknown>> {
   assertPermitted(config, 'update');
 
   // Existence first, so a bad id is a 404 rather than Prisma's P2025 surfacing
   // as a 500. Doubles as the "before" side of the audit diff.
-  const before = await getResourceRow(config, id);
+  const before = await getResourceRow(config, id, branchScope);
 
   const data = await buildWriteData(config, body, { partial: true });
 
@@ -945,10 +958,11 @@ export async function deleteResourceRow(
   config: ResourceConfig,
   id: string,
   req: Request,
+  branchScope?: string | null,
 ): Promise<DeleteResult> {
   assertPermitted(config, 'delete');
 
-  const before = await getResourceRow(config, id);
+  const before = await getResourceRow(config, id, branchScope);
 
   // A resource may refuse the plain delete and do something else — see
   // resource-hooks.ts for why that lives in code rather than config.
@@ -956,7 +970,7 @@ export async function deleteResourceRow(
 
   if (outcome?.handled) {
     // Re-read so the caller gets the row as it now stands, not as it was.
-    const after = await getResourceRow(config, id);
+    const after = await getResourceRow(config, id, branchScope);
 
     audit(req, {
       action: `${config.resource}.archive`,

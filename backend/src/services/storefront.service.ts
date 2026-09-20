@@ -88,8 +88,12 @@ export interface PublicProduct {
  * `stock` is published as a real count (see the field's own note) — clamped at
  * 0 so a negative figure from a manual correction never renders as "-2 left".
  */
-function toPublicProduct(product: PublicProductRow, locale: ProductLocale = 'en'): PublicProduct {
-  const stock = Math.max(0, product.stock);
+function toPublicProduct(
+  product: PublicProductRow,
+  locale: ProductLocale = 'en',
+  branchStock?: number,
+): PublicProduct {
+  const stock = Math.max(0, branchStock ?? product.stock);
   const translation = locale === 'en'
     ? undefined
     : product.translations.find((entry) => entry.locale === locale);
@@ -115,13 +119,39 @@ function toPublicProduct(product: PublicProductRow, locale: ProductLocale = 'en'
  */
 const PUBLIC_PRODUCT_WHERE = { status: ProductStatus.ACTIVE } satisfies Prisma.ProductWhereInput;
 
-export async function listPublicProducts(locale: ProductLocale = 'en'): Promise<PublicProduct[]> {
+async function requirePublicBranch(branchId: string) {
+  const branch = await prisma.branch.findFirst({
+    where: { id: branchId, isActive: true, isSellingPoint: true, business: { isActive: true } },
+    select: { id: true },
+  });
+  if (!branch) throw AppError.notFound('Store branch not found');
+  return branch;
+}
+
+export async function listPublicBranches() {
+  return prisma.branch.findMany({
+    where: { isActive: true, isSellingPoint: true, business: { isActive: true } },
+    select: { id: true, name: true, code: true, city: true },
+    orderBy: [{ business: { name: 'asc' } }, { name: 'asc' }],
+  });
+}
+
+export async function listPublicProducts(
+  branchId: string,
+  locale: ProductLocale = 'en',
+): Promise<PublicProduct[]> {
+  await requirePublicBranch(branchId);
   const products = await prisma.product.findMany({
-    where: PUBLIC_PRODUCT_WHERE,
-    select: PUBLIC_PRODUCT_SELECT,
+    where: { ...PUBLIC_PRODUCT_WHERE, branchStock: { some: { branchId } } },
+    select: {
+      ...PUBLIC_PRODUCT_SELECT,
+      branchStock: { where: { branchId }, select: { quantity: true }, take: 1 },
+    },
     orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
   });
-  return products.map((product) => toPublicProduct(product, locale));
+  return products.map((product) =>
+    toPublicProduct(product, locale, product.branchStock[0]?.quantity ?? 0),
+  );
 }
 
 export interface PublicMenuCategory {
@@ -137,7 +167,11 @@ export interface PublicMenuCategory {
  * one definition. Empty categories are omitted — a heading with nothing under
  * it reads as a bug to a shopper.
  */
-export async function getPublicMenu(locale: ProductLocale = 'en'): Promise<PublicMenuCategory[]> {
+export async function getPublicMenu(
+  branchId: string,
+  locale: ProductLocale = 'en',
+): Promise<PublicMenuCategory[]> {
+  await requirePublicBranch(branchId);
   const categories = await prisma.category.findMany({
     // Was unfiltered: a category switched off in the admin still appeared here
     // whenever it held an active product, so deactivating one did nothing to
@@ -149,8 +183,11 @@ export async function getPublicMenu(locale: ProductLocale = 'en'): Promise<Publi
       name: true,
       slug: true,
       products: {
-        where: PUBLIC_PRODUCT_WHERE,
-        select: PUBLIC_PRODUCT_SELECT,
+        where: { ...PUBLIC_PRODUCT_WHERE, branchStock: { some: { branchId } } },
+        select: {
+          ...PUBLIC_PRODUCT_SELECT,
+          branchStock: { where: { branchId }, select: { quantity: true }, take: 1 },
+        },
         orderBy: { name: 'asc' },
       },
     },
@@ -162,23 +199,30 @@ export async function getPublicMenu(locale: ProductLocale = 'en'): Promise<Publi
       id: category.id,
       title: category.name,
       slug: category.slug,
-      items: category.products.map((product) => toPublicProduct(product, locale)),
+      items: category.products.map((product) =>
+        toPublicProduct(product, locale, product.branchStock[0]?.quantity ?? 0),
+      ),
     }));
 }
 
 /** One product by slug, for the storefront's product page. */
 export async function getPublicProductBySlug(
   slug: string,
+  branchId: string,
   locale: ProductLocale = 'en',
 ): Promise<PublicProduct> {
+  await requirePublicBranch(branchId);
   const product = await prisma.product.findFirst({
-    where: { slug, ...PUBLIC_PRODUCT_WHERE },
-    select: PUBLIC_PRODUCT_SELECT,
+    where: { slug, ...PUBLIC_PRODUCT_WHERE, branchStock: { some: { branchId } } },
+    select: {
+      ...PUBLIC_PRODUCT_SELECT,
+      branchStock: { where: { branchId }, select: { quantity: true }, take: 1 },
+    },
   });
 
   if (!product) throw AppError.notFound('Product not found');
 
-  return toPublicProduct(product, locale);
+  return toPublicProduct(product, locale, product.branchStock[0]?.quantity ?? 0);
 }
 
 // ─── Categories ─────────────────────────────────────────────────────
@@ -518,6 +562,7 @@ export interface CheckoutContact {
 }
 
 export interface CheckoutInput {
+  branchId: string;
   items: { productId: string; quantity: number }[];
   contact: CheckoutContact;
   paymentMethod: string;
@@ -780,6 +825,19 @@ export async function checkout(
   const taxRate = new Prisma.Decimal(taxRatePercent).dividedBy(100);
 
   return prisma.$transaction(async (tx) => {
+    const branch = await tx.branch.findFirst({
+      where: {
+        id: input.branchId,
+        isActive: true,
+        isSellingPoint: true,
+        business: { isActive: true },
+      },
+      select: { id: true },
+    });
+    if (!branch) {
+      throw AppError.badRequest('Select an active branch', { field: 'branchId' });
+    }
+
     // Collapse duplicate lines first: the same product twice would otherwise
     // decrement stock twice while creating two order rows for one intent.
     const quantities = new Map<string, number>();
@@ -788,8 +846,21 @@ export async function checkout(
     }
 
     const products = await tx.product.findMany({
-      where: { id: { in: [...quantities.keys()] }, ...PUBLIC_PRODUCT_WHERE },
-      select: { id: true, name: true, price: true, stock: true },
+      where: {
+        id: { in: [...quantities.keys()] },
+        ...PUBLIC_PRODUCT_WHERE,
+        branchStock: { some: { branchId: input.branchId } },
+      },
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        branchStock: {
+          where: { branchId: input.branchId },
+          select: { quantity: true },
+          take: 1,
+        },
+      },
     });
     const byId = new Map(products.map((product) => [product.id, product]));
 
@@ -812,9 +883,10 @@ export async function checkout(
       // Fails the common case early — before an order row, its items and a
       // movement log are written and then rolled back — and names the exact
       // remaining count, which the decrement below cannot report.
-      if (product.stock < quantity) {
+      const available = product.branchStock[0]?.quantity ?? 0;
+      if (available < quantity) {
         throw AppError.conflict(
-          `Only ${String(product.stock)} × ${product.name} left — please adjust your cart`,
+          `Only ${String(available)} × ${product.name} left at this branch — please adjust your cart`,
         );
       }
 
@@ -859,6 +931,7 @@ export async function checkout(
       discountId: discount?.id ?? null,
       paymentMethod: input.paymentMethod,
       customerId,
+      branchId: input.branchId,
       items: {
         create: lines.map((line) => ({
           productId: line.productId,
@@ -923,10 +996,19 @@ export async function checkout(
     // applies to a stale count. The P2034 branch below is that abort.
     for (const line of lines) {
       try {
-        await tx.product.update({
-          where: { id: line.productId },
-          data: { stock: { decrement: line.quantity } },
+        const claimed = await tx.branchStock.updateMany({
+          where: {
+            productId: line.productId,
+            branchId: input.branchId,
+            quantity: { gte: line.quantity },
+          },
+          data: { quantity: { decrement: line.quantity } },
         });
+        if (claimed.count === 0) {
+          throw AppError.conflict(
+            `${line.name} just sold out at this branch — please adjust your cart and try again`,
+          );
+        }
       } catch (err) {
         // P2034 — write conflict / deadlock. This is the EXPECTED way to lose
         // a race for a contended product, not a bug in this code. Left
@@ -939,12 +1021,17 @@ export async function checkout(
           throw err;
         }
         throw AppError.conflict(
-          `${line.name} just sold out — please adjust your cart and try again`,
+          `${line.name} just sold out at this branch — please adjust your cart and try again`,
         );
       }
+      await tx.product.update({
+        where: { id: line.productId },
+        data: { stock: { decrement: line.quantity } },
+      });
       await tx.stockMovement.create({
         data: {
           productId: line.productId,
+          branchId: input.branchId,
           delta: -line.quantity,
           reason: StockMovementReason.SOLD,
           note: `Order ${order.orderNumber}`,

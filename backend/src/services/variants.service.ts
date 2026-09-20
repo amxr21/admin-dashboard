@@ -3,6 +3,7 @@ import { Prisma, type StockMovementReason } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { audit, diff } from './audit.service.js';
+import { defaultBranchId } from './inventory.service.js';
 import type { Request } from 'express';
 
 /**
@@ -40,7 +41,7 @@ function serializeVariant(variant: {
   };
 }
 
-export async function listVariants(productId: string) {
+export async function listVariants(productId: string, branchId?: string) {
   const product = await prisma.product.findUnique({
     where: { id: productId },
     select: { id: true },
@@ -50,9 +51,30 @@ export async function listVariants(productId: string) {
   const variants = await prisma.productVariant.findMany({
     where: { productId },
     orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      price: true,
+      stock: true,
+      productId: true,
+      createdAt: true,
+      updatedAt: true,
+      // Always select the relation so Prisma's result type is stable. For an
+      // unscoped business-wide read the row is ignored; the global running
+      // total below remains the source of truth.
+      branchStock: {
+        where: { branchId: branchId ?? '__business_wide__' },
+        select: { quantity: true },
+        take: 1,
+      },
+    },
   });
 
-  return variants.map(serializeVariant);
+  return variants.map((variant) => serializeVariant({
+    ...variant,
+    stock: branchId ? (variant.branchStock[0]?.quantity ?? 0) : variant.stock,
+  }));
 }
 
 export interface VariantInput {
@@ -95,6 +117,7 @@ export async function updateVariant(
   id: string,
   input: Partial<VariantInput>,
   req: Request,
+  branchId?: string,
 ) {
   const before = await prisma.productVariant.findUnique({ where: { id } });
   if (!before) throw AppError.notFound('Variant not found');
@@ -117,7 +140,17 @@ export async function updateVariant(
       });
     }
 
-    return serializeVariant(variant);
+    const branchStock = branchId
+      ? await prisma.branchVariantStock.findUnique({
+          where: { variantId_branchId: { variantId: id, branchId } },
+          select: { quantity: true },
+        })
+      : null;
+
+    return serializeVariant({
+      ...variant,
+      stock: branchId ? (branchStock?.quantity ?? 0) : variant.stock,
+    });
   } catch (error) {
     throw translateVariantWriteError(error);
   }
@@ -149,10 +182,21 @@ function translateVariantWriteError(error: unknown): unknown {
 export async function listVariantMovements(
   variantId: string,
   params: { page?: number; pageSize?: number } = {},
+  branchId?: string,
 ) {
   const variant = await prisma.productVariant.findUnique({
     where: { id: variantId },
-    select: { id: true, name: true, sku: true, stock: true },
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      stock: true,
+      branchStock: {
+        where: { branchId: branchId ?? '__business_wide__' },
+        select: { quantity: true },
+        take: 1,
+      },
+    },
   });
   if (!variant) throw AppError.notFound('Variant not found');
 
@@ -161,13 +205,13 @@ export async function listVariantMovements(
 
   const [movements, total] = await prisma.$transaction([
     prisma.stockMovement.findMany({
-      where: { variantId },
+      where: { variantId, ...(branchId ? { branchId } : {}) },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
       select: { id: true, delta: true, reason: true, note: true, actorId: true, createdAt: true },
     }),
-    prisma.stockMovement.count({ where: { variantId } }),
+    prisma.stockMovement.count({ where: { variantId, ...(branchId ? { branchId } : {}) } }),
   ]);
 
   // Same batched, read-time resolution as the product-level movement log
@@ -188,7 +232,12 @@ export async function listVariantMovements(
   const actorNames = new Map(actors.map((actor) => [actor.id, actor.name ?? actor.email]));
 
   return {
-    variant,
+    variant: {
+      id: variant.id,
+      name: variant.name,
+      sku: variant.sku,
+      stock: branchId ? (variant.branchStock[0]?.quantity ?? 0) : variant.stock,
+    },
     movements: movements.map((movement) => ({
       ...movement,
       actorName: movement.actorId ? (actorNames.get(movement.actorId) ?? null) : null,
@@ -212,9 +261,18 @@ export async function adjustVariantStock(
   variantId: string,
   input: AdjustVariantStockInput,
   req: Request,
+  branchId?: string,
 ) {
   if (!Number.isInteger(input.delta) || input.delta === 0) {
     throw AppError.badRequest('Enter a whole number that is not zero', { field: 'delta' });
+  }
+
+  const writeBranchId = branchId ?? (await defaultBranchId());
+  if (!writeBranchId) {
+    throw AppError.badRequest('Select a branch before adjusting variant stock', {
+      field: 'branchId',
+      reason: 'BRANCH_REQUIRED',
+    });
   }
 
   const result = await prisma.$transaction(async (tx) => {
@@ -224,17 +282,10 @@ export async function adjustVariantStock(
     });
     if (!variant) throw AppError.notFound('Variant not found');
 
-    const next = variant.stock + input.delta;
-    if (next < 0) {
-      throw AppError.badRequest(
-        `Only ${variant.stock} in stock — that would leave ${next}`,
-        { field: 'delta', available: variant.stock },
-      );
-    }
-
     const movement = await tx.stockMovement.create({
       data: {
         variantId,
+        branchId: writeBranchId,
         delta: input.delta,
         reason: input.reason,
         note: input.note ?? null,
@@ -243,14 +294,63 @@ export async function adjustVariantStock(
       select: { id: true, delta: true, reason: true, note: true, actorId: true, createdAt: true },
     });
 
-    const updated = await tx.productVariant.update({
+    let branchQuantity: number;
+    if (input.delta > 0) {
+      const branchStock = await tx.branchVariantStock.upsert({
+        where: { variantId_branchId: { variantId, branchId: writeBranchId } },
+        create: { variantId, branchId: writeBranchId, quantity: input.delta },
+        update: { quantity: { increment: input.delta } },
+        select: { quantity: true },
+      });
+      branchQuantity = branchStock.quantity;
+    } else {
+      const amount = -input.delta;
+      const claimed = await tx.branchVariantStock.updateMany({
+        where: { variantId, branchId: writeBranchId, quantity: { gte: amount } },
+        data: { quantity: { decrement: amount } },
+      });
+
+      if (claimed.count === 0) {
+        const current = await tx.branchVariantStock.findUnique({
+          where: { variantId_branchId: { variantId, branchId: writeBranchId } },
+          select: { quantity: true },
+        });
+        const available = current?.quantity ?? 0;
+        throw AppError.badRequest(
+          `Only ${available} in stock at this branch — that adjustment is too large`,
+          { field: 'delta', available },
+        );
+      }
+
+      const current = await tx.branchVariantStock.findUniqueOrThrow({
+        where: { variantId_branchId: { variantId, branchId: writeBranchId } },
+        select: { quantity: true },
+      });
+      branchQuantity = current.quantity;
+    }
+
+    if (input.delta < 0) {
+      const updatedGlobal = await tx.productVariant.updateMany({
+        where: { id: variantId, stock: { gte: -input.delta } },
+        data: { stock: { increment: input.delta } },
+      });
+      if (updatedGlobal.count === 0) {
+        throw AppError.conflict('Variant inventory totals are out of sync; reconcile before adjusting');
+      }
+    } else {
+      await tx.productVariant.update({
+        where: { id: variantId },
+        data: { stock: { increment: input.delta } },
+      });
+    }
+
+    const updated = await tx.productVariant.findUniqueOrThrow({
       where: { id: variantId },
-      data: { stock: next },
       select: { id: true, name: true, sku: true, stock: true },
     });
 
     return {
-      variant: updated,
+      variant: { ...updated, stock: branchId ? branchQuantity : updated.stock },
       movement: { ...movement, createdAt: movement.createdAt.toISOString() },
     };
   });
@@ -275,23 +375,31 @@ export async function adjustVariantStock(
   return result;
 }
 
-export async function reconcileVariant(variantId: string) {
+export async function reconcileVariant(variantId: string, branchId?: string) {
   const variant = await prisma.productVariant.findUnique({
     where: { id: variantId },
-    select: { id: true, stock: true },
+    select: {
+      id: true,
+      stock: true,
+      branchStock: {
+        where: { branchId: branchId ?? '__business_wide__' },
+        select: { quantity: true },
+        take: 1,
+      },
+    },
   });
   if (!variant) throw AppError.notFound('Variant not found');
 
   const sum = await prisma.stockMovement.aggregate({
-    where: { variantId },
+    where: { variantId, ...(branchId ? { branchId } : {}) },
     _sum: { delta: true },
   });
   const fromMovements = sum._sum.delta ?? 0;
 
   return {
     variantId,
-    stock: variant.stock,
+    stock: branchId ? (variant.branchStock[0]?.quantity ?? 0) : variant.stock,
     fromMovements,
-    agrees: variant.stock === fromMovements,
+    agrees: (branchId ? (variant.branchStock[0]?.quantity ?? 0) : variant.stock) === fromMovements,
   };
 }

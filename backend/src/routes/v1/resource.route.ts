@@ -404,11 +404,11 @@ resourceRouter.get('/r/:resource/_relations/:field', authenticate, withBranchCon
 });
 
 // GET /api/v1/r/:resource/:id
-resourceRouter.get('/r/:resource/:id', authenticate, async (req, res) => {
+resourceRouter.get('/r/:resource/:id', authenticate, withBranchContext, async (req, res) => {
   await guardArea(req);
   const config = requireResource(String(req.params.resource));
 
-  const rawRow = await getResourceRow(config, String(req.params.id));
+  const rawRow = await getResourceRow(config, String(req.params.id), req.branchId);
   const row = config.resource === 'products'
     ? (await localizeProductRows(
         [rawRow],
@@ -438,7 +438,7 @@ resourceRouter.post('/r/:resource', authenticate, withBranchContext, async (req,
 });
 
 // PATCH /api/v1/r/:resource/:id
-resourceRouter.patch('/r/:resource/:id', authenticate, async (req, res) => {
+resourceRouter.patch('/r/:resource/:id', authenticate, withBranchContext, async (req, res) => {
   await guardArea(req);
   const config = requireResource(String(req.params.resource));
 
@@ -447,6 +447,7 @@ resourceRouter.patch('/r/:resource/:id', authenticate, async (req, res) => {
     String(req.params.id),
     req.body as Record<string, unknown>,
     req,
+    req.branchId,
   );
 
   req.log.info({ event: 'resource.updated', resource: config.resource });
@@ -455,11 +456,16 @@ resourceRouter.patch('/r/:resource/:id', authenticate, async (req, res) => {
 });
 
 // DELETE /api/v1/r/:resource/:id
-resourceRouter.delete('/r/:resource/:id', authenticate, async (req, res) => {
+resourceRouter.delete('/r/:resource/:id', authenticate, withBranchContext, async (req, res) => {
   await guardArea(req);
   const config = requireResource(String(req.params.resource));
 
-  const { row, action } = await deleteResourceRow(config, String(req.params.id), req);
+  const { row, action } = await deleteResourceRow(
+    config,
+    String(req.params.id),
+    req,
+    req.branchId,
+  );
 
   req.log.info({ event: `resource.${action}`, resource: config.resource });
 

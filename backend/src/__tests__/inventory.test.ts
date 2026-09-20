@@ -86,6 +86,9 @@ async function makeProduct(stock: number) {
     },
   });
   productIds.push(product.id);
+  await prisma.branchStock.create({
+    data: { productId: product.id, branchId, quantity: stock },
+  });
   return product.id;
 }
 
@@ -274,6 +277,32 @@ describe('the log explains the number', () => {
       .set(auth(ownerToken));
 
     expect((res.body as ReconcileBody).data.agrees).toBe(false);
+  });
+
+  it('reconciles the active branch against only that branch movements', async () => {
+    const id = await makeProduct(0);
+    await adjust(id, { delta: 10, reason: 'RECEIVED' });
+    const otherBranch = await prisma.branch.create({
+      data: { businessId: businessIds[0]!, name: `${RUN} reconcile branch` },
+    });
+    await prisma.$transaction([
+      prisma.branchStock.create({ data: { productId: id, branchId: otherBranch.id, quantity: 7 } }),
+      prisma.stockMovement.create({
+        data: { productId: id, branchId: otherBranch.id, delta: 7, reason: 'RECEIVED', actorId: ownerId },
+      }),
+      prisma.product.update({ where: { id }, data: { stock: { increment: 7 } } }),
+    ]);
+
+    const res = await request(app)
+      .get(`/api/v1/inventory/${id}/reconcile`)
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', otherBranch.id);
+
+    expect((res.body as ReconcileBody).data).toMatchObject({
+      stock: 7,
+      fromMovements: 7,
+      agrees: true,
+    });
   });
 });
 
@@ -523,6 +552,29 @@ describe('the low-stock view', () => {
 
     expect(res.status).toBe(200);
     expect((res.body as ListBody).data.products.length).toBeLessThanOrEqual(100);
+  });
+
+  it('filters, counts and orders using active-branch quantities only', async () => {
+    const low = await makeProduct(100);
+    const fine = await makeProduct(1);
+    await prisma.branchStock.update({
+      where: { productId_branchId: { productId: low, branchId } },
+      data: { quantity: 1 },
+    });
+    await prisma.branchStock.update({
+      where: { productId_branchId: { productId: fine, branchId } },
+      data: { quantity: 100 },
+    });
+
+    const res = await request(app)
+      .get(`/api/v1/inventory?lowStock=true&pageSize=1&search=${RUN}`)
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId);
+    const body = (res.body as ListBody).data;
+
+    expect(body.products.map((product) => product.id)).toContain(low);
+    expect(body.products.map((product) => product.id)).not.toContain(fine);
+    expect(body.total).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -948,6 +1000,21 @@ describe('receiving a whole delivery at once (F3.5)', () => {
     expect(
       (res.body as { data: { errors: { message: string }[] } }).data.errors[0]?.message,
     ).toMatch(/SKU or a barcode/i);
+  });
+
+  it('rejects a body branch that differs from the active branch', async () => {
+    const product = await makeCoded('BULK-BRANCH-MISMATCH');
+    const otherBranch = await prisma.branch.create({
+      data: { businessId: businessIds[0]!, name: `${RUN} receive branch` },
+    });
+
+    const res = await receive({
+      branchId: otherBranch.id,
+      lines: [{ sku: product.sku, quantity: 1 }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(await prisma.stockMovement.count({ where: { productId: product.id } })).toBe(0);
   });
 });
 

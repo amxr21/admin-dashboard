@@ -135,7 +135,9 @@ returnsRouter.get('/returns', ...guard, async (req, res) => {
 });
 
 returnsRouter.get('/returns/:id', ...guard, async (req, res) => {
-  res.json({ data: { return: await getReturn(String(req.params.id)) } });
+  res.json({
+    data: { return: await getReturn(String(req.params.id), req.branchId ?? undefined) },
+  });
 });
 
 returnsRouter.post('/returns', ...guard, async (req, res) => {
@@ -143,7 +145,7 @@ returnsRouter.post('/returns', ...guard, async (req, res) => {
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
 
   const user = requireUser(req);
-  const created = await createReturn(parsed.data);
+  const created = await createReturn(parsed.data, req.branchId ?? undefined);
 
   req.log.info({
     event: 'return.created',
@@ -181,7 +183,7 @@ returnsRouter.post('/returns/:id/approve', ...guard, async (req, res) => {
       throw AppError.forbidden('A manager needs to approve this in place');
     }
 
-    const verified = verifyOverrideToken(parsed.data.overrideToken);
+    const verified = verifyOverrideToken(parsed.data.overrideToken, req.branchId ?? undefined);
 
     if (!verified) {
       throw AppError.forbidden('The manager approval could not be verified');
@@ -221,12 +223,17 @@ returnsRouter.post('/returns/:id/reject', ...guard, async (req, res) => {
       throw AppError.forbidden('A manager needs to approve this in place');
     }
 
-    if (!verifyOverrideToken(parsed.data.overrideToken)) {
+    if (!verifyOverrideToken(parsed.data.overrideToken, req.branchId ?? undefined)) {
       throw AppError.forbidden('The manager approval could not be verified');
     }
   }
 
-  const result = await rejectReturn(id, parsed.data.rejectionReason, req);
+  const result = await rejectReturn(
+    id,
+    parsed.data.rejectionReason,
+    req,
+    req.branchId ?? undefined,
+  );
 
   req.log.warn({ event: 'return.rejected', returnId: id, userId: user.id });
 
