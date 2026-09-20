@@ -292,7 +292,7 @@ function CreateKeySheet({
     return (
       <AlertDialog open onOpenChange={() => {}}>
         <AlertDialogContent
-          className="max-w-md space-y-4"
+          className="max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] max-w-md space-y-4 overflow-y-auto"
           onEscapeKeyDown={(event) => event.preventDefault()}
         >
           <div className="flex items-start gap-3">
@@ -307,8 +307,8 @@ function CreateKeySheet({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <code className="bg-card force-ltr flex-1 select-all overflow-x-auto rounded-md border px-3 py-2 text-sm tracking-wide whitespace-nowrap">
+          <div className="flex min-w-0 items-center gap-2">
+            <code className="bg-card force-ltr min-w-0 flex-1 select-all overflow-x-auto rounded-md border px-3 py-2 text-sm tracking-wide whitespace-nowrap">
               {created.key}
             </code>
 
@@ -327,9 +327,17 @@ function CreateKeySheet({
             </Tooltip>
           </div>
 
-          <div className="flex items-center justify-between gap-3">
+          <div className="bg-muted/40 space-y-1 rounded-md border p-3">
+            <p className="text-sm font-medium">{t('usageTitle')}</p>
+            <p className="text-muted-foreground text-xs">{t('usageHint')}</p>
+            <code className="force-ltr block overflow-x-auto text-xs whitespace-nowrap">
+              {t('usageHeader')}
+            </code>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-muted-foreground text-sm">{copied ? t('copied') : t('copyHint')}</p>
-            <Button size="sm" onClick={onDone}>
+            <Button size="sm" className="w-full sm:w-auto" onClick={onDone}>
               {t('done')}
             </Button>
           </div>
@@ -340,7 +348,7 @@ function CreateKeySheet({
 
   return (
     <Sheet open onOpenChange={(next) => !next && onDone()}>
-      <SheetContent side="end" variant={editPanelMode} title={t('createTitle')} className="space-y-4">
+      <SheetContent side="end" variant={editPanelMode} title={t('createTitle')} className="space-y-4 overflow-y-auto">
         <div>
           <h2 className="text-lg font-semibold">{t('createTitle')}</h2>
           <p className="text-muted-foreground mt-1 text-sm">{t('createDescription')}</p>
@@ -415,11 +423,11 @@ function CreateKeySheet({
           </p>
         ) : null}
 
-        <div className="flex gap-2">
-          <Button size="sm" disabled={isSaving || !name.trim() || purpose.trim().length < 3 || recipient.trim().length < 2} onClick={() => void submit()}>
+        <div className="bg-background sticky bottom-0 flex flex-col-reverse gap-2 border-t py-3 sm:flex-row">
+          <Button className="w-full sm:w-auto" size="sm" disabled={isSaving || !name.trim() || purpose.trim().length < 3 || recipient.trim().length < 2} onClick={() => void submit()}>
             {isSaving ? t('creating') : t('create')}
           </Button>
-          <Button variant="outline" size="sm" onClick={onDone}>
+          <Button className="w-full sm:w-auto" variant="outline" size="sm" onClick={onDone}>
             {t('cancel')}
           </Button>
         </div>

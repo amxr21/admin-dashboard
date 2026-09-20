@@ -127,6 +127,38 @@ export async function authenticate(
   }
 }
 
+/**
+ * Authenticates a storefront integration without consuming the Authorization
+ * header, which remains available for an optional customer JWT.
+ */
+export async function authenticateStorefrontApiKey(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const key = req.header('x-api-key');
+    if (!key) throw AppError.unauthorized('API key required');
+    if (!key.startsWith(API_KEY_PREFIX)) throw AppError.unauthorized('Invalid API key');
+
+    const authenticated = await authenticateApiKey(key);
+    if (!authenticated) throw AppError.unauthorized('Invalid API key');
+
+    req.user = authenticated.user;
+    req.apiKeyScopes = authenticated.scopes;
+    req.log = req.log.child({ userId: authenticated.user.id });
+
+    assertCanWrite(req);
+    await assertNotInMaintenance(req);
+    await assertIpAllowed(req);
+    await assertTwoFactorCompliant(req);
+
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function authenticateViaSession(req: Request, token: string): Promise<SafeUser> {
   const payload = verifyToken(token);
 

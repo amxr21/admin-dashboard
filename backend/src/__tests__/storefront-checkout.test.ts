@@ -1,9 +1,11 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
-import { DiscountScope, DiscountType, Prisma, ProductStatus } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+import { DiscountScope, DiscountType, Prisma, ProductStatus, StaffRole } from '@prisma/client';
 
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
+import { createApiKey } from '../services/api-key.service.js';
 
 /**
  * Storefront checkout, and discount redemption in particular.
@@ -30,6 +32,8 @@ const productIds: string[] = [];
 const discountIds: string[] = [];
 const customerIds: string[] = [];
 const categoryIds: string[] = [];
+let storefrontKey = '';
+let apiKeyOwnerId = '';
 
 interface CheckoutBody {
   data: {
@@ -85,6 +89,7 @@ async function makeDiscount(
 function order(productId: string, quantity: number, discountCode?: string) {
   return request(app)
     .post('/api/v1/public/orders')
+    .set('X-API-Key', storefrontKey)
     .send({
       items: [{ productId, quantity }],
       contact: { name: 'Ali', phone: '+971500000000' },
@@ -104,6 +109,18 @@ async function setTaxRate(percent: string) {
 }
 
 beforeAll(async () => {
+  const owner = await prisma.user.create({
+    data: {
+      email: `${RUN}-api@example.test`,
+      name: 'Storefront checkout integration',
+      role: StaffRole.OWNER,
+      passwordHash: await bcrypt.hash('storefront-test-password', 10),
+    },
+  });
+  apiKeyOwnerId = owner.id;
+  storefrontKey = (
+    await createApiKey(owner.id, 'Storefront tests', 'Checkout access', 'Vitest')
+  ).key;
   await setTaxRate('0');
 });
 
@@ -127,6 +144,8 @@ afterAll(async () => {
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.category.deleteMany({ where: { id: { in: categoryIds } } });
   await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
+  await prisma.apiKey.deleteMany({ where: { userId: apiKeyOwnerId } });
+  await prisma.user.delete({ where: { id: apiKeyOwnerId } });
   await setTaxRate('0');
   await prisma.$disconnect();
 });

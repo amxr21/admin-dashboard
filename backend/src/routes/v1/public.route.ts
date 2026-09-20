@@ -3,6 +3,8 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 
 import { AppError } from '../../errors/AppError.js';
+import { authenticateStorefrontApiKey } from '../../middleware/authenticate.js';
+import { requireArea } from '../../middleware/authorize.js';
 import {
   authenticateCustomer,
   optionalCustomer,
@@ -29,14 +31,13 @@ import {
 import { productLocaleFromHeader } from '../../services/product-content.service.js';
 
 /**
- * The PUBLIC storefront API, mounted at /api/v1/public.
+ * The storefront integration API, mounted at /api/v1/public.
  *
- * ─── WHY THIS ROUTER HAS NO `authenticate` ────────────────────────────
- * Every other router here mounts `authenticate` (staff) on every route. This
- * one deliberately does not: a shopper browsing a catalogue has no account, and
- * guest checkout has to work. That is safe because `authenticate` is mounted
- * PER-ROUTE in this codebase, not app-wide (see app.ts) — adding an unauthed
- * router takes nothing away from the admin surface.
+ * ─── TWO INDEPENDENT CREDENTIALS ──────────────────────────────────────
+ * A generated integration key in `X-API-Key` is mandatory for every route.
+ * The shopper remains optional for public browsing and guest checkout. Routes
+ * that need a shopper additionally use `authenticateCustomer`, which reads the
+ * separate `Authorization` header.
  *
  * Routes that DO need a shopper use `authenticateCustomer`, which sets
  * `req.customer` and never `req.user`. Since every admin guard (`requireArea`,
@@ -49,6 +50,10 @@ import { productLocaleFromHeader } from '../../services/product-content.service.
  * impossible here rather than merely unlikely: there is no id to tamper with.
  */
 export const publicRouter = Router();
+
+// A storefront key identifies the calling integration. Customer JWTs remain
+// separate in Authorization, so customer-owned routes require both identities.
+publicRouter.use('/public', authenticateStorefrontApiKey);
 
 /**
  * Sign-in attempts. Stricter than the general API limit and separate from the
@@ -97,14 +102,14 @@ publicRouter.get('/public/config', async (_req, res) => {
 
 // ─── Catalogue (no auth) ────────────────────────────────────────────
 
-publicRouter.get('/public/products', async (req, res) => {
+publicRouter.get('/public/products', requireArea('products'), async (req, res) => {
   res.json({
     data: await listPublicProducts(productLocaleFromHeader(req.get('accept-language'))),
   });
 });
 
 // Static path BEFORE the :slug route, or "/menu" is captured as a slug.
-publicRouter.get('/public/products/menu', async (req, res) => {
+publicRouter.get('/public/products/menu', requireArea('products'), async (req, res) => {
   res.json({ data: await getPublicMenu(productLocaleFromHeader(req.get('accept-language'))) });
 });
 
@@ -116,7 +121,7 @@ const slugParam = z
   .max(220)
   .regex(/^[a-z0-9-]+$/, 'Invalid product slug');
 
-publicRouter.get('/public/products/:slug', async (req, res) => {
+publicRouter.get('/public/products/:slug', requireArea('products'), async (req, res) => {
   const slug = slugParam.safeParse(req.params.slug);
   if (!slug.success) throw AppError.notFound('Product not found');
 
@@ -132,7 +137,7 @@ publicRouter.get('/public/products/:slug', async (req, res) => {
  * Every visible category, flat, with `parentId` so a client can build the tree.
  * No locale parameter: categories carry no translations (only products do).
  */
-publicRouter.get('/public/categories', async (_req, res) => {
+publicRouter.get('/public/categories', requireArea('categories'), async (_req, res) => {
   res.json({ data: await listPublicCategories() });
 });
 
@@ -144,7 +149,7 @@ publicRouter.get('/public/categories', async (_req, res) => {
  * redeem. CUSTOMER-scoped discounts and usage counts are withheld entirely;
  * see `listPublicDiscounts` for why each.
  */
-publicRouter.get('/public/discounts', async (_req, res) => {
+publicRouter.get('/public/discounts', requireArea('discounts'), async (_req, res) => {
   res.json({ data: await listPublicDiscounts() });
 });
 
@@ -196,11 +201,16 @@ const setQuantityBody = z
   })
   .strict();
 
-publicRouter.get('/public/cart', authenticateCustomer, async (req, res) => {
-  res.json({ data: await getCart(requireCustomer(req).id) });
-});
+publicRouter.get(
+  '/public/cart',
+  requireArea('products'),
+  authenticateCustomer,
+  async (req, res) => {
+    res.json({ data: await getCart(requireCustomer(req).id) });
+  },
+);
 
-publicRouter.post('/public/cart', authenticateCustomer, async (req, res) => {
+publicRouter.post('/public/cart', requireArea('products'), authenticateCustomer, async (req, res) => {
   const parsed = addToCartBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest('Invalid cart item');
 
@@ -212,7 +222,7 @@ publicRouter.post('/public/cart', authenticateCustomer, async (req, res) => {
   res.status(201).json({ data: cart });
 });
 
-publicRouter.patch('/public/cart', authenticateCustomer, async (req, res) => {
+publicRouter.patch('/public/cart', requireArea('products'), authenticateCustomer, async (req, res) => {
   const parsed = setQuantityBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest('Invalid quantity');
 
@@ -224,7 +234,7 @@ publicRouter.patch('/public/cart', authenticateCustomer, async (req, res) => {
   res.json({ data: cart });
 });
 
-publicRouter.delete('/public/cart', authenticateCustomer, async (req, res) => {
+publicRouter.delete('/public/cart', requireArea('products'), authenticateCustomer, async (req, res) => {
   const parsed = productIdBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest('Invalid product');
 
@@ -233,11 +243,11 @@ publicRouter.delete('/public/cart', authenticateCustomer, async (req, res) => {
 
 // ─── Wishlist (customer auth) ───────────────────────────────────────
 
-publicRouter.get('/public/wishlist', authenticateCustomer, async (req, res) => {
+publicRouter.get('/public/wishlist', requireArea('products'), authenticateCustomer, async (req, res) => {
   res.json({ data: await getWishlist(requireCustomer(req).id) });
 });
 
-publicRouter.post('/public/wishlist', authenticateCustomer, async (req, res) => {
+publicRouter.post('/public/wishlist', requireArea('products'), authenticateCustomer, async (req, res) => {
   const parsed = productIdBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest('Invalid product');
 
@@ -295,32 +305,38 @@ const checkoutBody = z
     path: ['contact', 'address'],
   });
 
-publicRouter.post('/public/orders', checkoutRateLimit, optionalCustomer, async (req, res) => {
-  const parsed = checkoutBody.safeParse(req.body);
-  if (!parsed.success) {
-    throw AppError.badRequest(
-      parsed.error.issues[0]?.message ?? 'Please check your order details',
-    );
-  }
+publicRouter.post(
+  '/public/orders',
+  requireArea('orders'),
+  checkoutRateLimit,
+  optionalCustomer,
+  async (req, res) => {
+    const parsed = checkoutBody.safeParse(req.body);
+    if (!parsed.success) {
+      throw AppError.badRequest(
+        parsed.error.issues[0]?.message ?? 'Please check your order details',
+      );
+    }
 
   // The customer comes from the verified token or is null (guest) — never from
   // the request body.
-  const result = await checkout(parsed.data, req.customer?.id ?? null);
+    const result = await checkout(parsed.data, req.customer?.id ?? null);
 
   // Identifiers only. The contact block holds a name, phone and address, and
   // logging request bodies is how PII ends up in log aggregation forever.
-  req.log.info({
-    event: 'storefront.order.created',
-    orderNumber: result.orderNumber,
-    customerId: req.customer?.id ?? null,
-  });
+    req.log.info({
+      event: 'storefront.order.created',
+      orderNumber: result.orderNumber,
+      customerId: req.customer?.id ?? null,
+    });
 
-  res.status(201).json({ data: result });
-});
+    res.status(201).json({ data: result });
+  },
+);
 
 // ─── Orders (history + tracking) ────────────────────────────────────
 
-publicRouter.get('/public/orders', authenticateCustomer, async (req, res) => {
+publicRouter.get('/public/orders', requireArea('orders'), authenticateCustomer, async (req, res) => {
   res.json({ data: await getMyOrders(requireCustomer(req).id) });
 });
 
@@ -331,7 +347,7 @@ const trackQuery = z.object({
   phone: z.string().trim().min(4).max(48),
 });
 
-publicRouter.get('/public/orders/track', async (req, res) => {
+publicRouter.get('/public/orders/track', requireArea('orders'), async (req, res) => {
   const parsed = trackQuery.safeParse(req.query);
   if (!parsed.success) {
     throw AppError.badRequest('An order number and phone number are both required');
