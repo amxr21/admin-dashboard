@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { TablePagination } from '@/components/table-pagination';
 import { EmptyState } from '@/components/empty-state';
 import { ErrorSection } from '@/components/errors/error-section';
+import { RefreshButton } from '@/components/refresh-button';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { Button } from '@/components/ui/button';
 import { ShiftSummarySheet } from '@/components/staff/shift-summary-sheet';
@@ -46,6 +47,7 @@ export function ShiftsTable({ openOnly = false, page: controlledPage, onPageChan
   const [localPage, setLocalPage] = useState(1);
   const page = controlledPage ?? localPage;
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [summaryFor, setSummaryFor] = useState<Shift | null>(null);
 
@@ -55,6 +57,7 @@ export function ShiftsTable({ openOnly = false, page: controlledPage, onPageChan
 
     try {
       setResult(await fetchShifts({ page, pageSize: 20, open: openOnly }));
+      setLastUpdated(new Date());
     } catch (caught) {
       setError(translateError(caught));
       setResult(null);
@@ -279,6 +282,13 @@ export function ShiftsTable({ openOnly = false, page: controlledPage, onPageChan
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <RefreshButton
+          onRefresh={() => void load()}
+          isLoading={isLoading}
+          lastUpdated={lastUpdated}
+        />
+      </div>
       <DataTable
         data={result?.shifts ?? []}
         columns={columns}

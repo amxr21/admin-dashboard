@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Boxes, FilterX, History, MailPlus, PackagePlus, SearchX, SlidersHorizontal, Truck } from 'lucide-react';
 
+import { RefreshButton } from '@/components/refresh-button';
 import { DataTable, type Column } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { TablePagination } from '@/components/table-pagination';
@@ -73,6 +74,7 @@ export function InventoryTable() {
   const lowOnly = values.lowStock === 'true';
   const [searchInput, setSearchInput] = useState(search);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -103,6 +105,7 @@ export function InventoryTable() {
           ...(lowOnly ? { lowStock: true } : {}),
         }),
       );
+      setLastUpdated(new Date());
     } catch (caught) {
       setError(translateError(caught));
       setResult(null);
@@ -315,6 +318,12 @@ export function InventoryTable() {
             {t('actions.suppliers')}
           </Link>
         </Button>
+        <RefreshButton
+          onRefresh={() => void load()}
+          isLoading={isLoading}
+          lastUpdated={lastUpdated}
+          className="ms-auto"
+        />
       </div>
 
       {notice ? (

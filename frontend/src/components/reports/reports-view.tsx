@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { Download, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
+import { Download, TrendingDown, TrendingUp } from 'lucide-react';
 
 import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-chart';
 // Reused, not reimplemented: these three render the same three endpoints on the
@@ -15,6 +15,7 @@ import { StatusBreakdownWidget } from '@/components/dashboard/status-breakdown-w
 import { ErrorSection } from '@/components/errors/error-section';
 import { DateRangePresetField } from '@/components/reports/date-range-field';
 import { MetricDefinition } from '@/components/reports/metric-definition';
+import { RefreshButton } from '@/components/refresh-button';
 import { Link } from '@/i18n/navigation';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -345,21 +346,11 @@ export function ReportsView() {
         {/* "Updated ⟨date⟩ ⟨time⟩" IS the refresh control, same fold as the
             dashboard's own control band — a separate button next to it would
             be a second way to do the same thing. */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void load()}
-          disabled={isLoading}
-          className="text-muted-foreground gap-1.5"
-        >
-          <RefreshCw className={isLoading ? 'size-3.5 animate-spin' : 'size-3.5'} aria-hidden />
-          {lastUpdated
-            ? tDashboard('lastUpdated', {
-                date: formatter.dateTime(lastUpdated, { dateStyle: 'medium' }),
-                time: formatter.dateTime(lastUpdated, { timeStyle: 'short' }),
-              })
-            : tDashboard('refresh')}
-        </Button>
+        <RefreshButton
+          onRefresh={() => void load()}
+          isLoading={isLoading}
+          lastUpdated={lastUpdated}
+        />
       </div>
 
       {error ? (

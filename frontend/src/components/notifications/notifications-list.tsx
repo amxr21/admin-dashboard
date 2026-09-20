@@ -5,6 +5,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { CheckCheck, ExternalLink, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { RefreshButton } from '@/components/refresh-button';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -64,6 +65,7 @@ export function NotificationsList() {
   const [searchInput, setSearchInput] = useState(search);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isMarkingAll, setIsMarkingAll] = useState(false);
   const [openRow, setOpenRow] = useState<ResourceRow | null>(null);
@@ -100,6 +102,7 @@ export function NotificationsList() {
         setTotal(result.total);
         setTotalPages(result.totalPages);
         setUnreadCount(unreadResult.total);
+        setLastUpdated(new Date());
       })
       .catch((caught: unknown) => setError(translateError(caught)))
       .finally(() => setIsLoading(false));
@@ -215,6 +218,12 @@ export function NotificationsList() {
           <CheckCheck aria-hidden />
           {t('markAllRead')}
         </Button>
+        <RefreshButton
+          onRefresh={load}
+          isLoading={isLoading}
+          lastUpdated={lastUpdated}
+          className="ms-auto"
+        />
       </div>
 
       {error ? (

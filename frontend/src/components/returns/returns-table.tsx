@@ -5,6 +5,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { RefreshButton } from '@/components/refresh-button';
 import { CopyableId } from '@/components/copyable-id';
 import { DataTable, type Column } from '@/components/data-table';
 import { FilterChips, type AppliedFilter } from '@/components/filter-chips';
@@ -59,6 +60,7 @@ export function ReturnsTable() {
 
   const [result, setResult] = useState<ReturnListResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   /** Page, search and status live in the URL so a filtered view is shareable. */
   const { values, setValues, clear } = useUrlState(URL_DEFAULTS);
@@ -110,6 +112,7 @@ export function ReturnsTable() {
           ...(status === ALL ? {} : { status }),
         }),
       );
+      setLastUpdated(new Date());
     } catch (caught) {
       setError(translateError(caught));
       setResult(null);
@@ -296,6 +299,12 @@ export function ReturnsTable() {
             setSearchInput('');
             clear(['search', 'status', 'page']);
           }}
+        />
+        <RefreshButton
+          onRefresh={() => void load()}
+          isLoading={isLoading}
+          lastUpdated={lastUpdated}
+          className="ms-auto"
         />
         <DensityToggle
           value={densityOverride ?? getGlobalDensity()}

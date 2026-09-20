@@ -6,6 +6,7 @@ import { Link } from '@/i18n/navigation';
 import { KeyRound, Pencil, Plus, ShieldOff } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { RefreshButton } from '@/components/refresh-button';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -80,6 +81,7 @@ export function CouriersTable() {
 
   const [result, setResult] = useState<CourierListResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   /** Page, search and status live in the URL so a filtered view is shareable. */
   const { values, setValues } = useUrlState(URL_DEFAULTS);
@@ -115,6 +117,7 @@ export function CouriersTable() {
           ...(status !== ALL ? { status: status as CourierStatus } : {}),
         }),
       );
+      setLastUpdated(new Date());
     } catch (caught) {
       setError(translateError(caught));
       setResult(null);
@@ -396,6 +399,12 @@ export function CouriersTable() {
                 : null,
             ].filter((filter): filter is AppliedFilter => filter !== null)
           }
+        />
+        <RefreshButton
+          onRefresh={() => void load()}
+          isLoading={isLoading}
+          lastUpdated={lastUpdated}
+          className="ms-auto"
         />
         <DensityToggle
           value={densityOverride ?? getGlobalDensity()}

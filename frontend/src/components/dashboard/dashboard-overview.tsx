@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useFormatter, useTranslations } from 'next-intl';
-import { ArrowLeft, ArrowRight, PackagePlus, RefreshCw } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { ArrowLeft, ArrowRight, PackagePlus } from 'lucide-react';
 
 import { AttentionPills } from '@/components/dashboard/attention-pills';
 import { FloorBand } from '@/components/dashboard/floor-band';
@@ -20,6 +20,7 @@ import { StatusBreakdownWidget } from '@/components/dashboard/status-breakdown-w
 import { TemplateSwitcher } from '@/components/dashboard/template-switcher';
 import { TopProductsWidget } from '@/components/dashboard/top-products-widget';
 import { Link } from '@/i18n/navigation';
+import { RefreshButton } from '@/components/refresh-button';
 import { Reveal } from '@/components/motion/reveal';
 import { Button } from '@/components/ui/button';
 import { DateRangePresetField } from '@/components/reports/date-range-field';
@@ -113,7 +114,6 @@ export function DashboardOverview() {
    * all of them — a per-widget check would be nine copies of one condition.
    */
   const canSeeReports = user ? canAccessArea(user.role, 'reports') : false;
-  const formatter = useFormatter();
   const translateError = useTranslatedApiError();
   const { values, setValues } = useUrlState({
     from: '',
@@ -390,21 +390,11 @@ export function DashboardOverview() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void load()}
-              disabled={isLoading}
-              className="text-muted-foreground gap-1.5"
-            >
-              <RefreshCw className={isLoading ? 'size-3.5 animate-spin' : 'size-3.5'} aria-hidden />
-              {lastUpdated
-                ? t('lastUpdated', {
-                    date: formatter.dateTime(lastUpdated, { dateStyle: 'medium' }),
-                    time: formatter.dateTime(lastUpdated, { timeStyle: 'short' }),
-                  })
-                : t('refresh')}
-            </Button>
+            <RefreshButton
+              onRefresh={() => void load()}
+              isLoading={isLoading}
+              lastUpdated={lastUpdated}
+            />
             {/* Sits with the range/comparison controls because it is the same
                 kind of thing: it changes what the page shows, not the data. */}
             {canSeeReports ? (
