@@ -42,7 +42,10 @@ interface ProfileBody {
 }
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return {
+    Authorization: `Bearer ${token}`,
+    ...(staffBranchId ? { 'X-Branch-Id': staffBranchId } : {}),
+  } as const;
 }
 
 async function makeUser(role: StaffRole, label: string) {

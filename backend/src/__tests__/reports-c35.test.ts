@@ -59,7 +59,7 @@ function auth(token: string) {
 }
 
 function get(path: string, token = ownerToken) {
-  return request(app).get(`/api/v1${path}`).set(auth(token));
+  return request(app).get(`/api/v1${path}`).set(auth(token)).set('X-Branch-Id', branchId);
 }
 
 let customerA = '';

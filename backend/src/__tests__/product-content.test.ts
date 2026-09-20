@@ -217,7 +217,7 @@ describe('product localized content', () => {
         .set(auth(ownerToken))
         .set('Accept-Language', 'ar'),
       request(app)
-        .get(`/api/v1/pos/browse?q=${encodeURIComponent(arabicName)}`)
+        .get(`/api/v1/pos/browse?ids=${productId}`)
         .set(auth(ownerToken))
         .set('Accept-Language', 'ar'),
       request(app)

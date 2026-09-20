@@ -313,7 +313,7 @@ branchesRouter.get(
   '/businesses',
   authenticate,
   withBranchContext,
-  requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  requireArea('settings'),
   requireDeveloperVisible('settings'),
   async (_req, res) => {
     res.status(200).json({ data: await listBusinesses() });

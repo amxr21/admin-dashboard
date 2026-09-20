@@ -832,6 +832,7 @@ describe('listing', () => {
           status: OrderStatus.PENDING,
           total: new Prisma.Decimal('10.00'),
           customerId,
+          branchId,
         },
       });
       const expensive = await prisma.order.create({
@@ -840,6 +841,7 @@ describe('listing', () => {
           status: OrderStatus.PENDING,
           total: new Prisma.Decimal('999.00'),
           customerId,
+          branchId,
         },
       });
       orderIds.push(cheap.id, expensive.id);
@@ -865,6 +867,7 @@ describe('listing', () => {
           status: OrderStatus.PENDING,
           total: new Prisma.Decimal('10.00'),
           customerId,
+          branchId,
           placedAt: new Date('2020-01-01T00:00:00.000Z'),
         },
       });
@@ -874,6 +877,7 @@ describe('listing', () => {
           status: OrderStatus.PENDING,
           total: new Prisma.Decimal('10.00'),
           customerId,
+          branchId,
           placedAt: new Date('2020-06-01T00:00:00.000Z'),
         },
       });

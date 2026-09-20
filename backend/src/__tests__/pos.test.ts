@@ -326,7 +326,7 @@ describe('who may use the till', () => {
   it('lets SUPPORT scan, since SUPPORT holds `orders`', async () => {
     await makeProduct({ barcode: `${RUN}-3330001112223` });
 
-    const res = await scan(`${RUN}-3330001112223`, supportToken);
+    const res = await scan(`${RUN}-3330001112223`, supportToken, branchId);
 
     expect(res.status).toBe(200);
   });
@@ -1124,7 +1124,7 @@ describe('browsing the grid (O9.10)', () => {
     // this endpoint has to be part of that job, gated the same way scan is.
     const product = await makeProduct({ name: `${RUN} Cashier Grid Access` });
 
-    const res = await browse({ q: `${RUN} Cashier Grid Access` }, supportToken);
+    const res = await browse({ q: `${RUN} Cashier Grid Access` }, supportToken, branchId);
 
     expect(res.status).toBe(200);
     const body = res.body as { data: { products: { id: string }[] } };
