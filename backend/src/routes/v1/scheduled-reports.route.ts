@@ -35,8 +35,8 @@ const scheduleBody = z
 
 const scheduleUpdateBody = scheduleBody.partial().strict();
 
-scheduledReportsRouter.get('/scheduled-reports', ...guard, async (_req, res) => {
-  res.json({ data: await listScheduledReports() });
+scheduledReportsRouter.get('/scheduled-reports', ...guard, async (req, res) => {
+  res.json({ data: await listScheduledReports(req.branchId ?? undefined) });
 });
 
 scheduledReportsRouter.post('/scheduled-reports', ...guard, async (req, res) => {
@@ -44,7 +44,14 @@ scheduledReportsRouter.post('/scheduled-reports', ...guard, async (req, res) => 
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
 
   const actor = requireUser(req);
-  res.status(201).json({ data: await createScheduledReport(parsed.data, actor.id, req) });
+  res.status(201).json({
+    data: await createScheduledReport(
+      parsed.data,
+      actor.id,
+      req,
+      req.branchId ?? undefined,
+    ),
+  });
 });
 
 scheduledReportsRouter.patch('/scheduled-reports/:id', ...guard, async (req, res) => {
@@ -54,11 +61,18 @@ scheduledReportsRouter.patch('/scheduled-reports/:id', ...guard, async (req, res
     throw AppError.badRequest('Provide at least one field to update');
   }
 
-  res.json({ data: await updateScheduledReport(String(req.params.id), parsed.data, req) });
+  res.json({
+    data: await updateScheduledReport(
+      String(req.params.id),
+      parsed.data,
+      req,
+      req.branchId ?? undefined,
+    ),
+  });
 });
 
 scheduledReportsRouter.delete('/scheduled-reports/:id', ...guard, async (req, res) => {
-  await deleteScheduledReport(String(req.params.id), req);
+  await deleteScheduledReport(String(req.params.id), req, req.branchId ?? undefined);
   res.status(204).send();
 });
 
@@ -67,6 +81,9 @@ scheduledReportsRouter.delete('/scheduled-reports/:id', ...guard, async (req, re
  * never trigger a send.
  */
 scheduledReportsRouter.post('/scheduled-reports/:id/send-now', ...guard, async (req, res) => {
-  const outcome = await runScheduledReport(String(req.params.id));
+  const outcome = await runScheduledReport(
+    String(req.params.id),
+    req.branchId ?? undefined,
+  );
   res.json({ data: outcome });
 });

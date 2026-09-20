@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import { prisma } from '../../db/prisma.js';
 
 /**
@@ -32,12 +33,18 @@ export const notificationsRouter = Router();
 notificationsRouter.patch(
   '/notifications/mark-all-read',
   authenticate,
+  withBranchContext,
   requireArea('settings'),
   async (req, res) => {
     const actor = requireUser(req);
 
     const { count } = await prisma.notification.updateMany({
-      where: { isRead: false },
+      where: {
+        isRead: false,
+        ...(req.branchId
+          ? { OR: [{ branchId: req.branchId }, { branchId: null }] }
+          : {}),
+      },
       data: { isRead: true },
     });
 
@@ -59,12 +66,21 @@ notificationsRouter.patch(
 notificationsRouter.patch(
   '/notifications/:id/read',
   authenticate,
+  withBranchContext,
   requireArea('settings'),
   async (req, res) => {
     const actor = requireUser(req);
     const id = String(req.params.id);
 
-    const existing = await prisma.notification.findUnique({ where: { id }, select: { id: true } });
+    const existing = await prisma.notification.findFirst({
+      where: {
+        id,
+        ...(req.branchId
+          ? { OR: [{ branchId: req.branchId }, { branchId: null }] }
+          : {}),
+      },
+      select: { id: true },
+    });
     if (!existing) throw AppError.notFound('Notification not found');
 
     const notification = await prisma.notification.update({

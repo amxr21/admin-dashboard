@@ -1,7 +1,7 @@
 import { OrderStatus, Prisma, ReturnStatus, ReviewStatus } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
-import { AppError } from '../errors/AppError.js';
+import { resolveDateOnlyRange, timeZoneOffsetSegments } from '../lib/date-range.js';
 import { auditWhere } from './audit.service.js';
 import { getSettingValue } from './settings.service.js';
 
@@ -75,6 +75,12 @@ export interface RangeParams {
    * `branchWhere()`/`branchSql()` below are the only two ways to apply it, so
    * a new report cannot invent a third that forgets the filter.
    */
+  branchId?: string | undefined;
+  /** Effective branch timezone. Business-wide reports deliberately use UTC. */
+  timezone?: string | undefined;
+}
+
+export interface LiveBranchParams {
   branchId?: string | undefined;
 }
 
@@ -175,32 +181,48 @@ function movementBranchWhere(params: RangeParams) {
 
 /** Parsed, validated and turned into the half-open interval the queries use. */
 function resolveRange(params: RangeParams): { start: Date; end: Date } {
-  const start = new Date(`${params.from}T00:00:00.000Z`);
-  // Exclusive upper bound covering the whole of the end day — comparing
-  // against midnight would silently drop everything ordered that day.
-  const end = new Date(`${params.to}T00:00:00.000Z`);
-  end.setUTCDate(end.getUTCDate() + 1);
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    throw AppError.badRequest('Use YYYY-MM-DD dates', { field: 'from' });
-  }
-
-  if (end <= start) {
-    throw AppError.badRequest('The end date must not be before the start date', {
-      field: 'to',
-    });
-  }
-
-  const days = (end.getTime() - start.getTime()) / 86_400_000;
-
-  if (days > MAX_RANGE_DAYS) {
-    throw AppError.badRequest(
-      `Choose a range of ${String(MAX_RANGE_DAYS)} days or fewer`,
-      { field: 'from', maxDays: MAX_RANGE_DAYS },
-    );
-  }
-
+  const { start, end } = resolveDateOnlyRange(
+    params.from,
+    params.to,
+    params.timezone ?? 'UTC',
+    MAX_RANGE_DAYS,
+  );
   return { start, end };
+}
+
+type TimestampColumn = 'placed_at' | 'o.placed_at' | 'created_at';
+
+function offsetText(minutes: number): string {
+  const sign = minutes < 0 ? '-' : '+';
+  const absolute = Math.abs(minutes);
+  return `${sign}${String(Math.floor(absolute / 60)).padStart(2, '0')}:${String(absolute % 60).padStart(2, '0')}`;
+}
+
+/** A branch-local timestamp expression that does not depend on MySQL's
+ * optional named-timezone tables. Over the bounded report window there are
+ * normally 1-5 offset segments; numeric offsets keep aggregation in SQL and
+ * remain correct across DST transitions. Column names are an internal union,
+ * never request input. */
+function zonedTimestampSql(
+  column: TimestampColumn,
+  params: RangeParams,
+  start: Date,
+  end: Date,
+): Prisma.Sql {
+  const source = Prisma.raw(column);
+  const timezone = params.timezone ?? 'UTC';
+  if (timezone === 'UTC') return source;
+
+  const segments = timeZoneOffsetSegments(start, end, timezone);
+  const convert = (offsetMinutes: number) =>
+    Prisma.sql`CONVERT_TZ(${source}, '+00:00', ${offsetText(offsetMinutes)})`;
+
+  if (segments.length <= 1) return convert(segments[0]?.offsetMinutes ?? 0);
+
+  const branches = segments.slice(0, -1).map((segment) =>
+    Prisma.sql`WHEN ${source} < ${segment.until!} THEN ${convert(segment.offsetMinutes)}`
+  );
+  return Prisma.sql`CASE ${Prisma.join(branches, ' ')} ELSE ${convert(segments.at(-1)!.offsetMinutes)} END`;
 }
 
 function money(value: Prisma.Decimal | null | undefined): string {
@@ -455,6 +477,8 @@ export interface RevenueSeriesParams extends RangeParams {
 export async function getRevenueSeries(params: RevenueSeriesParams) {
   const { start, end } = resolveRange(params);
   const format = DATE_FORMAT[params.granularity];
+  const placedAt = zonedTimestampSql('placed_at', params, start, end);
+  const orderPlacedAt = zonedTimestampSql('o.placed_at', params, start, end);
 
   const excluded = EXCLUDED_FROM_REVENUE;
   // Unaliased `orders` in both blocks below, so the fragment names the table.
@@ -463,7 +487,7 @@ export async function getRevenueSeries(params: RevenueSeriesParams) {
   const rows =
     params.granularity === 'week'
       ? await prisma.$queryRaw<{ bucket: string; revenue: Prisma.Decimal; orders: bigint }[]>`
-          SELECT DATE_FORMAT(DATE_SUB(placed_at, INTERVAL WEEKDAY(placed_at) DAY), ${format}) AS bucket,
+          SELECT DATE_FORMAT(DATE_SUB(${placedAt}, INTERVAL WEEKDAY(${placedAt}) DAY), ${format}) AS bucket,
                  SUM(total) AS revenue,
                  COUNT(*)   AS orders
           FROM orders
@@ -473,7 +497,7 @@ export async function getRevenueSeries(params: RevenueSeriesParams) {
           ORDER BY bucket ASC
         `
       : await prisma.$queryRaw<{ bucket: string; revenue: Prisma.Decimal; orders: bigint }[]>`
-          SELECT DATE_FORMAT(placed_at, ${format}) AS bucket,
+          SELECT DATE_FORMAT(${placedAt}, ${format}) AS bucket,
                  SUM(total) AS revenue,
                  COUNT(*)   AS orders
           FROM orders
@@ -510,7 +534,7 @@ export async function getRevenueSeries(params: RevenueSeriesParams) {
       ? await prisma.$queryRaw<
           { bucket: string; costedRevenue: Prisma.Decimal; cogs: Prisma.Decimal; costedLines: bigint; totalLines: bigint }[]
         >`
-          SELECT DATE_FORMAT(DATE_SUB(o.placed_at, INTERVAL WEEKDAY(o.placed_at) DAY), ${format}) AS bucket,
+          SELECT DATE_FORMAT(DATE_SUB(${orderPlacedAt}, INTERVAL WEEKDAY(${orderPlacedAt}) DAY), ${format}) AS bucket,
                  SUM(CASE WHEN oi.cost IS NOT NULL THEN oi.price * oi.quantity ELSE 0 END) AS costedRevenue,
                  SUM(CASE WHEN oi.cost IS NOT NULL THEN oi.cost  * oi.quantity ELSE 0 END) AS cogs,
                  SUM(CASE WHEN oi.cost IS NOT NULL THEN 1 ELSE 0 END) AS costedLines,
@@ -518,14 +542,14 @@ export async function getRevenueSeries(params: RevenueSeriesParams) {
           FROM order_items oi
           JOIN orders o ON o.id = oi.order_id
           WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-            AND o.status NOT IN (${Prisma.join(excluded)})
+            AND o.status NOT IN (${Prisma.join(excluded)})${branchSql(params)}
           GROUP BY bucket
           ORDER BY bucket ASC
         `
       : await prisma.$queryRaw<
           { bucket: string; costedRevenue: Prisma.Decimal; cogs: Prisma.Decimal; costedLines: bigint; totalLines: bigint }[]
         >`
-          SELECT DATE_FORMAT(o.placed_at, ${format}) AS bucket,
+          SELECT DATE_FORMAT(${orderPlacedAt}, ${format}) AS bucket,
                  SUM(CASE WHEN oi.cost IS NOT NULL THEN oi.price * oi.quantity ELSE 0 END) AS costedRevenue,
                  SUM(CASE WHEN oi.cost IS NOT NULL THEN oi.cost  * oi.quantity ELSE 0 END) AS cogs,
                  SUM(CASE WHEN oi.cost IS NOT NULL THEN 1 ELSE 0 END) AS costedLines,
@@ -533,7 +557,7 @@ export async function getRevenueSeries(params: RevenueSeriesParams) {
           FROM order_items oi
           JOIN orders o ON o.id = oi.order_id
           WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-            AND o.status NOT IN (${Prisma.join(excluded)})
+            AND o.status NOT IN (${Prisma.join(excluded)})${branchSql(params)}
           GROUP BY bucket
           ORDER BY bucket ASC
         `;
@@ -895,7 +919,7 @@ const NEEDS_ATTENTION_LIMIT = 20;
  * Building UI for either would mean inventing data this schema cannot
  * honestly report.
  */
-export async function getNeedsAttention() {
+export async function getNeedsAttention(params: LiveBranchParams = {}) {
   const [
     returnsAwaiting,
     reviewsAwaiting,
@@ -903,29 +927,57 @@ export async function getNeedsAttention() {
     outOfStockWithOpenOrders,
   ] = await prisma.$transaction([
     prisma.return.findMany({
-      where: { status: ReturnStatus.REQUESTED },
+      where: { status: ReturnStatus.REQUESTED, ...orderBranchWhere({ ...params, from: '', to: '' }) },
       select: { id: true, rmaNumber: true, createdAt: true, order: { select: { orderNumber: true } } },
       orderBy: { createdAt: 'asc' },
       take: NEEDS_ATTENTION_LIMIT,
     }),
     prisma.review.findMany({
-      where: { status: ReviewStatus.PENDING },
+      where: {
+        status: ReviewStatus.PENDING,
+        ...(params.branchId
+          ? { product: { branchStock: { some: { branchId: params.branchId } } } }
+          : {}),
+      },
       select: { id: true, rating: true, createdAt: true, product: { select: { name: true } } },
       orderBy: { createdAt: 'asc' },
       take: NEEDS_ATTENTION_LIMIT,
     }),
     prisma.order.findMany({
-      where: { status: { in: OPEN_ORDER_STATUSES }, assignment: null },
+      where: {
+        status: { in: OPEN_ORDER_STATUSES },
+        assignment: null,
+        ...branchWhere({ ...params, from: '', to: '' }),
+      },
       select: { id: true, orderNumber: true, status: true, placedAt: true },
       orderBy: { placedAt: 'asc' },
       take: NEEDS_ATTENTION_LIMIT,
     }),
     prisma.product.findMany({
       where: {
-        stock: { lte: 0 },
-        orderItems: { some: { order: { status: { in: OPEN_ORDER_STATUSES } } } },
+        ...(params.branchId
+          ? { branchStock: { some: { branchId: params.branchId, quantity: { lte: 0 } } } }
+          : { stock: { lte: 0 } }),
+        orderItems: {
+          some: {
+            order: {
+              status: { in: OPEN_ORDER_STATUSES },
+              ...branchWhere({ ...params, from: '', to: '' }),
+            },
+          },
+        },
       },
-      select: { id: true, name: true, sku: true, stock: true },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        stock: true,
+        branchStock: {
+          where: { branchId: params.branchId ?? '__business-wide__' },
+          select: { quantity: true },
+          take: 1,
+        },
+      },
       orderBy: { name: 'asc' },
       take: NEEDS_ATTENTION_LIMIT,
     }),
@@ -937,13 +989,37 @@ export async function getNeedsAttention() {
   // to surface honestly.
   const [returnsCount, reviewsCount, unassignedCount, outOfStockCount] =
     await prisma.$transaction([
-      prisma.return.count({ where: { status: ReturnStatus.REQUESTED } }),
-      prisma.review.count({ where: { status: ReviewStatus.PENDING } }),
-      prisma.order.count({ where: { status: { in: OPEN_ORDER_STATUSES }, assignment: null } }),
+      prisma.return.count({
+        where: { status: ReturnStatus.REQUESTED, ...orderBranchWhere({ ...params, from: '', to: '' }) },
+      }),
+      prisma.review.count({
+        where: {
+          status: ReviewStatus.PENDING,
+          ...(params.branchId
+            ? { product: { branchStock: { some: { branchId: params.branchId } } } }
+            : {}),
+        },
+      }),
+      prisma.order.count({
+        where: {
+          status: { in: OPEN_ORDER_STATUSES },
+          assignment: null,
+          ...branchWhere({ ...params, from: '', to: '' }),
+        },
+      }),
       prisma.product.count({
         where: {
-          stock: { lte: 0 },
-          orderItems: { some: { order: { status: { in: OPEN_ORDER_STATUSES } } } },
+          ...(params.branchId
+            ? { branchStock: { some: { branchId: params.branchId, quantity: { lte: 0 } } } }
+            : { stock: { lte: 0 } }),
+          orderItems: {
+            some: {
+              order: {
+                status: { in: OPEN_ORDER_STATUSES },
+                ...branchWhere({ ...params, from: '', to: '' }),
+              },
+            },
+          },
         },
       }),
     ]);
@@ -985,7 +1061,7 @@ export async function getNeedsAttention() {
         id: row.id,
         name: row.name,
         sku: row.sku,
-        stock: row.stock,
+        stock: params.branchId ? (row.branchStock[0]?.quantity ?? 0) : row.stock,
       })),
     },
   };
@@ -1258,7 +1334,12 @@ export async function getFloorStatus(params: { branchId?: string | undefined } =
  */
 export async function getStaffActivity(params: RangeParams) {
   const { start, end } = resolveRange(params);
-  const where = auditWhere({ from: params.from, to: params.to });
+  const where = auditWhere({
+    from: params.from,
+    to: params.to,
+    branchId: params.branchId,
+    timezone: params.timezone,
+  });
 
   const rows = await prisma.auditLog.groupBy({
     by: ['actorId', 'actorEmail', 'actorRole'],
@@ -1363,14 +1444,17 @@ export function isExplorerDimension(value: string): value is ExplorerDimension {
 /** SQL fragment for the GROUP BY key + its display label, one per dimension.
  *  Kept in this fixed map for the same injection-boundary reason as
  *  `DATE_FORMAT` above — the request picks a key, never a raw fragment. */
-function explorerDimensionSql(dimension: ExplorerDimension): { key: Prisma.Sql; label: Prisma.Sql } {
+function explorerDimensionSql(
+  dimension: ExplorerDimension,
+  placedAt: Prisma.Sql,
+): { key: Prisma.Sql; label: Prisma.Sql } {
   switch (dimension) {
     case 'day':
     case 'week':
     case 'month':
       return {
-        key: Prisma.sql`DATE_FORMAT(o.placed_at, ${DATE_FORMAT[dimension]})`,
-        label: Prisma.sql`DATE_FORMAT(o.placed_at, ${DATE_FORMAT[dimension]})`,
+        key: Prisma.sql`DATE_FORMAT(${placedAt}, ${DATE_FORMAT[dimension]})`,
+        label: Prisma.sql`DATE_FORMAT(${placedAt}, ${DATE_FORMAT[dimension]})`,
       };
     case 'status':
       return { key: Prisma.sql`o.status`, label: Prisma.sql`o.status` };
@@ -1409,7 +1493,8 @@ export async function getExplorerRows(
   params: RangeParams & { dimension: ExplorerDimension },
 ): Promise<{ range: { from: string; to: string }; dimension: ExplorerDimension; rows: ExplorerRow[] }> {
   const { start, end } = resolveRange(params);
-  const { key, label } = explorerDimensionSql(params.dimension);
+  const placedAt = zonedTimestampSql('o.placed_at', params, start, end);
+  const { key, label } = explorerDimensionSql(params.dimension, placedAt);
 
   // The bucket key/label are computed ONCE in the inner query and grouped by
   // their alias in the outer one — repeating the same `DATE_FORMAT(...)`
@@ -1468,6 +1553,7 @@ export async function getExplorerRows(
  */
 export async function getRefundRateTrend(params: RangeParams) {
   const { start, end } = resolveRange(params);
+  const placedAt = zonedTimestampSql('o.placed_at', params, start, end);
 
   // Two separately grouped queries, merged in JS, rather than one query
   // with a correlated subquery — MySQL's ONLY_FULL_GROUP_BY mode (on by
@@ -1477,18 +1563,18 @@ export async function getRefundRateTrend(params: RangeParams) {
   // the return's own `createdAt`) keeps both halves describing one trend.
   const [revenueRows, refundRows] = await Promise.all([
     prisma.$queryRaw<{ bucket: string; revenue: Prisma.Decimal }[]>`
-      SELECT DATE_FORMAT(o.placed_at, '%Y-%m-01') AS bucket, SUM(o.total) AS revenue
+      SELECT DATE_FORMAT(${placedAt}, '%Y-%m-01') AS bucket, SUM(o.total) AS revenue
       FROM orders o
       WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
         AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
       GROUP BY bucket
     `,
     prisma.$queryRaw<{ bucket: string; refunded: Prisma.Decimal }[]>`
-      SELECT DATE_FORMAT(o.placed_at, '%Y-%m-01') AS bucket, SUM(r.refund_amount) AS refunded
+      SELECT DATE_FORMAT(${placedAt}, '%Y-%m-01') AS bucket, SUM(r.refund_amount) AS refunded
       FROM returns r
       JOIN orders o ON o.id = r.order_id
       WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
-        AND r.refund_amount IS NOT NULL
+        AND r.refund_amount IS NOT NULL${branchSql(params)}
       GROUP BY bucket
     `,
   ]);
@@ -2030,9 +2116,13 @@ export async function getReviewModerationThroughput(params: RangeParams) {
  * reviewed" doesn't reset every period). A catalogue-attention list, same
  * category as `getNeedsAttention`'s queues — `isRangeScoped: false`.
  */
-export async function getProductsWithoutReviews() {
+export async function getProductsWithoutReviews(params: LiveBranchParams = {}) {
   const products = await prisma.product.findMany({
-    where: { status: { not: 'ARCHIVED' }, reviews: { none: {} } },
+    where: {
+      status: { not: 'ARCHIVED' },
+      reviews: { none: {} },
+      ...(params.branchId ? { branchStock: { some: { branchId: params.branchId } } } : {}),
+    },
     select: { id: true, name: true, sku: true },
     orderBy: { name: 'asc' },
   });
@@ -2050,20 +2140,35 @@ export async function getProductsWithoutReviews() {
  * catalogue state, not date-range scoped — `isRangeScoped: false`, same
  * category as `getNeedsAttention`.
  */
-export async function getLowStockSnapshot() {
+export async function getLowStockSnapshot(params: LiveBranchParams = {}) {
   const threshold = await getSettingValue('inventory.lowStockThreshold');
 
-  const products = await prisma.product.findMany({
-    where: { status: { not: 'ARCHIVED' }, stock: { lte: threshold } },
-    select: { id: true, name: true, sku: true, stock: true },
-    orderBy: { stock: 'asc' },
-  });
+  const products = params.branchId
+    ? (await prisma.branchStock.findMany({
+        where: { branchId: params.branchId, product: { status: { not: 'ARCHIVED' } } },
+        select: {
+          quantity: true,
+          product: { select: { id: true, name: true, sku: true, lowStockThreshold: true } },
+        },
+        orderBy: { quantity: 'asc' },
+      }))
+        .filter((row) => row.quantity <= (row.product.lowStockThreshold ?? threshold))
+        .map((row) => ({ ...row.product, stock: row.quantity }))
+    : await prisma.product.findMany({
+        where: { status: { not: 'ARCHIVED' }, stock: { lte: threshold } },
+        select: { id: true, name: true, sku: true, stock: true },
+        orderBy: { stock: 'asc' },
+      });
 
   if (products.length === 0) return { threshold, products: [] };
 
   const lastReceived = await prisma.stockMovement.groupBy({
     by: ['productId'],
-    where: { productId: { in: products.map((p) => p.id) }, reason: 'RECEIVED' },
+    where: {
+      productId: { in: products.map((p) => p.id) },
+      reason: 'RECEIVED',
+      ...movementBranchWhere({ ...params, from: '', to: '' }),
+    },
     _max: { createdAt: true },
   });
   const lastReceivedByProduct = new Map(lastReceived.map((row) => [row.productId, row._max.createdAt]));
@@ -2126,21 +2231,9 @@ export async function getStockAdjustmentReasons(params: RangeParams) {
  * ledger from the product-level one (`variants.service.ts` writes real
  * movement rows keyed by variant, exactly parallel to the product path).
  *
- * ─── ONE HONEST LIMIT UNDER A BRANCH FILTER (F8.3) ───────────────────
- * `sold`/`received` ARE branch-scoped: they come from `StockMovement`, which
- * carries its own `branchId`.
- *
- * `stockAllBranches` is NOT, and is named so it cannot be misread. F8.2 gave
- * per-branch totals to PRODUCTS (`BranchStock` is keyed on `productId`) and
- * not to variants, so there is no per-branch number to report here. The
- * choice was between renaming the field and silently returning an all-branch
- * total beside two branch-scoped ones — a row reading "sold 2 at Marina, 400
- * in stock" where the 400 is everywhere.
- *
- * Reporting the all-branch figure under an accurate name is the truthful
- * option: the number is real, it is simply answering a wider question, and
- * the name now says so. Giving `BranchStock` a variant dimension is the real
- * fix and belongs with F8.2's model, not smuggled into a report.
+ * Current stock follows the same scope as the movements: BranchVariantStock
+ * under an active branch, ProductVariant.stock only for an explicit
+ * business-wide view.
  */
 export async function getVariantStockMovement(params: RangeParams) {
   const { start, end } = resolveRange(params);
@@ -2160,6 +2253,13 @@ export async function getVariantStockMovement(params: RangeParams) {
     where: { id: { in: variantIds } },
     select: { id: true, name: true, sku: true, stock: true, product: { select: { name: true } } },
   });
+  const branchStock = params.branchId
+    ? await prisma.branchVariantStock.findMany({
+        where: { branchId: params.branchId, variantId: { in: variantIds } },
+        select: { variantId: true, quantity: true },
+      })
+    : [];
+  const stockByVariantId = new Map(branchStock.map((row) => [row.variantId, row.quantity]));
   const variantById = new Map(variants.map((v) => [v.id, v]));
 
   const byVariant = new Map<
@@ -2169,8 +2269,7 @@ export async function getVariantStockMovement(params: RangeParams) {
       name: string;
       productName: string;
       sku: string | null;
-      /** All-branch total — see this function's doc comment. */
-      stockAllBranches: number;
+      stock: number;
       sold: number;
       received: number;
     }
@@ -2185,7 +2284,9 @@ export async function getVariantStockMovement(params: RangeParams) {
       name: variant.name,
       productName: variant.product.name,
       sku: variant.sku,
-      stockAllBranches: variant.stock,
+      stock: params.branchId
+        ? (stockByVariantId.get(row.variantId) ?? 0)
+        : variant.stock,
       sold: 0,
       received: 0,
     };
@@ -2385,18 +2486,25 @@ export async function getDeliveryCycleTime(params: RangeParams) {
  * assignment count. Live state, not date-range scoped — `isRangeScoped:
  * false`, same category as `getNeedsAttention`.
  */
-export async function getCourierWorkloadSnapshot() {
+export async function getCourierWorkloadSnapshot(params: LiveBranchParams = {}) {
+  const courierWhere = params.branchId
+    ? { branches: { some: { branchId: params.branchId } } }
+    : {};
   const [byStatus, openAssignments] = await Promise.all([
-    prisma.deliveryStaff.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.deliveryStaff.groupBy({ by: ['status'], where: courierWhere, _count: { _all: true } }),
     prisma.deliveryAssignment.groupBy({
       by: ['driverId'],
-      where: { status: { notIn: ['DELIVERED', 'HANDED_OVER', 'CANCELED', 'RETURNED'] } },
+      where: {
+        status: { notIn: ['DELIVERED', 'HANDED_OVER', 'CANCELED', 'RETURNED'] },
+        ...orderBranchWhere({ ...params, from: '', to: '' }),
+      },
       _count: { _all: true },
     }),
   ]);
 
   const openByDriver = new Map(openAssignments.map((row) => [row.driverId, row._count._all]));
   const drivers = await prisma.deliveryStaff.findMany({
+    where: courierWhere,
     select: { id: true, name: true, status: true },
     orderBy: { name: 'asc' },
   });
@@ -2423,11 +2531,13 @@ export async function getCourierWorkloadSnapshot() {
  */
 export async function getAuditOutcomeTrend(params: RangeParams) {
   const { start, end } = resolveRange(params);
+  const createdAt = zonedTimestampSql('created_at', params, start, end);
 
   const rows = await prisma.$queryRaw<{ bucket: string; outcome: string; count: bigint }[]>`
-    SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS bucket, outcome AS outcome, COUNT(*) AS count
+    SELECT DATE_FORMAT(${createdAt}, '%Y-%m-%d') AS bucket, outcome AS outcome, COUNT(*) AS count
     FROM audit_log
     WHERE created_at >= ${start} AND created_at < ${end}
+      ${params.branchId ? Prisma.sql`AND branch_id = ${params.branchId}` : Prisma.empty}
     GROUP BY bucket, outcome
     ORDER BY bucket ASC
   `;
@@ -2460,7 +2570,10 @@ export async function getAuditActivityByEntity(params: RangeParams) {
 
   const rows = await prisma.auditLog.groupBy({
     by: ['entity', 'action'],
-    where: { createdAt: { gte: start, lt: end } },
+    where: {
+      createdAt: { gte: start, lt: end },
+      ...(params.branchId ? { branchId: params.branchId } : {}),
+    },
     _count: { _all: true },
   });
 

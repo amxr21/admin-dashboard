@@ -2,6 +2,7 @@ import type { Request } from 'express';
 import { AuditOutcome } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
+import { optionalDateOnlyBounds } from '../lib/date-range.js';
 
 /**
  * Who changed what.
@@ -136,6 +137,7 @@ export function audit(req: Request, entry: AuditEntry): void {
         // it has to survive the account being deleted.
         actorEmail: user?.email ?? null,
         actorRole: user?.role ?? null,
+        branchId: req.branchId ?? null,
         changes: redact(entry.changes) as never,
         outcome: entry.outcome ?? AuditOutcome.SUCCESS,
         ...requestContext(req),
@@ -235,6 +237,10 @@ export interface AuditListParams {
   outcome?: AuditOutcome;
   /** All entries from one request, so a single action's effects read together. */
   requestId?: string;
+  /** Active branch. Omitted only for an explicitly business-wide view. */
+  branchId?: string;
+  /** Effective branch timezone; UTC for an explicit business-wide view. */
+  timezone?: string;
   /** Inclusive. Calendar date `YYYY-MM-DD`, interpreted as that day's start UTC. */
   from?: string;
   /** Inclusive. Calendar date `YYYY-MM-DD`, interpreted as that day's END UTC —
@@ -266,13 +272,7 @@ function actionFilter(params: AuditListParams) {
 }
 
 export function auditWhere(params: AuditListParams) {
-  const createdAt =
-    params.from || params.to
-      ? {
-          ...(params.from ? { gte: new Date(`${params.from}T00:00:00.000Z`) } : {}),
-          ...(params.to ? { lte: new Date(`${params.to}T23:59:59.999Z`) } : {}),
-        }
-      : undefined;
+  const createdAt = optionalDateOnlyBounds(params.from, params.to, params.timezone ?? 'UTC');
 
   return {
     ...(params.entity ? { entity: params.entity } : {}),
@@ -284,6 +284,7 @@ export function auditWhere(params: AuditListParams) {
     ...actionFilter(params),
     ...(params.outcome ? { outcome: params.outcome } : {}),
     ...(params.requestId ? { requestId: params.requestId } : {}),
+    ...(params.branchId ? { branchId: params.branchId } : {}),
     ...(createdAt ? { createdAt } : {}),
   };
 }
@@ -369,8 +370,9 @@ export async function listAudit(params: AuditListParams) {
 
 /** Distinct entity names actually present in the log, for a filter dropdown
  * that never offers a value returning zero rows. */
-export async function listAuditEntities(): Promise<string[]> {
+export async function listAuditEntities(branchId?: string): Promise<string[]> {
   const rows = await prisma.auditLog.findMany({
+    where: branchId ? { branchId } : undefined,
     distinct: ['entity'],
     select: { entity: true },
     orderBy: { entity: 'asc' },
@@ -408,8 +410,9 @@ export async function listAuditForExport(params: AuditListParams) {
 }
 
 /** Distinct action names actually present, for the "show me all deletes" filter. */
-export async function listAuditActions(): Promise<string[]> {
+export async function listAuditActions(branchId?: string): Promise<string[]> {
   const rows = await prisma.auditLog.findMany({
+    where: branchId ? { branchId } : undefined,
     distinct: ['action'],
     select: { action: true },
     orderBy: { action: 'asc' },
