@@ -69,6 +69,73 @@ export async function listInventory(params: InventoryListParams) {
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, params.pageSize ?? 20));
   const threshold = await resolveThreshold(params.threshold);
 
+  // Branch inventory is the branch's catalogue footprint, not the global
+  // product table with a different number painted onto each row. Querying
+  // BranchStock first makes filtering, ordering, counting and pagination all
+  // operate on the same branch quantity.
+  if (params.branchId) {
+    const branchRows = await prisma.branchStock.findMany({
+      where: {
+        branchId: params.branchId,
+        ...(params.search
+          ? {
+              product: {
+                OR: [
+                  { name: { contains: params.search } },
+                  { sku: { contains: params.search } },
+                ],
+              },
+            }
+          : {}),
+      },
+      select: {
+        quantity: true,
+        product: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            status: true,
+            imageUrl: true,
+            lowStockThreshold: true,
+            storageLocation: true,
+            cost: true,
+            category: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+
+    const matching = branchRows
+      .map((row) => {
+        const effectiveThreshold = row.product.lowStockThreshold ?? threshold;
+        return {
+          ...row.product,
+          stock: row.quantity,
+          cost: row.product.cost === null ? null : row.product.cost.toFixed(2),
+          isLow: row.quantity <= effectiveThreshold,
+          effectiveThreshold,
+        };
+      })
+      .filter((row) => !params.lowStock || row.isLow)
+      .sort((left, right) =>
+        params.lowStock
+          ? left.stock - right.stock || left.name.localeCompare(right.name)
+          : left.name.localeCompare(right.name),
+      );
+
+    const total = matching.length;
+
+    return {
+      products: matching.slice((page - 1) * pageSize, page * pageSize),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      threshold,
+    };
+  }
+
   const where: Prisma.ProductWhereInput = {
     // AND, not two sibling ORs: search and low-stock BOTH want an OR at this
     // level, and spreading them side by side would silently let the second
@@ -441,17 +508,6 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
 
     if (!product) throw AppError.notFound('Product not found');
 
-    const next = product.stock + input.delta;
-
-    if (next < 0) {
-      // Refusing names the numbers, so the caller can see what would have
-      // worked instead of guessing at the limit.
-      throw AppError.badRequest(
-        `Only ${product.stock} in stock — that would leave ${next}`,
-        { field: 'delta', available: product.stock },
-      );
-    }
-
     const movement = await tx.stockMovement.create({
       data: {
         productId,
@@ -479,27 +535,56 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
       },
     });
 
-    const updated = await tx.product.update({
-      where: { id: productId },
-      data: { stock: next },
-      select: { id: true, name: true, sku: true, stock: true },
-    });
+    if (input.delta < 0) {
+      const quantity = Math.abs(input.delta);
+      const claimed = await tx.branchStock.updateMany({
+        where: { productId, branchId, quantity: { gte: quantity } },
+        data: { quantity: { decrement: quantity } },
+      });
 
-    /**
-     * The per-branch total moves in the SAME transaction as the movement and
-     * the product total (F8.2). Three numbers, one write — if the branch
-     * total were updated separately it could survive a rolled-back movement
-     * and start claiming stock that was never received.
-     *
-     * `upsert` because a product may have no row for this branch yet: a
-     * branch opened after the product existed, or the first delivery of that
-     * item to that location. The unique constraint on (product, branch) is
-     * what makes it safe under concurrent adjustments.
-     */
-    await tx.branchStock.upsert({
+      if (claimed.count === 0) {
+        const current = await tx.branchStock.findUnique({
+          where: { productId_branchId: { productId, branchId } },
+          select: { quantity: true },
+        });
+        const available = current?.quantity ?? 0;
+        throw AppError.badRequest(
+          `Only ${String(available)} in stock at this branch — that adjustment is too large`,
+          { field: 'delta', available },
+        );
+      }
+    } else {
+      await tx.branchStock.upsert({
+        where: { productId_branchId: { productId, branchId } },
+        create: { productId, branchId, quantity: input.delta },
+        update: { quantity: { increment: input.delta } },
+      });
+    }
+
+    const branchStock = await tx.branchStock.findUniqueOrThrow({
       where: { productId_branchId: { productId, branchId } },
-      create: { productId, branchId, quantity: input.delta },
-      update: { quantity: { increment: input.delta } },
+      select: { quantity: true },
+    });
+    const previousBranchStock = branchStock.quantity - input.delta;
+
+    if (input.delta < 0) {
+      const updatedGlobal = await tx.product.updateMany({
+        where: { id: productId, stock: { gte: Math.abs(input.delta) } },
+        data: { stock: { increment: input.delta } },
+      });
+      if (updatedGlobal.count === 0) {
+        throw AppError.conflict('Inventory totals are out of sync; reconcile before adjusting');
+      }
+    } else {
+      await tx.product.update({
+        where: { id: productId },
+        data: { stock: { increment: input.delta } },
+      });
+    }
+
+    const updated = await tx.product.findUniqueOrThrow({
+      where: { id: productId },
+      select: { id: true, name: true, sku: true, stock: true },
     });
 
     return {
@@ -515,9 +600,10 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
       // The product's own threshold decides, so a bespoke limit actually
       // fires the alert rather than being a number nothing reads.
       crossedIntoLowStock:
-        product.stock > (product.lowStockThreshold ?? threshold) &&
-        next <= (product.lowStockThreshold ?? threshold),
+        previousBranchStock > (product.lowStockThreshold ?? threshold) &&
+        branchStock.quantity <= (product.lowStockThreshold ?? threshold),
       effectiveThreshold: product.lowStockThreshold ?? threshold,
+      branchStock: branchStock.quantity,
     };
   });
 
@@ -525,7 +611,7 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
     notify({
       type: 'inventory.low-stock',
       title: result.product.name,
-      body: `${String(result.product.stock)} left — at or below the threshold of ${String(result.effectiveThreshold)}.`,
+      body: `${String(result.branchStock)} left — at or below the threshold of ${String(result.effectiveThreshold)}.`,
       link: '/admin/inventory',
       // Low stock is always AT a location — the same `branchId` the movement
       // was recorded against, so the alert reaches whoever is standing there.
@@ -579,7 +665,7 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
  * future code path that updates `stock` without a movement would drift
  * silently and the log would stop being an explanation of the number.
  */
-export async function reconcile(productId: string) {
+export async function reconcile(productId: string, branchId?: string) {
   const product = await prisma.product.findUnique({
     where: { id: productId },
     select: { id: true, stock: true },
@@ -588,17 +674,24 @@ export async function reconcile(productId: string) {
   if (!product) throw AppError.notFound('Product not found');
 
   const sum = await prisma.stockMovement.aggregate({
-    where: { productId },
+    where: { productId, ...(branchId ? { branchId } : {}) },
     _sum: { delta: true },
   });
 
   const fromMovements = sum._sum.delta ?? 0;
+  const branchStock = branchId
+    ? await prisma.branchStock.findUnique({
+        where: { productId_branchId: { productId, branchId } },
+        select: { quantity: true },
+      })
+    : null;
+  const stock = branchId ? (branchStock?.quantity ?? 0) : product.stock;
 
   return {
     productId,
-    stock: product.stock,
+    stock,
     fromMovements,
     /** False means something wrote `stock` without recording why. */
-    agrees: product.stock === fromMovements,
+    agrees: stock === fromMovements,
   };
 }

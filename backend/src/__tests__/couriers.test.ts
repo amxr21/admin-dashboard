@@ -686,7 +686,7 @@ describe('which branches a courier serves (O2)', () => {
     expect(ids).not.toContain(id);
   });
 
-  it('a courier with NO branches recorded still appears everywhere', async () => {
+  it('does not expose an unassigned courier through a scoped roster', async () => {
     // Every courier that existed before O2 has no rows here. An empty relation
     // matching nothing would have emptied every scoped roster the moment this
     // deployed — a migration that silently hides a screenful of people. "No
@@ -707,7 +707,7 @@ describe('which branches a courier serves (O2)', () => {
     const ids = (res.body as { data: { couriers: { id: string }[] } }).data.couriers.map(
       (courier) => courier.id,
     );
-    expect(ids).toContain(id);
+    expect(ids).not.toContain(id);
   });
 
   it('refuses a branch that does not exist, without partially applying', async () => {

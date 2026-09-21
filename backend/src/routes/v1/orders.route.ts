@@ -7,6 +7,7 @@ import { toCsv } from '../../lib/csv.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
+import { withBranchTimezone } from '../../middleware/branch-timezone.js';
 import { audit } from '../../services/audit.service.js';
 import {
   addOrderNote,
@@ -105,7 +106,7 @@ const bulkStatusPreviewBody = z
   })
   .strict();
 
-ordersRouter.get('/orders', ...guard, async (req, res) => {
+ordersRouter.get('/orders', ...guard, withBranchTimezone, async (req, res) => {
   const parsed = listQuery.safeParse(req.query);
 
   if (!parsed.success) {
@@ -113,7 +114,11 @@ ordersRouter.get('/orders', ...guard, async (req, res) => {
   }
 
   if (parsed.data.format === 'csv') {
-    const { orders, truncated } = await listOrdersForExport({ ...parsed.data, branchId: req.branchId ?? undefined });
+    const { orders, truncated } = await listOrdersForExport({
+      ...parsed.data,
+      branchId: req.branchId ?? undefined,
+      timezone: req.branchTimezone ?? 'UTC',
+    });
 
     // Exporting the list is itself an auditable event — same reasoning as
     // audit.route.ts's own `audit.exported`: a copy of order data (customer
@@ -157,11 +162,19 @@ ordersRouter.get('/orders', ...guard, async (req, res) => {
     return;
   }
 
-  res.json({ data: await listOrders({ ...parsed.data, branchId: req.branchId ?? undefined }) });
+  res.json({
+    data: await listOrders({
+      ...parsed.data,
+      branchId: req.branchId ?? undefined,
+      timezone: req.branchTimezone ?? 'UTC',
+    }),
+  });
 });
 
 ordersRouter.get('/orders/:id', ...guard, async (req, res) => {
-  res.json({ data: { order: await getOrder(String(req.params.id)) } });
+  res.json({
+    data: { order: await getOrder(String(req.params.id), req.branchId ?? undefined) },
+  });
 });
 
 /**
@@ -171,14 +184,20 @@ ordersRouter.get('/orders/:id', ...guard, async (req, res) => {
  */
 const neighborsQuery = listQuery.omit({ page: true, pageSize: true, format: true });
 
-ordersRouter.get('/orders/:id/neighbors', ...guard, async (req, res) => {
+ordersRouter.get('/orders/:id/neighbors', ...guard, withBranchTimezone, async (req, res) => {
   const parsed = neighborsQuery.safeParse(req.query);
 
   if (!parsed.success) {
     throw AppError.badRequest('Invalid query', parsed.error.flatten());
   }
 
-  res.json({ data: await getOrderNeighbors(String(req.params.id), parsed.data) });
+  res.json({
+    data: await getOrderNeighbors(String(req.params.id), {
+      ...parsed.data,
+      branchId: req.branchId ?? undefined,
+      timezone: req.branchTimezone ?? 'UTC',
+    }),
+  });
 });
 
 /**
@@ -188,7 +207,11 @@ ordersRouter.get('/orders/:id/neighbors', ...guard, async (req, res) => {
  * reads rather than one query.
  */
 ordersRouter.get('/orders/:id/timeline', ...guard, async (req, res) => {
-  res.json({ data: { events: await getOrderTimeline(String(req.params.id)) } });
+  res.json({
+    data: {
+      events: await getOrderTimeline(String(req.params.id), req.branchId ?? undefined),
+    },
+  });
 });
 
 ordersRouter.patch('/orders/:id/status', ...guard, async (req, res) => {
@@ -206,7 +229,7 @@ ordersRouter.patch('/orders/:id/status', ...guard, async (req, res) => {
     actorId: user.id,
     cancellationReason: parsed.data.cancellationReason,
     cancellationReasonNote: parsed.data.cancellationReasonNote,
-  });
+  }, req.branchId ?? undefined);
 
   req.log.info({
     event: 'order.status.changed',
@@ -230,7 +253,13 @@ ordersRouter.post('/orders/bulk-status/preview', ...guard, async (req, res) => {
     throw AppError.badRequest('Invalid request', parsed.error.flatten());
   }
 
-  res.json({ data: await previewBulkStatusChange(parsed.data.ids, parsed.data.to) });
+  res.json({
+    data: await previewBulkStatusChange(
+      parsed.data.ids,
+      parsed.data.to,
+      req.branchId ?? undefined,
+    ),
+  });
 });
 
 /**
@@ -253,7 +282,7 @@ ordersRouter.post('/orders/bulk-status', ...guard, async (req, res) => {
     actorId: user.id,
     cancellationReason: parsed.data.cancellationReason,
     cancellationReasonNote: parsed.data.cancellationReasonNote,
-  });
+  }, req.branchId ?? undefined);
 
   req.log.info({
     event: 'order.status.bulkChanged',
@@ -279,7 +308,12 @@ ordersRouter.post('/orders/:id/notes', ...guard, async (req, res) => {
   }
 
   const user = requireUser(req);
-  const order = await addOrderNote(String(req.params.id), parsed.data.body, user.id);
+  const order = await addOrderNote(
+    String(req.params.id),
+    parsed.data.body,
+    user.id,
+    req.branchId ?? undefined,
+  );
 
   res.json({ data: { order } });
 });

@@ -12,6 +12,7 @@ import {
 } from '../config/orders.config.js';
 import { notifyCustomerOrderStatus } from './customer-order-notifications.service.js';
 import { normalizePhone } from '../lib/phone.js';
+import { optionalDateOnlyBounds } from '../lib/date-range.js';
 import { assertRefundReason } from './refund-reason.js';
 
 /**
@@ -64,6 +65,8 @@ export interface OrderListParams {
    * whichever branch is selected would claim it belongs there.
    */
   branchId?: string;
+  /** Effective branch timezone. Business-wide views deliberately use UTC. */
+  timezone?: string;
 }
 
 function buildWhere(params: OrderListParams): Prisma.OrderWhereInput {
@@ -74,11 +77,11 @@ function buildWhere(params: OrderListParams): Prisma.OrderWhereInput {
   if (params.branchId) where.branchId = params.branchId;
 
   if (params.from || params.to) {
-    where.placedAt = {
-      ...(params.from ? { gte: new Date(params.from) } : {}),
-      // The caller means the whole of the end day, not midnight at its start.
-      ...(params.to ? { lte: new Date(`${params.to.slice(0, 10)}T23:59:59.999Z`) } : {}),
-    };
+    where.placedAt = optionalDateOnlyBounds(
+      params.from,
+      params.to,
+      params.timezone ?? 'UTC',
+    );
   }
 
   if (params.search) {
@@ -188,7 +191,10 @@ export interface OrderExportResult {
  * what the export button was clicked while looking at.
  */
 export async function listOrdersForExport(
-  params: Pick<OrderListParams, 'status' | 'from' | 'to' | 'search' | 'sort' | 'dir' | 'branchId'>,
+  params: Pick<
+    OrderListParams,
+    'status' | 'from' | 'to' | 'search' | 'sort' | 'dir' | 'branchId' | 'timezone'
+  >,
 ): Promise<OrderExportResult> {
   const where = buildWhere(params);
 
@@ -242,9 +248,19 @@ export interface OrderNeighbor {
  */
 export async function getOrderNeighbors(
   id: string,
-  params: Pick<OrderListParams, 'status' | 'from' | 'to' | 'search' | 'sort' | 'dir' | 'branchId'>,
+  params: Pick<
+    OrderListParams,
+    'status' | 'from' | 'to' | 'search' | 'sort' | 'dir' | 'branchId' | 'timezone'
+  >,
 ): Promise<{ prev: OrderNeighbor | null; next: OrderNeighbor | null }> {
   const where = buildWhere(params);
+
+  const visibleOrder = await prisma.order.findFirst({
+    where: { id, ...(params.branchId ? { branchId: params.branchId } : {}) },
+    select: { id: true },
+  });
+
+  if (!visibleOrder) throw AppError.notFound('Order not found');
 
   const rows = await prisma.order.findMany({
     where,
@@ -262,9 +278,9 @@ export async function getOrderNeighbors(
   };
 }
 
-export async function getOrder(id: string) {
-  const order = await prisma.order.findUnique({
-    where: { id },
+export async function getOrder(id: string, branchId?: string) {
+  const order = await prisma.order.findFirst({
+    where: { id, ...(branchId ? { branchId } : {}) },
     select: {
       id: true,
       orderNumber: true,
@@ -459,7 +475,17 @@ export interface TimelineEvent {
  * there is nothing real to show. Fabricating a synthetic entry would be
  * worse than the gap.
  */
-export async function getOrderTimeline(orderId: string): Promise<TimelineEvent[]> {
+export async function getOrderTimeline(
+  orderId: string,
+  branchId?: string,
+): Promise<TimelineEvent[]> {
+  const visibleOrder = await prisma.order.findFirst({
+    where: { id: orderId, ...(branchId ? { branchId } : {}) },
+    select: { id: true },
+  });
+
+  if (!visibleOrder) throw AppError.notFound('Order not found');
+
   const [statusHistory, notes, auditEntries, returns] = await Promise.all([
     prisma.orderStatusHistory.findMany({
       where: { orderId },
@@ -623,9 +649,13 @@ function assertCancellationReason(input: ChangeStatusInput) {
  * it — the exact question an audit trail exists to answer, now unanswerable.
  * Interactive transactions roll all three back together.
  */
-export async function changeOrderStatus(id: string, input: ChangeStatusInput) {
-  const current = await prisma.order.findUnique({
-    where: { id },
+export async function changeOrderStatus(
+  id: string,
+  input: ChangeStatusInput,
+  branchId?: string,
+) {
+  const current = await prisma.order.findFirst({
+    where: { id, ...(branchId ? { branchId } : {}) },
     select: { id: true, status: true, assignment: { select: { id: true } } },
   });
 
@@ -720,7 +750,7 @@ export async function changeOrderStatus(id: string, input: ChangeStatusInput) {
 
   await notifyCustomerOrderStatus(id, input.to);
 
-  return getOrder(id);
+  return getOrder(id, branchId);
 }
 
 export interface BulkStatusResult {
@@ -753,9 +783,10 @@ export interface BulkStatusPreview {
 export async function previewBulkStatusChange(
   ids: string[],
   to: OrderStatus,
+  branchId?: string,
 ): Promise<BulkStatusPreview> {
   const orders = await prisma.order.findMany({
-    where: { id: { in: ids } },
+    where: { id: { in: ids }, ...(branchId ? { branchId } : {}) },
     select: { id: true, status: true, assignment: { select: { id: true, status: true } } },
   });
 
@@ -766,7 +797,8 @@ export async function previewBulkStatusChange(
 
   return {
     eligibleCount: eligible.length,
-    ineligibleCount: orders.length - eligible.length,
+    // Missing and out-of-branch ids are deliberately indistinguishable.
+    ineligibleCount: new Set(ids).size - eligible.length,
     withActiveAssignment,
     isTerminal: nextStatuses(to).length === 0,
   };
@@ -793,13 +825,14 @@ export async function previewBulkStatusChange(
 export async function bulkChangeOrderStatus(
   ids: string[],
   input: ChangeStatusInput,
+  branchId?: string,
 ): Promise<BulkStatusResult> {
   const succeeded: string[] = [];
   const skipped: { id: string; reason: string }[] = [];
 
   for (const id of ids) {
     try {
-      await changeOrderStatus(id, input);
+      await changeOrderStatus(id, input, branchId);
       succeeded.push(id);
     } catch (caught) {
       skipped.push({
@@ -822,13 +855,21 @@ export async function bulkChangeOrderStatus(
  * itself the record of "who said what, and when", so a separate audit entry
  * describing the same fact would be a second, redundant copy of it.
  */
-export async function addOrderNote(id: string, body: string, actorId: string) {
-  const exists = await prisma.order.findUnique({ where: { id }, select: { id: true } });
+export async function addOrderNote(
+  id: string,
+  body: string,
+  actorId: string,
+  branchId?: string,
+) {
+  const exists = await prisma.order.findFirst({
+    where: { id, ...(branchId ? { branchId } : {}) },
+    select: { id: true },
+  });
   if (!exists) throw AppError.notFound('Order not found');
 
   await prisma.orderNote.create({ data: { orderId: id, body, authorId: actorId } });
 
-  return getOrder(id);
+  return getOrder(id, branchId);
 }
 
 /**
@@ -935,5 +976,5 @@ export async function refundOrder(
     },
   });
 
-  return getOrder(orderId);
+  return getOrder(orderId, req.branchId ?? undefined);
 }

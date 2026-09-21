@@ -100,12 +100,17 @@ export async function search(
     canSee('products')
       ? prisma.product.findMany({
           where: {
-            OR: [
-              { name: { contains: q } },
-              { sku: { contains: q } },
-              ...(locale === 'ar'
-                ? [{ translations: { some: { locale: 'ar', name: { contains: q } } } }]
-                : []),
+            AND: [
+              ...(branchId ? [{ branchStock: { some: { branchId } } }] : []),
+              {
+                OR: [
+                  { name: { contains: q } },
+                  { sku: { contains: q } },
+                  ...(locale === 'ar'
+                    ? [{ translations: { some: { locale: 'ar', name: { contains: q } } } }]
+                    : []),
+                ],
+              },
             ],
           },
           select: { id: true, name: true, sku: true },

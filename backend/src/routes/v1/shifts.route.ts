@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea, requireDeveloperVisible } from '../../middleware/authorize.js';
-import { withBranchContext } from '../../middleware/branch-context.js';
+import { effectiveRole, withBranchContext } from '../../middleware/branch-context.js';
+import { withBranchTimezone } from '../../middleware/branch-timezone.js';
 import { audit } from '../../services/audit.service.js';
 import { prisma } from '../../db/prisma.js';
 import { ShiftApprovalStatus, TillEventType } from '@prisma/client';
@@ -42,11 +43,21 @@ import { canAccessAreaResolved } from '../../services/role-permissions.service.j
 export const shiftsRouter = Router();
 const developerShiftGuard = requireDeveloperVisible('shifts');
 
+async function requireShiftInBranch(shiftId: string, branchId?: string) {
+  const shift = await prisma.shift.findFirst({
+    where: { id: shiftId, ...(branchId ? { branchId } : {}) },
+    select: { id: true, userId: true },
+  });
+
+  if (!shift) throw AppError.notFound('Shift not found');
+  return shift;
+}
+
 /** GET /api/v1/shifts/me — my open shift, or null. Drives the shell control. */
-shiftsRouter.get('/shifts/me', authenticate, developerShiftGuard, async (req, res) => {
+shiftsRouter.get('/shifts/me', authenticate, developerShiftGuard, withBranchContext, async (req, res) => {
   const user = requireUser(req);
 
-  res.status(200).json({ data: { shift: await getOpenShift(user.id) } });
+  res.status(200).json({ data: { shift: await getOpenShift(user.id, req.branchId ?? undefined) } });
 });
 
 /** Money always crosses this boundary as a string — a float cannot hold 0.10
@@ -74,16 +85,16 @@ shiftsRouter.post('/shifts', authenticate, developerShiftGuard, withBranchContex
 
   const user = requireUser(req);
 
+  if (parsed.data.branchId && req.branchId && parsed.data.branchId !== req.branchId) {
+    throw AppError.notFound('Branch context is unavailable');
+  }
+
   const shift = await startShift(
-    { id: user.id, role: user.role },
+    { id: user.id, role: effectiveRole(req) },
     {
       // Falls back to the active branch from the switcher before the service's
       // own default — the shift belongs where the person is actually working.
-      branchId: parsed.data.branchId ?? req.branchId ?? undefined,
-      // Distinguishes "the cashier picked this branch" from "the client sent
-      // its usual X-Branch-Id header". Only a body-named branch is treated as
-      // a deliberate choice and roster-checked — see `startShift`'s own note.
-      branchChosenByClient: parsed.data.branchId !== undefined,
+      branchId: req.branchId ?? parsed.data.branchId ?? undefined,
       forUserId: parsed.data.forUserId,
       note: parsed.data.note,
       openingFloat: parsed.data.openingFloat,
@@ -106,7 +117,7 @@ shiftsRouter.post('/shifts', authenticate, developerShiftGuard, withBranchContex
 
 const endSchema = z.object({ note: z.string().trim().max(255).optional() });
 
-shiftsRouter.post('/shifts/:id/end', authenticate, developerShiftGuard, async (req, res) => {
+shiftsRouter.post('/shifts/:id/end', authenticate, developerShiftGuard, withBranchContext, async (req, res) => {
   const parsed = endSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -114,7 +125,8 @@ shiftsRouter.post('/shifts/:id/end', authenticate, developerShiftGuard, async (r
   }
 
   const user = requireUser(req);
-  const shift = await endShift({ id: user.id, role: user.role }, String(req.params.id), parsed.data.note);
+  await requireShiftInBranch(String(req.params.id), req.branchId ?? undefined);
+  const shift = await endShift({ id: user.id, role: effectiveRole(req) }, String(req.params.id), parsed.data.note);
 
   audit(req, {
     action: 'shift.ended',
@@ -147,7 +159,7 @@ const editSchema = z.object({
  * working a shift. The service refuses editing your OWN shift regardless of
  * rank — the person who benefits must not be the person who approves.
  */
-shiftsRouter.patch('/shifts/:id', authenticate, developerShiftGuard, requireArea('staff'), async (req, res) => {
+shiftsRouter.patch('/shifts/:id', authenticate, developerShiftGuard, withBranchContext, requireArea('staff'), async (req, res) => {
   const parsed = editSchema.safeParse(req.body);
 
   if (!parsed.success) {
@@ -155,7 +167,8 @@ shiftsRouter.patch('/shifts/:id', authenticate, developerShiftGuard, requireArea
   }
 
   const user = requireUser(req);
-  const shift = await editShift({ id: user.id, role: user.role }, String(req.params.id), parsed.data);
+  await requireShiftInBranch(String(req.params.id), req.branchId ?? undefined);
+  const shift = await editShift({ id: user.id, role: effectiveRole(req) }, String(req.params.id), parsed.data);
 
   audit(req, {
     action: 'shift.edited',
@@ -180,9 +193,10 @@ shiftsRouter.patch('/shifts/:id', authenticate, developerShiftGuard, requireArea
  * already started and the till already worked — see `approveShift`'s own
  * doc comment for why this is deliberately not a block.
  */
-shiftsRouter.post('/shifts/:id/approve', authenticate, developerShiftGuard, requireArea('shifts'), async (req, res) => {
+shiftsRouter.post('/shifts/:id/approve', authenticate, developerShiftGuard, withBranchContext, requireArea('shifts'), async (req, res) => {
   const user = requireUser(req);
-  const shift = await approveShift({ id: user.id, role: user.role }, String(req.params.id));
+  await requireShiftInBranch(String(req.params.id), req.branchId ?? undefined);
+  const shift = await approveShift({ id: user.id, role: effectiveRole(req) }, String(req.params.id));
 
   audit(req, {
     action: 'shift.approved',
@@ -202,7 +216,7 @@ const rejectSchema = z.object({
 });
 
 /** POST /api/v1/shifts/:id/reject — same shape as approve, opposite outcome. */
-shiftsRouter.post('/shifts/:id/reject', authenticate, developerShiftGuard, requireArea('shifts'), async (req, res) => {
+shiftsRouter.post('/shifts/:id/reject', authenticate, developerShiftGuard, withBranchContext, requireArea('shifts'), async (req, res) => {
   const parsed = rejectSchema.safeParse(req.body);
 
   if (!parsed.success) {
@@ -210,8 +224,9 @@ shiftsRouter.post('/shifts/:id/reject', authenticate, developerShiftGuard, requi
   }
 
   const user = requireUser(req);
+  await requireShiftInBranch(String(req.params.id), req.branchId ?? undefined);
   const shift = await rejectShift(
-    { id: user.id, role: user.role },
+    { id: user.id, role: effectiveRole(req) },
     String(req.params.id),
     parsed.data.note,
   );
@@ -247,11 +262,11 @@ const listQuery = z.object({
   open: z.enum(['true', 'false']).optional(),
   /** A manager's pending-approval queue (O9.19). */
   approvalStatus: z.nativeEnum(ShiftApprovalStatus).optional(),
-  from: z.string().trim().min(1).optional(),
-  to: z.string().trim().min(1).optional(),
+  from: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
-shiftsRouter.get('/shifts', authenticate, developerShiftGuard, withBranchContext, requireArea('shifts'), async (req, res) => {
+shiftsRouter.get('/shifts', authenticate, developerShiftGuard, withBranchContext, withBranchTimezone, requireArea('shifts'), async (req, res) => {
   // Parsed rather than cast: an Express query value can arrive as an array or
   // a nested object (`?userId[x]=1`), and `String()` on one of those yields
   // "[object Object]" — a filter that silently matches nothing.
@@ -265,6 +280,7 @@ shiftsRouter.get('/shifts', authenticate, developerShiftGuard, withBranchContext
     ...parsed.data,
     // Scoped to the active branch by default, like every other list (F8.3).
     branchId: req.branchId ?? undefined,
+    timezone: req.branchTimezone ?? 'UTC',
     openOnly: parsed.data.open === 'true',
   });
 
@@ -284,11 +300,12 @@ shiftsRouter.get('/shifts', authenticate, developerShiftGuard, withBranchContext
  * question about the CALLER, and the service is also reachable from places
  * where there is no request to authorise.
  */
-shiftsRouter.get('/shifts/:id/summary', authenticate, developerShiftGuard, async (req, res) => {
+shiftsRouter.get('/shifts/:id/summary', authenticate, developerShiftGuard, withBranchContext, async (req, res) => {
   const user = requireUser(req);
+  await requireShiftInBranch(String(req.params.id), req.branchId ?? undefined);
   const summary = await getShiftSummary(String(req.params.id));
 
-  if (summary.shift.user.id !== user.id && !(await canAccessAreaResolved(user.role, 'staff'))) {
+  if (summary.shift.user.id !== user.id && !(await canAccessAreaResolved(effectiveRole(req), 'staff'))) {
     throw AppError.forbidden("You cannot view someone else's shift");
   }
 
@@ -301,20 +318,15 @@ shiftsRouter.get('/shifts/:id/summary', authenticate, developerShiftGuard, async
 
 /** What this shift has taken so far, by method. Readable mid-shift, so a
  *  cashier can check the drawer without ending their session. */
-shiftsRouter.get('/shifts/:id/takings', authenticate, developerShiftGuard, async (req, res) => {
+shiftsRouter.get('/shifts/:id/takings', authenticate, developerShiftGuard, withBranchContext, async (req, res) => {
   const user = requireUser(req);
   const shiftId = String(req.params.id);
 
-  const shift = await prisma.shift.findUnique({
-    where: { id: shiftId },
-    select: { userId: true },
-  });
-
-  if (!shift) throw AppError.notFound('Shift not found');
+  const shift = await requireShiftInBranch(shiftId, req.branchId ?? undefined);
 
   // Same rule as the summary: your own is always readable, somebody else's
   // needs `staff`. What a till took is money data about a named person.
-  if (shift.userId !== user.id && !(await canAccessAreaResolved(user.role, 'staff'))) {
+  if (shift.userId !== user.id && !(await canAccessAreaResolved(effectiveRole(req), 'staff'))) {
     throw AppError.forbidden("You cannot view someone else's till");
   }
 
@@ -338,19 +350,14 @@ const tillEventBody = z
  * reads, a manager cannot record an event for somebody else's drawer, since
  * the event is a claim about what THAT cashier did with THAT cash.
  */
-shiftsRouter.post('/shifts/:id/events', authenticate, developerShiftGuard, async (req, res) => {
+shiftsRouter.post('/shifts/:id/events', authenticate, developerShiftGuard, withBranchContext, async (req, res) => {
   const parsed = tillEventBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
 
   const user = requireUser(req);
   const shiftId = String(req.params.id);
 
-  const shift = await prisma.shift.findUnique({
-    where: { id: shiftId },
-    select: { userId: true },
-  });
-
-  if (!shift) throw AppError.notFound('Shift not found');
+  const shift = await requireShiftInBranch(shiftId, req.branchId ?? undefined);
   if (shift.userId !== user.id) {
     throw AppError.forbidden('You can only log an event on your own shift');
   }
@@ -364,18 +371,13 @@ shiftsRouter.post('/shifts/:id/events', authenticate, developerShiftGuard, async
 
 /** Same ownership rule as `/takings` — your own is always readable,
  *  somebody else's needs `staff`. */
-shiftsRouter.get('/shifts/:id/events', authenticate, developerShiftGuard, async (req, res) => {
+shiftsRouter.get('/shifts/:id/events', authenticate, developerShiftGuard, withBranchContext, async (req, res) => {
   const user = requireUser(req);
   const shiftId = String(req.params.id);
 
-  const shift = await prisma.shift.findUnique({
-    where: { id: shiftId },
-    select: { userId: true },
-  });
+  const shift = await requireShiftInBranch(shiftId, req.branchId ?? undefined);
 
-  if (!shift) throw AppError.notFound('Shift not found');
-
-  if (shift.userId !== user.id && !(await canAccessAreaResolved(user.role, 'staff'))) {
+  if (shift.userId !== user.id && !(await canAccessAreaResolved(effectiveRole(req), 'staff'))) {
     throw AppError.forbidden("You cannot view someone else's till events");
   }
 
@@ -388,18 +390,13 @@ shiftsRouter.get('/shifts/:id/events', authenticate, developerShiftGuard, async 
  * decide which, the caller does by asking before or after `close-till`.
  * Same ownership rule as `/takings` and `/events`.
  */
-shiftsRouter.get('/shifts/:id/report', authenticate, developerShiftGuard, async (req, res) => {
+shiftsRouter.get('/shifts/:id/report', authenticate, developerShiftGuard, withBranchContext, async (req, res) => {
   const user = requireUser(req);
   const shiftId = String(req.params.id);
 
-  const shift = await prisma.shift.findUnique({
-    where: { id: shiftId },
-    select: { userId: true },
-  });
+  const shift = await requireShiftInBranch(shiftId, req.branchId ?? undefined);
 
-  if (!shift) throw AppError.notFound('Shift not found');
-
-  if (shift.userId !== user.id && !(await canAccessAreaResolved(user.role, 'staff'))) {
+  if (shift.userId !== user.id && !(await canAccessAreaResolved(effectiveRole(req), 'staff'))) {
     throw AppError.forbidden("You cannot view someone else's till report");
   }
 
@@ -421,15 +418,16 @@ const closeTillSchema = z.object({
  * a shift ended without a count, are both states somebody has to chase later.
  * The plain `POST /shifts/:id/end` still exists for a shift with no till.
  */
-shiftsRouter.post('/shifts/:id/close-till', authenticate, developerShiftGuard, async (req, res) => {
+shiftsRouter.post('/shifts/:id/close-till', authenticate, developerShiftGuard, withBranchContext, async (req, res) => {
   const parsed = closeTillSchema.safeParse(req.body);
 
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
 
   const user = requireUser(req);
+  await requireShiftInBranch(String(req.params.id), req.branchId ?? undefined);
 
   const result = await closeTill(
-    { id: user.id, role: user.role },
+    { id: user.id, role: effectiveRole(req) },
     String(req.params.id),
     parsed.data.closingCount,
     parsed.data.note,

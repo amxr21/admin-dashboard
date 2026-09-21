@@ -3,13 +3,13 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 
 import { AppError } from '../../errors/AppError.js';
-import { authenticateStorefrontApiKey } from '../../middleware/authenticate.js';
-import { requireArea } from '../../middleware/authorize.js';
 import {
   authenticateCustomer,
   optionalCustomer,
   requireCustomer,
 } from '../../middleware/authenticateCustomer.js';
+import { authenticateStorefrontApiKey } from '../../middleware/authenticate.js';
+import { requireArea } from '../../middleware/authorize.js';
 import { loginWithGoogle } from '../../services/customer-auth.service.js';
 import {
   addToCart,
@@ -20,6 +20,7 @@ import {
   getPublicProductBySlug,
   getStorefrontConfig,
   getWishlist,
+  listPublicBranches,
   listPublicCategories,
   listPublicDiscounts,
   listPublicProducts,
@@ -33,13 +34,13 @@ import { productLocaleFromHeader } from '../../services/product-content.service.
 /**
  * The storefront integration API, mounted at /api/v1/public.
  *
- * ─── TWO INDEPENDENT CREDENTIALS ──────────────────────────────────────
- * A generated integration key in `X-API-Key` is mandatory for every route.
- * The shopper remains optional for public browsing and guest checkout. Routes
- * that need a shopper additionally use `authenticateCustomer`, which reads the
- * separate `Authorization` header.
+ * ─── TWO CREDENTIALS, TWO HEADERS ─────────────────────────────────────
+ * Every request requires a generated integration key in `X-API-Key`. Routes
+ * for a signed-in shopper additionally accept the customer's JWT in the
+ * ordinary Authorization header. This keeps the integration secret on the
+ * storefront server and prevents a customer token from impersonating staff.
  *
- * Routes that DO need a shopper use `authenticateCustomer`, which sets
+ * Routes that need a shopper use `authenticateCustomer`, which sets
  * `req.customer` and never `req.user`. Since every admin guard (`requireArea`,
  * `assertCanWrite`, the audit trail) reads `req.user`, a customer token cannot
  * satisfy one by construction rather than by a rule someone has to remember.
@@ -51,8 +52,9 @@ import { productLocaleFromHeader } from '../../services/product-content.service.
  */
 export const publicRouter = Router();
 
-// A storefront key identifies the calling integration. Customer JWTs remain
-// separate in Authorization, so customer-owned routes require both identities.
+// Every storefront call is made by an approved integration. Shopper identity
+// remains a separate Bearer token on customer-specific routes; the generated
+// integration credential is always sent as `X-API-Key`.
 publicRouter.use('/public', authenticateStorefrontApiKey);
 
 /**
@@ -102,15 +104,35 @@ publicRouter.get('/public/config', async (_req, res) => {
 
 // ─── Catalogue (no auth) ────────────────────────────────────────────
 
+const catalogueQuery = z.object({ branchId: z.string().trim().min(1).max(64) });
+
+publicRouter.get('/public/branches', async (_req, res) => {
+  res.json({ data: await listPublicBranches() });
+});
+
 publicRouter.get('/public/products', requireArea('products'), async (req, res) => {
+  const query = catalogueQuery.safeParse(req.query);
+  if (!query.success) throw AppError.badRequest('Choose a store branch', { field: 'branchId' });
+
   res.json({
-    data: await listPublicProducts(productLocaleFromHeader(req.get('accept-language'))),
+    data: await listPublicProducts(
+      query.data.branchId,
+      productLocaleFromHeader(req.get('accept-language')),
+    ),
   });
 });
 
 // Static path BEFORE the :slug route, or "/menu" is captured as a slug.
 publicRouter.get('/public/products/menu', requireArea('products'), async (req, res) => {
-  res.json({ data: await getPublicMenu(productLocaleFromHeader(req.get('accept-language'))) });
+  const query = catalogueQuery.safeParse(req.query);
+  if (!query.success) throw AppError.badRequest('Choose a store branch', { field: 'branchId' });
+
+  res.json({
+    data: await getPublicMenu(
+      query.data.branchId,
+      productLocaleFromHeader(req.get('accept-language')),
+    ),
+  });
 });
 
 // Lowercase letters, digits and hyphens — matches how slugs are generated and
@@ -124,10 +146,13 @@ const slugParam = z
 publicRouter.get('/public/products/:slug', requireArea('products'), async (req, res) => {
   const slug = slugParam.safeParse(req.params.slug);
   if (!slug.success) throw AppError.notFound('Product not found');
+  const query = catalogueQuery.safeParse(req.query);
+  if (!query.success) throw AppError.badRequest('Choose a store branch', { field: 'branchId' });
 
   res.json({
     data: await getPublicProductBySlug(
       slug.data,
+      query.data.branchId,
       productLocaleFromHeader(req.get('accept-language')),
     ),
   });
@@ -201,14 +226,9 @@ const setQuantityBody = z
   })
   .strict();
 
-publicRouter.get(
-  '/public/cart',
-  requireArea('products'),
-  authenticateCustomer,
-  async (req, res) => {
-    res.json({ data: await getCart(requireCustomer(req).id) });
-  },
-);
+publicRouter.get('/public/cart', requireArea('products'), authenticateCustomer, async (req, res) => {
+  res.json({ data: await getCart(requireCustomer(req).id) });
+});
 
 publicRouter.post('/public/cart', requireArea('products'), authenticateCustomer, async (req, res) => {
   const parsed = addToCartBody.safeParse(req.body);
@@ -258,6 +278,7 @@ publicRouter.post('/public/wishlist', requireArea('products'), authenticateCusto
 
 const checkoutBody = z
   .object({
+    branchId: z.string().trim().min(1).max(64),
     items: z
       .array(
         z
@@ -305,34 +326,28 @@ const checkoutBody = z
     path: ['contact', 'address'],
   });
 
-publicRouter.post(
-  '/public/orders',
-  requireArea('orders'),
-  checkoutRateLimit,
-  optionalCustomer,
-  async (req, res) => {
-    const parsed = checkoutBody.safeParse(req.body);
-    if (!parsed.success) {
-      throw AppError.badRequest(
-        parsed.error.issues[0]?.message ?? 'Please check your order details',
-      );
-    }
+publicRouter.post('/public/orders', requireArea('orders'), checkoutRateLimit, optionalCustomer, async (req, res) => {
+  const parsed = checkoutBody.safeParse(req.body);
+  if (!parsed.success) {
+    throw AppError.badRequest(
+      parsed.error.issues[0]?.message ?? 'Please check your order details',
+    );
+  }
 
   // The customer comes from the verified token or is null (guest) — never from
   // the request body.
-    const result = await checkout(parsed.data, req.customer?.id ?? null);
+  const result = await checkout(parsed.data, req.customer?.id ?? null);
 
   // Identifiers only. The contact block holds a name, phone and address, and
   // logging request bodies is how PII ends up in log aggregation forever.
-    req.log.info({
-      event: 'storefront.order.created',
-      orderNumber: result.orderNumber,
-      customerId: req.customer?.id ?? null,
-    });
+  req.log.info({
+    event: 'storefront.order.created',
+    orderNumber: result.orderNumber,
+    customerId: req.customer?.id ?? null,
+  });
 
-    res.status(201).json({ data: result });
-  },
-);
+  res.status(201).json({ data: result });
+});
 
 // ─── Orders (history + tracking) ────────────────────────────────────
 
