@@ -101,6 +101,13 @@ beforeAll(async () => {
   productNoCost = noCost.id;
   productNoReviews = unreviewed.id;
   productIds.push(withCost.id, noCost.id, unreviewed.id);
+  await prisma.branchStock.createMany({
+    data: [
+      { productId: withCost.id, branchId, quantity: 100 },
+      { productId: noCost.id, branchId, quantity: 100 },
+      { productId: unreviewed.id, branchId, quantity: 5 },
+    ],
+  });
 
   // customerA: first order (new), then a second order (returning), same window.
   const orderA1 = await prisma.order.create({
@@ -185,6 +192,7 @@ beforeAll(async () => {
   });
   courierId = courier.id;
   courierIds.push(courier.id);
+  await prisma.deliveryStaffBranch.create({ data: { courierId: courier.id, branchId } });
 
   const assignment = await prisma.deliveryAssignment.create({
     data: {
