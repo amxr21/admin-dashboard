@@ -182,20 +182,21 @@ describe('branch-owned order operations', () => {
     const inside = await makeOrder(branchA, OrderStatus.PENDING);
     const outside = await makeOrder(branchA, OrderStatus.PENDING);
 
+    const timezonePrefix = `tz${Date.now().toString(36)}`;
     await Promise.all([
       prisma.order.update({
         where: { id: inside.id },
-        data: { orderNumber: `${RUN}-tz-inside`, placedAt: new Date('2026-09-19T21:00:00Z') },
+        data: { orderNumber: `${timezonePrefix}-in`, placedAt: new Date('2026-09-19T21:00:00Z') },
       }),
       prisma.order.update({
         where: { id: outside.id },
-        data: { orderNumber: `${RUN}-tz-outside`, placedAt: new Date('2026-09-20T20:30:00Z') },
+        data: { orderNumber: `${timezonePrefix}-out`, placedAt: new Date('2026-09-20T20:30:00Z') },
       }),
     ]);
 
     const response = await request(app)
       .get('/api/v1/orders')
-      .query({ from: '2026-09-20', to: '2026-09-20', search: `${RUN}-tz-` })
+      .query({ from: '2026-09-20', to: '2026-09-20', search: timezonePrefix })
       .set(auth(branchA));
 
     expect(response.status).toBe(200);

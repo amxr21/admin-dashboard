@@ -327,7 +327,8 @@ describe('who may use the till', () => {
   });
 
   it('lets SUPPORT scan, since SUPPORT holds `orders`', async () => {
-    await makeProduct({ barcode: `${RUN}-3330001112223` });
+    const product = await makeProduct({ barcode: `${RUN}-3330001112223` });
+    await prisma.branchStock.create({ data: { productId: product.id, branchId, quantity: 1 } });
 
     const res = await scan(`${RUN}-3330001112223`, supportToken, branchId);
 
@@ -1271,9 +1272,6 @@ describe('discounts at the till (O9 Tier 3)', () => {
   it('approves a discount above the cap with a real manager override token', async () => {
     await withCap(10, async () => {
       const manager = await makeUser(StaffRole.MANAGER, 'discount-manager');
-      await prisma.userBranch.create({
-        data: { userId: manager.id, branchId, role: StaffRole.MANAGER },
-      });
       const approval = await verifyManagerOverride(
         manager.email,
         'correct-horse-battery-staple',
@@ -1480,12 +1478,6 @@ describe('voiding a sale at the till (O9 Tier 3)', () => {
   it('approves once a real manager override token verifies', async () => {
     const cashier = await makeUser(StaffRole.CASHIER, 'void-cashier-2');
     const manager = await makeUser(StaffRole.MANAGER, 'void-manager-1');
-    await prisma.userBranch.createMany({
-      data: [
-        { userId: cashier.id, branchId, role: StaffRole.CASHIER },
-        { userId: manager.id, branchId, role: StaffRole.MANAGER },
-      ],
-    });
     const approval = await verifyManagerOverride(
       manager.email,
       'correct-horse-battery-staple',
@@ -1950,7 +1942,7 @@ describe('exchange (O9.8)', () => {
     const original = await makeProduct({ sku: `${RUN}-EXCH-FOREIGN`, price: '10.00', stock: 5 });
     const foreignOrder = await prisma.order.create({
       data: {
-        orderNumber: `${RUN}-foreign-exchange`,
+        orderNumber: `ex${Date.now().toString(36)}-foreign`,
         branchId: otherBranchId,
         status: 'RETURNED',
         total: new Prisma.Decimal('10.00'),

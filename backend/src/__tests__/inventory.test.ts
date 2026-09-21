@@ -567,7 +567,7 @@ describe('the low-stock view', () => {
     });
 
     const res = await request(app)
-      .get(`/api/v1/inventory?lowStock=true&pageSize=1&search=${RUN}`)
+      .get(`/api/v1/inventory?lowStock=true&pageSize=100&search=${RUN}`)
       .set(auth(ownerToken))
       .set('X-Branch-Id', branchId);
     const body = (res.body as ListBody).data;

@@ -727,6 +727,7 @@ describe('money and history are read, never recomputed', () => {
         subtotal: new Prisma.Decimal('59.98'),
         taxAmount: new Prisma.Decimal('3.00'),
         customerId,
+        branchId,
         items: {
           create: [{ productId, quantity: 2, price: new Prisma.Decimal('29.99') }],
         },
@@ -1006,6 +1007,7 @@ describe('prev/next neighbors (C5.1)', () => {
         status: OrderStatus.PENDING,
         total: new Prisma.Decimal('10.00'),
         customerId,
+        branchId,
         placedAt: new Date('2020-01-01T00:00:00.000Z'),
       },
     });
@@ -1015,6 +1017,7 @@ describe('prev/next neighbors (C5.1)', () => {
         status: OrderStatus.PENDING,
         total: new Prisma.Decimal('10.00'),
         customerId,
+        branchId,
         placedAt: new Date('2020-02-01T00:00:00.000Z'),
       },
     });
@@ -1024,6 +1027,7 @@ describe('prev/next neighbors (C5.1)', () => {
         status: OrderStatus.PENDING,
         total: new Prisma.Decimal('10.00'),
         customerId,
+        branchId,
         placedAt: new Date('2020-03-01T00:00:00.000Z'),
       },
     });
@@ -1049,6 +1053,7 @@ describe('prev/next neighbors (C5.1)', () => {
         status: OrderStatus.PENDING,
         total: new Prisma.Decimal('10.00'),
         customerId,
+        branchId,
       },
     });
     orderIds.push(only.id);
@@ -1071,6 +1076,7 @@ describe('prev/next neighbors (C5.1)', () => {
         status: OrderStatus.PENDING,
         total: new Prisma.Decimal('10.00'),
         customerId,
+        branchId,
         placedAt: new Date('2020-01-01T00:00:00.000Z'),
       },
     });
@@ -1080,6 +1086,7 @@ describe('prev/next neighbors (C5.1)', () => {
         status: OrderStatus.SHIPPED,
         total: new Prisma.Decimal('10.00'),
         customerId,
+        branchId,
         placedAt: new Date('2020-02-01T00:00:00.000Z'),
       },
     });

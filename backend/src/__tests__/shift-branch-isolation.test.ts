@@ -66,7 +66,7 @@ beforeAll(async () => {
 
   const [cashierShift, workerShift] = await Promise.all([
     prisma.shift.create({
-      data: { userId: cashierId, branchId: branchBId, openedById: cashierId, openingFloat: '20.00' },
+      data: { userId: cashierId, branchId: branchBId, openedById: cashierId, openingFloat: '20.00', startedAt: new Date('2026-09-19T08:00:00Z') },
     }),
     prisma.shift.create({
       data: {

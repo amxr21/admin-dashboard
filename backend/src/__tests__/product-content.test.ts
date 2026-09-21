@@ -20,8 +20,6 @@ let branchId = '';
 let ownerToken = '';
 let supportToken = '';
 let storefrontKey = '';
-let businessId = '';
-let branchId = '';
 
 interface ContentResponseBody {
   data: {
