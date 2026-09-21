@@ -180,6 +180,7 @@ describe('the audit trail', () => {
     // A minimal fake request — the service only reads user, log and requestId.
     const fakeReq = {
       user: { id: ownerId, email: 'x@example.test', role: StaffRole.OWNER },
+      branchId,
       requestId: 'test-request',
       log: { error: () => undefined },
     } as never;
@@ -228,6 +229,7 @@ describe('the audit trail', () => {
         action: 'test.date-range',
         entity: 'audit-test-entity',
         actorId: ownerId,
+        branchId,
         createdAt: new Date('2020-01-15T12:00:00.000Z'),
       },
     });
@@ -370,6 +372,7 @@ describe('audit cursor pagination', () => {
           entity: ENTITY,
           entityId: String(i),
           actorId: ownerId,
+          branchId,
           // Distinct, ordered timestamps — id breaks any remaining tie.
           createdAt: new Date(Date.UTC(2021, 0, 1, 0, 0, i)),
         },
@@ -434,6 +437,7 @@ describe('audit cursor pagination', () => {
         action: 'test.cursor.intruder',
         entity: ENTITY,
         actorId: ownerId,
+        branchId,
         createdAt: new Date(Date.UTC(2021, 0, 2)),
       },
     });
