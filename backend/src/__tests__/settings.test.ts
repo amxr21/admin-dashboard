@@ -52,7 +52,7 @@ async function makeUser(role: StaffRole) {
     },
   });
   userIds.push(user.id);
-  return signToken(user);
+  return { id: user.id, token: signToken(user) };
 }
 
 function auth(token: string) {
@@ -72,13 +72,15 @@ beforeAll(async () => {
   const branch = await prisma.branch.create({ data: { businessId: business.id, name: `${RUN} branch` } });
   businessId = business.id;
   branchId = branch.id;
-  [ownerToken, supportToken] = await Promise.all([
+  const [owner, support] = await Promise.all([
     makeUser(StaffRole.OWNER),
     // SUPPORT does not have the `settings` area.
     makeUser(StaffRole.SUPPORT),
   ]);
+  ownerToken = owner.token;
+  supportToken = support.token;
   await prisma.userBranch.create({
-    data: { userId: userIds[1]!, branchId, role: StaffRole.SUPPORT },
+    data: { userId: support.id, branchId, role: StaffRole.SUPPORT },
   });
 });
 
