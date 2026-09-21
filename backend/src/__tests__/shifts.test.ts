@@ -69,7 +69,11 @@ function authOnly(token: string) {
   return { Authorization: `Bearer ${token}` } as const;
 }
 
-async function makeUser(role: StaffRole, label: string, assignToPrimaryBranch = true) {
+function authAt(token: string, activeBranchId: string) {
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': activeBranchId } as const;
+}
+
+async function makeUser(role: StaffRole, label: string, assignBranchId: string | null = branchId || null) {
   const user = await prisma.user.create({
     data: {
       email: `${RUN}-${label}@example.test`,
@@ -79,9 +83,10 @@ async function makeUser(role: StaffRole, label: string, assignToPrimaryBranch = 
     },
   });
   userIds.push(user.id);
-  if (branchId && assignToPrimaryBranch && role !== StaffRole.OWNER && role !== StaffRole.DEVELOPER) {
-    await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
+  if (assignBranchId && role !== StaffRole.OWNER && role !== StaffRole.DEVELOPER) {
+    await prisma.userBranch.create({ data: { userId: user.id, branchId: assignBranchId, role } });
   }
+
   return user;
 }
 
@@ -250,11 +255,8 @@ describe('starting a shift with no branch header, in a multi-business install', 
       .toBe('BRANCH_REQUIRED_MULTIPLE_BUSINESSES');
   });
 
-  it('a branch-scoped role assigned to exactly one branch still sends its active branch', async () => {
-    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-one-branch', false);
-    await prisma.userBranch.create({
-      data: { userId: cashier.id, branchId: otherBranchId, role: StaffRole.CASHIER },
-    });
+  it('a branch-scoped role must still send its active branch', async () => {
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-one-branch', otherBranchId);
 
     const missing = await request(app)
       .post('/api/v1/shifts')
@@ -265,7 +267,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
 
     const res = await request(app)
       .post('/api/v1/shifts')
-      .set({ Authorization: `Bearer ${signToken(cashier)}`, 'X-Branch-Id': otherBranchId })
+      .set(authAt(signToken(cashier), otherBranchId))
       .send({});
 
     expect(res.status).toBe(201);
@@ -273,7 +275,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
   });
 
   it('a branch-scoped role assigned to more than one branch must pick', async () => {
-    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-two-branches', false);
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-two-branches', null);
     await prisma.userBranch.createMany({
       data: [
         { userId: cashier.id, branchId, role: StaffRole.CASHIER },
@@ -286,10 +288,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
       .set(authOnly(signToken(cashier)))
       .send({});
 
-    expect(res.status).toBe(400);
-    expect((res.body as { error: { message: string } }).error.message).toMatch(/more than one/);
-    expect((res.body as { error: { details: { reason: string } } }).error.details.reason)
-      .toBe('BRANCH_REQUIRED_MULTIPLE_ASSIGNMENTS');
+    expect(res.status).toBe(404);
   });
 
   it('an ambiguous cashier CAN start once they name one of their own branches', async () => {
@@ -297,7 +296,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
     // choose a branch; before this, `startShift` had no `branchId` field to
     // send and the till rendered no picker, so the instruction could not be
     // followed and a two-branch cashier simply could not clock on.
-    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-picks-branch', false);
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-picks-branch', null);
     await prisma.userBranch.createMany({
       data: [
         { userId: cashier.id, branchId, role: StaffRole.CASHIER },
@@ -307,7 +306,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
 
     const res = await request(app)
       .post('/api/v1/shifts')
-      .set({ Authorization: `Bearer ${signToken(cashier)}`, 'X-Branch-Id': otherBranchId })
+      .set(authAt(signToken(cashier), otherBranchId))
       .send({ branchId: otherBranchId });
 
     expect(res.status).toBe(201);
@@ -321,23 +320,21 @@ describe('starting a shift with no branch header, in a multi-business install', 
     // Without this check that same field would let a cashier attribute their
     // shift — and its cash — to a shop they have no business working at,
     // reintroducing the exact misattribution the refusal exists to prevent.
-    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-wrong-branch', false);
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-wrong-branch', null);
     await prisma.userBranch.create({
       data: { userId: cashier.id, branchId, role: StaffRole.CASHIER },
     });
 
     const res = await request(app)
       .post('/api/v1/shifts')
-      .set({ Authorization: `Bearer ${signToken(cashier)}`, 'X-Branch-Id': otherBranchId })
+      .set(authAt(signToken(cashier), otherBranchId))
       .send({ branchId: otherBranchId });
 
-    expect(res.status).toBe(403);
-    expect((res.body as { error: { details: { reason: string } } }).error.details.reason)
-      .toBe('BRANCH_NOT_ASSIGNED');
+    expect(res.status).toBe(404);
   });
 
-  it('a branch-scoped role with no roster row still gets the ambiguity error', async () => {
-    const unassigned = await makeUser(StaffRole.CASHIER, 'cashier-unassigned', false);
+  it('a branch-scoped role with no roster row fails closed', async () => {
+    const unassigned = await makeUser(StaffRole.CASHIER, 'cashier-unassigned', null);
 
     const res = await request(app)
       .post('/api/v1/shifts')
@@ -349,7 +346,7 @@ describe('starting a shift with no branch header, in a multi-business install', 
   });
 
   afterAll(async () => {
-    await prisma.userBranch.deleteMany({ where: { branchId: { in: [branchId, otherBranchId] } } });
+    await prisma.userBranch.deleteMany({ where: { branchId: otherBranchId } });
     await prisma.branch.deleteMany({ where: { businessId: secondBusinessId } });
     await prisma.business.delete({ where: { id: secondBusinessId } });
     businessIds.splice(businessIds.indexOf(secondBusinessId), 1);

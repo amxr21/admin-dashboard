@@ -1123,8 +1123,10 @@ describe('browsing the grid (O9.10)', () => {
     // The owner confirmed the cashier's job is scanning and counting only —
     // this endpoint has to be part of that job, gated the same way scan is.
     const product = await makeProduct({ name: `${RUN} Cashier Grid Access` });
+    await prisma.branchStock.create({ data: { productId: product.id, branchId, quantity: 1 } });
 
-    const res = await browse({ q: `${RUN} Cashier Grid Access` }, supportToken, branchId);
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-grid');
+    const res = await browse({ q: `${RUN} Cashier Grid Access` }, signToken(cashier), branchId);
 
     expect(res.status).toBe(200);
     const body = res.body as { data: { products: { id: string }[] } };

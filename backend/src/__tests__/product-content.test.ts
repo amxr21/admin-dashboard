@@ -67,6 +67,7 @@ async function makeProduct() {
       price: new Prisma.Decimal('12.00'),
       metaTitle: 'Default meta title',
       sku: `${RUN}-${productIds.length}`.slice(0, 64),
+      branchStock: { create: { branchId, quantity: 10 } },
     },
   });
   productIds.push(product.id);
@@ -221,7 +222,7 @@ describe('product localized content', () => {
         .set(auth(ownerToken))
         .set('Accept-Language', 'ar'),
       request(app)
-        .get('/api/v1/public/products')
+        .get(`/api/v1/public/products?branchId=${branchId}`)
         .set('X-API-Key', storefrontKey)
         .set('Accept-Language', 'ar'),
     ]);

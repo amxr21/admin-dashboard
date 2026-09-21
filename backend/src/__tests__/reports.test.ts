@@ -87,6 +87,7 @@ async function makeOrder(opts: {
       placedAt: new Date(`${opts.placedAt}T12:00:00.000Z`),
       total: new Prisma.Decimal(opts.total),
       status: opts.status ?? OrderStatus.DELIVERED,
+      branchId,
       ...(opts.itemPrice
         ? {
             items: {
@@ -107,7 +108,7 @@ async function makeOrder(opts: {
 }
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 function get(path: string, token = ownerToken) {
@@ -548,6 +549,7 @@ describe('fulfillment health', () => {
         placedAt: new Date(Date.now() - 48 * 3_600_000),
         total: new Prisma.Decimal('10.00'),
         status: OrderStatus.PENDING,
+        branchId,
       },
     });
     orderIds.push(stuckOrder.id);
@@ -570,6 +572,7 @@ describe('fulfillment health', () => {
         placedAt: new Date(),
         total: new Prisma.Decimal('10.00'),
         status: OrderStatus.PENDING,
+        branchId,
       },
     });
     orderIds.push(freshOrder.id);
@@ -594,6 +597,7 @@ describe('fulfillment health', () => {
         placedAt: new Date(Date.now() - 60 * 86_400_000), // 60 days ago
         total: new Prisma.Decimal('10.00'),
         status: OrderStatus.PENDING,
+        branchId,
       },
     });
     orderIds.push(stuckButOutOfRange.id);
@@ -616,6 +620,7 @@ describe('fulfillment health', () => {
         placedAt: new Date('2019-03-05T00:00:00.000Z'),
         total: new Prisma.Decimal('10.00'),
         status: OrderStatus.CONFIRMED,
+        branchId,
       },
     });
     orderIds.push(completedOrder.id);
@@ -667,6 +672,7 @@ describe('returns summary', () => {
         placedAt: new Date('2019-04-06T00:00:00.000Z'),
         total: new Prisma.Decimal('50.00'),
         status: OrderStatus.RETURNED,
+        branchId,
         items: { create: [{ productId, quantity: 2, price: new Prisma.Decimal('25.00') }] },
       },
       include: { items: true },
@@ -721,6 +727,7 @@ describe('returns summary', () => {
         placedAt: new Date('2018-04-06T00:00:00.000Z'),
         total: new Prisma.Decimal('30.00'),
         status: OrderStatus.RETURNED,
+        branchId,
         items: { create: [{ productId, quantity: 1, price: new Prisma.Decimal('30.00') }] },
       },
       include: { items: true },
@@ -809,6 +816,7 @@ describe('needs attention (C1.5)', () => {
         placedAt: new Date('2010-01-01T00:00:00.000Z'),
         total: new Prisma.Decimal('40.00'),
         status: OrderStatus.DELIVERED,
+        branchId,
         items: { create: [{ productId, quantity: 1, price: new Prisma.Decimal('40.00') }] },
       },
       include: { items: true },
@@ -844,6 +852,7 @@ describe('needs attention (C1.5)', () => {
         placedAt: new Date('2010-01-01T00:00:00.000Z'),
         total: new Prisma.Decimal('40.00'),
         status: OrderStatus.RETURNED,
+        branchId,
         items: { create: [{ productId, quantity: 1, price: new Prisma.Decimal('40.00') }] },
       },
       include: { items: true },
@@ -873,6 +882,11 @@ describe('needs attention (C1.5)', () => {
   });
 
   it('surfaces a review stuck in PENDING', async () => {
+    await prisma.branchStock.upsert({
+      where: { productId_branchId: { productId, branchId } },
+      create: { productId, branchId, quantity: 1 },
+      update: {},
+    });
     const review = await prisma.review.create({
       data: { rating: 4, status: ReviewStatus.PENDING, productId },
     });
@@ -906,6 +920,7 @@ describe('needs attention (C1.5)', () => {
         placedAt: new Date('2010-01-01T00:00:00.000Z'),
         total: new Prisma.Decimal('40.00'),
         status: OrderStatus.CONFIRMED,
+        branchId,
       },
     });
     createdOrderIds.push(order.id);
@@ -925,6 +940,7 @@ describe('needs attention (C1.5)', () => {
         placedAt: new Date('2010-01-01T00:00:00.000Z'),
         total: new Prisma.Decimal('40.00'),
         status: OrderStatus.DELIVERED,
+        branchId,
       },
     });
     createdOrderIds.push(order.id);
@@ -941,6 +957,7 @@ describe('needs attention (C1.5)', () => {
       data: { name: `${RUN} attn sparse`, price: new Prisma.Decimal('10.00'), stock: 0 },
     });
     createdProductIds.push(sparseProduct.id);
+    await prisma.branchStock.create({ data: { productId: sparseProduct.id, branchId, quantity: 0 } });
 
     const order = await prisma.order.create({
       data: {
@@ -948,6 +965,7 @@ describe('needs attention (C1.5)', () => {
         placedAt: new Date('2010-01-01T00:00:00.000Z'),
         total: new Prisma.Decimal('10.00'),
         status: OrderStatus.PENDING,
+        branchId,
         items: { create: [{ productId: sparseProduct.id, quantity: 1, price: new Prisma.Decimal('10.00') }] },
       },
     });
@@ -973,6 +991,7 @@ describe('needs attention (C1.5)', () => {
         placedAt: new Date('2010-01-01T00:00:00.000Z'),
         total: new Prisma.Decimal('10.00'),
         status: OrderStatus.DELIVERED,
+        branchId,
         items: { create: [{ productId: sparseProduct.id, quantity: 1, price: new Prisma.Decimal('10.00') }] },
       },
     });
@@ -1007,6 +1026,7 @@ describe('staff activity (C3.5)', () => {
 
   it('counts actions per actor within the window', async () => {
     const courier = await prisma.deliveryStaff.create({ data: { name: `${RUN} activity courier` } });
+    await prisma.deliveryStaffBranch.create({ data: { courierId: courier.id, branchId } });
 
     // A real audited write, made by ownerToken, so it lands in the window's
     // AuditLog rows attributed to a known actor (courier profile edits are
@@ -1074,6 +1094,7 @@ describe('per-category breakdown (C3.5)', () => {
         placedAt: new Date('2019-05-01T12:00:00.000Z'),
         total: new Prisma.Decimal('80.00'),
         status: OrderStatus.DELIVERED,
+        branchId,
         items: { create: [{ productId: categorisedProduct.id, quantity: 2, price: new Prisma.Decimal('40.00') }] },
       },
     });
@@ -1112,6 +1133,7 @@ describe('refund-rate trend (C3.5)', () => {
         placedAt: new Date('2019-06-10T12:00:00.000Z'),
         total: new Prisma.Decimal('100.00'),
         status: OrderStatus.RETURNED,
+        branchId,
         items: { create: [{ productId, quantity: 1, price: new Prisma.Decimal('100.00') }] },
       },
       include: { items: true },
@@ -1165,13 +1187,14 @@ describe('inventory turnover / dead stock (C3.5)', () => {
     const product = await prisma.product.create({
       data: { name: `${RUN} turnover product`, price: new Prisma.Decimal('10.00'), stock: 20 },
     });
+    await prisma.branchStock.create({ data: { productId: product.id, branchId, quantity: 20 } });
 
     await prisma.stockMovement.create({
-      data: { productId: product.id, delta: -5, reason: 'SOLD', createdAt: new Date('2019-07-15T00:00:00.000Z') },
+      data: { productId: product.id, branchId, delta: -5, reason: 'SOLD', createdAt: new Date('2019-07-15T00:00:00.000Z') },
     });
     // A DAMAGED movement must NOT count as sold.
     await prisma.stockMovement.create({
-      data: { productId: product.id, delta: -2, reason: 'DAMAGED', createdAt: new Date('2019-07-15T00:00:00.000Z') },
+      data: { productId: product.id, branchId, delta: -2, reason: 'DAMAGED', createdAt: new Date('2019-07-15T00:00:00.000Z') },
     });
 
     const body = (await get('/reports/inventory-turnover?from=2019-07-01&to=2019-07-31')).body as TurnoverBody;
@@ -1187,6 +1210,7 @@ describe('inventory turnover / dead stock (C3.5)', () => {
     const product = await prisma.product.create({
       data: { name: `${RUN} dead stock product`, price: new Prisma.Decimal('10.00'), stock: 15 },
     });
+    await prisma.branchStock.create({ data: { productId: product.id, branchId, quantity: 15 } });
 
     const body = (await get('/reports/inventory-turnover?from=2019-08-01&to=2019-08-31')).body as TurnoverBody;
 
@@ -1199,6 +1223,7 @@ describe('inventory turnover / dead stock (C3.5)', () => {
     const product = await prisma.product.create({
       data: { name: `${RUN} zero stock product`, price: new Prisma.Decimal('10.00'), stock: 0 },
     });
+    await prisma.branchStock.create({ data: { productId: product.id, branchId, quantity: 0 } });
 
     const body = (await get('/reports/inventory-turnover?from=2019-08-01&to=2019-08-31')).body as TurnoverBody;
 
@@ -1230,6 +1255,7 @@ describe('report explorer (C3.3)', () => {
         placedAt: new Date('2019-09-01T12:00:00.000Z'),
         total: new Prisma.Decimal('80.00'),
         status: OrderStatus.DELIVERED,
+        branchId,
         items: { create: [{ productId: categorisedProduct.id, quantity: 2, price: new Prisma.Decimal('40.00') }] },
       },
     });
@@ -1262,6 +1288,7 @@ describe('report explorer (C3.3)', () => {
         placedAt: new Date('2019-09-10T12:00:00.000Z'),
         total: new Prisma.Decimal('55.00'),
         status: OrderStatus.DELIVERED,
+        branchId,
         items: {
           create: [
             { productId, quantity: 1, price: new Prisma.Decimal('40.00') },

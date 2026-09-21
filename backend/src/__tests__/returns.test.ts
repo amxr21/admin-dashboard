@@ -73,6 +73,9 @@ async function makeUser(role: StaffRole, tag = role.toLowerCase()) {
     },
   });
   userIds.push(user.id);
+  if (branchId && role !== StaffRole.OWNER) {
+    await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
+  }
   // `name` is returned too, so the approval snapshot can be asserted against
   // the identity actually recorded rather than against "something".
   return { token: signToken(user), id: user.id, email: user.email, name: user.name };
@@ -1388,6 +1391,7 @@ describe('a cashier cannot approve or reject alone (O9.7)', () => {
     const approval = await verifyManagerOverride(
       manager.email,
       'correct-horse-battery-staple',
+      branchId,
     );
 
     const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);

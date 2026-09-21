@@ -269,12 +269,6 @@ describe('the durable staff detail workspace', () => {
           department: 'Retail',
           manager: { id: ownerId },
         },
-        branches: [
-          {
-            role: StaffRole.CASHIER,
-            branch: { id: branch.id, business: { id: business.id } },
-          },
-        ],
         capabilities: {
           edit: true,
           changeRole: true,
@@ -283,6 +277,8 @@ describe('the durable staff detail workspace', () => {
           manageSessions: true,
         },
       });
+      const branches = data.branches as { role: StaffRole; branch: { id: string } }[];
+      expect(branches.some((row) => row.role === StaffRole.CASHIER && row.branch.id === branch.id)).toBe(true);
       expect(data.fields).toEqual(
         expect.arrayContaining([expect.objectContaining({ id: field.id, label: field.label })]),
       );
