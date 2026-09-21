@@ -23,6 +23,8 @@ const RUN = `revtest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const userIds: string[] = [];
 let ownerToken = '';
 let ownerId = '';
+let businessId = '';
+let branchId = '';
 
 async function makeUser(role: StaffRole, tag = role.toLowerCase()) {
   const user = await prisma.user.create({
@@ -34,14 +36,21 @@ async function makeUser(role: StaffRole, tag = role.toLowerCase()) {
     },
   });
   userIds.push(user.id);
+  if (branchId && role !== StaffRole.OWNER && role !== StaffRole.DEVELOPER) {
+    await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
+  }
   return { id: user.id, token: signToken(user), user };
 }
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 beforeAll(async () => {
+  const business = await prisma.business.create({ data: { name: `${RUN} business` } });
+  const branch = await prisma.branch.create({ data: { businessId: business.id, name: `${RUN} branch` } });
+  businessId = business.id;
+  branchId = branch.id;
   const owner = await makeUser(StaffRole.OWNER, 'owner');
   ownerToken = owner.token;
   ownerId = owner.id;
@@ -50,6 +59,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await prisma.auditLog.deleteMany({ where: { actorId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.branch.deleteMany({ where: { businessId } });
+  await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.$disconnect();
 });
 

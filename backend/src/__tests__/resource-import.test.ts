@@ -52,6 +52,8 @@ const createdCategoryIds: string[] = [];
 const createdProductIds: string[] = [];
 let ownerToken = '';
 let demoToken = '';
+let businessId = '';
+let branchId = '';
 
 async function makeUser(role: StaffRole) {
   const user = await prisma.user.create({
@@ -67,10 +69,17 @@ async function makeUser(role: StaffRole) {
 }
 
 beforeAll(async () => {
+  const business = await prisma.business.create({ data: { name: `${RUN} business` } });
+  const branch = await prisma.branch.create({ data: { businessId: business.id, name: `${RUN} branch` } });
+  businessId = business.id;
+  branchId = branch.id;
   [ownerToken, demoToken] = await Promise.all([
     makeUser(StaffRole.OWNER),
     makeUser(StaffRole.DEMO),
   ]);
+  await prisma.userBranch.create({
+    data: { userId: createdUserIds[1]!, branchId, role: StaffRole.DEMO },
+  });
 
   const category = await prisma.category.create({
     data: { name: `${RUN} Widgets`, slug: `${RUN}-widgets` },
@@ -83,11 +92,13 @@ afterAll(async () => {
   await prisma.product.deleteMany({ where: { name: { startsWith: RUN } } });
   await prisma.category.deleteMany({ where: { id: { in: createdCategoryIds } } });
   await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+  await prisma.branch.deleteMany({ where: { businessId } });
+  await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.$disconnect();
 });
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 function csvFile(text: string) {

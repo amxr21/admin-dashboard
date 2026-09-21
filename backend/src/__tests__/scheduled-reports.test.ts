@@ -46,6 +46,8 @@ const userIds: string[] = [];
 const scheduleIds: string[] = [];
 let ownerToken = '';
 let fulfillmentToken = '';
+let businessId = '';
+let branchId = '';
 
 async function makeUser(role: StaffRole) {
   const user = await prisma.user.create({
@@ -61,18 +63,28 @@ async function makeUser(role: StaffRole) {
 }
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 beforeAll(async () => {
+  const business = await prisma.business.create({ data: { name: `${RUN} business` } });
+  const branch = await prisma.branch.create({ data: { businessId: business.id, name: `${RUN} branch` } });
+  businessId = business.id;
+  branchId = branch.id;
   ownerToken = (await makeUser(StaffRole.OWNER)).token;
   // FULFILLMENT has no `reports` area.
-  fulfillmentToken = (await makeUser(StaffRole.FULFILLMENT)).token;
+  const fulfillment = await makeUser(StaffRole.FULFILLMENT);
+  fulfillmentToken = fulfillment.token;
+  await prisma.userBranch.create({
+    data: { userId: fulfillment.id, branchId, role: StaffRole.FULFILLMENT },
+  });
 });
 
 afterAll(async () => {
   await prisma.scheduledReport.deleteMany({ where: { id: { in: scheduleIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.branch.deleteMany({ where: { businessId } });
+  await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.$disconnect();
 });
 

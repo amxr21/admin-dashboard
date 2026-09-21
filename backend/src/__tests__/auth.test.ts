@@ -31,6 +31,7 @@ const app = createApp();
 const RUN = `authtest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const PASSWORD = 'correct-horse-battery-staple';
 const createdUserIds: string[] = [];
+const createdBusinessIds: string[] = [];
 
 interface ErrorBody {
   error: { code: string; message: string; requestId: string };
@@ -62,6 +63,8 @@ async function makeUser(
 
 afterAll(async () => {
   await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+  await prisma.branch.deleteMany({ where: { businessId: { in: createdBusinessIds } } });
+  await prisma.business.deleteMany({ where: { id: { in: createdBusinessIds } } });
   await prisma.$disconnect();
 });
 
@@ -833,6 +836,30 @@ describe('POST /api/v1/auth/manager-override', () => {
       const result = await verifyManagerOverride(manager.email, PASSWORD);
 
       expect(verifyOverrideToken(result.overrideToken)).toBe(manager.id);
+    });
+
+    it('cannot be replayed at a different branch', async () => {
+      const manager = await makeUser('override-manager-branch-token', {
+        role: StaffRole.MANAGER,
+      });
+      const business = await prisma.business.create({
+        data: {
+          name: `${RUN} override business`,
+          branches: { create: [{ name: `${RUN} A` }, { name: `${RUN} B` }] },
+        },
+        include: { branches: true },
+      });
+      createdBusinessIds.push(business.id);
+      const branchA = business.branches[0]!.id;
+      const branchB = business.branches[1]!.id;
+      await prisma.userBranch.create({
+        data: { userId: manager.id, branchId: branchA, role: StaffRole.MANAGER },
+      });
+
+      const result = await verifyManagerOverride(manager.email, PASSWORD, branchA);
+
+      expect(verifyOverrideToken(result.overrideToken, branchA)).toBe(manager.id);
+      expect(verifyOverrideToken(result.overrideToken, branchB)).toBeNull();
     });
 
     it('rejects a token for an unrelated purpose, even if validly signed', () => {

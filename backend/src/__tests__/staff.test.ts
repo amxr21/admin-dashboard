@@ -58,7 +58,7 @@ async function makeUser(role: StaffRole, tag = role.toLowerCase()) {
 }
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 function patch(id: string, body: Record<string, unknown>, token = ownerToken) {
@@ -83,6 +83,12 @@ beforeAll(async () => {
   secondOwnerId = secondOwner.id;
   managerToken = manager.token;
   supportId = support.id;
+  await prisma.userBranch.createMany({
+    data: [
+      { userId: manager.id, branchId, role: StaffRole.MANAGER },
+      { userId: support.id, branchId, role: StaffRole.SUPPORT },
+    ],
+  });
 });
 
 afterAll(async () => {
@@ -263,12 +269,6 @@ describe('the durable staff detail workspace', () => {
           department: 'Retail',
           manager: { id: ownerId },
         },
-        branches: [
-          {
-            role: StaffRole.CASHIER,
-            branch: { id: branch.id, business: { id: business.id } },
-          },
-        ],
         capabilities: {
           edit: true,
           changeRole: true,
@@ -277,6 +277,8 @@ describe('the durable staff detail workspace', () => {
           manageSessions: true,
         },
       });
+      const branches = data.branches as { role: StaffRole; branch: { id: string } }[];
+      expect(branches.some((row) => row.role === StaffRole.CASHIER && row.branch.id === branch.id)).toBe(true);
       expect(data.fields).toEqual(
         expect.arrayContaining([expect.objectContaining({ id: field.id, label: field.label })]),
       );
@@ -742,7 +744,7 @@ describe('POST /api/v1/staff/invite', () => {
     const res = await request(app)
       .post('/api/v1/staff/invite')
       .set(auth(ownerToken))
-      .send({ email, role: StaffRole.SUPPORT, name: 'Invitee' });
+      .send({ email, role: StaffRole.SUPPORT, name: 'Invitee', branchId });
 
     expect(res.status).toBe(201);
 
@@ -770,6 +772,7 @@ describe('POST /api/v1/staff/invite', () => {
       .send({
         email: `${RUN}-invite-strict@example.test`,
         role: StaffRole.SUPPORT,
+        branchId,
         password: 'whatever-they-sent',
       });
 
@@ -782,7 +785,7 @@ describe('POST /api/v1/staff/invite', () => {
     const inviteRes = await request(app)
       .post('/api/v1/staff/invite')
       .set(auth(ownerToken))
-      .send({ email, role: StaffRole.SUPPORT });
+      .send({ email, role: StaffRole.SUPPORT, branchId });
 
     const inviteBody = inviteRes.body as { data: { staff: { id: string }; token: string } };
     userIds.push(inviteBody.data.staff.id);
@@ -813,7 +816,7 @@ describe('POST /api/v1/staff/invite', () => {
     const res = await request(app)
       .post('/api/v1/staff/invite')
       .set(auth(ownerToken))
-      .send({ email: owner.email, role: StaffRole.SUPPORT });
+      .send({ email: owner.email, role: StaffRole.SUPPORT, branchId });
 
     expect(res.status).toBe(409);
   });
@@ -822,7 +825,7 @@ describe('POST /api/v1/staff/invite', () => {
     const inviteRes = await request(app)
       .post('/api/v1/staff/invite')
       .set(auth(ownerToken))
-      .send({ email: `${RUN}-invite-ttl@example.test`, role: StaffRole.SUPPORT });
+      .send({ email: `${RUN}-invite-ttl@example.test`, role: StaffRole.SUPPORT, branchId });
 
     const body = inviteRes.body as { data: { staff: { id: string }; expiresAt: string } };
     userIds.push(body.data.staff.id);

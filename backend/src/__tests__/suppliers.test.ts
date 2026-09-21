@@ -35,13 +35,15 @@ async function user(role: StaffRole) {
     passwordHash: await bcrypt.hash('correct-horse-battery-staple', 10),
   } });
   userIds.push(row.id);
-  return signToken(row);
+  return { id: row.id, token: signToken(row) };
 }
 
-function auth(token = ownerToken) { return { Authorization: `Bearer ${token}` } as const; }
+function auth(token = ownerToken) { return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchA } as const; }
 
 beforeAll(async () => {
-  [ownerToken, supportToken] = await Promise.all([user(StaffRole.OWNER), user(StaffRole.SUPPORT)]);
+  const [owner, support] = await Promise.all([user(StaffRole.OWNER), user(StaffRole.SUPPORT)]);
+  ownerToken = owner.token;
+  supportToken = support.token;
   const business = await prisma.business.create({ data: { name: `${RUN} business` } });
   businessId = business.id;
   const branches = await Promise.all([
@@ -49,6 +51,9 @@ beforeAll(async () => {
     prisma.branch.create({ data: { businessId, name: `${RUN} Downtown` } }),
   ]);
   branchA = branches[0].id; branchB = branches[1].id;
+  await prisma.userBranch.create({
+    data: { userId: support.id, branchId: branchA, role: StaffRole.SUPPORT },
+  });
 });
 
 beforeEach(() => { sendEmailToRecipients.mockReset(); sendEmailToRecipients.mockResolvedValue(true); });

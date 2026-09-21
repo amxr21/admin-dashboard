@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Request } from 'express';
 import { StaffRole } from '@prisma/client';
 import { z } from 'zod';
 
@@ -12,9 +13,10 @@ import {
 import { checkTaxId } from '../../lib/tax-id.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea, requireDeveloperVisible, requireRole } from '../../middleware/authorize.js';
-import { effectiveRole, withBranchContext } from '../../middleware/branch-context.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import {
   assignUserToBranch,
+  isBusinessWideRole,
   listBranchStaff,
   removeUserFromBranch,
 } from '../../services/branch-roles.service.js';
@@ -47,13 +49,25 @@ import { audit } from '../../services/audit.service.js';
 
 export const branchesRouter = Router();
 
+function assertBranchTarget(req: Request, branchId: string): void {
+  const user = requireUser(req);
+  if (!isBusinessWideRole(user.role) && req.branchId !== branchId) {
+    throw AppError.notFound('Branch not found');
+  }
+}
+
 const detailSchema = z.object({
   name: z.string().trim().min(1).max(160),
   code: z.string().trim().max(24).nullish(),
   addressLine: z.string().trim().max(255).nullish(),
   city: z.string().trim().max(120).nullish(),
   phone: z.string().trim().max(40).nullish(),
-  timezone: z.string().trim().max(64).nullish(),
+  timezone: z
+    .string()
+    .trim()
+    .max(64)
+    .refine(isCanonicalTimezone, 'Choose a time zone from the list')
+    .nullish(),
   isSellingPoint: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
@@ -64,10 +78,12 @@ const detailSchema = z.object({
  * Not paginated on purpose. A branch list is a switcher, and a business with
  * enough branches to need paging has a different problem than this endpoint.
  */
-branchesRouter.get('/branches', authenticate, withBranchContext, requireDeveloperVisible('settings'), async (req, res) => {
+branchesRouter.get('/branches', authenticate, requireDeveloperVisible('settings'), async (req, res) => {
   const user = requireUser(req);
 
-  const branches = await listBranchesFor(user.id, effectiveRole(req));
+  // Deliberately no branch context here: limited users call this endpoint to
+  // discover the assignments from which their first valid header is chosen.
+  const branches = await listBranchesFor(user.id, user.role);
 
   res.status(200).json({ data: branches });
 });
@@ -124,7 +140,9 @@ branchesRouter.get(
   withBranchContext,
   requireArea('settings'),
   async (req, res) => {
-    const branch = await getBranch(String(req.params.id));
+    const branchId = String(req.params.id);
+    assertBranchTarget(req, branchId);
+    const branch = await getBranch(branchId);
 
     res.status(200).json({ data: branch });
   },
@@ -296,6 +314,7 @@ branchesRouter.get(
   authenticate,
   withBranchContext,
   requireArea('settings'),
+  requireDeveloperVisible('settings'),
   async (_req, res) => {
     res.status(200).json({ data: await listBusinesses() });
   },
@@ -419,6 +438,8 @@ branchesRouter.patch(
   withBranchContext,
   requireArea('settings'),
   async (req, res) => {
+    const branchId = String(req.params.id);
+    assertBranchTarget(req, branchId);
     const parsed = detailSchema
       .extend({ isDefault: z.boolean().optional() })
       .partial()
@@ -428,7 +449,7 @@ branchesRouter.patch(
       throw AppError.badRequest('Invalid branch details', parsed.error.flatten());
     }
 
-    const { before, updated } = await updateBranch(String(req.params.id), parsed.data);
+    const { before, updated } = await updateBranch(branchId, parsed.data);
 
     audit(req, {
       action: 'branch.updated',
@@ -464,7 +485,9 @@ branchesRouter.get(
   requireArea('settings'),
   requireDeveloperVisible('staff'),
   async (req, res) => {
-    res.status(200).json({ data: await listBranchStaff(String(req.params.id)) });
+    const branchId = String(req.params.id);
+    assertBranchTarget(req, branchId);
+    res.status(200).json({ data: await listBranchStaff(branchId) });
   },
 );
 

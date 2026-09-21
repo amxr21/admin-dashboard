@@ -31,6 +31,8 @@ const reviewIds: string[] = [];
 const returnIds: string[] = [];
 const courierIds: string[] = [];
 const assignmentIds: string[] = [];
+let businessId = '';
+let branchId = '';
 
 let ownerToken = '';
 let fulfillmentToken = '';
@@ -48,6 +50,7 @@ async function makeUser(role: StaffRole) {
     },
   });
   userIds.push(user.id);
+  await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
   return signToken(user);
 }
 
@@ -56,7 +59,7 @@ function auth(token: string) {
 }
 
 function get(path: string, token = ownerToken) {
-  return request(app).get(`/api/v1${path}`).set(auth(token));
+  return request(app).get(`/api/v1${path}`).set(auth(token)).set('X-Branch-Id', branchId);
 }
 
 let customerA = '';
@@ -67,6 +70,9 @@ let productNoReviews = '';
 let courierId = '';
 
 beforeAll(async () => {
+  const business = await prisma.business.create({ data: { name: `${RUN} Business` } });
+  businessId = business.id;
+  branchId = (await prisma.branch.create({ data: { businessId, name: `${RUN} Branch`, isDefault: true } })).id;
   [ownerToken, fulfillmentToken] = await Promise.all([
     makeUser(StaffRole.OWNER),
     makeUser(StaffRole.FULFILLMENT),
@@ -103,6 +109,7 @@ beforeAll(async () => {
       placedAt: new Date('2019-04-05T10:00:00.000Z'),
       total: new Prisma.Decimal('50.00'),
       status: OrderStatus.DELIVERED,
+      branchId,
       customerId: customerA,
       paymentMethod: 'card',
       items: { create: [{ productId: productWithCost, quantity: 1, price: new Prisma.Decimal('50.00'), cost: new Prisma.Decimal('20.00') }] },
@@ -115,6 +122,7 @@ beforeAll(async () => {
       placedAt: new Date('2019-04-15T10:00:00.000Z'),
       total: new Prisma.Decimal('30.00'),
       status: OrderStatus.DELIVERED,
+      branchId,
       customerId: customerA,
       paymentMethod: 'cash',
       items: { create: [{ productId: productNoCost, quantity: 1, price: new Prisma.Decimal('30.00') }] },
@@ -127,6 +135,7 @@ beforeAll(async () => {
       placedAt: new Date('2019-04-10T10:00:00.000Z'),
       total: new Prisma.Decimal('80.00'),
       status: OrderStatus.DELIVERED,
+      branchId,
       customerId: customerB,
       paymentMethod: 'card',
       items: { create: [{ productId: productWithCost, quantity: 1, price: new Prisma.Decimal('80.00'), cost: new Prisma.Decimal('20.00') }] },
@@ -139,6 +148,7 @@ beforeAll(async () => {
       placedAt: new Date('2019-04-12T10:00:00.000Z'),
       total: new Prisma.Decimal('20.00'),
       status: OrderStatus.DELIVERED,
+      branchId,
       items: { create: [{ productId: productNoCost, quantity: 1, price: new Prisma.Decimal('20.00') }] },
     },
   });
@@ -198,6 +208,8 @@ afterAll(async () => {
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.branch.deleteMany({ where: { id: branchId } });
+  await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.$disconnect();
 });
 

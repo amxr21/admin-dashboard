@@ -31,6 +31,8 @@ interface ErrorBody {
 const RUN = `pwreset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const userIds: string[] = [];
+let businessId = '';
+let branchId = '';
 let ownerToken = '';
 
 async function makeUser(tag: string) {
@@ -43,11 +45,12 @@ async function makeUser(tag: string) {
     },
   });
   userIds.push(user.id);
+  await prisma.userBranch.create({ data: { userId: user.id, branchId, role: StaffRole.SUPPORT } });
   return { id: user.id, token: signToken(user) };
 }
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 async function issueToken(userId: string): Promise<string> {
@@ -77,6 +80,9 @@ async function waitForResetToken(userId: string) {
 }
 
 beforeAll(async () => {
+  const business = await prisma.business.create({ data: { name: `${RUN} Business` } });
+  businessId = business.id;
+  branchId = (await prisma.branch.create({ data: { businessId, name: `${RUN} Branch`, isDefault: true } })).id;
   const owner = await prisma.user.create({
     data: {
       email: `${RUN}-owner@example.test`,
@@ -86,12 +92,16 @@ beforeAll(async () => {
     },
   });
   userIds.push(owner.id);
+  await prisma.userBranch.create({ data: { userId: owner.id, branchId, role: StaffRole.OWNER } });
   ownerToken = signToken(owner);
 });
 
 afterAll(async () => {
   // Cascades to each user's password_reset_tokens rows.
+  await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.branch.deleteMany({ where: { id: branchId } });
+  await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.$disconnect();
 });
 

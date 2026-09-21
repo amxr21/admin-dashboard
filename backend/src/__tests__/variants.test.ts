@@ -54,6 +54,8 @@ const RUN = `varianttest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}
 
 const userIds: string[] = [];
 const productIds: string[] = [];
+let businessId = '';
+let branchId = '';
 let ownerToken = '';
 let demoToken = '';
 let supportToken = '';
@@ -68,6 +70,9 @@ async function makeUser(role: StaffRole) {
     },
   });
   userIds.push(user.id);
+  if (role !== StaffRole.OWNER && role !== StaffRole.DEVELOPER) {
+    await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
+  }
   return signToken(user);
 }
 
@@ -80,10 +85,14 @@ async function makeProduct() {
 }
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 beforeAll(async () => {
+  const business = await prisma.business.create({ data: { name: `${RUN} business` } });
+  businessId = business.id;
+  const branch = await prisma.branch.create({ data: { businessId, name: `${RUN} branch` } });
+  branchId = branch.id;
   [ownerToken, demoToken, supportToken] = await Promise.all([
     makeUser(StaffRole.OWNER),
     makeUser(StaffRole.DEMO),
@@ -95,7 +104,10 @@ beforeAll(async () => {
 afterAll(async () => {
   // Variants and their movements cascade from the product.
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
+  await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.branch.deleteMany({ where: { id: branchId } });
+  await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.$disconnect();
 });
 

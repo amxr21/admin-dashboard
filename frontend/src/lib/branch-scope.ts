@@ -4,6 +4,10 @@ import { readBranchId, writeBranchId } from '@/lib/auth-storage';
 
 const BUSINESS_WIDE_ROLES: readonly StaffRole[] = ['DEVELOPER', 'OWNER'];
 
+export function isBusinessWideRole(role: StaffRole): boolean {
+  return BUSINESS_WIDE_ROLES.includes(role);
+}
+
 /**
  * Reconciles browser branch context with the branches the signed-in user may
  * actually enter. A branch employee with one assignment has one valid answer,
@@ -28,7 +32,10 @@ export function reconcileBranchScope(
   const current = readBranchId();
   if (current && branches.some((branch) => branch.id === current)) return current;
 
-  if (!BUSINESS_WIDE_ROLES.includes(role) && branches.length === 1) {
+  if (!isBusinessWideRole(role) && branches.length > 0) {
+    // A limited role may never fall back to "All branches". When its prior
+    // selection disappeared, choose another authorised assignment instead of
+    // clearing storage to the widest possible scope.
     const assigned = branches[0]?.id ?? null;
     writeBranchId(assigned);
     return assigned;

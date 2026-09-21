@@ -56,6 +56,7 @@ async function makeUser(role: StaffRole, label: string) {
     },
   });
   userIds.push(user.id);
+  await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
   return user;
 }
 
@@ -156,6 +157,7 @@ afterAll(async () => {
   await prisma.branchStock.deleteMany({ where: { productId: { in: productIds } } });
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.category.deleteMany({ where: { id: { in: categoryIds } } });
+  await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
   await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
   await prisma.idempotencyRecord.deleteMany({ where: { actorId: { in: userIds } } });
@@ -324,7 +326,7 @@ describe('who may use the till', () => {
   it('lets SUPPORT scan, since SUPPORT holds `orders`', async () => {
     await makeProduct({ barcode: `${RUN}-3330001112223` });
 
-    const res = await scan(`${RUN}-3330001112223`, supportToken);
+    const res = await scan(`${RUN}-3330001112223`, supportToken, branchId);
 
     expect(res.status).toBe(200);
   });
@@ -1121,8 +1123,10 @@ describe('browsing the grid (O9.10)', () => {
     // The owner confirmed the cashier's job is scanning and counting only —
     // this endpoint has to be part of that job, gated the same way scan is.
     const product = await makeProduct({ name: `${RUN} Cashier Grid Access` });
+    await prisma.branchStock.create({ data: { productId: product.id, branchId, quantity: 1 } });
 
-    const res = await browse({ q: `${RUN} Cashier Grid Access` }, supportToken);
+    const cashier = await makeUser(StaffRole.CASHIER, 'cashier-grid');
+    const res = await browse({ q: `${RUN} Cashier Grid Access` }, signToken(cashier), branchId);
 
     expect(res.status).toBe(200);
     const body = res.body as { data: { products: { id: string }[] } };

@@ -72,9 +72,11 @@ const RUN = `couriertest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}
 const userIds: string[] = [];
 const courierIds: string[] = [];
 const orderIds: string[] = [];
+const businessIds: string[] = [];
 let ownerToken = '';
 let demoToken = '';
 let supportToken = '';
+let staffBranchId = '';
 
 async function makeUser(role: StaffRole) {
   const user = await prisma.user.create({
@@ -119,12 +121,27 @@ function issueCode(courierId: string, token = ownerToken) {
 }
 
 beforeAll(async () => {
-  [ownerToken, demoToken, supportToken] = await Promise.all([
+  const [owner, demo, support] = await Promise.all([
     makeUser(StaffRole.OWNER),
     makeUser(StaffRole.DEMO),
     // SUPPORT has orders/customers/reviews but NOT delivery.
     makeUser(StaffRole.SUPPORT),
   ]);
+  [ownerToken, demoToken, supportToken] = [owner, demo, support];
+
+  const business = await prisma.business.create({ data: { name: `${RUN} business` } });
+  businessIds.push(business.id);
+  const branch = await prisma.branch.create({
+    data: { businessId: business.id, name: `${RUN} branch` },
+  });
+  staffBranchId = branch.id;
+  const staff = await prisma.user.findMany({
+    where: { id: { in: userIds }, role: { in: [StaffRole.DEMO, StaffRole.SUPPORT] } },
+    select: { id: true, role: true },
+  });
+  await prisma.userBranch.createMany({
+    data: staff.map((user) => ({ userId: user.id, branchId: staffBranchId, role: user.role })),
+  });
 });
 
 afterAll(async () => {
@@ -134,7 +151,10 @@ afterAll(async () => {
   await prisma.deliveryAssignment.deleteMany({ where: { orderId: { in: orderIds } } });
   await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
   await prisma.deliveryStaff.deleteMany({ where: { id: { in: courierIds } } });
+  await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
+  await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
   await prisma.$disconnect();
 });
 
@@ -144,7 +164,10 @@ describe('authorisation', () => {
   });
 
   it('denies a role without the delivery area', async () => {
-    const res = await request(app).get('/api/v1/couriers').set(auth(supportToken));
+    const res = await request(app)
+      .get('/api/v1/couriers')
+      .set(auth(supportToken))
+      .set('X-Branch-Id', staffBranchId);
     expect(res.status).toBe(403);
   });
 
@@ -454,6 +477,7 @@ describe('PATCH /assignments/:id', () => {
     const res = await request(app)
       .patch(`/api/v1/assignments/${id}`)
       .set(auth(supportToken))
+      .set('X-Branch-Id', staffBranchId)
       .send({ address: 'x' });
     expect(res.status).toBe(403);
   });
@@ -754,7 +778,8 @@ describe('delivery operations board and timeline', () => {
     const unauthenticated = await request(app).get('/api/v1/assignments');
     const forbidden = await request(app)
       .get('/api/v1/assignments')
-      .set(auth(supportToken));
+      .set(auth(supportToken))
+      .set('X-Branch-Id', staffBranchId);
 
     expect(unauthenticated.status).toBe(401);
     expect(forbidden.status).toBe(403);

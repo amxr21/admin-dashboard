@@ -50,6 +50,7 @@ let downtown = '';
 let ownerToken = '';
 let managerToken = '';
 let ownerId = '';
+let managerId = '';
 let supportId = '';
 let fulfillmentId = '';
 let secondOwnerId = '';
@@ -93,12 +94,17 @@ beforeAll(async () => {
   ]);
 
   ownerId = owner.id;
+  managerId = manager.id;
   supportId = support.id;
   fulfillmentId = fulfillment.id;
   secondOwnerId = secondOwner.id;
 
   ownerToken = signToken(owner);
   managerToken = signToken(manager);
+
+  await prisma.userBranch.create({
+    data: { userId: managerId, branchId: marina, role: StaffRole.MANAGER },
+  });
 });
 
 afterAll(async () => {
@@ -167,6 +173,7 @@ describe('the four staff rules apply to a branch grant', () => {
     const res = await request(app)
       .post(`/api/v1/branches/${marina}/staff`)
       .set(auth(managerToken))
+      .set('X-Branch-Id', marina)
       .send({ userId: supportId, role: StaffRole.FULFILLMENT });
 
     expect(res.status).toBe(403);
@@ -183,6 +190,42 @@ describe('the four staff rules apply to a branch grant', () => {
       .send({ userId: secondOwnerId, role: StaffRole.OWNER });
 
     expect(res.status).toBe(400);
+  });
+});
+
+describe('branch context fails closed for limited roles', () => {
+  it('keeps branch discovery available before the first header is selected', async () => {
+    const res = await request(app).get('/api/v1/branches').set(auth(managerToken));
+
+    expect(res.status).toBe(200);
+    expect((res.body as { data: Array<{ id: string }> }).data.map((branch) => branch.id)).toEqual([
+      marina,
+    ]);
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['unassigned', downtown],
+    ['unknown', 'unknown-branch'],
+  ])('returns the same generic 404 for a %s branch', async (_label, branchId) => {
+    const requestBuilder = request(app).get('/api/v1/branches/_brand').set(auth(managerToken));
+    if (branchId) requestBuilder.set('X-Branch-Id', branchId);
+
+    const res = await requestBuilder;
+
+    expect(res.status).toBe(404);
+    expect((res.body as { error: { message: string } }).error.message).toBe(
+      'Branch context is unavailable',
+    );
+  });
+
+  it('accepts the active branch assignment', async () => {
+    const res = await request(app)
+      .get('/api/v1/branches/_brand')
+      .set(auth(managerToken))
+      .set('X-Branch-Id', marina);
+
+    expect(res.status).toBe(200);
   });
 });
 
@@ -232,8 +275,11 @@ describe('assigning and removing', () => {
     expect(await resolveRoleAtBranch(fulfillmentId, marina)).toBe(StaffRole.SUPPORT);
     expect(await resolveRoleAtBranch(fulfillmentId, downtown)).toBe(StaffRole.MANAGER);
 
-    // And unscoped stays the global role, untouched by either.
-    expect(await resolveRoleAtBranch(fulfillmentId, null)).toBe(StaffRole.FULFILLMENT);
+    // A limited role cannot use the global role as an unscoped escape hatch.
+    await expect(resolveRoleAtBranch(fulfillmentId, null)).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Branch context is unavailable',
+    });
   });
 
   it('removal keeps the global role', async () => {
@@ -250,9 +296,11 @@ describe('assigning and removing', () => {
 
     expect(res.status).toBe(204);
 
-    // No row means "no longer placed here", never "demoted" — the fallback is
-    // the global role, exactly as for someone never assigned.
-    expect(await resolveRoleAtBranch(target.id, marina)).toBe(StaffRole.SUPPORT);
+    // No row means the branch is no longer reachable.
+    await expect(resolveRoleAtBranch(target.id, marina)).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Branch context is unavailable',
+    });
   });
 
   it('404s removing somebody who is not on the roster', async () => {
@@ -270,6 +318,63 @@ describe('assigning and removing', () => {
       .send({ userId: supportId, role: StaffRole.MANAGER });
 
     expect(res.status).toBe(404);
+  });
+
+  it('404s assigning to an inactive branch', async () => {
+    const branch = await prisma.branch.create({
+      data: {
+        businessId: businessIds[0]!,
+        name: `${RUN} inactive branch`,
+        isActive: false,
+      },
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/branches/${branch.id}/staff`)
+      .set(auth(ownerToken))
+      .send({ userId: supportId, role: StaffRole.SUPPORT });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('404s assigning to a branch whose business is inactive', async () => {
+    const business = await prisma.business.create({
+      data: { name: `${RUN} inactive business`, isActive: false },
+    });
+    businessIds.push(business.id);
+    const branch = await prisma.branch.create({
+      data: { businessId: business.id, name: `${RUN} stranded branch` },
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/branches/${branch.id}/staff`)
+      .set(auth(ownerToken))
+      .send({ userId: supportId, role: StaffRole.SUPPORT });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('does not remove an assignment while the employee has an open shift', async () => {
+    const target = await makeUser(StaffRole.SUPPORT, 'working');
+    await prisma.userBranch.create({
+      data: { userId: target.id, branchId: marina, role: StaffRole.SUPPORT },
+    });
+    const shift = await prisma.shift.create({
+      data: {
+        userId: target.id,
+        branchId: marina,
+        openedById: ownerId,
+        startedAt: new Date(),
+      },
+    });
+
+    const res = await request(app)
+      .delete(`/api/v1/branches/${marina}/staff/${target.id}`)
+      .set(auth(ownerToken));
+
+    expect(res.status).toBe(409);
+    expect((res.body as { error: { message: string } }).error.message).toMatch(/open shift/i);
+    await prisma.shift.delete({ where: { id: shift.id } });
   });
 
   it('404s assigning somebody who does not exist', async () => {
@@ -310,7 +415,8 @@ describe('the roster read', () => {
   it('lets a MANAGER read a roster even though they cannot change it', async () => {
     const res = await request(app)
       .get(`/api/v1/branches/${marina}/staff`)
-      .set(auth(managerToken));
+      .set(auth(managerToken))
+      .set('X-Branch-Id', marina);
 
     expect(res.status).toBe(200);
   });

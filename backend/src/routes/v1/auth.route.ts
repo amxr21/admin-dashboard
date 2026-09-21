@@ -8,6 +8,7 @@ import { AppError } from '../../errors/AppError.js';
 import { accountEmailSchema } from '../../lib/identity-validation.js';
 import { audit } from '../../services/audit.service.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
+import { withBranchContext } from '../../middleware/branch-context.js';
 import { createApiKey, listApiKeys, revokeApiKey } from '../../services/api-key.service.js';
 import {
   loginRateLimit,
@@ -218,6 +219,7 @@ const managerOverrideSchema = z
 authRouter.post(
   '/auth/manager-override',
   authenticate,
+  withBranchContext,
   loginRateLimit,
   async (req, res) => {
     const parsed = managerOverrideSchema.safeParse(req.body);
@@ -233,7 +235,7 @@ authRouter.post(
     req.log.info({ event: 'auth.managerOverride.started', email, cashierId: cashier.id });
 
     try {
-      const result = await verifyManagerOverride(email, password);
+      const result = await verifyManagerOverride(email, password, req.branchId ?? undefined);
 
       req.log.info({
         event: 'auth.managerOverride.succeeded',

@@ -50,6 +50,8 @@ const createdCustomerIds: string[] = [];
 let ownerToken = '';
 let demoToken = '';
 let supportToken = '';
+let businessId = '';
+let branchId = '';
 
 async function makeUser(role: StaffRole) {
   const user = await prisma.user.create({
@@ -61,25 +63,40 @@ async function makeUser(role: StaffRole) {
     },
   });
   createdUserIds.push(user.id);
-  return signToken(user);
+  return { id: user.id, token: signToken(user) };
 }
 
 beforeAll(async () => {
-  [ownerToken, demoToken, supportToken] = await Promise.all([
+  const business = await prisma.business.create({ data: { name: `${RUN} business` } });
+  const branch = await prisma.branch.create({ data: { businessId: business.id, name: `${RUN} branch` } });
+  businessId = business.id;
+  branchId = branch.id;
+  const [owner, demo, support] = await Promise.all([
     makeUser(StaffRole.OWNER),
     makeUser(StaffRole.DEMO),
     makeUser(StaffRole.SUPPORT),
   ]);
+  ownerToken = owner.token;
+  demoToken = demo.token;
+  supportToken = support.token;
+  await prisma.userBranch.createMany({
+    data: [
+      { userId: demo.id, branchId, role: StaffRole.DEMO },
+      { userId: support.id, branchId, role: StaffRole.SUPPORT },
+    ],
+  });
 });
 
 afterAll(async () => {
   await prisma.customer.deleteMany({ where: { id: { in: createdCustomerIds } } });
   await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+  await prisma.branch.deleteMany({ where: { businessId } });
+  await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.$disconnect();
 });
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 describe('the config is an allowlist', () => {

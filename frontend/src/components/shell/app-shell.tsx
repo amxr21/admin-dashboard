@@ -283,7 +283,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
                 kind of thing. Renders nothing on a single-branch install, and
                 nothing at all on a page whose data has no branch dimension —
                 see `isBranchScopedPath`. */}
-            {showBranchSwitcher ? <BranchSwitcher /> : null}
+            {showBranchSwitcher ? <BranchSwitcher role={user.role} /> : null}
 
             {/* Next to the branch switcher because they answer the same kind
                 of question — WHERE you are working and WHETHER you are on

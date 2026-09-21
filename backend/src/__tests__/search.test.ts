@@ -43,19 +43,22 @@ async function makeUser(role: StaffRole) {
     },
   });
   userIds.push(user.id);
-  return signToken(user);
+  return { id: user.id, token: signToken(user) };
 }
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchA } as const;
 }
 
 beforeAll(async () => {
-  [ownerToken, supportToken, fulfillmentToken] = await Promise.all([
+  const [owner, support, fulfillment] = await Promise.all([
     makeUser(StaffRole.OWNER),
     makeUser(StaffRole.SUPPORT),
     makeUser(StaffRole.FULFILLMENT),
   ]);
+  ownerToken = owner.token;
+  supportToken = support.token;
+  fulfillmentToken = fulfillment.token;
 
   const customer = await prisma.customer.create({
     data: { name: `${RUN} Zephyr Customer`, email: `${RUN}-zephyr@example.test` },
@@ -82,6 +85,12 @@ beforeAll(async () => {
   businessId = business.id;
   branchA = business.branches.find((branch) => branch.isDefault)!.id;
   branchB = business.branches.find((branch) => !branch.isDefault)!.id;
+  await prisma.userBranch.createMany({
+    data: [
+      { userId: support.id, branchId: branchA, role: StaffRole.SUPPORT },
+      { userId: fulfillment.id, branchId: branchA, role: StaffRole.FULFILLMENT },
+    ],
+  });
 
   const order = await prisma.order.create({
     data: {
@@ -98,7 +107,7 @@ beforeAll(async () => {
   const supplier = await prisma.supplier.create({ data: { name: `${RUN} Zephyr Supply`, email: `${RUN}-supply@example.test` } });
   supplierId = supplier.id;
   const customerCase = await prisma.customerCase.create({
-    data: { caseNumber: `${RUN}-CASE-1`, title: `${RUN} Zephyr issue`, branchId: branchA, customerId, orderId, createdById: userIds[0]! },
+    data: { caseNumber: `${RUN}-CASE-1`, title: `${RUN} Zephyr issue`, branchId: branchA, customerId, orderId, createdById: owner.id },
   });
   customerCaseId = customerCase.id;
 });

@@ -11,6 +11,7 @@ import {
   type SessionContext,
 } from './session.service.js';
 import { canAccessAreaResolved } from './role-permissions.service.js';
+import { resolveRoleAtBranch } from './branch-roles.service.js';
 // Namespaced: this file's own `verifyLoginCode` (the login-flow step) and
 // two-factor.service.ts's `verifyLoginCode` (the raw code check) are
 // different levels of the same operation — importing named would shadow one.
@@ -345,11 +346,12 @@ const OVERRIDE_TOKEN_TTL = '2m';
 interface OverrideTokenPayload {
   sub: string;
   type: typeof OVERRIDE_TOKEN_TYPE;
+  branchId?: string;
 }
 
-function signOverrideToken(approverId: string): string {
+function signOverrideToken(approverId: string, branchId?: string): string {
   return jwt.sign(
-    { sub: approverId, type: OVERRIDE_TOKEN_TYPE } satisfies OverrideTokenPayload,
+    { sub: approverId, type: OVERRIDE_TOKEN_TYPE, ...(branchId ? { branchId } : {}) } satisfies OverrideTokenPayload,
     env.JWT_SECRET,
     { expiresIn: OVERRIDE_TOKEN_TTL } as jwt.SignOptions,
   );
@@ -364,10 +366,11 @@ function signOverrideToken(approverId: string): string {
  * failure shapes collapses to the same "not approved" answer here so a
  * caller cannot accidentally branch on which kind of forgery was attempted.
  */
-export function verifyOverrideToken(token: string): string | null {
+export function verifyOverrideToken(token: string, expectedBranchId?: string): string | null {
   try {
     const payload = jwt.verify(token, env.JWT_SECRET) as OverrideTokenPayload;
     if (payload.type !== OVERRIDE_TOKEN_TYPE) return null;
+    if (expectedBranchId !== undefined && payload.branchId !== expectedBranchId) return null;
     return payload.sub;
   } catch {
     return null;
@@ -415,6 +418,7 @@ export function verifyOverrideToken(token: string): string | null {
 export async function verifyManagerOverride(
   email: string,
   password: string,
+  branchId?: string,
 ): Promise<ManagerOverrideResult> {
   const user = await prisma.user.findUnique({ where: { email } });
 
@@ -450,7 +454,9 @@ export async function verifyManagerOverride(
     );
   }
 
-  if (!(await canAccessAreaResolved(user.role, 'settings'))) {
+  const role = branchId ? await resolveRoleAtBranch(user.id, branchId) : user.role;
+
+  if (!(await canAccessAreaResolved(role, 'settings'))) {
     // The generic "not authorised" message, deliberately — naming which area
     // was checked would teach a cashier fishing for an override exactly
     // which accounts to try next.
@@ -469,7 +475,7 @@ export async function verifyManagerOverride(
   return {
     approverId: user.id,
     approverName: user.name,
-    overrideToken: signOverrideToken(user.id),
+    overrideToken: signOverrideToken(user.id, branchId),
   };
 }
 

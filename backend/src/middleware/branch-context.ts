@@ -17,14 +17,10 @@ import { requireUser } from './authenticate.js';
  * A header is set once by the API client and travels with everything.
  *
  * ─── AN UNKNOWN BRANCH IS NOT AN ERROR HERE ──────────────────────────
- * A header naming a branch the user has no assignment at resolves to their
- * GLOBAL role, which is the same answer as naming no branch at all. It does
- * not throw: the request is still authorised on its merits, and refusing it
- * outright would leak whether a given branch id exists to anyone who can
- * guess one.
- *
- * What it must never do is grant MORE than the global role, and that is the
- * resolver's rule, tested directly in `branch-roles.test.ts`.
+ * OWNER and DEVELOPER may deliberately work without a selected branch. Every
+ * other role needs an active assignment to the requested branch. Missing,
+ * unknown, inactive and unassigned branch ids all produce the same generic
+ * 404 so the refusal does not reveal whether a guessed id exists.
  */
 
 /** The header the frontend sets once it has an active branch. */
@@ -56,9 +52,9 @@ export async function withBranchContext(
 /**
  * The role authorisation should read for this request.
  *
- * Falls back to the global role when `withBranchContext` has not run, so a
- * route that predates F8.4 behaves exactly as it did — the branch role is an
- * override where one exists, never a requirement.
+ * Falls back to the global role only when `withBranchContext` has not run.
+ * Branch-owned routes must mount the middleware; once mounted, limited roles
+ * cannot reach the handler without a valid assignment.
  *
  * Deliberately a function rather than callers reading `req.branchRole ??
  * req.user.role` inline: that expression appearing in several places is how

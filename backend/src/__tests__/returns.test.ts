@@ -73,6 +73,9 @@ async function makeUser(role: StaffRole, tag = role.toLowerCase()) {
     },
   });
   userIds.push(user.id);
+  if (branchId && role !== StaffRole.OWNER) {
+    await prisma.userBranch.create({ data: { userId: user.id, branchId, role } });
+  }
   // `name` is returned too, so the approval snapshot can be asserted against
   // the identity actually recorded rather than against "something".
   return { token: signToken(user), id: user.id, email: user.email, name: user.name };
@@ -110,7 +113,7 @@ async function makeOrder(status: OrderStatus, quantity = 4, placedAt?: Date) {
 }
 
 function auth(token: string) {
-  return { Authorization: `Bearer ${token}` } as const;
+  return { Authorization: `Bearer ${token}`, 'X-Branch-Id': branchId } as const;
 }
 
 /** For an assertion expecting nothing to have landed — nothing to poll for. */
@@ -141,6 +144,12 @@ beforeAll(async () => {
     data: { businessId: business.id, name: `${RUN} branch` },
   });
   branchId = branch.id;
+  await prisma.userBranch.createMany({
+    data: [
+      { userId: demo.id, branchId, role: StaffRole.DEMO },
+      { userId: support.id, branchId, role: StaffRole.SUPPORT },
+    ],
+  });
 });
 
 afterAll(async () => {
@@ -1382,6 +1391,7 @@ describe('a cashier cannot approve or reject alone (O9.7)', () => {
     const approval = await verifyManagerOverride(
       manager.email,
       'correct-horse-battery-staple',
+      branchId,
     );
 
     const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);

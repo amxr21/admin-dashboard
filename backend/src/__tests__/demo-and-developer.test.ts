@@ -36,10 +36,12 @@ interface DiagnosticsBody {
 
 const RUN = `rolestest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const userIds: string[] = [];
+const businessIds: string[] = [];
 
 let demoToken = '';
 let developerToken = '';
 let ownerToken = '';
+let demoBranchId = '';
 
 async function makeUser(role: StaffRole) {
   const user = await prisma.user.create({
@@ -64,10 +66,27 @@ beforeAll(async () => {
     makeUser(StaffRole.DEVELOPER),
     makeUser(StaffRole.OWNER),
   ]);
+
+  const business = await prisma.business.create({ data: { name: `${RUN} business` } });
+  businessIds.push(business.id);
+  const branch = await prisma.branch.create({
+    data: { businessId: business.id, name: `${RUN} branch` },
+  });
+  demoBranchId = branch.id;
+  const demo = await prisma.user.findFirstOrThrow({
+    where: { id: { in: userIds }, role: StaffRole.DEMO },
+    select: { id: true },
+  });
+  await prisma.userBranch.create({
+    data: { userId: demo.id, branchId: demoBranchId, role: StaffRole.DEMO },
+  });
 });
 
 afterAll(async () => {
+  await prisma.userBranch.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.branch.deleteMany({ where: { businessId: { in: businessIds } } });
+  await prisma.business.deleteMany({ where: { id: { in: businessIds } } });
   await prisma.$disconnect();
 });
 
@@ -79,7 +98,10 @@ describe('DEMO cannot see real people', () => {
      * Writes were blocked, so no authorisation check ever failed — it was a
      * privacy leak wearing an authorisation costume.
      */
-    const res = await request(app).get('/api/v1/staff').set(auth(demoToken));
+    const res = await request(app)
+      .get('/api/v1/staff')
+      .set(auth(demoToken))
+      .set('X-Branch-Id', demoBranchId);
 
     expect(res.status).toBe(403);
   });
@@ -88,7 +110,10 @@ describe('DEMO cannot see real people', () => {
     // The point of the account is a real demo, so restricting it further
     // would defeat it. Only personal data of employees is withheld.
     for (const path of ['/api/v1/orders', '/api/v1/inventory', '/api/v1/settings']) {
-      expect((await request(app).get(path).set(auth(demoToken))).status).toBe(200);
+      expect(
+        (await request(app).get(path).set(auth(demoToken)).set('X-Branch-Id', demoBranchId))
+          .status,
+      ).toBe(200);
     }
   });
 
@@ -96,6 +121,7 @@ describe('DEMO cannot see real people', () => {
     const res = await request(app)
       .patch('/api/v1/settings')
       .set(auth(demoToken))
+      .set('X-Branch-Id', demoBranchId)
       .send({ 'store.name': 'Demo tried this' });
 
     expect(res.status).toBe(403);
