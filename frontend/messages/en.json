@@ -351,6 +351,7 @@
   "nav": {
     "breadcrumb": "Breadcrumb",
     "configuration": "Configuration",
+    "guide": "Guide",
     "dashboard": "Dashboard",
     "orders": "Orders",
     "products": "Products",
@@ -399,6 +400,7 @@
       "returns": "Requests to send something back — review, approve, or reject each one.",
       "reports": "Revenue over time, top products, and how orders are trending.",
       "settings": "Brand, appearance, notifications, and security policy — one place for all of it.",
+      "guide": "Step-by-step operating instructions and reusable launch checklists.",
       "staff": "Who has access to this dashboard, and how much of it they can reach.",
       "audit": "A record of every change made here, and who made it.",
       "loginHistory": "Who signed in and who was refused"
@@ -3636,6 +3638,220 @@
     "yes": "Yes",
     "no": "No",
     "noFields": "No custom fields yet. Add them in the Custom fields tab."
+  },
+  "guide": {
+    "title": "Admin guide",
+    "badge": "Self-service reference",
+    "heroTitle": "Run the dashboard without waiting for a developer",
+    "heroDescription": "Follow the operating flows below to configure the brand, launch branches, publish products, connect the storefront, manage staff, and recover from common problems safely.",
+    "openSettings": "Open settings",
+    "onThisPage": "On this page",
+    "viewNavigation": "Guide views",
+    "guideTab": "Guide",
+    "checklistsTab": "Detailed checklists",
+    "important": "Important",
+    "quickLinks": {
+      "setup": "Business setup",
+      "setupDescription": "Complete the guided first-time configuration.",
+      "branches": "Branches",
+      "branchesDescription": "Create locations, timezones, and selling points.",
+      "products": "Products",
+      "productsDescription": "Create the catalogue, prices, content, and images.",
+      "inventory": "Inventory",
+      "inventoryDescription": "Assign products to branches and control stock.",
+      "orders": "Orders",
+      "ordersDescription": "Fulfil, cancel, refund, and trace customer orders.",
+      "staff": "Staff",
+      "staffDescription": "Invite people and grant only the access they need."
+    },
+    "sections": {
+      "start": {
+        "title": "Start here",
+        "summary": "Open the correct workspace directly. What you can see still follows your role and branch assignment."
+      },
+      "brand": {
+        "title": "Set up the brand and branches",
+        "summary": "Complete this once for the brand, then repeat the branch-specific steps whenever a new location opens.",
+        "steps": {
+          "profile": "In Settings, enter the trading name, logo, currency, contact details, and customer-facing identity.",
+          "branches": "Create each real location with a unique code, city, active timezone, and selling-point status.",
+          "tax": "Confirm the tax rate and receipt information before processing a real sale.",
+          "staff": "Invite the Owner first, then assign branch-scoped staff to the branch where they actually work.",
+          "verify": "Sign in with a non-owner test account and confirm it sees only its permitted areas and branches."
+        },
+        "warning": "A branch timezone controls daily reports and schedules. Choose the real local timezone; changing it later changes how dates are grouped."
+      },
+      "catalogue": {
+        "title": "Build a sellable catalogue",
+        "summary": "A product is not ready merely because its record exists. It needs content, a price, active status, and branch stock.",
+        "steps": {
+          "categories": "Create the category tree first so products appear in the correct storefront and dashboard groups.",
+          "products": "Create each product with a unique SKU or barcode, price, cost when known, and ACTIVE status only when ready.",
+          "stock": "Add a branch-stock row for every branch that carries the product, then record the opening quantity through inventory.",
+          "content": "Add English and Arabic names and descriptions, verify the primary image, and review any missing translation indicators.",
+          "preview": "Check the product in the selected branch and confirm price, image, category, quantity, and sold-out behavior."
+        },
+        "stockRule": "Branch membership is explicit: no branch-stock row means the branch does not carry the product. A row with quantity zero means the branch carries it but it is sold out."
+      },
+      "storefront": {
+        "title": "Connect one brand website to every branch",
+        "summary": "The website is brand-wide, while the customer-selected branch controls catalogue availability, stock, and fulfilment.",
+        "steps": {
+          "key": "Create a new key in Settings → API keys. Give it a clear name, purpose, and recipient.",
+          "scope": "Select only products, categories, discounts, and orders. Never leave a storefront key unscoped.",
+          "store": "Copy the key once into the storefront server's secret environment. Never place it in browser code or a NEXT_PUBLIC variable.",
+          "branch": "Request the active branch list, let the customer select a location, and store that branch ID in the storefront session.",
+          "products": "Fetch products or the menu with branchId on every catalogue request. Reload and revalidate the cart when the branch changes.",
+          "checkout": "Send the same branchId at checkout. The backend rechecks stock, price, discounts, and branch ownership before creating the order."
+        },
+        "requestTitle": "Minimal request sequence",
+        "neverTitle": "Never expose the key",
+        "never": "The browser calls your storefront server. Only that server sends X-API-Key to the dashboard API. Revoke any key that appears in chat, logs, screenshots, or source code."
+      },
+      "operations": {
+        "title": "Run daily operations",
+        "summary": "Use the same sequence every day so stock, cash, fulfilment, and audit history remain trustworthy.",
+        "flows": {
+          "opening": { "title": "Open the day", "description": "Select the correct branch, start the cashier shift, verify the opening drawer, review low stock, and confirm printers or scanners before the first sale." },
+          "sale": { "title": "Process a sale", "description": "Scan or browse branch-carried products, verify quantities and tender, submit once, and keep the receipt or order number for any later correction." },
+          "fulfillment": { "title": "Fulfil orders", "description": "Work the branch queue in order, update status only when the physical step happened, and assign delivery work only to a courier serving that branch." },
+          "return": { "title": "Handle returns", "description": "Open the original order, confirm remaining returnable quantity, record a reason and resolution, and verify stock and refund history afterwards." },
+          "closing": { "title": "Close the day", "description": "Resolve pending orders and returns, reconcile till takings, record drawer events, close the shift, and review exceptions before leaving." }
+        }
+      },
+      "access": {
+        "title": "Manage staff access",
+        "summary": "Access follows both the staff role and branch assignment. Hiding a menu item is not the security control; the API enforces every request.",
+        "steps": {
+          "invite": "Create or invite the staff account using the person's own email address.",
+          "branch": "Assign branch-scoped roles to every branch where the person is expected to work.",
+          "role": "Choose the narrowest role that supports the person's duties; do not use Owner as a shortcut.",
+          "review": "Use View as role and a real test login to confirm the resulting navigation and refused actions.",
+          "remove": "When someone leaves, deactivate access, revoke sessions and API keys, then review recent audit activity."
+        },
+        "rule": "API keys act as their owner's permissions narrowed by the selected scopes. Deactivating the owner invalidates their keys immediately."
+      },
+      "troubleshooting": {
+        "title": "Troubleshoot common API failures",
+        "summary": "Use the response status and message to fix the request instead of repeatedly retrying it.",
+        "table": { "status": "Status", "meaning": "Meaning", "action": "Admin action" },
+        "errors": {
+          "400": { "status": "400", "meaning": "The branch ID or request body is missing or invalid.", "action": "Select a real active branch and check every required checkout field." },
+          "401key": { "status": "401 — API key", "meaning": "The integration key is missing, invalid, revoked, or owned by an inactive account.", "action": "Send X-API-Key exactly, or create and deploy a replacement key." },
+          "401customer": { "status": "401 — Customer", "meaning": "A customer-only route such as order history was called without a shopper token.", "action": "Send the customer's Bearer token or use the public catalogue route." },
+          "403": { "status": "403", "meaning": "The key owner or selected scopes do not permit this area.", "action": "Grant only the required scope and confirm the owner already has that permission." },
+          "404": { "status": "404", "meaning": "The branch or product is unavailable in the selected context.", "action": "Check active selling status, product ACTIVE status, and the branch-stock row." },
+          "429": { "status": "429", "meaning": "Too many requests were sent in a short period.", "action": "Stop immediate retries, wait, then use backoff and caching where safe." }
+        }
+      },
+      "security": {
+        "title": "Security and recovery",
+        "summary": "Treat credentials, production data, and migration history as operational assets. Recovery must be planned before an incident.",
+        "items": {
+          "keys": "Keep API keys server-only, minimally scoped, named by recipient, and revoke unused or exposed keys immediately.",
+          "accounts": "Require individual accounts and two-factor authentication for privileged roles; never share an Owner login.",
+          "backups": "Take restorable database backups before migrations or destructive maintenance, and test restoration in isolation.",
+          "audit": "Review audit and login history after sensitive changes, refusals, suspicious access, or staff offboarding.",
+          "production": "Never run development migrations, demo seeding, or test suites against the production database.",
+          "incident": "If exposure is suspected: contain access, rotate credentials, revoke sessions, preserve request IDs, inspect audit history, and verify recovery."
+        }
+      }
+    },
+    "checklists": {
+      "title": "Detailed operating checklists",
+      "subtitle": "Reusable checklists for setup, branch launches, daily work, storefront integration, incidents, and production release.",
+      "completed": "Completed",
+      "completeGroup": "Complete group",
+      "resetAll": "Reset all",
+      "resetTitle": "Reset every checklist?",
+      "resetDescription": "This removes all saved ticks from this browser. It does not change dashboard data.",
+      "cancel": "Cancel",
+      "confirmReset": "Reset checklists",
+      "savedLocally": "Progress is saved only in this browser and contains no business data.",
+      "saveFailed": "Progress could not be saved in this browser. Your current ticks will remain until you leave or refresh this page.",
+      "groups": {
+        "setup": { "title": "Initial business setup", "description": "Complete once before real staff or customer activity begins.", "items": {
+          "owner": { "label": "Activate the customer Owner", "detail": "Use the Owner's real account and remove temporary operator ownership when it is no longer required." },
+          "profile": { "label": "Complete the brand profile", "detail": "Verify trading name, logo, contact details, locale, and customer-facing identity." },
+          "currency": { "label": "Confirm currency and money formatting", "detail": "Check dashboard, storefront, receipts, and reports use the same approved currency." },
+          "tax": { "label": "Confirm tax settings", "detail": "Verify the rate, calculation order, receipt display, and one known-value example." },
+          "notifications": { "label": "Configure operational notifications", "detail": "Set recipients and test in-app alerts; configure email only when every SMTP value is ready." },
+          "security": { "label": "Harden privileged access", "detail": "Enable two-factor authentication, store backup codes safely, and review active sessions." }
+        }},
+        "branch": { "title": "New branch launch", "description": "Repeat for every physical location or selling point.", "items": {
+          "identity": { "label": "Create the branch identity", "detail": "Use a unique name and code and verify the city and business relationship." },
+          "timezone": { "label": "Set the real local timezone", "detail": "Daily reports, audit buckets, notifications, and schedules depend on this value." },
+          "selling": { "label": "Confirm active selling-point status", "detail": "Only active selling branches should appear to the public storefront." },
+          "staff": { "label": "Assign the branch team", "detail": "Add each branch-scoped staff member and verify their effective role." },
+          "stock": { "label": "Load opening stock", "detail": "Create branch-stock membership and record quantities through traceable inventory movements." },
+          "test": { "label": "Run a branch acceptance sale", "detail": "Test catalogue visibility, POS checkout, receipt, stock decrement, order detail, and daily reporting." }
+        }},
+        "catalogue": { "title": "Catalogue readiness", "description": "Use before publishing products or connecting a storefront.", "items": {
+          "categories": { "label": "Review category structure", "detail": "Remove duplicates, confirm parent relationships, and keep customer-facing names clear." },
+          "products": { "label": "Review product identities", "detail": "Confirm unique SKU/barcode, status, category, and searchable name for every sellable item." },
+          "prices": { "label": "Verify price and cost", "detail": "Check price, tax behavior, and recorded cost where margin reporting is expected." },
+          "images": { "label": "Verify product imagery", "detail": "Confirm a primary image, ordering, crop quality, and useful alternative text." },
+          "translations": { "label": "Review English and Arabic content", "detail": "Check names, descriptions, SEO content, bidi behavior, and missing-translation fallbacks." },
+          "branchStock": { "label": "Assign products to branches", "detail": "Create stock rows only for branches that carry each item and confirm the exact quantity." },
+          "soldOut": { "label": "Test sold-out behavior", "detail": "A carried item at zero must show sold out; an uncarried item must not appear for that branch." }
+        }},
+        "storefront": { "title": "Storefront/API connection", "description": "Complete for the one brand website and repeat key rotation checks when credentials change.", "items": {
+          "key": { "label": "Create a dedicated storefront key", "detail": "Name the recipient and purpose clearly so the credential can be identified later." },
+          "scopes": { "label": "Limit the key scopes", "detail": "Grant only products, categories, discounts, and orders as required by the storefront." },
+          "secret": { "label": "Store the key server-side", "detail": "Use a secret environment variable; verify the key never reaches browser code or logs." },
+          "branches": { "label": "Load and select branches", "detail": "Call the branch endpoint, present a location choice, and persist the selected branch ID." },
+          "catalogue": { "label": "Test two branch catalogues", "detail": "Confirm the same product can report different stock and an uncarried item stays hidden." },
+          "languages": { "label": "Test English and Arabic", "detail": "Send Accept-Language and verify content, RTL layout, and fallback behavior." },
+          "guestOrder": { "label": "Place a guest order", "detail": "Verify totals, branch ownership, stock decrement, order visibility, and tracking." },
+          "customerOrder": { "label": "Test a signed-in customer", "detail": "Verify profile, cart, wishlist, checkout link, and order history using both credentials." },
+          "rotation": { "label": "Prove key rotation", "detail": "Deploy a replacement, verify it, revoke the old key, and confirm the old key immediately returns 401." }
+        }},
+        "opening": { "title": "Daily opening", "description": "Complete before the first order or till sale of the day.", "items": {
+          "branch": { "label": "Confirm the selected branch", "detail": "Verify the shell, reports, till, and inventory are all operating in the intended location." },
+          "shift": { "label": "Start the cashier shift", "detail": "Use the correct staff account and confirm the shift is attached to the right branch." },
+          "drawer": { "label": "Record opening cash", "detail": "Count the drawer and record discrepancies before processing sales." },
+          "devices": { "label": "Check till equipment", "detail": "Verify scanner, printer, network, payment equipment, and receipt paper." },
+          "stock": { "label": "Review stock exceptions", "detail": "Check low-stock and sold-out items and correct only through recorded movements." },
+          "alerts": { "label": "Review pending work", "detail": "Check returns, failed deliveries, notifications, and orders needing attention." }
+        }},
+        "closing": { "title": "Daily closing", "description": "Complete before the final shift closes.", "items": {
+          "orders": { "label": "Resolve open orders", "detail": "Confirm every status matches the physical fulfilment state and document exceptions." },
+          "returns": { "label": "Resolve pending returns", "detail": "Approve, reject, or leave a clear note with an accountable next owner." },
+          "deliveries": { "label": "Reconcile delivery work", "detail": "Review active assignments, failed attempts, courier cash, and unreturned orders." },
+          "cash": { "label": "Count and reconcile the drawer", "detail": "Compare expected and actual cash and record drops, payouts, or variances." },
+          "shift": { "label": "Close and review the shift", "detail": "Generate the report, close the till, and obtain approval where policy requires it." },
+          "exceptions": { "label": "Review the day timeline", "detail": "Check unusual refunds, voids, stock adjustments, access refusals, and unresolved alerts." }
+        }},
+        "staff": { "title": "Staff onboarding and offboarding", "description": "Use for every person who receives dashboard access.", "items": {
+          "invite": { "label": "Use an individual identity", "detail": "Invite the person's own email; never create a shared team login." },
+          "role": { "label": "Select the narrowest role", "detail": "Match actual duties and avoid Owner or Developer access as a convenience." },
+          "assignment": { "label": "Assign permitted branches", "detail": "Confirm branch-scoped roles have every required branch and no unrelated branch." },
+          "activation": { "label": "Complete first login", "detail": "Have the user set their password, accept policies, and verify the expected navigation." },
+          "twoFactor": { "label": "Enable two-factor authentication", "detail": "Require it for privileged users and store backup codes outside the browser." },
+          "review": { "label": "Review access periodically", "detail": "Check roles, assignments, active sessions, keys, and recent login history." },
+          "offboard": { "label": "Offboard immediately", "detail": "Deactivate the account, revoke sessions and keys, reassign work, and inspect audit history." }
+        }},
+        "incident": { "title": "Security incident response", "description": "Use when a key, password, session, device, or production credential may be exposed.", "items": {
+          "contain": { "label": "Contain access", "detail": "Disable the affected account or integration and stop unsafe automated traffic." },
+          "revoke": { "label": "Rotate exposed credentials", "detail": "Create safe replacements, update approved services, and revoke old keys or passwords." },
+          "sessions": { "label": "Revoke active sessions", "detail": "Remove unrecognized sessions and require affected users to authenticate again." },
+          "audit": { "label": "Inspect audit and login history", "detail": "Establish what happened, which areas were reached, and the first and last suspicious time." },
+          "evidence": { "label": "Preserve safe evidence", "detail": "Record request IDs, timestamps, account IDs, and actions without copying secrets or customer PII." },
+          "restore": { "label": "Verify recovery", "detail": "Test normal access, confirm old credentials fail, monitor for recurrence, and document prevention." }
+        }},
+        "release": { "title": "Production go-live", "description": "Final gate before exposing a release to real customer data and operations.", "items": {
+          "commit": { "label": "Approve the exact commit", "detail": "Use a clean, reviewed commit with green required checks and known ownership." },
+          "backup": { "label": "Take and test a backup", "detail": "Restore it into isolation and record the timestamp, checksum, operator, and result." },
+          "migrations": { "label": "Verify migration history", "detail": "Check names, checksums, status, generated client, and guarded production deployment." },
+          "builds": { "label": "Run the full quality gate", "detail": "Complete backend and frontend typecheck, lint, tests, and production builds from the lockfile." },
+          "bilingual": { "label": "Review English and Arabic", "detail": "Check translations, RTL, bidi values, typography, overflow, and a native Arabic review." },
+          "accessibility": { "label": "Complete accessibility checks", "detail": "Verify keyboard flow, focus visibility, semantic headings, contrast, and mobile touch targets." },
+          "acceptance": { "label": "Run end-to-end acceptance", "detail": "Test auth, branches, catalogue, POS, orders, inventory, returns, delivery, reports, settings, and audit." },
+          "monitoring": { "label": "Confirm operational monitoring", "detail": "Verify health checks, logs, alert routing, uptime ownership, and support contacts." },
+          "rollback": { "label": "Confirm rollback readiness", "detail": "Name the rollback owner and last known-good commit and verify database recovery constraints." }
+        }}
+      }
+    }
   },
   "businessTypes": {
     "RESTAURANT": "Restaurant",

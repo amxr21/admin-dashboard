@@ -97,10 +97,17 @@ describe('permission-driven navigation', () => {
   it('shows support only its own areas', () => {
     render(<SidebarNav role="SUPPORT" />);
 
+    expect(screen.getByRole('link', { name: /^guide$/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /orders/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /customers/i })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /discounts/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /reports/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps the self-service guide available to every authenticated role', () => {
+    render(<SidebarNav role="CASHIER" />);
+
+    expect(screen.getByRole('link', { name: /^guide$/i })).toHaveAttribute('href', '/admin/guide');
   });
 
   it('shows fulfillment its own areas', () => {
