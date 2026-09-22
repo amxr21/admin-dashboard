@@ -2822,7 +2822,7 @@
         "product": "Product",
         "variant": "Variant",
         "sku": "SKU",
-        "stockAllBranches": "Current stock (all branches)",
+        "stock": "Current stock",
         "sold": "Units sold",
         "received": "Units received"
       }

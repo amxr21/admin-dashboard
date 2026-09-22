@@ -489,13 +489,8 @@ export interface VariantStockMovement {
     name: string;
     productName: string;
     sku: string | null;
-    /**
-     * All-branch total, and named so it cannot be read as branch-scoped.
-     * `sold`/`received` beside it ARE branch-scoped when a branch is asked
-     * for; per-branch totals exist for products (`BranchStock`) but not yet
-     * for variants, so there is no narrower number to report here.
-     */
-    stockAllBranches: number;
+    /** Branch stock when a branch is active; all-branch total otherwise. */
+    stock: number;
     sold: number;
     received: number;
   }[];

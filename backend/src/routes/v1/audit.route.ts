@@ -7,6 +7,7 @@ import { toCsv } from '../../lib/csv.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
+import { withBranchTimezone } from '../../middleware/branch-timezone.js';
 import {
   audit,
   listAudit,
@@ -51,12 +52,16 @@ const listQuery = z.object({
   format: z.enum(['json', 'csv']).optional(),
 });
 
-auditRouter.get('/audit', authenticate, withBranchContext, requireArea('staff'), async (req, res) => {
+auditRouter.get('/audit', authenticate, withBranchContext, withBranchTimezone, requireArea('staff'), async (req, res) => {
   const parsed = listQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid query', parsed.error.flatten());
 
   if (parsed.data.format === 'csv') {
-    const { rows, truncated } = await listAuditForExport(parsed.data);
+    const { rows, truncated } = await listAuditForExport({
+      ...parsed.data,
+      branchId: req.branchId ?? undefined,
+      timezone: req.branchTimezone ?? 'UTC',
+    });
 
     /**
      * Exporting the trail is itself an auditable event (B1.7).
@@ -109,15 +114,21 @@ auditRouter.get('/audit', authenticate, withBranchContext, requireArea('staff'),
     return;
   }
 
-  res.json({ data: await listAudit(parsed.data) });
+  res.json({
+    data: await listAudit({
+      ...parsed.data,
+      branchId: req.branchId ?? undefined,
+      timezone: req.branchTimezone ?? 'UTC',
+    }),
+  });
 });
 
 // Ahead of `/audit/:id`-shaped routes that do not exist yet, but named so it
 // never collides if one is added later.
-auditRouter.get('/audit/entities', authenticate, withBranchContext, requireArea('staff'), async (_req, res) => {
-  res.json({ data: await listAuditEntities() });
+auditRouter.get('/audit/entities', authenticate, withBranchContext, requireArea('staff'), async (req, res) => {
+  res.json({ data: await listAuditEntities(req.branchId ?? undefined) });
 });
 
-auditRouter.get('/audit/actions', authenticate, withBranchContext, requireArea('staff'), async (_req, res) => {
-  res.json({ data: await listAuditActions() });
+auditRouter.get('/audit/actions', authenticate, withBranchContext, requireArea('staff'), async (req, res) => {
+  res.json({ data: await listAuditActions(req.branchId ?? undefined) });
 });

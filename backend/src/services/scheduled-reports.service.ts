@@ -9,6 +9,8 @@ import { isKnownReportKey, REPORT_REGISTRY, type RangeParams } from './reports.s
 import { toCsv } from '../lib/csv.js';
 import { toXlsx } from '../lib/xlsx.js';
 import { toPdf } from '../lib/pdf.js';
+import { dateOnlyInTimeZone, shiftDateOnly } from '../lib/date-range.js';
+import { resolveEffectiveTimezone } from '../middleware/branch-timezone.js';
 
 /**
  * Scheduled reports (C3.2) — a recurring send of one report to a recipient
@@ -27,6 +29,7 @@ const SCHEDULE_SELECT = {
   lastRunAt: true,
   lastRunStatus: true,
   createdById: true,
+  branchId: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -83,8 +86,9 @@ function serialise<T extends { recipients: unknown; createdAt: Date; updatedAt: 
   };
 }
 
-export async function listScheduledReports() {
+export async function listScheduledReports(branchId?: string) {
   const rows = await prisma.scheduledReport.findMany({
+    where: branchId ? { branchId } : undefined,
     select: SCHEDULE_SELECT,
     orderBy: { createdAt: 'desc' },
   });
@@ -96,6 +100,7 @@ export async function createScheduledReport(
   input: ScheduledReportInput,
   actorId: string,
   req: Request,
+  branchId?: string,
 ) {
   assertKnownReport(input.reportKey);
   const recipients = normaliseRecipients(input.recipients);
@@ -112,6 +117,7 @@ export async function createScheduledReport(
       recipients,
       isActive: input.isActive ?? true,
       createdById: actorId,
+      branchId: branchId ?? null,
     },
     select: SCHEDULE_SELECT,
   });
@@ -130,8 +136,12 @@ export async function updateScheduledReport(
   id: string,
   input: Partial<ScheduledReportInput>,
   req: Request,
+  branchId?: string,
 ) {
-  const existing = await prisma.scheduledReport.findUnique({ where: { id }, select: SCHEDULE_SELECT });
+  const existing = await prisma.scheduledReport.findFirst({
+    where: { id, ...(branchId ? { branchId } : {}) },
+    select: SCHEDULE_SELECT,
+  });
   if (!existing) throw AppError.notFound('Scheduled report not found');
 
   if (input.reportKey !== undefined) assertKnownReport(input.reportKey);
@@ -169,8 +179,11 @@ export async function updateScheduledReport(
   return serialise(row);
 }
 
-export async function deleteScheduledReport(id: string, req: Request) {
-  const existing = await prisma.scheduledReport.findUnique({ where: { id }, select: { id: true } });
+export async function deleteScheduledReport(id: string, req: Request, branchId?: string) {
+  const existing = await prisma.scheduledReport.findFirst({
+    where: { id, ...(branchId ? { branchId } : {}) },
+    select: { id: true },
+  });
   if (!existing) throw AppError.notFound('Scheduled report not found');
 
   await prisma.scheduledReport.delete({ where: { id } });
@@ -178,22 +191,21 @@ export async function deleteScheduledReport(id: string, req: Request) {
   audit(req, { action: 'scheduledReport.deleted', entity: 'scheduledReport', entityId: id });
 }
 
-/** Local Y-M-D, matching `reports-api.ts`'s own `toIsoDate` on the frontend. */
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
 /** The window a frequency implies, ending "now" — see `ScheduledReport`'s
  *  own schema comment for why this is computed fresh each run, never saved. */
-function rangeForFrequency(frequency: ScheduleFrequency, now: Date): RangeParams {
-  const to = isoDate(now);
-  const from = new Date(now);
+export function rangeForFrequency(
+  frequency: ScheduleFrequency,
+  now: Date,
+  timezone = 'UTC',
+): RangeParams {
+  const to = dateOnlyInTimeZone(now, timezone);
+  const from = frequency === ScheduleFrequency.DAILY
+    ? shiftDateOnly(to, { days: -1 })
+    : frequency === ScheduleFrequency.WEEKLY
+      ? shiftDateOnly(to, { days: -7 })
+      : shiftDateOnly(to, { months: -1 });
 
-  if (frequency === ScheduleFrequency.DAILY) from.setDate(from.getDate() - 1);
-  else if (frequency === ScheduleFrequency.WEEKLY) from.setDate(from.getDate() - 7);
-  else from.setMonth(from.getMonth() - 1);
-
-  return { from: isoDate(from), to };
+  return { from, to, timezone };
 }
 
 /**
@@ -208,18 +220,26 @@ function rangeForFrequency(frequency: ScheduleFrequency, now: Date): RangeParams
  * cron tick) must keep going to the next schedule even if this one's mail
  * server is down.
  */
-export async function runScheduledReport(id: string): Promise<{ sent: boolean; reason?: string }> {
-  const schedule = await prisma.scheduledReport.findUnique({ where: { id } });
+export async function runScheduledReport(
+  id: string,
+  branchScope?: string,
+): Promise<{ sent: boolean; reason?: string }> {
+  const schedule = await prisma.scheduledReport.findFirst({
+    where: { id, ...(branchScope ? { branchId: branchScope } : {}) },
+  });
   if (!schedule) return { sent: false, reason: 'not_found' };
 
   const entry = REPORT_REGISTRY[schedule.reportKey];
   if (!entry) return { sent: false, reason: 'unknown_report' };
 
-  const range = rangeForFrequency(schedule.frequency, new Date());
-
   let outcome: { sent: boolean; reason?: string };
   try {
-    const result = await entry.fetch(range);
+    const timezone = await resolveEffectiveTimezone(schedule.branchId);
+    const range = rangeForFrequency(schedule.frequency, new Date(), timezone);
+    const result = await entry.fetch({
+      ...range,
+      branchId: schedule.branchId ?? undefined,
+    });
     const rows = entry.rows(result);
     const columns = entry.csvColumns as never;
     const subject = `${entry.label} — ${range.from} to ${range.to}`;

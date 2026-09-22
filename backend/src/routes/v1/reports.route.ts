@@ -1,10 +1,12 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
+import { StaffRole } from '@prisma/client';
 
 import { AppError } from '../../errors/AppError.js';
 import { authenticate } from '../../middleware/authenticate.js';
-import { requireArea } from '../../middleware/authorize.js';
+import { requireArea, requireRole } from '../../middleware/authorize.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
+import { withBranchTimezone } from '../../middleware/branch-timezone.js';
 import { toCsv, type CsvColumn } from '../../lib/csv.js';
 import { toXlsx } from '../../lib/xlsx.js';
 import { toPdf } from '../../lib/pdf.js';
@@ -62,7 +64,7 @@ import {
 
 export const reportsRouter = Router();
 
-const guard = [authenticate, withBranchContext, requireArea('reports')] as const;
+const guard = [authenticate, withBranchContext, withBranchTimezone, requireArea('reports')] as const;
 
 /**
  * Merges the request's active branch into a parsed query (F8.5).
@@ -82,8 +84,15 @@ const guard = [authenticate, withBranchContext, requireArea('reports')] as const
  * `RangeParams.branchId` is optional, so passing `undefined` restores exactly
  * the pre-F8 behaviour.
  */
-function scoped<T extends object>(req: Request, params: T): T & { branchId?: string } {
-  return req.branchId ? { ...params, branchId: req.branchId } : params;
+function scoped<T extends object>(
+  req: Request,
+  params: T,
+): T & { branchId?: string; timezone: string } {
+  return {
+    ...params,
+    ...(req.branchId ? { branchId: req.branchId } : {}),
+    timezone: req.branchTimezone ?? 'UTC',
+  };
 }
 
 /** Date-only, so a caller cannot smuggle a timezone in and shift the range. */
@@ -189,12 +198,17 @@ const topQuery = rangeQuery.extend({
  * above still requires the `reports` area, and the rows carry no data a
  * report for one branch would not already show.
  */
-reportsRouter.get('/reports/branch-comparison', ...guard, async (req, res) => {
+reportsRouter.get(
+  '/reports/branch-comparison',
+  ...guard,
+  requireRole(StaffRole.OWNER, StaffRole.DEVELOPER),
+  async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
 
   res.json({ data: await getBranchComparison(parsed.data) });
-});
+  },
+);
 
 reportsRouter.get('/reports/overview', ...guard, async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
@@ -365,8 +379,8 @@ reportsRouter.get('/reports/status-breakdown', ...guard, async (req, res) => {
  * either — this is an action queue meant to be cleared, not a report meant
  * to be archived.
  */
-reportsRouter.get('/reports/needs-attention', ...guard, async (_req, res) => {
-  res.json({ data: await getNeedsAttention() });
+reportsRouter.get('/reports/needs-attention', ...guard, async (req, res) => {
+  res.json({ data: await getNeedsAttention({ branchId: req.branchId ?? undefined }) });
 });
 
 /**
@@ -712,8 +726,8 @@ reportsRouter.get('/reports/review-moderation-throughput', ...guard, async (req,
  * scoped ("has this product ever been reviewed" doesn't reset every
  * period), same as `/reports/needs-attention`.
  */
-reportsRouter.get('/reports/products-without-reviews', ...guard, async (_req, res) => {
-  res.json({ data: await getProductsWithoutReviews() });
+reportsRouter.get('/reports/products-without-reviews', ...guard, async (req, res) => {
+  res.json({ data: await getProductsWithoutReviews({ branchId: req.branchId ?? undefined }) });
 });
 
 // ─── C3.5 (second batch) — inventory domain ────────────────────────────────
@@ -726,7 +740,7 @@ reportsRouter.get('/reports/low-stock-snapshot', ...guard, async (req, res) => {
   const formatParsed = z.object({ format: z.enum(['json', 'csv', 'xlsx', 'pdf']).optional() }).safeParse(req.query);
   if (!formatParsed.success) throw AppError.badRequest('Invalid parameters', formatParsed.error.flatten());
 
-  const snapshot = await getLowStockSnapshot();
+  const snapshot = await getLowStockSnapshot({ branchId: req.branchId ?? undefined });
 
   if (formatParsed.data.format && formatParsed.data.format !== 'json') {
     await sendExport(res, formatParsed.data.format, 'Low stock snapshot', 'low-stock-snapshot', snapshot.products, [
@@ -770,10 +784,7 @@ reportsRouter.get('/reports/variant-stock-movement', ...guard, async (req, res) 
       { header: 'Product', value: (r) => r.productName },
       { header: 'Variant', value: (r) => r.name },
       { header: 'SKU', value: (r) => r.sku ?? '' },
-      // Header says "all branches" for the same reason F4.3 renamed the
-      // order-outcomes revenue column: a CSV column is read out of context,
-      // summed, and acted on, so the scope has to travel with the number.
-      { header: 'Current stock (all branches)', value: (r) => r.stockAllBranches },
+      { header: 'Current stock', value: (r) => r.stock },
       { header: 'Units sold', value: (r) => r.sold },
       { header: 'Units received', value: (r) => r.received },
     ], { from: parsed.data.from, to: parsed.data.to });
@@ -894,8 +905,8 @@ reportsRouter.get('/reports/delivery-cycle-time', ...guard, async (req, res) => 
  * Courier workload / active-roster snapshot (C3.5) — live state, not date-
  * range scoped, same as `/reports/needs-attention`.
  */
-reportsRouter.get('/reports/courier-workload-snapshot', ...guard, async (_req, res) => {
-  res.json({ data: await getCourierWorkloadSnapshot() });
+reportsRouter.get('/reports/courier-workload-snapshot', ...guard, async (req, res) => {
+  res.json({ data: await getCourierWorkloadSnapshot({ branchId: req.branchId ?? undefined }) });
 });
 
 // ─── C3.5 (second batch) — audit/security domain ───────────────────────────

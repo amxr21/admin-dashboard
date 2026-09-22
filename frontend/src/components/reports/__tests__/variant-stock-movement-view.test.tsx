@@ -52,7 +52,7 @@ describe('variant stock movement view (C3.5)', () => {
           name: 'Red / L',
           productName: 'T-Shirt',
           sku: 'TS-RL',
-          stockAllBranches: 10,
+          stock: 10,
           sold: 5,
           received: 20,
         },
