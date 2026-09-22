@@ -5,13 +5,13 @@ import { useTranslations } from 'next-intl';
 import { ArrowLeft, ArrowRight, PackagePlus } from 'lucide-react';
 
 import { AttentionPills } from '@/components/dashboard/attention-pills';
+import { DayTimelineWidget } from '@/components/dashboard/day-timeline-widget';
 import { FloorBand } from '@/components/dashboard/floor-band';
 import { FulfillmentHealthWidget } from '@/components/dashboard/fulfillment-health-widget';
 import { LatestNotificationsWidget } from '@/components/dashboard/latest-notifications-widget';
 import { LatestOrdersWidget } from '@/components/dashboard/latest-orders-widget';
 import { LowStockWidget } from '@/components/dashboard/low-stock-widget';
 import { OrderValueWidget } from '@/components/dashboard/order-value-widget';
-import { RecentActivityWidget } from '@/components/dashboard/recent-activity-widget';
 import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-chart';
 import { ReturnsSummaryWidget } from '@/components/dashboard/returns-summary-widget';
 import { StatTile } from '@/components/dashboard/stat-tile';
@@ -48,11 +48,11 @@ import {
   writeTemplate,
   type DashboardTemplate,
 } from '@/lib/dashboard-template';
-import { fetchAudit, type AuditEntry } from '@/lib/audit-api';
 import { fetchOrders, type OrderListRow } from '@/lib/orders-api';
 import { fetchRows, type ResourceRow } from '@/lib/resource-api';
 import {
   deltaPercent,
+  fetchDayTimeline,
   fetchFloorStatus,
   fetchFulfillmentHealth,
   fetchLowStockSnapshot,
@@ -68,6 +68,7 @@ import {
   profitCoverageOf,
   previousPeriod,
   samePeriodLastYear,
+  type DayTimeline,
   type FloorStatus,
   type FulfillmentHealth,
   type LowStockSnapshot,
@@ -156,7 +157,6 @@ export function DashboardOverview() {
   const [fulfillment, setFulfillment] = useState<FulfillmentHealth | null>(null);
   const [returns, setReturns] = useState<ReturnsSummary | null>(null);
   const [orderValue, setOrderValue] = useState<OrderValueDistribution | null>(null);
-  const [recentActivity, setRecentActivity] = useState<AuditEntry[] | null>(null);
   /**
    * The three "what is happening right now" panels. Unlike everything above
    * them these are NOT period-scoped — see each widget's own note. They are
@@ -172,6 +172,8 @@ export function DashboardOverview() {
   const [attention, setAttention] = useState<NeedsAttention | null>(null);
   /** Live catalogue state — `stock <= threshold` right now, not over the range. */
   const [lowStock, setLowStock] = useState<LowStockSnapshot | null>(null);
+  /** Range-scoped, unlike the floor band: the same feed answers "last Tuesday". */
+  const [timeline, setTimeline] = useState<DayTimeline | null>(null);
   const [latestOrders, setLatestOrders] = useState<OrderListRow[] | null>(null);
   const [latestNotifications, setLatestNotifications] = useState<ResourceRow[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -209,12 +211,12 @@ export function DashboardOverview() {
         loadedFulfillment,
         loadedReturns,
         loadedOrderValue,
-        loadedActivity,
         loadedLatestOrders,
         loadedLatestNotifications,
         loadedFloor,
         loadedAttention,
         loadedLowStock,
+        loadedTimeline,
       ] = await Promise.all([
         fetchOverview(range),
         comparisonRange ? fetchOverview(comparisonRange) : Promise.resolve(null),
@@ -227,7 +229,6 @@ export function DashboardOverview() {
         fetchFulfillmentHealth(range),
         fetchReturnsSummary(range),
         fetchOrderValueDistribution(range),
-        fetchAudit({ page: 1, pageSize: 6 }),
         fetchOrders({ page: 1, pageSize: 5, sort: 'placedAt', dir: 'desc' }),
         // Branch scoping is applied server-side by the resource engine, so no
         // branch filter is passed here — see `branchScopeField`.
@@ -237,6 +238,7 @@ export function DashboardOverview() {
         fetchFloorStatus(),
         fetchNeedsAttention(),
         fetchLowStockSnapshot(),
+        fetchDayTimeline(range, 40),
       ]);
 
       setOverview(loadedOverview);
@@ -267,12 +269,12 @@ export function DashboardOverview() {
       setFulfillment(loadedFulfillment);
       setReturns(loadedReturns);
       setOrderValue(loadedOrderValue);
-      setRecentActivity(loadedActivity.entries);
       setLatestOrders(loadedLatestOrders.orders);
       setLatestNotifications(loadedLatestNotifications.rows);
       setFloor(loadedFloor);
       setAttention(loadedAttention);
       setLowStock(loadedLowStock);
+      setTimeline(loadedTimeline);
       setLastUpdated(new Date());
     } catch (caught) {
       setError(translateError(caught));
@@ -653,8 +655,11 @@ export function DashboardOverview() {
             OnShiftWidget used to sit here. The floor band at the top now
             answers "who is on" in far more detail, and two panels claiming
             the same fact is how they start to disagree. */}
+        {/* The day's record closes the page. It supersedes the old
+            recent-activity panel, which showed the newest audit rows only —
+            and therefore never showed a storefront order at all. */}
         <Reveal className="col-span-12">
-          <RecentActivityWidget entries={recentActivity} isLoading={isLoading} />
+          <DayTimelineWidget data={timeline} isLoading={isLoading} />
         </Reveal>
 
         <Reveal className="col-span-12">
