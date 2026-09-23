@@ -11,6 +11,10 @@ import {
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
 import { SETTINGS } from '../config/settings.config.js';
+import {
+  executeIdempotently,
+  type IdempotentExecution,
+} from './idempotency.service.js';
 import { getSettingValue } from './settings.service.js';
 import type { ProductLocale } from './product-content.service.js';
 
@@ -805,26 +809,16 @@ async function nextOrderNumber(tx: Prisma.TransactionClient): Promise<string> {
  *     keeps its established meaning: the grand total, tax included. Reports and
  *     dashboard KPIs already read `.total` that way.
  */
-export async function checkout(
+async function checkoutOnce(
   input: CheckoutInput,
   customerId: string | null,
+  tx: Prisma.TransactionClient,
+  taxRate: Prisma.Decimal,
 ): Promise<CheckoutResult> {
   if (input.items.length === 0) {
     throw AppError.badRequest('Your cart is empty');
   }
 
-  // Read the tax rate once, outside the transaction — it cannot change
-  // mid-checkout, and holding a transaction open across an extra read is waste.
-  const taxRateSetting = await prisma.setting.findUnique({
-    where: { key: 'store.taxRate' },
-    select: { value: true },
-  });
-  const taxRatePercent = Number(
-    taxRateSetting === null ? SETTINGS['store.taxRate'].default : taxRateSetting.value,
-  );
-  const taxRate = new Prisma.Decimal(taxRatePercent).dividedBy(100);
-
-  return prisma.$transaction(async (tx) => {
     const branch = await tx.branch.findFirst({
       where: {
         id: input.branchId,
@@ -1047,13 +1041,49 @@ export async function checkout(
       await tx.cartItem.deleteMany({ where: { customerId } });
     }
 
-    return {
-      orderNumber: order.orderNumber,
-      subtotal: subtotal.toFixed(2),
-      discountAmount: discountAmount.toFixed(2),
-      taxAmount: taxAmount.toFixed(2),
-      total: total.toFixed(2),
-    };
+  return {
+    orderNumber: order.orderNumber,
+    subtotal: subtotal.toFixed(2),
+    discountAmount: discountAmount.toFixed(2),
+    taxAmount: taxAmount.toFixed(2),
+    total: total.toFixed(2),
+  };
+}
+
+/**
+ * Retry-safe public checkout.
+ *
+ * The idempotency claim and every order, stock and discount write share one
+ * transaction. A caller that loses the first response can therefore repeat the
+ * same key without creating another order or decrementing inventory twice.
+ * Customer identity is part of the protected request even though it comes from
+ * a verified token rather than the body: one key cannot be replayed as a
+ * different shopper.
+ */
+export async function checkout(
+  input: CheckoutInput,
+  customerId: string | null,
+  integrationActorId: string,
+  idempotencyKey: string,
+): Promise<IdempotentExecution<CheckoutResult>> {
+  // Read the tax rate once before opening the transaction. A successful first
+  // execution stores its exact totals, so a later retry still replays the
+  // original response even if the setting changes afterward.
+  const taxRateSetting = await prisma.setting.findUnique({
+    where: { key: 'store.taxRate' },
+    select: { value: true },
+  });
+  const taxRatePercent = Number(
+    taxRateSetting === null ? SETTINGS['store.taxRate'].default : taxRateSetting.value,
+  );
+  const taxRate = new Prisma.Decimal(taxRatePercent).dividedBy(100);
+
+  return executeIdempotently({
+    scope: 'storefront.checkout',
+    actorId: integrationActorId,
+    key: idempotencyKey,
+    request: { input, customerId },
+    execute: (tx) => checkoutOnce(input, customerId, tx, taxRate),
   });
 }
 

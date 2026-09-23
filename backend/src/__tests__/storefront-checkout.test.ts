@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
@@ -91,10 +92,16 @@ async function makeDiscount(
   return discount;
 }
 
-function order(productId: string, quantity: number, discountCode?: string) {
+function order(
+  productId: string,
+  quantity: number,
+  discountCode?: string,
+  idempotencyKey = randomUUID(),
+) {
   return request(app)
     .post('/api/v1/public/orders')
     .set('X-API-Key', storefrontKey)
+    .set('Idempotency-Key', idempotencyKey)
     .send({
       branchId,
       items: [{ productId, quantity }],
@@ -158,6 +165,9 @@ afterAll(async () => {
   await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   await prisma.category.deleteMany({ where: { id: { in: categoryIds } } });
   await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
+  await prisma.idempotencyRecord.deleteMany({
+    where: { scope: 'storefront.checkout', actorId: ownerId },
+  });
   await prisma.branch.deleteMany({ where: { businessId } });
   await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.user.delete({ where: { id: ownerId } });
@@ -166,6 +176,104 @@ afterAll(async () => {
 });
 
 describe('checkout without a discount', () => {
+  it('requires a valid idempotency key', async () => {
+    const product = await makeProduct('12.00', 4);
+    const res = await request(app)
+      .post('/api/v1/public/orders')
+      .set('X-API-Key', storefrontKey)
+      .send({
+        branchId,
+        items: [{ productId: product.id, quantity: 1 }],
+        contact: { name: 'Ali', phone: '+971500000000' },
+        paymentMethod: 'cash',
+        fulfillment: 'Pickup',
+      });
+
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorBody).error.message).toBe(
+      'A valid Idempotency-Key header is required',
+    );
+  });
+
+  it('replays one result without creating a second order or stock movement', async () => {
+    const product = await makeProduct('12.00', 4);
+    const idempotencyKey = randomUUID();
+
+    const first = await order(product.id, 2, undefined, idempotencyKey);
+    const replay = await order(product.id, 2, undefined, idempotencyKey);
+
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(201);
+    expect(first.headers['idempotency-replayed']).toBe('false');
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+    expect(replay.body).toEqual(first.body);
+
+    const orderNumber = (first.body as CheckoutBody).data.orderNumber;
+    const [savedOrders, movements, branchStock] = await Promise.all([
+      prisma.order.count({ where: { orderNumber } }),
+      prisma.stockMovement.count({
+        where: { productId: product.id, reason: 'SOLD', note: `Order ${orderNumber}` },
+      }),
+      prisma.branchStock.findUnique({
+        where: { productId_branchId: { productId: product.id, branchId } },
+        select: { quantity: true },
+      }),
+    ]);
+
+    expect(savedOrders).toBe(1);
+    expect(movements).toBe(1);
+    expect(branchStock?.quantity).toBe(2);
+  });
+
+  it('serializes simultaneous requests that use the same key', async () => {
+    const product = await makeProduct('12.00', 4);
+    const idempotencyKey = randomUUID();
+
+    const [left, right] = await Promise.all([
+      order(product.id, 1, undefined, idempotencyKey),
+      order(product.id, 1, undefined, idempotencyKey),
+    ]);
+
+    expect(left.status).toBe(201);
+    expect(right.status).toBe(201);
+    expect(left.body).toEqual(right.body);
+    expect([
+      left.headers['idempotency-replayed'],
+      right.headers['idempotency-replayed'],
+    ].sort()).toEqual(['false', 'true']);
+
+    const orderNumber = (left.body as CheckoutBody).data.orderNumber;
+    const [savedOrders, branchStock] = await Promise.all([
+      prisma.order.count({ where: { orderNumber } }),
+      prisma.branchStock.findUnique({
+        where: { productId_branchId: { productId: product.id, branchId } },
+        select: { quantity: true },
+      }),
+    ]);
+    expect(savedOrders).toBe(1);
+    expect(branchStock?.quantity).toBe(3);
+  });
+
+  it('rejects reuse of one key for different order details', async () => {
+    const product = await makeProduct('12.00', 5);
+    const idempotencyKey = randomUUID();
+
+    const first = await order(product.id, 1, undefined, idempotencyKey);
+    const changed = await order(product.id, 2, undefined, idempotencyKey);
+
+    expect(first.status).toBe(201);
+    expect(changed.status).toBe(409);
+    expect((changed.body as ErrorBody).error.message).toContain(
+      'already used for different details',
+    );
+
+    const branchStock = await prisma.branchStock.findUnique({
+      where: { productId_branchId: { productId: product.id, branchId } },
+      select: { quantity: true },
+    });
+    expect(branchStock?.quantity).toBe(4);
+  });
+
   it('charges the catalogue price and records no discount', async () => {
     const product = await makeProduct('25.00');
 
@@ -216,12 +324,16 @@ describe('checkout without a discount', () => {
 
   it('requires an explicit active branch', async () => {
     const product = await makeProduct('12.00', 4);
-    const res = await request(app).post('/api/v1/public/orders').set('X-API-Key', storefrontKey).send({
-      items: [{ productId: product.id, quantity: 1 }],
-      contact: { name: 'Ali', phone: '+971500000000' },
-      paymentMethod: 'cash',
-      fulfillment: 'Pickup',
-    });
+    const res = await request(app)
+      .post('/api/v1/public/orders')
+      .set('X-API-Key', storefrontKey)
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        items: [{ productId: product.id, quantity: 1 }],
+        contact: { name: 'Ali', phone: '+971500000000' },
+        paymentMethod: 'cash',
+        fulfillment: 'Pickup',
+      });
 
     expect(res.status).toBe(400);
   });
@@ -232,13 +344,17 @@ describe('checkout without a discount', () => {
       data: { businessId, name: `${RUN} other branch` },
     });
 
-    const res = await request(app).post('/api/v1/public/orders').set('X-API-Key', storefrontKey).send({
-      branchId: otherBranch.id,
-      items: [{ productId: product.id, quantity: 1 }],
-      contact: { name: 'Ali', phone: '+971500000000' },
-      paymentMethod: 'cash',
-      fulfillment: 'Pickup',
-    });
+    const res = await request(app)
+      .post('/api/v1/public/orders')
+      .set('X-API-Key', storefrontKey)
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        branchId: otherBranch.id,
+        items: [{ productId: product.id, quantity: 1 }],
+        contact: { name: 'Ali', phone: '+971500000000' },
+        paymentMethod: 'cash',
+        fulfillment: 'Pickup',
+      });
 
     expect(res.status).toBe(400);
   });
