@@ -126,6 +126,7 @@ export function NotificationsList() {
       setUnreadCount(0);
       announceNotificationsChanged();
       toast.success(t('markedAllRead'));
+      setLastUpdated(new Date());
     } catch (caught) {
       toast.error(translateError(caught));
     } finally {
