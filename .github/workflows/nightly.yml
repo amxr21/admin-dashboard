@@ -18,8 +18,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      # package.json's "packageManager" field is the single source of truth.
+      # pnpm/action-setup rejects a second version here, even when both select
+      # the same major, because they can resolve to different patch releases.
       - uses: pnpm/action-setup@v6
-        with: { version: 11 }
       - uses: actions/setup-node@v7
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
