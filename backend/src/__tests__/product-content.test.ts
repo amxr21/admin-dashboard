@@ -80,7 +80,10 @@ function auth(token: string) {
 
 beforeAll(async () => {
   const business = await prisma.business.create({
-    data: { name: `${RUN} business`, branches: { create: { name: `${RUN} branch` } } },
+    data: {
+      name: `${RUN} business`,
+      branches: { create: { name: `${RUN} branch`, isSellingPoint: true } },
+    },
     include: { branches: true },
   });
   businessId = business.id;
@@ -228,6 +231,10 @@ describe('product localized content', () => {
     ]);
 
     expect(resourceList.status).toBe(200);
+    expect(resourceRow.status).toBe(200);
+    expect(globalSearch.status).toBe(200);
+    expect(posBrowse.status).toBe(200);
+    expect(publicList.status).toBe(200);
     expect(
       (resourceList.body as { data: { rows: Array<{ id: string; name: string }> } }).data.rows,
     ).toContainEqual(expect.objectContaining({ id: productId, name: arabicName }));
