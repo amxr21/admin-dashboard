@@ -1323,6 +1323,162 @@ export async function getFloorStatus(params: { branchId?: string | undefined } =
   };
 }
 
+/** Longest a day view will render, so one busy branch cannot return 5,000 rows. */
+const DAY_TIMELINE_LIMIT = 80;
+
+/** The audited actions a day view shows. Anything else is noise at this altitude. */
+const TIMELINE_ACTIONS = [
+  'shift.started',
+  'shift.ended',
+  'shift.till_closed',
+  'shift.approved',
+  'shift.rejected',
+  'order.sold',
+  'order.voided',
+  'order.status.changed',
+  'order.goodwill_refund',
+  'return.approved',
+  'return.rejected',
+] as const;
+
+export type DayEventKind =
+  | 'order.placed'
+  | (typeof TIMELINE_ACTIONS)[number];
+
+/**
+ * What happened today, in order.
+ *
+ * ─── WHY THIS IS NOT JUST A QUERY ON `AuditLog` ──────────────────────
+ * The audit log records what STAFF DID. It has no row for an order a customer
+ * placed on the storefront: nothing in `storefront.service.ts` calls `audit()`,
+ * because there is no actor to attribute and no privileged action to gate.
+ *
+ * So an audit-only timeline would omit most of a retail day and do it
+ * SILENTLY — the worst failure mode available here, since a feed that looks
+ * complete is trusted as complete. Orders are therefore read from
+ * `Order.placedAt` directly and merged with the audited events.
+ *
+ * ─── TWO SOURCES, ONE CLOCK, ONE SORT ────────────────────────────────
+ * Both halves are fetched for the same window and merged in memory rather
+ * than UNIONed in SQL: the two tables share no column layout, and a raw union
+ * would have to invent a common shape anyway. The merge sorts by timestamp
+ * descending and caps AFTER sorting, so the cap drops the oldest events
+ * rather than whichever source happened to return more.
+ *
+ * ─── THE DAY IS THE SERVER'S DAY ─────────────────────────────────────
+ * `from`/`to` are resolved by the caller (the route passes a plain date), so
+ * "today" means the same window as every other report on the page rather than
+ * a second definition of when a day starts.
+ */
+export async function getDayTimeline(params: RangeParams & { limit?: number }) {
+  const { start, end } = resolveRange(params);
+  const limit = Math.min(DAY_TIMELINE_LIMIT, Math.max(1, params.limit ?? DAY_TIMELINE_LIMIT));
+
+  const [orders, entries] = await Promise.all([
+    prisma.order.findMany({
+      where: { placedAt: { gte: start, lt: end }, ...branchWhere(params) },
+      orderBy: { placedAt: 'desc' },
+      // One extra row lets `truncated` distinguish an exact-size result from
+      // a larger single-source result after the merged list is capped.
+      take: limit + 1,
+      select: {
+        id: true,
+        orderNumber: true,
+        total: true,
+        status: true,
+        placedAt: true,
+        soldByName: true,
+        // `branchId` is a plain column, not a relation: an order outlives the
+        // branch that took it (see the schema's own note), so names are
+        // resolved separately below rather than joined.
+        branchId: true,
+      },
+    }),
+    prisma.auditLog.findMany({
+      where: {
+        createdAt: { gte: start, lt: end },
+        action: { in: [...TIMELINE_ACTIONS] },
+        outcome: 'SUCCESS',
+        ...(params.branchId ? { branchId: params.branchId } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit + 1,
+      select: {
+        id: true,
+        action: true,
+        entity: true,
+        entityId: true,
+        actorEmail: true,
+        actorRole: true,
+        branchId: true,
+        createdAt: true,
+      },
+    }),
+  ]);
+
+  /**
+   * Branch names for the ids both sources carry, in one query rather than a
+   * join that the schema deliberately does not offer. A null result means the
+   * branch was deleted — the order is still real, so it renders with no
+   * branch rather than being dropped.
+   */
+  const branchIds = [
+    ...new Set(
+      [...orders.map((order) => order.branchId), ...entries.map((entry) => entry.branchId)]
+        .filter((id): id is string => id !== null),
+    ),
+  ];
+  const branches = branchIds.length
+    ? await prisma.branch.findMany({
+        where: { id: { in: branchIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const branchById = new Map(branches.map((branch) => [branch.id, branch]));
+
+  const events = [
+    ...orders.map((order) => ({
+      id: `order-${order.id}`,
+      at: order.placedAt.toISOString(),
+      kind: 'order.placed',
+      /** Who rang it up, or null for a storefront order nobody rang up. */
+      actor: order.soldByName,
+      actorRole: null as string | null,
+      entityId: order.id,
+      label: order.orderNumber,
+      amount: order.total.toFixed(2),
+      status: order.status,
+      branch: order.branchId ? (branchById.get(order.branchId) ?? null) : null,
+    })),
+    ...entries.map((entry) => ({
+      id: `audit-${entry.id}`,
+      at: entry.createdAt.toISOString(),
+      kind: entry.action as DayEventKind,
+      // Null when the acting account has since been deleted. The event still
+      // happened, so it stays in the feed with an anonymous actor.
+      actor: entry.actorEmail,
+      actorRole: entry.actorRole,
+      entityId: entry.entityId,
+      label: entry.entityId,
+      // No money on an audit row: `changes` is a free-form Json blob and
+      // digging an amount out of it would be guessing at a shape that varies
+      // per action.
+      amount: null as string | null,
+      status: null as string | null,
+      branch: entry.branchId ? (branchById.get(entry.branchId) ?? null) : null,
+    })),
+  ]
+    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+    .slice(0, limit);
+
+  return {
+    range: { from: params.from, to: params.to },
+    events,
+    /** True when the cap bit, so the UI can say "showing the most recent N". */
+    truncated: orders.length + entries.length > events.length,
+  };
+}
+
 /**
  * Staff activity (C3.5) — who did what, how often, in the selected window.
  * Reuses `auditWhere` from `audit.service.ts` (read-only import — that file
