@@ -18,15 +18,21 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      # package.json's "packageManager" field is the single source of truth.
+      # pnpm/action-setup rejects a second version here, even when both select
+      # the same major, because they can resolve to different patch releases.
       - uses: pnpm/action-setup@v6
-        with: { version: 11 }
       - uses: actions/setup-node@v7
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       # High/critical only — Dependabot already opens PRs for the rest weekly.
       # This is the safety net for anything it hasn't gotten to yet.
-      - run: pnpm audit --audit-level=high
+      - name: Audit dependencies
+        id: dependency_audit
+        run: pnpm audit --audit-level=high
         continue-on-error: true
       - name: Report audit findings
-        if: failure()
+        # A continued failure does not make failure() true. Check the audit
+        # step's raw outcome so findings still produce the intended warning.
+        if: steps.dependency_audit.outcome == 'failure'
         run: echo "::warning::pnpm audit found high/critical issues — check the Dependabot tab"
