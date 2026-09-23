@@ -14,6 +14,7 @@
 import { config } from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { resolveTestDatabaseUrl } from './src/config/test-database.js';
+import { setTestNodeEnvironment } from './vitest.environment.js';
 
 config({ path: fileURLToPath(new URL('./.env', import.meta.url)) });
 
@@ -23,7 +24,11 @@ const testDatabaseUrl = resolveTestDatabaseUrl(process.env);
 process.env.DATABASE_URL_LOCAL = testDatabaseUrl;
 process.env.DATABASE_URL = testDatabaseUrl;
 
-process.env.NODE_ENV ??= 'test';
+// Vitest must never inherit a runtime mode from a developer's shell or .env.
+// Several application modules decide whether to enable production safeguards
+// (including rate limiting) at import time, so this override must happen before
+// any application module is imported.
+setTestNodeEnvironment(process.env);
 process.env.LOG_LEVEL ??= 'error'; // keep test output readable
 
 // The test run always targets a LOCAL database — never the shared dev one.
