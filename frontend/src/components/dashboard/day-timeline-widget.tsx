@@ -98,6 +98,7 @@ export function DayTimelineWidget({ data, isLoading = false }: DayTimelineWidget
       title={t('title')}
       icon="activity"
       tone="accent"
+      surface="card"
       footNote={
         data
           ? data.truncated

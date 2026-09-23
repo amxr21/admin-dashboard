@@ -158,6 +158,22 @@ describe('permission filtering carries over to pages, unchanged from before', ()
     await waitFor(() => expect(search).toHaveBeenCalled());
     expect(screen.queryByRole('option', { name: /^products$/i })).not.toBeInTheDocument();
   });
+
+  it('filters content returned under the real session through the preview role', async () => {
+    search.mockResolvedValue({
+      ...EMPTY,
+      products: [
+        { id: 'p1', title: 'Secret product', subtitle: null, href: '/admin/r/products/p1' },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<GlobalSearch role="SUPPORT" />);
+
+    await user.type(screen.getByRole('combobox'), 'secret');
+    await waitFor(() => expect(search).toHaveBeenCalled());
+
+    expect(screen.queryByText('Secret product')).not.toBeInTheDocument();
+  });
 });
 
 describe('"/" focuses search from anywhere (C4.6)', () => {

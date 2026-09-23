@@ -18,7 +18,7 @@ import { OnboardingWelcome } from '@/components/shell/onboarding-welcome';
 import { usePageTitle } from '@/components/shell/page-title';
 import { SidebarNav } from '@/components/shell/sidebar-nav';
 import { UserMenu } from '@/components/shell/user-menu';
-import { ViewAsSwitcher } from '@/components/shell/view-as-switcher';
+import { isPreviewableRole, ViewAsSwitcher } from '@/components/shell/view-as-switcher';
 import { ViewAsBanner } from '@/components/shell/view-as-banner';
 import { ViewAsBlocked } from '@/components/shell/view-as-blocked';
 import { Forbidden } from '@/components/shell/forbidden';
@@ -30,6 +30,7 @@ import { resolveAreaForPath } from '@/config/navigation';
 import { useResourceSchema } from '@/components/providers/schema-provider';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
+import { EffectiveRoleProvider } from '@/components/providers/effective-role-provider';
 import { useSidebarCollapse } from '@/hooks/useSidebarCollapse';
 import { usePathname } from '@/i18n/navigation';
 import { cn } from '@/lib/utils';
@@ -84,13 +85,15 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   const canPreview = user.role === 'OWNER' || user.role === 'DEVELOPER';
 
   useEffect(() => {
-    if (!canPreview) return;
+    if (!canPreview) {
+      setPreviewedRoleState(null);
+      sessionStorage.removeItem(VIEW_AS_STORAGE_KEY);
+      return;
+    }
     const stored = sessionStorage.getItem(VIEW_AS_STORAGE_KEY);
-    if (stored) setPreviewedRoleState(stored as StaffRole);
-    // Only ever read once, on mount — a role picked here should not keep
-    // re-reading storage behind the user's back.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (isPreviewableRole(stored)) setPreviewedRoleState(stored);
+    else if (stored !== null) sessionStorage.removeItem(VIEW_AS_STORAGE_KEY);
+  }, [canPreview]);
 
   function setPreviewedRole(role: StaffRole | null) {
     setPreviewedRoleState(role);
@@ -110,8 +113,11 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
    */
   const showBranchSwitcher = isBranchScopedPath(pathname, resources);
   const blockedByPreview =
-    isPreviewing && currentArea !== undefined && previewedRole !== null
-      ? !canAccessArea(previewedRole, currentArea)
+    isPreviewing && previewedRole !== null
+      ? (currentArea !== undefined && !canAccessArea(previewedRole, currentArea)) ||
+        (pathname.startsWith('/admin/configuration') &&
+          previewedRole !== 'OWNER' &&
+          previewedRole !== 'DEVELOPER')
       : false;
   // The REAL role, never `effectiveRole` — a preview must not mask a genuine
   // block. If the actual signed-in user can't reach this area (stale
@@ -183,6 +189,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   }
 
   return (
+    <EffectiveRoleProvider role={effectiveRole}>
     <div data-slot="app-shell" className="flex h-dvh min-h-0 overflow-hidden">
       <OnboardingWelcome />
       <GlobalLoadingOverlay />
@@ -283,7 +290,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
                 kind of thing. Renders nothing on a single-branch install, and
                 nothing at all on a page whose data has no branch dimension —
                 see `isBranchScopedPath`. */}
-            {showBranchSwitcher ? <BranchSwitcher role={user.role} /> : null}
+            {showBranchSwitcher && !isPreviewing ? <BranchSwitcher role={user.role} /> : null}
 
             {/* Next to the branch switcher because they answer the same kind
                 of question — WHERE you are working and WHETHER you are on
@@ -337,13 +344,13 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
         {/* DEVELOPER only — an operational surface, not a business area, so it
             is gated on the role directly rather than an `area`. See
             diagnostics.route.ts for why. */}
-        {user.role === 'DEVELOPER' ? (
+        {effectiveRole === 'DEVELOPER' ? (
           <div className="shrink-0">
             <DiagnosticsBar />
           </div>
         ) : null}
 
-        {isReadOnlyRole(user.role) ? (
+        {isReadOnlyRole(effectiveRole) ? (
           /* Persistent, not a toast. A demo user needs to understand why saves
              don't stick at the moment they try, not have seen a banner once on
              login. The API blocks the write regardless. */
@@ -384,5 +391,6 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
         }}
       />
     </div>
+    </EffectiveRoleProvider>
   );
 }

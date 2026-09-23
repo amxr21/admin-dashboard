@@ -37,6 +37,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useUrlState } from '@/hooks/useUrlState';
 import { landingFor } from '@/config/areas';
 import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
+import { useEffectiveRole } from '@/components/providers/effective-role-provider';
 import {
   DEFAULT_DASHBOARD_COMPARISON,
   parseDashboardState,
@@ -105,6 +106,8 @@ export function DashboardOverview() {
   const canAccessArea = useCanAccessArea();
   const t = useTranslations('dashboard');
   const { user } = useAuth();
+  const previewRole = useEffectiveRole();
+  const effectiveRole = previewRole ?? user?.role ?? null;
   /**
    * O3.3 — every widget on this page reads a `/reports/*` endpoint, and all of
    * them sit behind `requireArea('reports')`. A FULFILLMENT or SUPPORT user
@@ -114,7 +117,7 @@ export function DashboardOverview() {
    * Gated once rather than per widget, because the dependency is the same for
    * all of them — a per-widget check would be nine copies of one condition.
    */
-  const canSeeReports = user ? canAccessArea(user.role, 'reports') : false;
+  const canSeeReports = effectiveRole ? canAccessArea(effectiveRole, 'reports') : false;
   const translateError = useTranslatedApiError();
   const { values, setValues } = useUrlState({
     from: '',
@@ -436,9 +439,9 @@ export function DashboardOverview() {
           <p className="text-muted-foreground mx-auto mt-1 max-w-md text-sm">
             {t('noReportsBody')}
           </p>
-          {user ? (
+          {effectiveRole ? (
             <Button asChild className="mt-4">
-              <Link href={landingFor(user.role)}>{t('noReportsAction')}</Link>
+              <Link href={landingFor(effectiveRole)}>{t('noReportsAction')}</Link>
             </Button>
           ) : null}
         </div>
