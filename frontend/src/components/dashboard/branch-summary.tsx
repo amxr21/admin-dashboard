@@ -102,6 +102,7 @@ export function BranchSummary({ range }: { range: DateRange }) {
       title={t('title')}
       icon="branches"
       tone="accent"
+      surface="card"
       footNote={t('subtitle')}
     >
       {/* The table scrolls on its own rather than the page: three numeric

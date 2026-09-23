@@ -26,15 +26,13 @@ import { cn } from '@/lib/utils';
  * The one anatomy every dashboard panel shares.
  *
  * ─── WHY THESE ARE NOT CARDS ANY MORE ────────────────────────────────
- * Eight bordered boxes of equal weight in one grid gave every panel the same
- * visual claim on attention, so finding the one that mattered meant reading
- * all of them. Border, fill and shadow each say "separate object" — spent on
- * everything, they say nothing.
+ * Giving every panel the same border and fill makes every panel claim equal
+ * attention. Compact paired summaries therefore stay plain, separated by
+ * their heading rule and the grid spacing. Dense, full-width charts, tables,
+ * and feeds can opt into a card so their data has a clear visual boundary.
  *
- * A panel is now an icon, a label, a rule, its content, and an optional
- * footer. The rule and the grid's own spacing do the separating, which leaves
- * emphasis available for the things that have earned it: the live floor band
- * and the attention queues above.
+ * This preserves emphasis for the live floor band and attention queues while
+ * making the most information-dense sections easier to scan.
  *
  * ─── THE ICON IS A SIGNIFIER, NOT DECORATION ─────────────────────────
  * Looked up by NAME rather than passed as a component, for the same reason
@@ -71,11 +69,15 @@ const TONES = {
 } as const;
 
 export type WidgetTone = keyof typeof TONES;
+export type WidgetSurface = 'plain' | 'card';
 
 export interface WidgetSectionProps {
   title: string;
   icon: WidgetIcon;
   tone?: WidgetTone;
+  /** A bounded surface for dense, full-width data. Compact summaries stay
+   *  plain so the dashboard keeps a useful visual hierarchy. */
+  surface?: WidgetSurface;
   /** Marks a panel that ignores the selected range — same wording the floor
    *  band and the low-stock tile use, so "live" means one thing everywhere. */
   live?: boolean;
@@ -91,6 +93,7 @@ export function WidgetSection({
   title,
   icon,
   tone = 'neutral',
+  surface = 'plain',
   live = false,
   footNote,
   action,
@@ -101,7 +104,14 @@ export function WidgetSection({
   const t = useTranslations('dashboard');
 
   return (
-    <section className={cn('flex min-w-0 flex-col', className)} aria-label={title}>
+    <section
+      className={cn(
+        'flex min-w-0 flex-col',
+        surface === 'card' && 'bg-card rounded-lg border p-4',
+        className,
+      )}
+      aria-label={title}
+    >
       <div className="mb-4 flex items-center gap-2.5 border-b pb-2.5">
         <span
           className={cn('grid size-8 shrink-0 place-items-center rounded-lg', TONES[tone])}

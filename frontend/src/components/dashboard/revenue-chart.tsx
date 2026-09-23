@@ -399,7 +399,7 @@ export function RevenueChart({
 
   if (isLoading) {
     return (
-      <WidgetSection title={t('revenueOverTime')} icon="revenue" tone="accent">
+      <WidgetSection title={t('revenueOverTime')} icon="revenue" tone="accent" surface="card">
         <Skeleton className="h-64 w-full" />
       </WidgetSection>
     );
@@ -410,7 +410,7 @@ export function RevenueChart({
   if (chartData.length === 1) {
     const only = chartData[0]!;
     return (
-      <WidgetSection title={t('revenueOverTime')} icon="revenue" tone="accent">
+      <WidgetSection title={t('revenueOverTime')} icon="revenue" tone="accent" surface="card">
         {error ? (
           <p className="text-destructive flex h-64 items-center justify-center text-sm">
             {error}
@@ -439,7 +439,7 @@ export function RevenueChart({
        names the series" stops being true (there are up to three strokes
        now), so the legend picks up exactly the entries the heading no longer
        covers alone. */
-    <WidgetSection title={t('revenueOverTime')} icon="revenue" tone="accent">
+    <WidgetSection title={t('revenueOverTime')} icon="revenue" tone="accent" surface="card">
       {error ? (
         <p className="text-destructive flex h-64 items-center justify-center text-sm">
           {error}
