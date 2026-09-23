@@ -7,6 +7,7 @@ import { Link } from '@/i18n/navigation';
 
 const GROUPS = {
   setup: ['owner', 'profile', 'currency', 'tax', 'notifications', 'security'],
+  restaurant: ['serviceModel', 'menu', 'options', 'stock', 'team', 'pos', 'fulfilment', 'storefront', 'payments', 'acceptance'],
   branch: ['identity', 'timezone', 'selling', 'staff', 'stock', 'test'],
   catalogue: ['categories', 'products', 'prices', 'images', 'translations', 'branchStock', 'soldOut'],
   storefront: ['key', 'scopes', 'secret', 'branches', 'catalogue', 'languages', 'idempotency', 'guestOrder', 'customerOrder', 'rotation'],

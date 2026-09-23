@@ -9,6 +9,7 @@ import {
   ReceiptText,
   ShieldCheck,
   ShoppingCart,
+  UtensilsCrossed,
   UsersRound,
   type LucideIcon,
 } from 'lucide-react';
@@ -33,6 +34,7 @@ const CONTENT_LINKS: ReadonlyArray<{
 
 const SECTION_LINKS = [
   'start',
+  'templates',
   'brand',
   'catalogue',
   'storefront',
@@ -177,6 +179,44 @@ export default async function AdminGuidePage({
               </p>
             </Link>
           ))}
+        </div>
+      </GuideSection>
+
+      <GuideSection
+        id="templates"
+        icon={UtensilsCrossed}
+        title={t('sections.templates.title')}
+        summary={t('sections.templates.summary')}
+      >
+        <div className="space-y-4">
+          <div className="bg-warning/10 rounded-lg border border-warning/30 p-4">
+            <h3 className="font-semibold">{t('sections.templates.restaurantTitle')}</h3>
+            <p className="mt-2 text-sm leading-relaxed">{t('sections.templates.restaurantStatus')}</p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <article className="bg-card rounded-lg border p-4">
+              <h3 className="font-semibold">{t('sections.templates.appliesTitle')}</h3>
+              <ul className="mt-3 list-disc space-y-2 ps-5 text-sm leading-relaxed">
+                {(['features', 'labels', 'defaults', 'permissions'] as const).map((item) => (
+                  <li key={item}>{t(`sections.templates.applies.${item}`)}</li>
+                ))}
+              </ul>
+            </article>
+
+            <article className="bg-card rounded-lg border p-4">
+              <h3 className="font-semibold">{t('sections.templates.missingTitle')}</h3>
+              <ul className="mt-3 list-disc space-y-2 ps-5 text-sm leading-relaxed">
+                {(['data', 'modifiers', 'tables', 'kitchen', 'recipes', 'payments'] as const).map((item) => (
+                  <li key={item}>{t(`sections.templates.missing.${item}`)}</li>
+                ))}
+              </ul>
+            </article>
+          </div>
+
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            {t('sections.templates.nextStep')}
+          </p>
         </div>
       </GuideSection>
 

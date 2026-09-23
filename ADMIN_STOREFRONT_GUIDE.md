@@ -26,6 +26,21 @@ If a key is ever exposed:
 
 The key previously pasted into a chat must be treated as exposed and replaced. Do not reuse it.
 
+## 2A. What the setup templates actually do
+
+The business-type choices in the setup wizard are **starting presets**, not complete industry packages. Selecting **Restaurant** configures a generic counter-service dashboard: it enables dashboard, POS, orders, inventory, suppliers, reports, staff, branches, and settings; enables inventory variants; and changes labels such as Products to Menu items and Orders to Tickets.
+
+It does **not** create the restaurant's branches, menu, categories, prices, stock, staff, tables, modifiers, recipes, kitchen workflow, delivery setup, payment gateway, or storefront. Product variants are inventory-only in the current system and are not purchasable choices in POS or public checkout, so sizes, add-ons, and modifiers must currently be modelled as separate products.
+
+Restaurant readiness therefore depends on the operating model:
+
+- **Counter-service, takeaway, or simple pickup:** supported after the administrator completes the Restaurant checklist in the in-app Guide.
+- **Full-service dining:** not turnkey; tables/floor plans, seats, reservations, tips/service charge, and kitchen display workflows are not included.
+- **Configurable menus:** not turnkey; sellable modifiers, add-ons, and size choices require product work beyond the current inventory-only variants.
+- **Ingredient-level inventory:** not turnkey; recipes/BOM and automatic ingredient depletion are not included.
+
+Treat every other business template the same way: it selects sensible feature flags, labels, defaults, and role permissions, but real business data and industry-specific workflows still require configuration and acceptance testing.
+
 ## 3. Request authentication
 
 Every `/api/v1/public/*` request requires:

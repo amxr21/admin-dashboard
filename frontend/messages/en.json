@@ -3692,6 +3692,29 @@
         "title": "Start here",
         "summary": "Open the correct workspace directly. What you can see still follows your role and branch assignment."
       },
+      "templates": {
+        "title": "Understand what a setup template prepares",
+        "summary": "Business templates are starting presets. They configure the dashboard but do not create a finished business or industry-specific workflow.",
+        "restaurantTitle": "Restaurant readiness: counter-service starting point",
+        "restaurantStatus": "Selecting Restaurant prepares a generic POS and administration workspace. It can support a manually configured counter-service, takeaway, or pickup operation, but it is not a turnkey full-service restaurant system.",
+        "appliesTitle": "The preset applies",
+        "applies": {
+          "features": "Feature visibility for dashboard, POS, tickets, inventory, suppliers, reports, team, branches, and settings.",
+          "labels": "Restaurant-friendly labels such as Menu items, Tickets, and Team.",
+          "defaults": "A small set of product and inventory defaults, including inventory variants.",
+          "permissions": "The template's default role-area permissions."
+        },
+        "missingTitle": "The administrator must still prepare",
+        "missing": {
+          "data": "Branches, categories, menu items, prices, images, stock, staff, and branch assignments.",
+          "modifiers": "Sellable sizes, modifiers, add-ons, and meal customisation; current variants are inventory-only.",
+          "tables": "Tables, floor plans, seats, reservations, tips, and service charges.",
+          "kitchen": "Kitchen display, preparation stations, courses, and printer routing.",
+          "recipes": "Recipes, ingredients, allergens, BOM, and automatic ingredient depletion.",
+          "payments": "Customer website, online payment gateway, delivery rules, and production integrations."
+        },
+        "nextStep": "Complete the Restaurant readiness checklist before accepting a real sale. If the business depends on any missing workflow, treat it as product work rather than configuration."
+      },
       "brand": {
         "title": "Set up the brand and branches",
         "summary": "Complete this once for the brand, then repeat the branch-specific steps whenever a new location opens.",
@@ -3801,6 +3824,18 @@
           "tax": { "label": "Confirm tax settings", "detail": "Verify the rate, calculation order, receipt display, and one known-value example." },
           "notifications": { "label": "Configure operational notifications", "detail": "Set recipients and test in-app alerts; configure email only when every SMTP value is ready." },
           "security": { "label": "Harden privileged access", "detail": "Enable two-factor authentication, store backup codes safely, and review active sessions." }
+        }},
+        "restaurant": { "title": "Restaurant readiness", "description": "Complete after selecting Restaurant. The template is a starting preset; this checklist turns the configured workspace into a tested counter-service operation.", "items": {
+          "serviceModel": { "label": "Confirm the supported service model", "detail": "Use the current system for counter service, takeaway, or pickup. Record any need for tables, reservations, courses, tips, or kitchen display as product gaps before launch." },
+          "menu": { "label": "Build the complete menu", "detail": "Create categories and every sellable item with approved English and Arabic names, prices, costs, tax behavior, images, and ACTIVE status." },
+          "options": { "label": "Model sizes and add-ons safely", "detail": "Current variants are inventory-only and cannot be purchased in POS or storefront checkout. Create separate products for each sellable option or postpone launch until modifier support exists." },
+          "stock": { "label": "Assign menu stock by branch", "detail": "Create a branch-stock row and opening quantity for every sellable menu item at every branch that carries it." },
+          "team": { "label": "Configure the restaurant team", "detail": "Create individual staff accounts, select the narrowest roles, assign branches, and verify each role through View as role and a real test login." },
+          "pos": { "label": "Configure and test the POS", "detail": "Verify shifts, opening cash, tenders, discounts, receipts, printers, scanners, voids, refunds, split payment, and closing reconciliation." },
+          "fulfilment": { "label": "Define pickup and delivery operations", "detail": "Confirm order statuses, pickup handoff, delivery areas, courier assignments, address requirements, and failed-delivery handling." },
+          "storefront": { "label": "Connect the customer website", "detail": "Keep the API key server-side, implement branch selection, load the branch menu, revalidate carts after branch changes, and test English and Arabic." },
+          "payments": { "label": "Confirm the payment model", "detail": "Cash and card-on-delivery labels do not create an online gateway. Integrate and test a real provider before advertising online card payment." },
+          "acceptance": { "label": "Run a full restaurant acceptance day", "detail": "Open a shift, sell each option, print receipts, verify stock, complete pickup and delivery, process a void and return, close the till, and review branch-local reports." }
         }},
         "branch": { "title": "New branch launch", "description": "Repeat for every physical location or selling point.", "items": {
           "identity": { "label": "Create the branch identity", "detail": "Use a unique name and code and verify the city and business relationship." },
