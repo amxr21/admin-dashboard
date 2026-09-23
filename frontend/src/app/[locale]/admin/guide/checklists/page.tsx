@@ -9,7 +9,7 @@ const GROUPS = {
   setup: ['owner', 'profile', 'currency', 'tax', 'notifications', 'security'],
   branch: ['identity', 'timezone', 'selling', 'staff', 'stock', 'test'],
   catalogue: ['categories', 'products', 'prices', 'images', 'translations', 'branchStock', 'soldOut'],
-  storefront: ['key', 'scopes', 'secret', 'branches', 'catalogue', 'languages', 'guestOrder', 'customerOrder', 'rotation'],
+  storefront: ['key', 'scopes', 'secret', 'branches', 'catalogue', 'languages', 'idempotency', 'guestOrder', 'customerOrder', 'rotation'],
   opening: ['branch', 'shift', 'drawer', 'devices', 'stock', 'alerts'],
   closing: ['orders', 'returns', 'deliveries', 'cash', 'shift', 'exceptions'],
   staff: ['invite', 'role', 'assignment', 'activation', 'twoFactor', 'review', 'offboard'],

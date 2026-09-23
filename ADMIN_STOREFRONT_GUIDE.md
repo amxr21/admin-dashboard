@@ -141,6 +141,7 @@ Accept-Language: ar
 POST https://api.admin-dashboard.amxr.site/api/v1/public/orders
 Content-Type: application/json
 X-API-Key: <replacement-key>
+Idempotency-Key: <new-uuid-for-this-checkout>
 Accept-Language: en
 
 {
@@ -161,6 +162,8 @@ Accept-Language: en
 ```
 
 For `Delivery`, `contact.address` is required. Supported payment methods are `cash` and `card-on-delivery`; supported fulfillment values are `Pickup` and `Delivery`.
+
+`Idempotency-Key` is required for checkout and must be a UUID. Generate it once when the shopper starts a checkout submission, keep the same value while retrying that exact request, and generate a new value for the next checkout. A safe retry returns the original response with `Idempotency-Replayed: true`; reusing the key with changed customer or order data returns `409`. This prevents a timeout or double-click from creating two orders or reducing stock twice.
 
 ### Read signed-in order history
 
@@ -186,7 +189,7 @@ Accept-Language: en
 | GET | `/public/me` | No | Yes |
 | GET/POST/PATCH/DELETE | `/public/cart` | No | Yes |
 | GET/POST | `/public/wishlist` | No | Yes |
-| POST | `/public/orders` | In JSON body | Optional |
+| POST | `/public/orders` | In JSON body | Optional; also requires a UUID `Idempotency-Key` |
 | GET | `/public/orders` | No | Yes |
 | GET | `/public/orders/track?orderNumber=...&phone=...` | No | No |
 
@@ -197,11 +200,13 @@ All routes in this table still require `X-API-Key`.
 | Result | Meaning | What to check |
 |---|---|---|
 | `400 Choose a store branch` | `branchId` is missing or invalid | Use an active ID returned by `/public/branches` |
+| `400 A valid Idempotency-Key header is required` | Checkout key is missing or is not a UUID | Generate a UUID on the storefront server and send it with the checkout |
 | `401 API key required` | `X-API-Key` was not sent | Check the exact header name and the server secret |
 | `401 Invalid API key` | Key is wrong, revoked, malformed, or owner is inactive | Create a replacement and confirm the account is active |
 | `401 Please sign in` | Route needs a customer token | Add `Authorization: Bearer <customer-token>` or use a guest-capable route |
 | `403` | Owner permission or key scope does not allow the area | Grant only the needed products/categories/orders scope |
 | `404` | Branch/product is unavailable in this context | Check active branch, active product, slug, and branch stock membership |
+| `409 This idempotency key was already used for a different request` | A retry key was reused after the order/customer data changed | Generate a new UUID for the changed checkout; never mutate a request under an existing key |
 | `429` | Rate limit reached | Stop immediate retries and use bounded exponential backoff |
 
 Keep the response `requestId` when reporting an error; it is the safest way to correlate the request with server logs without sharing private request bodies.
@@ -244,6 +249,8 @@ Keep the response `requestId` when reporting an error; it is the safest way to c
 - [ ] `/public/branches` succeeds.
 - [ ] English and Arabic catalogue requests succeed for every active branch.
 - [ ] Guest checkout succeeds for Pickup and Delivery.
+- [ ] Checkout generates one UUID idempotency key and reuses it only for retries of the identical request.
+- [ ] Repeating the same checkout returns the original order with `Idempotency-Replayed: true` and does not reduce stock twice.
 - [ ] Signed-in profile, cart, wishlist, and order history succeed with a customer token.
 - [ ] Branch switching reloads catalogue and revalidates cart contents.
 - [ ] Error and rate-limit states show safe, understandable messages.

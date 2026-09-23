@@ -3702,7 +3702,8 @@
           "store": "Copy the key once into the storefront server's secret environment. Never place it in browser code or a NEXT_PUBLIC variable.",
           "branch": "Request the active branch list, let the customer select a location, and store that branch ID in the storefront session.",
           "products": "Fetch products or the menu with branchId on every catalogue request. Reload and revalidate the cart when the branch changes.",
-          "checkout": "Send the same branchId at checkout. The backend rechecks stock, price, discounts, and branch ownership before creating the order."
+          "checkout": "Send the same branchId at checkout. The backend rechecks stock, price, discounts, and branch ownership before creating the order.",
+          "retry": "Generate one UUID Idempotency-Key for each checkout. Reuse it only while retrying the identical request; create a new UUID if any checkout or customer data changes."
         },
         "requestTitle": "Minimal request sequence",
         "neverTitle": "Never expose the key",
@@ -3802,6 +3803,7 @@
           "branches": { "label": "Load and select branches", "detail": "Call the branch endpoint, present a location choice, and persist the selected branch ID." },
           "catalogue": { "label": "Test two branch catalogues", "detail": "Confirm the same product can report different stock and an uncarried item stays hidden." },
           "languages": { "label": "Test English and Arabic", "detail": "Send Accept-Language and verify content, RTL layout, and fallback behavior." },
+          "idempotency": { "label": "Prove checkout retry safety", "detail": "Repeat the identical checkout with the same UUID Idempotency-Key; confirm the original order is returned and stock is reduced only once." },
           "guestOrder": { "label": "Place a guest order", "detail": "Verify totals, branch ownership, stock decrement, order visibility, and tracking." },
           "customerOrder": { "label": "Test a signed-in customer", "detail": "Verify profile, cart, wishlist, checkout link, and order history using both credentials." },
           "rotation": { "label": "Prove key rotation", "detail": "Deploy a replacement, verify it, revoke the old key, and confirm the old key immediately returns 401." }

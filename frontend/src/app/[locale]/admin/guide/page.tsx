@@ -230,6 +230,7 @@ export default async function AdminGuidePage({
             t('sections.storefront.steps.branch'),
             t('sections.storefront.steps.products'),
             t('sections.storefront.steps.checkout'),
+            t('sections.storefront.steps.retry'),
           ]} />
 
           <div className="bg-muted/60 rounded-lg p-4">
@@ -240,6 +241,9 @@ export default async function AdminGuidePage({
               </code>
               <code className="bg-background block overflow-x-auto rounded-md border px-3 py-2 text-xs whitespace-nowrap">
                 Accept-Language: en
+              </code>
+              <code className="bg-background block overflow-x-auto rounded-md border px-3 py-2 text-xs whitespace-nowrap">
+                POST /public/orders: Idempotency-Key: NEW_UUID
               </code>
               {API_ENDPOINTS.map((endpoint) => (
                 <code key={endpoint} className="bg-background block overflow-x-auto rounded-md border px-3 py-2 text-xs whitespace-nowrap">
