@@ -21,7 +21,17 @@ import type { StaffRole } from '@/config/areas';
  * visible to this role" placeholder on the current page).
  */
 
-const PREVIEWABLE_ROLES: StaffRole[] = ['MANAGER', 'FULFILLMENT', 'SUPPORT', 'DEMO'];
+export const PREVIEWABLE_ROLES = [
+  'MANAGER',
+  'FULFILLMENT',
+  'CASHIER',
+  'SUPPORT',
+  'DEMO',
+] as const satisfies readonly StaffRole[];
+
+export function isPreviewableRole(value: string | null): value is (typeof PREVIEWABLE_ROLES)[number] {
+  return value !== null && (PREVIEWABLE_ROLES as readonly string[]).includes(value);
+}
 
 interface ViewAsSwitcherProps {
   actualRole: StaffRole;
@@ -36,11 +46,16 @@ export function ViewAsSwitcher({ actualRole, previewedRole, onChange }: ViewAsSw
   return (
     <Select
       value={previewedRole ?? 'actual'}
-      onValueChange={(value) => onChange(value === 'actual' ? null : (value as StaffRole))}
+      onValueChange={(value) => onChange(value === 'actual' ? null : isPreviewableRole(value) ? value : null)}
     >
-      <SelectTrigger className="h-8 w-auto gap-1.5 text-xs" aria-label={t('label')}>
+      <SelectTrigger
+        className="size-11 gap-1.5 px-0 text-xs sm:h-8 sm:w-auto sm:px-3"
+        aria-label={t('label')}
+      >
         <Eye className="size-3.5" aria-hidden="true" />
-        <SelectValue />
+        <span className="hidden sm:inline">
+          <SelectValue />
+        </span>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="actual">

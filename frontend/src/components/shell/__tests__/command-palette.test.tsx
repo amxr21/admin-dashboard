@@ -192,4 +192,24 @@ describe('permission filtering carries over from GlobalSearch, unchanged', () =>
     await waitFor(() => expect(search).toHaveBeenCalled());
     expect(screen.queryByRole('option', { name: /^products$/i })).not.toBeInTheDocument();
   });
+
+  it('hides content and actions outside the preview role areas', async () => {
+    search.mockResolvedValue({
+      ...EMPTY,
+      products: [
+        { id: 'p1', title: 'Secret product', subtitle: null, href: '/admin/r/products/p1' },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<CommandPalette role="SUPPORT" />);
+    await openPalette(user);
+
+    await user.type(screen.getByRole('combobox'), 'secret');
+    await waitFor(() => expect(search).toHaveBeenCalled());
+    expect(screen.queryByText('Secret product')).not.toBeInTheDocument();
+
+    await user.clear(screen.getByRole('combobox'));
+    await user.type(screen.getByRole('combobox'), 'add product');
+    expect(screen.queryByRole('option', { name: /add product/i })).not.toBeInTheDocument();
+  });
 });

@@ -176,13 +176,15 @@ export function GlobalSearch({ role }: { role: StaffRole }) {
     });
 
     return [
-      ...contentGroups.orders.map(toResult('order')),
-      ...contentGroups.customers.map(toResult('customer')),
-      ...contentGroups.products.map(toResult('product')),
-      ...contentGroups.suppliers.map(toResult('supplier')),
-      ...contentGroups.customerCases.map(toResult('customerCase')),
+      ...(canAccessArea(role, 'orders') ? contentGroups.orders.map(toResult('order')) : []),
+      ...(canAccessArea(role, 'customers') ? contentGroups.customers.map(toResult('customer')) : []),
+      ...(canAccessArea(role, 'products') ? contentGroups.products.map(toResult('product')) : []),
+      ...(canAccessArea(role, 'inventory') ? contentGroups.suppliers.map(toResult('supplier')) : []),
+      ...(canAccessArea(role, 'customers')
+        ? contentGroups.customerCases.map(toResult('customerCase'))
+        : []),
     ].filter(item => isSetupPathEnabled(item.href, enabledFeatures));
-  }, [contentGroups, enabledFeatures]);
+  }, [canAccessArea, contentGroups, enabledFeatures, role]);
 
   const results = useMemo<Result[]>(
     () => [...pageResults, ...contentResults],

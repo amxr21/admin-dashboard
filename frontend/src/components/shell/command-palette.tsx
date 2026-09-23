@@ -199,40 +199,46 @@ export function CommandPalette({
     });
 
     return [
-      ...contentGroups.orders.map(toResult('order')),
-      ...contentGroups.customers.map(toResult('customer')),
-      ...contentGroups.products.map(toResult('product')),
+      ...(canAccessArea(role, 'orders') ? contentGroups.orders.map(toResult('order')) : []),
+      ...(canAccessArea(role, 'customers') ? contentGroups.customers.map(toResult('customer')) : []),
+      ...(canAccessArea(role, 'products') ? contentGroups.products.map(toResult('product')) : []),
     ].filter(item => isSetupPathEnabled(item.href, enabledFeatures));
-  }, [contentGroups, enabledFeatures]);
+  }, [canAccessArea, contentGroups, enabledFeatures, role]);
 
   // Every action here is REAL — matches Quick Actions on the dashboard
   // (C1.4), which already ruled out "Create order" as having no backend
   // path. Never a placeholder entry that would do nothing when chosen.
   const actionResults = useMemo<ActionResult[]>(() => {
-    const actions: ActionResult[] = [
-      {
+    const actions: ActionResult[] = [];
+
+    if (canAccessArea(role, 'products')) {
+      actions.push({
         kind: 'action',
         id: 'add-product',
         label: tPalette('actions.addProduct'),
         icon: PackagePlus,
         run: () => router.push('/admin/r/products'),
-      },
-      {
+      });
+    }
+
+    if (canAccessArea(role, 'discounts')) {
+      actions.push({
         kind: 'action',
         id: 'create-discount',
         label: tPalette('actions.createDiscount'),
         icon: TicketPlus,
         run: () => router.push('/admin/r/discounts'),
-      },
-      {
+      });
+    }
+
+    actions.push({
         kind: 'action',
         id: 'toggle-theme',
         label:
           resolvedTheme === 'dark' ? tPalette('actions.switchToLight') : tPalette('actions.switchToDark'),
         icon: resolvedTheme === 'dark' ? Sun : Moon,
         run: () => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark'),
-      },
-    ];
+      });
 
     if (onSignOut) {
       actions.push({
@@ -247,7 +253,7 @@ export function CommandPalette({
     const q = query.trim().toLowerCase();
     if (!q) return [];
     return actions.filter((action) => action.label.toLowerCase().includes(q));
-  }, [query, tPalette, router, resolvedTheme, setTheme, onSignOut]);
+  }, [canAccessArea, onSignOut, query, resolvedTheme, role, router, setTheme, tPalette]);
 
   const results = useMemo<Result[]>(
     () => [...pageResults, ...contentResults, ...actionResults],

@@ -102,6 +102,19 @@ describe('permission-aware shell requests', () => {
 });
 
 describe('previewing narrows the sidebar', () => {
+  it('offers the cashier workflow as a previewable role', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AppShell user={{ ...baseUser, role: 'OWNER' }}>
+        <p>page content</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByLabelText(/view as/i));
+    expect(screen.getByRole('option', { name: /cashier/i })).toBeInTheDocument();
+  });
+
   it('hides staff and settings when previewing as SUPPORT', async () => {
     const user = userEvent.setup();
     pathname = '/admin';
@@ -180,9 +193,54 @@ describe('the current page is gated too, not just the sidebar', () => {
 
     expect(screen.getByText('real customers page content')).toBeInTheDocument();
   });
+
+  it('blocks a role-only configuration page during a lower-role preview', async () => {
+    pathname = '/admin/configuration';
+    const user = userEvent.setup();
+
+    render(
+      <AppShell user={{ ...baseUser, role: 'OWNER' }}>
+        <p>real configuration content</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByLabelText(/view as/i));
+    await user.click(screen.getByRole('option', { name: /support/i }));
+
+    expect(screen.queryByText('real configuration content')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toContainElement(
+      screen.getByRole('heading', { name: /not visible to this role/i }),
+    );
+  });
 });
 
 describe('a stale preview never survives to a different, lower-privileged user', () => {
+  it('removes an invalid persisted role instead of crashing the shell', () => {
+    sessionStorage.setItem('admin-dashboard:view-as-role', 'RETIRED_ROLE');
+
+    render(
+      <AppShell user={{ ...baseUser, role: 'OWNER' }}>
+        <p>page content</p>
+      </AppShell>,
+    );
+
+    expect(screen.getByText('page content')).toBeInTheDocument();
+    expect(sessionStorage.getItem('admin-dashboard:view-as-role')).toBeNull();
+  });
+
+  it('removes a valid but non-previewable persisted role', () => {
+    sessionStorage.setItem('admin-dashboard:view-as-role', 'OWNER');
+
+    render(
+      <AppShell user={{ ...baseUser, role: 'OWNER' }}>
+        <p>page content</p>
+      </AppShell>,
+    );
+
+    expect(screen.queryByText(/previewing as/i)).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('admin-dashboard:view-as-role')).toBeNull();
+  });
+
   it('ignores a leftover sessionStorage value when the real role cannot preview', () => {
     sessionStorage.setItem('admin-dashboard:view-as-role', 'DEMO');
 
@@ -195,5 +253,62 @@ describe('a stale preview never survives to a different, lower-privileged user',
     // SUPPORT's own real sidebar, not DEMO's — the stale value is inert.
     expect(screen.getByRole('link', { name: /orders/i })).toBeInTheDocument();
     expect(screen.queryByText(/previewing as/i)).not.toBeInTheDocument();
+  });
+
+  it('clears the preview when the mounted shell changes to a role that cannot preview', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <AppShell user={{ ...baseUser, role: 'OWNER' }}>
+        <p>page content</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByLabelText(/view as/i));
+    await user.click(screen.getByRole('option', { name: /demo/i }));
+    expect(sessionStorage.getItem('admin-dashboard:view-as-role')).toBe('DEMO');
+
+    rerender(
+      <AppShell user={{ ...baseUser, role: 'SUPPORT' }}>
+        <p>page content</p>
+      </AppShell>,
+    );
+
+    expect(sessionStorage.getItem('admin-dashboard:view-as-role')).toBeNull();
+    expect(screen.queryByText(/previewing as/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('preview presentation follows the effective role', () => {
+  it('hides developer diagnostics while previewing a lower role', async () => {
+    const user = userEvent.setup();
+    pathname = '/admin';
+
+    render(
+      <AppShell user={{ ...baseUser, role: 'DEVELOPER' }}>
+        <p>page content</p>
+      </AppShell>,
+    );
+    expect(screen.getByTestId('diagnostics-bar')).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText(/view as/i));
+    await user.click(screen.getByRole('option', { name: /support/i }));
+
+    expect(screen.queryByTestId('diagnostics-bar')).not.toBeInTheDocument();
+  });
+
+  it('shows the read-only notice while previewing Demo', async () => {
+    const user = userEvent.setup();
+    pathname = '/admin';
+
+    render(
+      <AppShell user={{ ...baseUser, role: 'OWNER' }}>
+        <p>page content</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByLabelText(/view as/i));
+    await user.click(screen.getByRole('option', { name: /demo/i }));
+
+    expect(screen.getByText(/read-only demo/i)).toBeInTheDocument();
   });
 });

@@ -20,9 +20,12 @@ export function ViewAsBlocked({ role }: { role: StaffRole }) {
   const tRoles = useTranslations('roles');
 
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-12 text-center">
+    <div
+      role="alert"
+      className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-12 text-center"
+    >
       <EyeOff className="text-muted-foreground size-8" aria-hidden="true" />
-      <p className="font-medium">{t('title')}</p>
+      <h1 className="font-medium">{t('title')}</h1>
       <p className="text-muted-foreground max-w-sm text-sm">
         {t('description', { role: tRoles(role) })}
       </p>
