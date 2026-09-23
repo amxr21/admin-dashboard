@@ -873,6 +873,29 @@
     "topProducts": {
       "showing": "{shown, plural, zero {لا منتجات} one {أعلى منتج} two {أعلى منتجين} few {أعلى # منتجات} many {أعلى # منتجاً} other {أعلى # منتج}} حسب الإيراد",
       "allProducts": "كل المنتجات"
+    },
+    "dayTimeline": {
+      "title": "سجلّ اليوم",
+      "empty": "لم يحدث شيء في هذه الفترة.",
+      "storefront": "المتجر",
+      "branch": "الفرع",
+      "fullTrail": "سجلّ التدقيق الكامل",
+      "eventCount": "{count, plural, zero {لا أحداث} one {حدث واحد} two {حدثان} few {# أحداث} many {# حدثاً} other {# حدث}}",
+      "showingNewest": "أحدث {count, plural, zero {لا أحداث} one {حدث واحد} two {حدثين} few {# أحداث} many {# حدثاً} other {# حدث}}",
+      "kinds": {
+        "orderPlaced": "طلب جديد",
+        "orderSold": "بيع في نقطة البيع",
+        "orderVoided": "إلغاء عملية بيع",
+        "orderStatusChanged": "تغيّرت حالة الطلب",
+        "orderGoodwillRefund": "استرداد ودّي",
+        "shiftStarted": "بدأت الوردية",
+        "shiftEnded": "انتهت الوردية",
+        "shiftTillClosed": "أُغلق الصندوق",
+        "shiftApproved": "اعتُمدت الوردية",
+        "shiftRejected": "رُفضت الوردية",
+        "returnApproved": "قُبل المرتجع",
+        "returnRejected": "رُفض المرتجع"
+      }
     }
   },
   "products": {

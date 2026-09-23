@@ -174,6 +174,30 @@ export interface FloorStatus {
   };
 }
 
+/** One thing that happened, from either the audit log or the orders table. */
+export interface DayEvent {
+  id: string;
+  at: string;
+  kind: string;
+  /** Null for a storefront order nobody rang up, or a deleted account. */
+  actor: string | null;
+  actorRole: string | null;
+  entityId: string | null;
+  label: string | null;
+  /** Only ever set on an order — audit rows carry no money. */
+  amount: string | null;
+  status: string | null;
+  /** Null only for genuinely business-wide or legacy unattributed events. */
+  branch: { id: string; name: string } | null;
+}
+
+export interface DayTimeline {
+  range: DateRange;
+  events: DayEvent[];
+  /** True when the row cap bit, so the UI can say it is showing the newest N. */
+  truncated: boolean;
+}
+
 export interface StaffActivity {
   range: DateRange;
   staff: {
@@ -322,6 +346,11 @@ export async function fetchNeedsAttention(): Promise<NeedsAttention> {
  *  `fetchNeedsAttention` above. Branch scoping is applied server-side. */
 export async function fetchFloorStatus(): Promise<FloorStatus> {
   return apiFetch<FloorStatus>('/reports/floor-status');
+}
+
+/** Range-scoped, not live: "today" is just the range the caller asks for. */
+export async function fetchDayTimeline(range: DateRange, limit?: number): Promise<DayTimeline> {
+  return apiFetch<DayTimeline>(`/reports/day-timeline?${query({ ...range, limit })}`);
 }
 
 export async function fetchStaffActivity(range: DateRange): Promise<StaffActivity> {

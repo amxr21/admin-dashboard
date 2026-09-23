@@ -28,6 +28,7 @@ import {
   getGuestVsRegistered,
   getInventoryTurnover,
   getLowStockSnapshot,
+  getDayTimeline,
   getFloorStatus,
   getNeedsAttention,
   getOrderValueDistribution,
@@ -392,6 +393,27 @@ reportsRouter.get('/reports/needs-attention', ...guard, async (req, res) => {
  */
 reportsRouter.get('/reports/floor-status', ...guard, async (req, res) => {
   res.json({ data: await getFloorStatus(scoped(req, {})) });
+});
+
+/**
+ * What happened during a day, in order (dashboard day view).
+ *
+ * Range-scoped like the rest, NOT live: "today" is just the range the client
+ * asks for, so the same endpoint answers "what happened last Tuesday" without
+ * a second definition of when a day begins.
+ */
+const dayTimelineQuery = rangeQuery.extend({
+  // Extended here rather than added to `rangeQuery`: this is the only report
+  // whose row count a caller may choose, and widening the shared schema would
+  // silently accept `limit` on thirty endpoints that ignore it.
+  limit: z.coerce.number().int().positive().max(80).optional(),
+});
+
+reportsRouter.get('/reports/day-timeline', ...guard, async (req, res) => {
+  const parsed = dayTimelineQuery.safeParse(req.query);
+  if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
+
+  res.json({ data: await getDayTimeline(scoped(req, parsed.data)) });
 });
 
 // ─── C3.5 — new domain reports, same range/CSV shape as everything above ──

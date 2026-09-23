@@ -873,6 +873,29 @@
     "topProducts": {
       "showing": "{shown, plural, one {top # product} other {top # products}} by revenue",
       "allProducts": "All products"
+    },
+    "dayTimeline": {
+      "title": "The day's record",
+      "empty": "Nothing happened in this period.",
+      "storefront": "storefront",
+      "branch": "Branch",
+      "fullTrail": "Full audit trail",
+      "eventCount": "{count, plural, one {# event} other {# events}}",
+      "showingNewest": "newest {count, plural, one {# event} other {# events}}",
+      "kinds": {
+        "orderPlaced": "Order placed",
+        "orderSold": "Sold at the till",
+        "orderVoided": "Sale voided",
+        "orderStatusChanged": "Order status changed",
+        "orderGoodwillRefund": "Goodwill refund",
+        "shiftStarted": "Shift started",
+        "shiftEnded": "Shift ended",
+        "shiftTillClosed": "Till closed",
+        "shiftApproved": "Shift approved",
+        "shiftRejected": "Shift rejected",
+        "returnApproved": "Return approved",
+        "returnRejected": "Return rejected"
+      }
     }
   },
   "products": {
