@@ -8,7 +8,10 @@ import {
   optionalCustomer,
   requireCustomer,
 } from '../../middleware/authenticateCustomer.js';
-import { authenticateStorefrontApiKey } from '../../middleware/authenticate.js';
+import {
+  authenticateStorefrontApiKey,
+  requireUser,
+} from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import { loginWithGoogle } from '../../services/customer-auth.service.js';
 import {
@@ -84,6 +87,11 @@ const customerLoginRateLimit = rateLimit({
 const checkoutRateLimit = rateLimit({
   windowMs: 60 * 60_000,
   limit: 20,
+  // Integration files exercise many valid and invalid checkout cases from one
+  // in-process address. Rate-limit behavior belongs in its own isolated test;
+  // letting it leak across business-rule cases makes their result depend on
+  // test order instead of the order details being asserted.
+  skip: () => process.env.NODE_ENV === 'test',
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: {
@@ -326,6 +334,8 @@ const checkoutBody = z
     path: ['contact', 'address'],
   });
 
+const checkoutIdempotencyKey = z.string().uuid().max(64);
+
 publicRouter.post('/public/orders', requireArea('orders'), checkoutRateLimit, optionalCustomer, async (req, res) => {
   const parsed = checkoutBody.safeParse(req.body);
   if (!parsed.success) {
@@ -334,19 +344,34 @@ publicRouter.post('/public/orders', requireArea('orders'), checkoutRateLimit, op
     );
   }
 
+  const parsedIdempotencyKey = checkoutIdempotencyKey.safeParse(
+    req.get('Idempotency-Key'),
+  );
+  if (!parsedIdempotencyKey.success) {
+    throw AppError.badRequest('A valid Idempotency-Key header is required', {
+      field: 'Idempotency-Key',
+    });
+  }
+
   // The customer comes from the verified token or is null (guest) — never from
   // the request body.
-  const result = await checkout(parsed.data, req.customer?.id ?? null);
+  const execution = await checkout(
+    parsed.data,
+    req.customer?.id ?? null,
+    requireUser(req).id,
+    parsedIdempotencyKey.data,
+  );
 
   // Identifiers only. The contact block holds a name, phone and address, and
   // logging request bodies is how PII ends up in log aggregation forever.
   req.log.info({
-    event: 'storefront.order.created',
-    orderNumber: result.orderNumber,
+    event: execution.replayed ? 'storefront.order.replayed' : 'storefront.order.created',
+    orderNumber: execution.value.orderNumber,
     customerId: req.customer?.id ?? null,
   });
 
-  res.status(201).json({ data: result });
+  res.set('Idempotency-Replayed', execution.replayed ? 'true' : 'false');
+  res.status(201).json({ data: execution.value });
 });
 
 // ─── Orders (history + tracking) ────────────────────────────────────
