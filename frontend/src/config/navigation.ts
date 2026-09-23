@@ -1,6 +1,7 @@
 import {
   BadgePercent,
   Bell,
+  BookOpenCheck,
   Boxes,
   Building2,
   ChartColumn,
@@ -139,6 +140,18 @@ export const SETTINGS_NAV_ITEM: NavItem = {
   labelKey: 'settings',
   icon: Settings,
   area: 'settings',
+};
+
+/**
+ * Self-service operating guide. It has no area because every authenticated
+ * staff member should be able to learn the workflows their own role exposes.
+ * The page contains no privileged data and links remain protected by their
+ * destination routes.
+ */
+export const GUIDE_NAV_ITEM: NavItem = {
+  href: '/admin/guide',
+  labelKey: 'guide',
+  icon: BookOpenCheck,
 };
 
 /**
