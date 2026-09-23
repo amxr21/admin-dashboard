@@ -10,6 +10,7 @@ import { useResourceSchema } from '@/components/providers/schema-provider';
 import { useRouter } from '@/i18n/navigation';
 import {
   NAVIGATION,
+  GUIDE_NAV_ITEM,
   RESOURCES_OUTSIDE_SIDEBAR,
   RESOURCE_ICONS,
   RESOURCE_ICON_FALLBACK,
@@ -107,7 +108,7 @@ export function GlobalSearch({ role }: { role: StaffRole }) {
   }, []);
 
   const pageItems = useMemo<PageResult[]>(() => {
-    const navItems = NAVIGATION.flatMap((group) => group.items);
+    const navItems = [...NAVIGATION.flatMap((group) => group.items), GUIDE_NAV_ITEM];
     const resourceItems: NavItem[] = resources
       .filter((resource) => !RESOURCES_OUTSIDE_SIDEBAR.includes(resource.resource))
       .map((resource) => ({

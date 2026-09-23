@@ -50,6 +50,15 @@ describe('destination pages — instant, client-side', () => {
 
     expect(await screen.findByRole('option', { name: /orders/i })).toBeInTheDocument();
   });
+
+  it('finds the self-service guide as a page destination', async () => {
+    const user = userEvent.setup();
+    render(<GlobalSearch role="SUPPORT" />);
+
+    await user.type(screen.getByRole('combobox'), 'guide');
+
+    expect(await screen.findByRole('option', { name: /^guide$/i })).toBeInTheDocument();
+  });
 });
 
 describe('content search is debounced, not fired per keystroke', () => {
