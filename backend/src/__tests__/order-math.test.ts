@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Prisma } from '@prisma/client';
 
-import { computeOrderTotals } from '../services/order-math.service.js';
+import {
+  computeDiscountedTaxAmount,
+  computeOrderTotals,
+} from '../services/order-math.service.js';
 
 /**
  * The receipt arithmetic (O5.4).
@@ -48,6 +51,34 @@ describe('order totals', () => {
     expect(totals.subtotal.toFixed(2)).toBe('0.99');
     expect(totals.taxAmount.toFixed(2)).toBe('0.05');
     expect(totals.total.toFixed(2)).toBe('1.04');
+  });
+
+  it('charges VAT only on products marked taxable', () => {
+    const totals = computeOrderTotals(
+      [
+        { price: D('100.00'), quantity: 1, isTaxable: true },
+        { price: D('50.00'), quantity: 2, isTaxable: false },
+      ],
+      FIVE_PERCENT,
+    );
+
+    expect(totals.subtotal.toFixed(2)).toBe('200.00');
+    expect(totals.taxAmount.toFixed(2)).toBe('5.00');
+    expect(totals.total.toFixed(2)).toBe('205.00');
+  });
+
+  it('allocates an order discount between taxable and exempt goods before VAT', () => {
+    // Half the 200.00 basket is taxable. A 20.00 order discount therefore
+    // reduces the taxable base by 10.00: 90.00 × 5% = 4.50.
+    const tax = computeDiscountedTaxAmount(D('200.00'), D('100.00'), D('20.00'), FIVE_PERCENT);
+
+    expect(tax.toFixed(2)).toBe('4.50');
+  });
+
+  it('never charges VAT when every discounted item is exempt', () => {
+    const tax = computeDiscountedTaxAmount(D('80.00'), D('0.00'), D('10.00'), FIVE_PERCENT);
+
+    expect(tax.toFixed(2)).toBe('0.00');
   });
 
   it('rounds the subtotal so the receipt adds up', () => {

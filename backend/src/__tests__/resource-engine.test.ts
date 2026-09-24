@@ -765,6 +765,30 @@ describe('product slug + redirect recording (A5.7)', () => {
 
     expect(cost?.description).toMatch(/blank is not zero/i);
   });
+
+  it('exposes the product VAT checkbox as an enabled-by-default boolean', async () => {
+    const res = await request(app).get('/api/v1/r/_schema').set(auth(ownerToken));
+
+    const products = (
+      res.body as {
+        data: {
+          resources: {
+            resource: string;
+            fields: {
+              name: string;
+              type: string;
+              defaultValue?: unknown;
+              description?: string;
+            }[];
+          }[];
+        };
+      }
+    ).data.resources.find((resource) => resource.resource === 'products');
+    const isTaxable = products?.fields.find((field) => field.name === 'isTaxable');
+
+    expect(isTaxable).toMatchObject({ type: 'boolean', defaultValue: true });
+    expect(isTaxable?.description).toMatch(/VAT rate is added at checkout/i);
+  });
 });
 
 describe('resource export (B3.3)', () => {
