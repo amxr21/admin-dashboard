@@ -29,6 +29,8 @@ export interface PriceableLine {
    *  reaches here — see `OrderItem.price`. */
   price: Prisma.Decimal;
   quantity: number;
+  /** Defaults true for callers written before per-product VAT existed. */
+  isTaxable?: boolean;
 }
 
 export interface OrderTotals {
@@ -78,9 +80,43 @@ export function computeOrderTotals(
     // the total and makes subtotal + tax != total on the printed document.
     .toDecimalPlaces(2);
 
-  const taxAmount = subtotal.times(taxRate).toDecimalPlaces(2);
+  const taxableSubtotal = lines
+    .filter((line) => line.isTaxable !== false)
+    .reduce((sum, line) => sum.plus(line.price.times(line.quantity)), new Prisma.Decimal(0))
+    .toDecimalPlaces(2);
+
+  const taxAmount = taxableSubtotal.times(taxRate).toDecimalPlaces(2);
 
   return { subtotal, taxAmount, total: subtotal.plus(taxAmount) };
+}
+
+/**
+ * Tax after an order-level discount when a basket mixes taxable and exempt
+ * goods. Allocate the discount proportionally across the basket so the exempt
+ * share never creates or absorbs VAT while the one order-level discount
+ * snapshot remains reconcilable.
+ */
+export function computeDiscountedTaxAmount(
+  subtotal: Prisma.Decimal,
+  taxableSubtotal: Prisma.Decimal,
+  discountAmount: Prisma.Decimal,
+  taxRate: Prisma.Decimal,
+): Prisma.Decimal {
+  if (subtotal.lte(0) || taxableSubtotal.lte(0) || taxRate.lte(0)) {
+    return new Prisma.Decimal(0);
+  }
+
+  const boundedDiscount = Prisma.Decimal.min(
+    Prisma.Decimal.max(discountAmount, new Prisma.Decimal(0)),
+    subtotal,
+  );
+  const taxableDiscountShare = boundedDiscount.times(taxableSubtotal).dividedBy(subtotal);
+  const taxableAfterDiscount = Prisma.Decimal.max(
+    taxableSubtotal.minus(taxableDiscountShare),
+    new Prisma.Decimal(0),
+  );
+
+  return taxableAfterDiscount.times(taxRate).toDecimalPlaces(2);
 }
 
 /** The common case: read the rate and compute in one call. */
