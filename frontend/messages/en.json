@@ -3698,6 +3698,9 @@
         "summary": "Business templates are starting presets. They configure the dashboard but do not create a finished business or industry-specific workflow.",
         "restaurantTitle": "Restaurant readiness: counter-service starting point",
         "restaurantStatus": "Selecting Restaurant prepares a generic POS and administration workspace. It can support a manually configured counter-service, takeaway, or pickup operation, but it is not a turnkey full-service restaurant system.",
+        "homeBusinessTitle": "Home business: a lean workspace without shop-floor clutter",
+        "homeBusinessStatus": "Selecting Home business starts with orders, delivery, inventory, reports, products, customers, discounts, and one home location. POS, suppliers, returns, customer cases, staff, and scheduled reports start hidden. You can change every choice, and hiding a feature never deletes its data.",
+        "homeBusinessChecklist": "Open the Home business launch checklist",
         "appliesTitle": "The preset applies",
         "applies": {
           "features": "Feature visibility for dashboard, POS, tickets, inventory, suppliers, reports, team, branches, and settings.",
@@ -3826,6 +3829,17 @@
           "notifications": { "label": "Configure operational notifications", "detail": "Set recipients and test in-app alerts; configure email only when every SMTP value is ready." },
           "security": { "label": "Harden privileged access", "detail": "Enable two-factor authentication, store backup codes safely, and review active sessions." }
         }},
+        "homeBusiness": { "title": "Home business launch", "description": "Complete after selecting Home business. The preset removes unused administration; this checklist prepares the remaining workflow for real orders.", "items": {
+          "profile": { "label": "Complete the customer-facing profile", "detail": "Set the trading name, logo, contact channel, currency, tax rate, pickup address, and the hours when customers can expect a reply." },
+          "location": { "label": "Configure one home location", "detail": "Create or review the home branch, choose its real timezone, keep it active only when accepting orders, and use its ID for catalogue and checkout requests." },
+          "catalogue": { "label": "Publish a small, complete catalogue", "detail": "Create every sellable item with a clear name, price, tax behavior, image, availability, and English and Arabic content where required." },
+          "inventory": { "label": "Choose how inventory will work", "detail": "Keep Inventory enabled and record opening quantities for stocked goods, or disable it in Business setup when every item is made-to-order or non-stocked." },
+          "delivery": { "label": "Define pickup and delivery promises", "detail": "Document service areas, fees, address requirements, preparation time, handoff steps, failed-delivery handling, and the person responsible for each order." },
+          "customers": { "label": "Verify customer records and consent", "detail": "Capture only necessary contact details, prevent duplicates, and record valid email or SMS marketing consent before sending promotions." },
+          "discounts": { "label": "Test discounts before publishing", "detail": "Confirm code, dates, limits, eligible products, branch behavior, tax calculation, and one rejected and one accepted checkout example." },
+          "orders": { "label": "Run the complete order workflow", "detail": "Create an order, confirm it, prepare it, assign delivery or pickup, complete it, and verify stock, customer history, totals, and notifications at every step." },
+          "acceptance": { "label": "Complete a real-device acceptance run", "detail": "Place English and Arabic test orders from a phone, test sold-out and invalid-discount cases, complete delivery and pickup, then verify the dashboard and reports." }
+        }},
         "restaurant": { "title": "Restaurant readiness", "description": "Complete after selecting Restaurant. The template is a starting preset; this checklist turns the configured workspace into a tested counter-service operation.", "items": {
           "serviceModel": { "label": "Confirm the supported service model", "detail": "Use the current system for counter service, takeaway, or pickup. Record any need for tables, reservations, courses, tips, or kitchen display as product gaps before launch." },
           "menu": { "label": "Build the complete menu", "detail": "Create categories and every sellable item with approved English and Arabic names, prices, costs, tax behavior, images, and ACTIVE status." },
@@ -3915,6 +3929,7 @@
     }
   },
   "businessTypes": {
+    "HOME_BUSINESS": "Home business",
     "RESTAURANT": "Restaurant",
     "CAFE": "Cafe",
     "BAKERY": "Bakery",

@@ -24,14 +24,22 @@ export const setupDraftSchema = z.object({
 export type SetupDraft = z.infer<typeof setupDraftSchema>;
 
 export function setupTemplate(businessType: BusinessType): SetupDraft {
+  const homeBusiness = businessType === 'HOME_BUSINESS';
   const food = ['CAFE', 'BAKERY', 'RESTAURANT', 'FOOD_TRUCK'].includes(businessType);
   const service = ['SALON', 'SPA', 'BARBERSHOP', 'GYM', 'LAUNDRY'].includes(businessType);
-  const retail = !food && !service;
+  const retail = !food && !service && !homeBusiness;
   const features = Object.fromEntries(SETUP_FEATURE_KEYS.map(key => [key, true])) as Record<SetupFeature, boolean>;
   Object.assign(features, {
-    pos: businessType !== 'LAUNDRY', delivery: false, scheduledReports: false,
+    pos: businessType !== 'LAUNDRY', delivery: homeBusiness, scheduledReports: false,
     returns: retail, customerCases: ['ELECTRONICS', 'LAUNDRY', 'OTHER'].includes(businessType),
     suppliers: !service, inventory: businessType !== 'LAUNDRY',
+  });
+  if (homeBusiness) Object.assign(features, {
+    pos: false,
+    suppliers: false,
+    returns: false,
+    customerCases: false,
+    staff: false,
   });
   return {
     businessType, features: normalizeFeatures(features),

@@ -9,6 +9,7 @@ import {
   ReceiptText,
   ShieldCheck,
   ShoppingCart,
+  House,
   UtensilsCrossed,
   UsersRound,
   type LucideIcon,
@@ -192,6 +193,19 @@ export default async function AdminGuidePage({
           <div className="bg-warning/10 rounded-lg border border-warning/30 p-4">
             <h3 className="font-semibold">{t('sections.templates.restaurantTitle')}</h3>
             <p className="mt-2 text-sm leading-relaxed">{t('sections.templates.restaurantStatus')}</p>
+          </div>
+
+          <div className="bg-primary/5 border-primary/20 rounded-lg border p-4">
+            <div className="flex items-start gap-3">
+              <House className="text-primary mt-0.5 size-5 shrink-0" aria-hidden />
+              <div>
+                <h3 className="font-semibold">{t('sections.templates.homeBusinessTitle')}</h3>
+                <p className="mt-2 text-sm leading-relaxed">{t('sections.templates.homeBusinessStatus')}</p>
+                <Link className="text-primary mt-3 inline-flex min-h-11 items-center text-sm font-medium underline-offset-4 hover:underline" href="/admin/guide/checklists">
+                  {t('sections.templates.homeBusinessChecklist')}
+                </Link>
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">

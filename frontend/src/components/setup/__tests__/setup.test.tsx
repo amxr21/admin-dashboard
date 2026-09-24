@@ -16,7 +16,8 @@ vi.mock('@/lib/setup-api', async importOriginal => ({ ...await importOriginal<ty
 function fixture(): SetupState {
   const current: SetupDraft = { businessType: 'OTHER', features: Object.fromEntries(SETUP_FEATURE_KEYS.map(key => [key, true])) as SetupDraft['features'], labels: { products: '', orders: '', staff: '' }, defaults: {}, rolePermissions: {} };
   const cafe = { ...current, businessType: 'CAFE' as const, features: { ...current.features, delivery: false, returns: false, customerCases: false, scheduledReports: false } };
-  return { completedAt: null, skippedAt: null, current, templates: [current, cafe], features: SETUP_FEATURE_KEYS.map(key => ({ key, canDisable: !['dashboard', 'settings'].includes(key), dependsOn: [], routes: [] })), defaultDefinitions: [], roles: [{ role: 'OWNER', areas: [], isLocked: true, isCustomised: false }] };
+  const homeBusiness = { ...current, businessType: 'HOME_BUSINESS' as const, features: { ...current.features, pos: false, delivery: true, suppliers: false, returns: false, customerCases: false, staff: false, scheduledReports: false } };
+  return { completedAt: null, skippedAt: null, current, templates: [current, homeBusiness, cafe], features: SETUP_FEATURE_KEYS.map(key => ({ key, canDisable: !['dashboard', 'settings'].includes(key), dependsOn: [], routes: [] })), defaultDefinitions: [], roles: [{ role: 'OWNER', areas: [], isLocked: true, isCustomised: false }] };
 }
 beforeEach(() => {
   vi.clearAllMocks(); mocks.role = 'OWNER'; mocks.settings = { isLoading: false, setupCompletedAt: '', setupSkippedAt: '', enabledFeatures: {} };
@@ -60,6 +61,22 @@ describe('business setup', () => {
     await user.click(screen.getByRole('button', { name: 'Apply setup' }));
     expect(mocks.apply).toHaveBeenCalledWith(expect.objectContaining({ businessType: 'CAFE', features: expect.objectContaining({ delivery: true, returns: false }) }));
     expect(await screen.findByText('Setup preferences saved')).toBeInTheDocument();
+  });
+  it('explains and loads the lean Home business recommendations', async () => {
+    const user = userEvent.setup();
+    render(<SetupWizard />);
+    await user.click(await screen.findByRole('button', { name: 'Start setup' }));
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', { name: 'Home business' }));
+    const enabledSummary = screen.getByText('Turns on:').parentElement;
+    expect(enabledSummary).toHaveTextContent('Orders');
+    expect(enabledSummary).toHaveTextContent('Inventory');
+    expect(enabledSummary).toHaveTextContent('Delivery');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByRole('checkbox', { name: 'Point of sale' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Orders' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Inventory' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Delivery' })).toBeChecked();
   });
   it('shows retry after loading fails', async () => {
     mocks.fetch.mockRejectedValueOnce(new Error('offline'));

@@ -65,6 +65,21 @@ const cafe = {
   },
   defaults: { 'products.defaultHasVariants': true, 'store.taxRate': 5 },
 };
+const homeBusiness = {
+  ...current,
+  businessType: 'HOME_BUSINESS',
+  features: {
+    ...enabledFeatures,
+    pos: false,
+    suppliers: false,
+    delivery: true,
+    returns: false,
+    scheduledReports: false,
+    customerCases: false,
+    staff: false,
+  },
+  defaults: { 'products.defaultHasVariants': false, 'store.taxRate': 5 },
+};
 
 async function mockSetup(page: Page, role: 'OWNER' | 'SUPPORT' = 'OWNER') {
   const user = { ...owner, role };
@@ -117,7 +132,7 @@ async function mockSetup(page: Page, role: 'OWNER' | 'SUPPORT' = 'OWNER') {
           completedAt: completedAt || null,
           skippedAt: null,
           current: saved,
-          templates: [current, cafe],
+          templates: [current, homeBusiness, cafe],
           features,
           defaultDefinitions: [
             {
@@ -226,6 +241,23 @@ test('owner completes setup, sees retained-data warning, and can rerun it', asyn
   await expect(page.getByRole('button', { name: 'Start setup' })).toBeVisible();
   expect(state.setupRequests).toBeGreaterThan(1);
   expect(errors).toEqual([]);
+});
+
+test('owner can select the lean Home business preset', async ({ page }) => {
+  await mockSetup(page);
+  await page.goto('/en/admin/setup', { waitUntil: 'domcontentloaded' });
+  await advance(page);
+  await page.getByRole('combobox', { name: 'Business type' }).click();
+  await page.getByRole('option', { name: 'Home business' }).click();
+
+  const enabledSummary = page.getByText('Turns on:', { exact: true }).locator('..');
+  await expect(enabledSummary).toContainText('Orders');
+  await expect(enabledSummary).toContainText('Inventory');
+  await expect(enabledSummary).toContainText('Delivery');
+  await advance(page);
+  await expect(page.getByRole('checkbox', { name: 'Point of sale' })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Orders' })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Delivery' })).toBeChecked();
 });
 
 for (const { locale, width, height } of [
