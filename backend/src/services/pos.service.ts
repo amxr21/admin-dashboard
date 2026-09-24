@@ -584,7 +584,7 @@ async function checkoutOnce(
     // reached the counter.
     const products = await tx.product.findMany({
       where: { id: { in: productIds } },
-      select: { id: true, name: true, price: true, cost: true },
+      select: { id: true, name: true, price: true, cost: true, isTaxable: true },
     });
 
     const byId = new Map(products.map((product) => [product.id, product]));
@@ -663,11 +663,16 @@ async function checkoutOnce(
         chargedPrice,
         discountPercent,
         cost: product.cost,
+        isTaxable: product.isTaxable,
       };
     });
 
     const totals = computeOrderTotals(
-      priced.map((line) => ({ price: line.chargedPrice, quantity: line.quantity })),
+      priced.map((line) => ({
+        price: line.chargedPrice,
+        quantity: line.quantity,
+        isTaxable: line.isTaxable,
+      })),
       taxRate,
     );
 
@@ -700,6 +705,7 @@ async function checkoutOnce(
             price: line.price,
             cost: line.cost,
             discountPercent: line.discountPercent,
+            isTaxable: line.isTaxable,
           })),
         },
       },

@@ -15,6 +15,7 @@ import {
   executeIdempotently,
   type IdempotentExecution,
 } from './idempotency.service.js';
+import { computeDiscountedTaxAmount } from './order-math.service.js';
 import { getSettingValue } from './settings.service.js';
 import type { ProductLocale } from './product-content.service.js';
 
@@ -47,6 +48,7 @@ const PUBLIC_PRODUCT_SELECT = {
   name: true,
   description: true,
   price: true,
+  isTaxable: true,
   imageUrl: true,
   stock: true,
   translations: {
@@ -64,6 +66,8 @@ export interface PublicProduct {
   description: string | null;
   /** Serialised to a fixed-2 string, never a float — see the schema's money note. */
   price: string;
+  /** Whether the configured store VAT rate applies to this product. */
+  isTaxable: boolean;
   image: string | null;
   /**
    * Units available right now.
@@ -108,6 +112,7 @@ function toPublicProduct(
     name: translation?.name ?? product.name,
     description: translation?.description ?? product.description,
     price: product.price.toFixed(2),
+    isTaxable: product.isTaxable,
     image: product.imageUrl,
     stock,
     inStock: stock > 0,
@@ -417,6 +422,7 @@ export interface CartLine {
   name: string;
   image: string | null;
   price: string;
+  isTaxable: boolean;
   quantity: number;
   inStock: boolean;
 }
@@ -448,6 +454,7 @@ function toCartView(
       name: item.product.name,
       image: item.product.imageUrl,
       price: item.product.price.toFixed(2),
+      isTaxable: item.product.isTaxable,
       quantity: item.quantity,
       inStock: item.product.stock >= item.quantity,
     })),
@@ -849,6 +856,7 @@ async function checkoutOnce(
         id: true,
         name: true,
         price: true,
+        isTaxable: true,
         branchStock: {
           where: { branchId: input.branchId },
           select: { quantity: true },
@@ -859,12 +867,14 @@ async function checkoutOnce(
     const byId = new Map(products.map((product) => [product.id, product]));
 
     let subtotal = new Prisma.Decimal(0);
+    let taxableSubtotal = new Prisma.Decimal(0);
     const lines: {
       productId: string;
       /** Carried only so the oversell conflict below can name the product. */
       name: string;
       quantity: number;
       price: Prisma.Decimal;
+      isTaxable: boolean;
     }[] = [];
 
     for (const [productId, quantity] of quantities) {
@@ -885,7 +895,16 @@ async function checkoutOnce(
       }
 
       subtotal = subtotal.plus(product.price.times(quantity));
-      lines.push({ productId, name: product.name, quantity, price: product.price });
+      if (product.isTaxable) {
+        taxableSubtotal = taxableSubtotal.plus(product.price.times(quantity));
+      }
+      lines.push({
+        productId,
+        name: product.name,
+        quantity,
+        price: product.price,
+        isTaxable: product.isTaxable,
+      });
     }
 
     /**
@@ -906,13 +925,18 @@ async function checkoutOnce(
       : null;
 
     const discountAmount = discount?.amount ?? new Prisma.Decimal(0);
-    const taxable = subtotal.minus(discountAmount);
+    const discountedSubtotal = subtotal.minus(discountAmount);
 
     // Rounded once, at creation, and snapshotted — same discipline as
-    // OrderItem.price. A later change to store.taxRate must not reach back and
-    // rewrite what this invoice already showed.
-    const taxAmount = taxable.times(taxRate).toDecimalPlaces(2);
-    const total = taxable.plus(taxAmount);
+    // OrderItem.price. The order-level discount is allocated proportionally
+    // between taxable and exempt goods, so an exempt line never creates VAT.
+    const taxAmount = computeDiscountedTaxAmount(
+      subtotal,
+      taxableSubtotal,
+      discountAmount,
+      taxRate,
+    );
+    const total = discountedSubtotal.plus(taxAmount);
 
     const orderData = {
       total,
@@ -931,6 +955,7 @@ async function checkoutOnce(
           productId: line.productId,
           quantity: line.quantity,
           price: line.price,
+          isTaxable: line.isTaxable,
         })),
       },
     };

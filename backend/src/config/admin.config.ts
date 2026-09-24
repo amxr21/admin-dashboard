@@ -249,6 +249,16 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
         placeholder: 'e.g. Soft combed cotton, pre-shrunk, fits true to size',
       },
       { name: 'price', label: 'Price', type: 'money', required: true, sortable: true },
+      {
+        name: 'isTaxable',
+        label: 'Charge VAT on this product',
+        type: 'boolean',
+        inList: false,
+        group: 'pricing',
+        defaultValue: true,
+        description:
+          'When enabled, the store VAT rate is added at checkout. Turn it off only for a product that is VAT-exempt or zero-rated under your tax rules.',
+      },
       // Optional and deliberately not in the list view: most rows won't have
       // it filled in yet, and margin reporting must treat a blank cost as
       // "not tracked", never as free — see the schema comment on Product.cost.
