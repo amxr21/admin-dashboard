@@ -169,11 +169,9 @@ export function ProductVariantsPanel({
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate font-medium">{variant.name}</p>
-                      {variant.sku ? (
-                        <p className="text-muted-foreground force-ltr truncate text-xs">
-                          {variant.sku}
-                        </p>
-                      ) : null}
+                      <p className="text-muted-foreground force-ltr truncate text-xs">
+                        {variant.sku}
+                      </p>
                     </div>
                     <p className="tabular-nums">{variant.price}</p>
                   </div>
@@ -305,7 +303,8 @@ function VariantForm({
   const [error, setError] = useState<string | null>(null);
 
   const isPriceValid = MONEY_PATTERN.test(price.trim());
-  const canSubmit = name.trim().length > 0 && isPriceValid;
+  const canSubmit =
+    name.trim().length > 0 && isPriceValid && (!variant || sku.trim().length > 0);
 
   async function submit() {
     if (!canSubmit) return;
@@ -313,7 +312,11 @@ function VariantForm({
     setError(null);
 
     try {
-      const input = { name: name.trim(), sku: sku.trim() || undefined, price: price.trim() };
+      const input = {
+        name: name.trim(),
+        ...(sku.trim() ? { sku: sku.trim() } : {}),
+        price: price.trim(),
+      };
       const saved = variant ? await updateVariant(variant.id, input) : await createVariant(productId, input);
       onSaved(saved);
       if (!variant) {
@@ -362,7 +365,13 @@ function VariantForm({
             className="force-ltr"
             value={sku}
             onChange={(event) => setSku(event.target.value)}
+            required={variant !== null}
+            maxLength={64}
+            aria-describedby="variant-sku-hint"
           />
+          <p id="variant-sku-hint" className="text-muted-foreground text-xs">
+            {t('skuHint')}
+          </p>
         </div>
       </div>
 
