@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Prisma, type StockMovementReason } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
@@ -26,7 +27,7 @@ function money(value: Prisma.Decimal): string {
 function serializeVariant(variant: {
   id: string;
   name: string;
-  sku: string | null;
+  sku: string;
   price: Prisma.Decimal;
   stock: number;
   productId: string;
@@ -79,7 +80,7 @@ export async function listVariants(productId: string, branchId?: string) {
 
 export interface VariantInput {
   name: string;
-  sku?: string | null;
+  sku?: string;
   price: string;
 }
 
@@ -90,27 +91,40 @@ export async function createVariant(productId: string, input: VariantInput, req:
   });
   if (!product) throw AppError.notFound('Product not found');
 
-  try {
-    const variant = await prisma.productVariant.create({
-      data: {
-        productId,
-        name: input.name,
-        sku: input.sku ?? null,
-        price: new Prisma.Decimal(input.price),
-      },
-    });
+  // Codes supplied by an admin are preserved. When omitted, generate a
+  // stable code once at creation so API clients from before this invariant do
+  // not start failing. UUID collisions are practically impossible, but retry
+  // unique-index races instead of ever leaking a raw Prisma error.
+  const attempts = input.sku ? 1 : 3;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const variant = await prisma.productVariant.create({
+        data: {
+          productId,
+          name: input.name,
+          sku: input.sku ?? `VAR-${randomUUID()}`,
+          price: new Prisma.Decimal(input.price),
+        },
+      });
 
-    audit(req, {
-      action: 'variant.create',
-      entity: 'product_variants',
-      entityId: variant.id,
-      changes: diff({}, serializeVariant(variant)),
-    });
+      audit(req, {
+        action: 'variant.create',
+        entity: 'product_variants',
+        entityId: variant.id,
+        changes: diff({}, serializeVariant(variant)),
+      });
 
-    return serializeVariant(variant);
-  } catch (error) {
-    throw translateVariantWriteError(error);
+      return serializeVariant(variant);
+    } catch (error) {
+      const uniqueCollision =
+        error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+      if (input.sku || !uniqueCollision || attempt === attempts - 1) {
+        throw translateVariantWriteError(error);
+      }
+    }
   }
+
+  throw new Error('Variant code generation exhausted unexpectedly');
 }
 
 export async function updateVariant(

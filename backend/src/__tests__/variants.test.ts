@@ -20,7 +20,7 @@ import { signToken } from '../services/auth.service.js';
 const app = createApp();
 
 interface VariantBody {
-  data: { variant: { id: string; name: string; sku: string | null; price: string; stock: number } };
+  data: { variant: { id: string; name: string; sku: string; price: string; stock: number } };
 }
 interface VariantsListBody {
   data: { variants: { id: string; name: string; stock: number }[] };
@@ -191,8 +191,37 @@ describe('catalogue CRUD', () => {
     expect(res.status).toBe(201);
     const variant = (res.body as VariantBody).data.variant;
     expect(variant.name).toBe('Red / Large');
+    expect(variant.sku).toBe(`${RUN}-RL`);
     expect(variant.price).toBe('24.99');
     expect(variant.stock).toBe(0);
+  });
+
+  it('generates and persists a unique SKU when an older client omits it', async () => {
+    const productId = await makeProduct();
+
+    const created = await request(app)
+      .post(`/api/v1/products/${productId}/variants`)
+      .set(auth(ownerToken))
+      .send({ name: 'Generated code', price: '8.00' });
+
+    expect(created.status).toBe(201);
+    const variant = (created.body as VariantBody).data.variant;
+    expect(variant.sku).toMatch(/^VAR-[0-9a-f-]{36}$/i);
+
+    const stored = await prisma.productVariant.findUnique({ where: { id: variant.id } });
+    expect(stored?.sku).toBe(variant.sku);
+  });
+
+  it('rejects an explicitly blank SKU instead of storing a missing code', async () => {
+    const productId = await makeProduct();
+
+    const res = await request(app)
+      .post(`/api/v1/products/${productId}/variants`)
+      .set(auth(ownerToken))
+      .send({ name: 'Blank code', sku: '   ', price: '8.00' });
+
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorBody).error.code).toBe('BAD_REQUEST');
   });
 
   it('lists only the variants belonging to that product', async () => {
@@ -232,7 +261,33 @@ describe('catalogue CRUD', () => {
       .send({ name: 'Second', sku, price: '5.00' });
 
     expect(res.status).toBe(409);
+    expect((res.body as ErrorBody).error).toMatchObject({
+      code: 'CONFLICT',
+      details: { fields: ['sku'] },
+    });
     expect((res.body as ErrorBody).error.message).not.toMatch(/prisma|constraint/i);
+  });
+
+  it('rejects changing a variant to another variant SKU', async () => {
+    const productId = await makeProduct();
+    const firstSku = `${RUN}-UPDATE-A`;
+    const first = await request(app)
+      .post(`/api/v1/products/${productId}/variants`)
+      .set(auth(ownerToken))
+      .send({ name: 'First update', sku: firstSku, price: '5.00' });
+    const second = await request(app)
+      .post(`/api/v1/products/${productId}/variants`)
+      .set(auth(ownerToken))
+      .send({ name: 'Second update', sku: `${RUN}-UPDATE-B`, price: '5.00' });
+
+    expect(first.status).toBe(201);
+    const res = await request(app)
+      .patch(`/api/v1/variants/${(second.body as VariantBody).data.variant.id}`)
+      .set(auth(ownerToken))
+      .send({ sku: firstSku });
+
+    expect(res.status).toBe(409);
+    expect((res.body as ErrorBody).error.details).toEqual({ fields: ['sku'] });
   });
 
   it('updates the price without touching stock', async () => {

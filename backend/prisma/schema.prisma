@@ -979,7 +979,10 @@ model ProductRedirect {
 model ProductVariant {
   id    String  @id @default(cuid())
   name  String  @db.VarChar(120)
-  sku   String? @unique @db.VarChar(64)
+  /// Required stable catalogue code. Existing rows were deterministically
+  /// backfilled before this became non-null; the unique index prevents two
+  /// variants from sharing a code even when they belong to different products.
+  sku   String  @unique @db.VarChar(64)
   price Decimal @db.Decimal(10, 2)
   /// Denormalised running total, same pattern as Product.stock — the
   /// movements below are the truth, this column exists so a list doesn't sum

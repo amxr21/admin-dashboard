@@ -95,7 +95,7 @@ describe('loading and displaying movements', () => {
 
   it('shows an empty state, not an error, when a variant genuinely has no movements', async () => {
     fetchVariantMovements.mockResolvedValue({
-      variant: { id: 'variant-1', name: 'Red / Large', sku: null, stock: 0 },
+      variant: { id: 'variant-1', name: 'Red / Large', sku: 'SKU-RL', stock: 0 },
       movements: [],
       total: 0,
       page: 1,

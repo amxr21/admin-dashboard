@@ -38,7 +38,7 @@ const MONEY_PATTERN = /^-?\d{1,8}(\.\d{1,2})?$/;
 const variantBody = z
   .object({
     name: z.string().trim().min(1, 'Name is required').max(120),
-    sku: z.string().trim().max(64).optional(),
+    sku: z.string().trim().min(1, 'SKU cannot be blank').max(64).optional(),
     price: z.string().regex(MONEY_PATTERN, 'Enter a decimal amount with up to 2 decimal places'),
   })
   .strict();
