@@ -66,6 +66,7 @@ export function isCanonicalCountry(value: string): boolean {
  * already holds free text costs nothing to widen later.
  */
 export const BUSINESS_TYPES = [
+  'HOME_BUSINESS',
   'RESTAURANT',
   'CAFE',
   'BAKERY',

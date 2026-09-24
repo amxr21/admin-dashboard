@@ -11,6 +11,30 @@ describe('setup templates and boundary', () => {
   it.each(['CAFE', 'BAKERY', 'RESTAURANT'] as const)('%s recommends a till without returns or delivery', type => {
     expect(setupTemplate(type).features).toMatchObject({ pos: true, inventory: true, orders: true, returns: false, delivery: false });
   });
+  it('keeps a home business focused on lightweight order fulfilment', () => {
+    expect(setupTemplate('HOME_BUSINESS')).toMatchObject({
+      features: {
+        dashboard: true,
+        orders: true,
+        delivery: true,
+        inventory: true,
+        reports: true,
+        pos: false,
+        suppliers: false,
+        returns: false,
+        customerCases: false,
+        staff: false,
+        branches: true,
+        scheduledReports: false,
+      },
+      defaults: {
+        'products.defaultHasVariants': false,
+        'products.defaultHasColors': false,
+        'products.defaultHasBarcode': false,
+      },
+      rolePermissions: {},
+    });
+  });
   it('allows the owner to override a template and never preselects permission changes', () => {
     const draft = setupTemplate('CAFE');
     draft.features.delivery = true;
