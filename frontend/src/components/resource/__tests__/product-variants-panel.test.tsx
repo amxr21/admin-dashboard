@@ -164,11 +164,21 @@ describe('creating a variant', () => {
     await waitFor(() => {
       expect(createVariant).toHaveBeenCalledWith('p1', {
         name: 'Blue / Small',
-        sku: undefined,
         price: '19.99',
       });
     });
     expect(await screen.findByText('Blue / Small')).toBeInTheDocument();
+    expect(screen.getByText('SKU-RL')).toBeInTheDocument();
+  });
+
+  it('allows automatic SKU generation on create and explains the uniqueness rule', async () => {
+    fetchVariants.mockResolvedValue([]);
+    renderPanel();
+
+    const sku = await screen.findByLabelText('Unique SKU');
+    expect(sku).not.toBeRequired();
+    expect(sku).toHaveAttribute('maxlength', '64');
+    expect(screen.getByText(/leave blank to generate one/i)).toBeInTheDocument();
   });
 
   it('disables Add until name and a valid price are both present', async () => {
@@ -194,6 +204,7 @@ describe('editing a variant', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Edit' }));
     expect(screen.getByLabelText('Name')).toHaveValue('Red / Large');
+    expect(screen.getByLabelText('Unique SKU')).toBeRequired();
 
     const price = screen.getByLabelText('Price');
     await userEvent.clear(price);

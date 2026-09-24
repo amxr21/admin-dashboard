@@ -14,7 +14,7 @@ export { STOCK_REASONS, type StockMovementReason };
 export interface Variant {
   id: string;
   name: string;
-  sku: string | null;
+  sku: string;
   price: string;
   stock: number;
   productId: string;
@@ -74,7 +74,7 @@ export interface AdjustVariantStockInput {
 export async function adjustVariantStock(
   variantId: string,
   input: AdjustVariantStockInput,
-): Promise<{ variant: { id: string; name: string; sku: string | null; stock: number }; movement: VariantStockMovement }> {
+): Promise<{ variant: { id: string; name: string; sku: string; stock: number }; movement: VariantStockMovement }> {
   return apiFetch(`/variants/${variantId}/movements`, {
     method: 'POST',
     body: JSON.stringify(input.note ? input : { delta: input.delta, reason: input.reason }),
@@ -82,7 +82,7 @@ export async function adjustVariantStock(
 }
 
 export interface VariantMovementListResult {
-  variant: { id: string; name: string; sku: string | null; stock: number };
+  variant: { id: string; name: string; sku: string; stock: number };
   movements: (VariantStockMovement & { actorName: string | null })[];
   total: number;
   page: number;
