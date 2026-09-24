@@ -691,6 +691,12 @@
     "canceledOrders": "Canceled",
     "lowStockProducts": "Low stock",
     "viewReports": "View reports",
+    "advanced": {
+      "title": "Advanced insights",
+      "description": "Returns, product mix, order mix, notifications, and the detailed activity timeline.",
+      "show": "Show insights",
+      "hide": "Hide insights"
+    },
     "resetRange": "Reset",
     "lastUpdated": "Updated {date} {time}",
     "refresh": "Refresh",

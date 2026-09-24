@@ -595,6 +595,7 @@ export function FloorBand({ data, template, isLoading = false }: FloorBandProps)
 
   if (!data) return null;
 
+  const hasTillRows = data.openShifts.length + data.recentlyClosed.length > 0;
   const showFigures = template === 'combo' || template === 'figures';
   const showCards = template === 'combo' || template === 'tills';
 
@@ -624,31 +625,42 @@ export function FloorBand({ data, template, isLoading = false }: FloorBandProps)
         </Link>
       </div>
 
-      {template === 'roster' ? <RosterTable data={data} /> : null}
-      {template === 'triage' ? <Triage data={data} /> : null}
-      {showFigures ? <FigureCells data={data} /> : null}
-      {showCards ? <TillCards data={data} /> : null}
+      {!hasTillRows ? (
+        // A quiet floor is one fact, not five zero-valued KPI cards plus an
+        // empty till grid. Keeping it compact makes a new/small business reach
+        // revenue and orders without scrolling through unused POS detail.
+        <p className="text-muted-foreground bg-card rounded-lg border px-4 py-4 text-sm">
+          {t('empty')}
+        </p>
+      ) : (
+        <>
+          {template === 'roster' ? <RosterTable data={data} /> : null}
+          {template === 'triage' ? <Triage data={data} /> : null}
+          {showFigures ? <FigureCells data={data} /> : null}
+          {showCards ? <TillCards data={data} /> : null}
 
-      {/* A cashier's own note is the one thing here they wrote themselves, so
-          it is surfaced rather than buried on the shift detail page. */}
-      {data.openShifts
-        .filter((till) => till.note)
-        .slice(0, 2)
-        .map((till) => (
-          <p
-            key={`note-${till.shiftId}`}
-            className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs"
-          >
-            <AlertTriangle
-              className="mt-0.5 size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
-              aria-hidden
-            />
-            <span>
-              <span className="font-semibold">{t('shiftNote')}</span> “{till.note}”
-              <span className="text-muted-foreground"> · {till.user.name ?? till.user.email}</span>
-            </span>
-          </p>
-        ))}
+          {/* A cashier's own note is the one thing here they wrote themselves, so
+              it is surfaced rather than buried on the shift detail page. */}
+          {data.openShifts
+            .filter((till) => till.note)
+            .slice(0, 2)
+            .map((till) => (
+              <p
+                key={`note-${till.shiftId}`}
+                className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs"
+              >
+                <AlertTriangle
+                  className="mt-0.5 size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
+                  aria-hidden
+                />
+                <span>
+                  <span className="font-semibold">{t('shiftNote')}</span> “{till.note}”
+                  <span className="text-muted-foreground"> · {till.user.name ?? till.user.email}</span>
+                </span>
+              </p>
+            ))}
+        </>
+      )}
     </section>
   );
 }

@@ -5,6 +5,10 @@ import { useTranslations } from 'next-intl';
 import { ArrowLeft, ArrowRight, PackagePlus } from 'lucide-react';
 
 import { AttentionPills } from '@/components/dashboard/attention-pills';
+import {
+  ADVANCED_INSIGHTS_REGION_ID,
+  AdvancedInsightsToggle,
+} from '@/components/dashboard/advanced-insights-toggle';
 import { DayTimelineWidget } from '@/components/dashboard/day-timeline-widget';
 import { FloorBand } from '@/components/dashboard/floor-band';
 import { FulfillmentHealthWidget } from '@/components/dashboard/fulfillment-health-widget';
@@ -141,6 +145,9 @@ export function DashboardOverview() {
    * seeding state from it directly would hydrate-mismatch the first paint.
    */
   const [template, setTemplate] = useState<DashboardTemplate>(DEFAULT_DASHBOARD_TEMPLATE);
+  // The first paint answers the owner's daily questions. Secondary analysis
+  // remains available without making every visit begin with a wall of panels.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   useEffect(() => {
     setTemplate(readTemplate());
   }, []);
@@ -627,20 +634,6 @@ export function DashboardOverview() {
           <LowStockWidget data={lowStock} isLoading={isLoading} />
         </Reveal>
 
-        <Reveal className="col-span-12 sm:col-span-6">
-          <ReturnsSummaryWidget data={returns} isLoading={isLoading} />
-        </Reveal>
-        <Reveal className="col-span-12 sm:col-span-6" delay={0.03}>
-          <TopProductsWidget data={topProducts} isLoading={isLoading} />
-        </Reveal>
-
-        <Reveal className="col-span-12 sm:col-span-6">
-          <StatusBreakdownWidget data={statusBreakdown} isLoading={isLoading} />
-        </Reveal>
-        <Reveal className="col-span-12 sm:col-span-6" delay={0.03}>
-          <OrderValueWidget data={orderValue} isLoading={isLoading} />
-        </Reveal>
-
         {/* The "right now" row, last because it is the only group that does
             not describe the selected period — grouping it with the range
             widgets above would imply the range applies to it too. */}
@@ -651,19 +644,40 @@ export function DashboardOverview() {
           <LatestNotificationsWidget rows={latestNotifications} isLoading={isLoading} />
         </Reveal>
 
-        {/* Recent activity closes the page: it is the widest-scoped "what
-            happened" panel and the one least likely to be the reason anyone
-            opened the dashboard.
+        <AdvancedInsightsToggle
+          open={advancedOpen}
+          onToggle={() => setAdvancedOpen((current) => !current)}
+        />
 
-            OnShiftWidget used to sit here. The floor band at the top now
-            answers "who is on" in far more detail, and two panels claiming
-            the same fact is how they start to disagree. */}
-        {/* The day's record closes the page. It supersedes the old
-            recent-activity panel, which showed the newest audit rows only —
-            and therefore never showed a storefront order at all. */}
-        <Reveal className="col-span-12">
-          <DayTimelineWidget data={timeline} isLoading={isLoading} />
-        </Reveal>
+        {advancedOpen ? (
+          <section
+            id={ADVANCED_INSIGHTS_REGION_ID}
+            aria-label={t('advanced.title')}
+            className="col-span-12 grid grid-cols-12 items-start gap-x-8 gap-y-7"
+          >
+            <Reveal className="col-span-12 sm:col-span-6">
+              <ReturnsSummaryWidget data={returns} isLoading={isLoading} />
+            </Reveal>
+            <Reveal className="col-span-12 sm:col-span-6" delay={0.03}>
+              <TopProductsWidget data={topProducts} isLoading={isLoading} />
+            </Reveal>
+
+            <Reveal className="col-span-12 sm:col-span-6">
+              <StatusBreakdownWidget data={statusBreakdown} isLoading={isLoading} />
+            </Reveal>
+            <Reveal className="col-span-12 sm:col-span-6" delay={0.03}>
+              <OrderValueWidget data={orderValue} isLoading={isLoading} />
+            </Reveal>
+
+            {/* The detailed event record is useful for investigation, not the
+                first question on every dashboard visit. It remains one
+                disclosure away and still links into orders, shifts, returns,
+                and the complete audit trail. */}
+            <Reveal className="col-span-12">
+              <DayTimelineWidget data={timeline} isLoading={isLoading} />
+            </Reveal>
+          </section>
+        ) : null}
 
         <Reveal className="col-span-12">
           <div className="flex justify-end">
