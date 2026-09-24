@@ -156,17 +156,25 @@ function chargedValue(line: RefundableLine): Prisma.Decimal {
  * Orders with no `subtotal` predate the tax columns: there is no recorded tax
  * split to refund against, so they fall back to the charged goods value.
  */
-export function computeRefundableValue(
+export interface RefundBreakdown {
+  /** The most a return of these lines can pay back, before any fee. */
+  refundable: Prisma.Decimal;
+  /** The VAT inside `refundable`, unrounded. NULL when the order predates the
+   *  tax columns and there is no recorded tax to apportion. */
+  taxShare: Prisma.Decimal | null;
+}
+
+export function computeRefundBreakdown(
   order: RefundOrderSnapshot,
   returned: readonly RefundableLine[],
-): Prisma.Decimal {
+): RefundBreakdown {
   const zero = new Prisma.Decimal(0);
   const sum = (lines: readonly RefundableLine[]) =>
     lines.reduce((total, line) => total.plus(chargedValue(line)), zero);
 
   const goods = sum(returned);
 
-  if (order.subtotal === null) return goods.toDecimalPlaces(2);
+  if (order.subtotal === null) return { refundable: goods.toDecimalPlaces(2), taxShare: null };
 
   const discountShare =
     order.discountAmount && order.subtotal.gt(0)
@@ -182,9 +190,37 @@ export function computeRefundableValue(
       : zero;
 
   const refundable = Prisma.Decimal.max(goods.minus(discountShare).plus(taxShare), zero);
-  return Prisma.Decimal.min(refundable, order.total).toDecimalPlaces(2);
+  return {
+    refundable: Prisma.Decimal.min(refundable, order.total).toDecimalPlaces(2),
+    taxShare,
+  };
 }
 
+export function computeRefundableValue(
+  order: RefundOrderSnapshot,
+  returned: readonly RefundableLine[],
+): Prisma.Decimal {
+  return computeRefundBreakdown(order, returned).refundable;
+}
+
+/**
+ * The VAT inside a refund actually paid: the returned lines' tax share, scaled
+ * by how much of their refundable value was paid back — a restocking fee or a
+ * partial refund pays back proportionally less VAT too. NULL when the order has
+ * no tax snapshot to apportion.
+ */
+export function computeRefundTaxAmount(
+  breakdown: RefundBreakdown,
+  refundAmount: Prisma.Decimal,
+): Prisma.Decimal | null {
+  if (breakdown.taxShare === null) return null;
+  if (breakdown.refundable.lte(0)) return new Prisma.Decimal(0);
+
+  return Prisma.Decimal.min(
+    breakdown.taxShare.times(refundAmount).dividedBy(breakdown.refundable),
+    refundAmount,
+  ).toDecimalPlaces(2);
+}
 /** The common case: read the rate and compute in one call. */
 export async function priceOrder(lines: readonly PriceableLine[]): Promise<OrderTotals> {
   return computeOrderTotals(lines, await getTaxRate());

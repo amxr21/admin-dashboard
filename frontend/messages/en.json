@@ -2545,6 +2545,21 @@
         "percentOfTotal": "% of total"
       }
     },
+    "vatSummary": {
+      "title": "VAT summary",
+      "description": "VAT charged on sales less VAT refunded, by month.",
+      "subtitle": "Net VAT for the period, from the tax recorded at checkout and at each refund approval.",
+      "empty": "No data in this period.",
+      "notRecordedNote": "Some orders or refunds predate VAT snapshots, so their VAT is not included. They are counted in the last two columns rather than estimated.",
+      "columns": {
+        "month": "Month",
+        "vatCharged": "VAT charged",
+        "vatRefunded": "VAT refunded",
+        "netVat": "Net VAT",
+        "ordersNotRecorded": "Orders without a tax record",
+        "refundsNotRecorded": "Refunds without a VAT record"
+      }
+    },
     "refundRateTrend": {
       "title": "Refund rate trend",
       "description": "Refunded value as a share of revenue, by month.",

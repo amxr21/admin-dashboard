@@ -1498,9 +1498,13 @@ model Return {
   category             ReturnCategory?
   status               ReturnStatus     @default(REQUESTED)
   resolution           ReturnResolution @default(NONE)
-  /// Set only when resolution = REFUND. Capped at approval time to the sum of
-  /// the RETURNED line items' recorded price — never the order's live total.
+  /// Set only when resolution = REFUND. Capped at approval time to what the
+  /// customer paid for the RETURNED lines — never the order's live total.
   refundAmount         Decimal?         @map("refund_amount") @db.Decimal(10, 2)
+  /// The VAT inside `refundAmount`, snapshotted at approval from the order's
+  /// own tax snapshot. NULL on refunds approved before this column existed, and
+  /// on orders that predate the tax columns — "not recorded", never 0.
+  refundTaxAmount      Decimal?         @map("refund_tax_amount") @db.Decimal(10, 2)
   /// The restocking fee ACTUALLY applied at approval (B4.11), 0-100. NULL
   /// means none was ever applied — never "unset defaulting to 0", since a
   /// genuine 0% fee (waived on purpose) and "not resolved as a refund yet"
