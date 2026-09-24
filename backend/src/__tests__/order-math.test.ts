@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import {
   computeDiscountedTaxAmount,
   computeOrderTotals,
+  computeRefundableValue,
 } from '../services/order-math.service.js';
 
 /**
@@ -145,5 +146,50 @@ describe('order totals', () => {
     const totals = computeOrderTotals(lines, NO_TAX);
 
     expect(totals.subtotal.toFixed(2)).toBe('3.00');
+  });
+});
+
+describe('computeRefundableValue', () => {
+  // Taxable 100 + exempt 50, 30 off the order, 5% VAT on the taxable share:
+  // tax = (100 - 30 * 100/150) * 0.05 = 4.00, total = 150 - 30 + 4 = 124.
+  const taxable = { price: D('100'), quantity: 1, isTaxable: true };
+  const exempt = { price: D('50'), quantity: 1, isTaxable: false };
+  const mixed = {
+    subtotal: D('150'),
+    discountAmount: D('30'),
+    taxAmount: D('4'),
+    total: D('124'),
+    lines: [taxable, exempt],
+  };
+
+  it('refunds a taxable line with its discount share and all of the VAT', () => {
+    expect(computeRefundableValue(mixed, [taxable]).toFixed(2)).toBe('84.00');
+  });
+
+  it('never refunds VAT on an exempt line', () => {
+    expect(computeRefundableValue(mixed, [exempt]).toFixed(2)).toBe('40.00');
+  });
+
+  it('refunds exactly the order total when everything comes back', () => {
+    expect(computeRefundableValue(mixed, [taxable, exempt]).toFixed(2)).toBe('124.00');
+  });
+
+  it('applies a cashier line discount before the tax share', () => {
+    // 2 x 100 at 10% off = 180, tax 9, total 189; one unit back = 90 + 4.50.
+    const line = { price: D('100'), quantity: 2, discountPercent: D('10'), isTaxable: true };
+    const order = { subtotal: D('180'), discountAmount: null, taxAmount: D('9'), total: D('189'), lines: [line] };
+    expect(computeRefundableValue(order, [{ ...line, quantity: 1 }]).toFixed(2)).toBe('94.50');
+  });
+
+  it('treats historical lines with no VAT snapshot as taxed', () => {
+    const line = { price: D('100'), quantity: 1, isTaxable: null };
+    const order = { subtotal: D('100'), discountAmount: null, taxAmount: D('5'), total: D('105'), lines: [line] };
+    expect(computeRefundableValue(order, [line]).toFixed(2)).toBe('105.00');
+  });
+
+  it('falls back to the goods value on orders that predate the tax columns', () => {
+    const line = { price: D('40'), quantity: 2 };
+    const order = { subtotal: null, discountAmount: null, taxAmount: null, total: D('80'), lines: [line] };
+    expect(computeRefundableValue(order, [line]).toFixed(2)).toBe('80.00');
   });
 });

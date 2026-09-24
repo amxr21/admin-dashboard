@@ -140,7 +140,9 @@ export function ReturnDetailSheet({
 
   const money = (value: string | null) => (value === null ? '—' : formatCurrency(Number(value)));
 
-  const itemsValue = item ? item.items.reduce((sum, row) => sum + Number(row.lineTotal), 0) : 0;
+  // Read, never recomputed: the server's value already carries each line's
+  // share of the order discount and of the VAT actually charged.
+  const itemsValue = item ? Number(item.refundableValue) : 0;
   const parsedFeePercent = Number(feePercent);
   const isValidFeePercent = Number.isFinite(parsedFeePercent) && parsedFeePercent >= 0 && parsedFeePercent <= 100;
   // Mirrors the server's own math (B4.11) — a fee reduces the CAP, never
