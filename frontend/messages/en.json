@@ -1031,6 +1031,7 @@
       "sku": "SKU",
       "description": "Description",
       "price": "Price",
+      "isTaxable": "Charge VAT on this product",
       "cost": "Cost",
       "stock": "Stock",
       "lowStockThreshold": "Low stock alert at",
@@ -3736,7 +3737,7 @@
         "summary": "A product is not ready merely because its record exists. It needs content, a price, active status, and branch stock.",
         "steps": {
           "categories": "Create the category tree first so products appear in the correct storefront and dashboard groups.",
-          "products": "Create each product with a unique SKU or barcode, price, cost when known, and ACTIVE status only when ready.",
+          "products": "Create each product with a unique SKU or barcode, tax-exclusive price, cost when known, and ACTIVE status only when ready. Leave Charge VAT on this product enabled for standard-rated goods; disable it only for an exempt or zero-rated product.",
           "stock": "Add a branch-stock row for every branch that carries the product, then record the opening quantity through inventory.",
           "content": "Add English and Arabic names and descriptions, verify the primary image, and review any missing translation indicators.",
           "preview": "Check the product in the selected branch and confirm price, image, category, quantity, and sold-out behavior."
@@ -3863,7 +3864,7 @@
         "catalogue": { "title": "Catalogue readiness", "description": "Use before publishing products or connecting a storefront.", "items": {
           "categories": { "label": "Review category structure", "detail": "Remove duplicates, confirm parent relationships, and keep customer-facing names clear." },
           "products": { "label": "Review product identities", "detail": "Confirm unique SKU/barcode, status, category, and searchable name for every sellable item." },
-          "prices": { "label": "Verify price and cost", "detail": "Check price, tax behavior, and recorded cost where margin reporting is expected." },
+          "prices": { "label": "Verify price, VAT, and cost", "detail": "Confirm every price is tax-exclusive, set Charge VAT on this product correctly for each item, and record cost where margin reporting is expected. Test a basket containing both taxable and exempt goods." },
           "images": { "label": "Verify product imagery", "detail": "Confirm a primary image, ordering, crop quality, and useful alternative text." },
           "translations": { "label": "Review English and Arabic content", "detail": "Check names, descriptions, SEO content, bidi behavior, and missing-translation fallbacks." },
           "branchStock": { "label": "Assign products to branches", "detail": "Create stock rows only for branches that carry each item and confirm the exact quantity." },

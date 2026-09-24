@@ -779,6 +779,10 @@ model Product {
   sku              String?       @unique @db.VarChar(64)
   description      String?       @db.Text
   price            Decimal       @default(0) @db.Decimal(10, 2)
+  /// Whether the store's configured VAT rate applies to this product.
+  /// Defaults true to preserve the pre-existing rule that every product was
+  /// taxed. False is an explicit exemption, never a missing setting.
+  isTaxable        Boolean       @default(true) @map("is_taxable")
   /// What this unit costs the business to acquire — NULL means "not tracked
   /// yet", never 0. Margin/contribution-margin reporting must skip a product
   /// with no cost recorded rather than silently treat it as free.
@@ -1356,6 +1360,11 @@ model OrderItem {
   /// control ever touched this line", the same NULL-vs-zero discipline
   /// `cost` above already uses.
   discountPercent Decimal? @map("discount_percent") @db.Decimal(5, 2)
+
+  /// Product VAT eligibility snapshotted at sale time. NULL on historical
+  /// lines created before per-product VAT existed; their authoritative tax is
+  /// the amount already snapshotted on the parent order.
+  isTaxable Boolean? @map("is_taxable")
 
   orderId String @map("order_id")
   /// Cascade — an order's items have no meaning without the order.

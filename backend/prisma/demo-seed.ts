@@ -262,6 +262,7 @@ export async function seedDemoData() {
     // this is generated. Margin reporting must have both cases to show.
     cost: Prisma.Decimal | null;
     stock: number;
+    isTaxable: boolean;
   }[] = [];
   let sku = 1;
 
@@ -289,6 +290,9 @@ export async function seedDemoData() {
       // A deliberate spread: some healthy, some low, a couple at zero — so the
       // low-stock view and the zero-stock styling both have something to show.
       const stock = random.chance(0.15) ? random.int(0, 4) : random.int(12, 240);
+      // Keep a small exempt/zero-rated sample so demo receipts and mixed-basket
+      // tax reporting exercise both sides of the per-product VAT decision.
+      const isTaxable = !random.chance(0.1);
 
       const product = await prisma.product.create({
         data: {
@@ -298,6 +302,7 @@ export async function seedDemoData() {
           price,
           cost,
           stock,
+          isTaxable,
           status: random.chance(0.1) ? ProductStatus.DRAFT : ProductStatus.ACTIVE,
           categoryId: category.id,
         },
@@ -341,7 +346,7 @@ export async function seedDemoData() {
         });
       }
 
-      products.push({ id: product.id, price, cost, stock });
+      products.push({ id: product.id, price, cost, stock, isTaxable });
       sku += 1;
     }
   }
@@ -440,7 +445,11 @@ export async function seedDemoData() {
     // OrderItem.price: a later change to store.taxRate must not reach back
     // and rewrite what this order already showed.
     const { subtotal, taxAmount, total } = computeOrderTotals(
-      lines.map((line) => ({ price: line.product.price, quantity: line.quantity })),
+      lines.map((line) => ({
+        price: line.product.price,
+        quantity: line.quantity,
+        isTaxable: line.product.isTaxable,
+      })),
       taxRate,
     );
 
@@ -477,6 +486,7 @@ export async function seedDemoData() {
             // has no cost tracked — never substituted with 0, which would
             // report the sale as pure profit.
             cost: line.product.cost,
+            isTaxable: line.product.isTaxable,
           })),
         },
       },
@@ -895,13 +905,15 @@ export async function seedDemoData() {
   for (let index = 0; index < 18; index += 1) {
     const line = random.pick(kitchenProducts);
     const quantity = random.int(1, 3);
-    const subtotal = line.price.times(quantity).toDecimalPlaces(2);
-    const taxAmount = subtotal.times(5).dividedBy(100).toDecimalPlaces(2);
+    const { subtotal, taxAmount, total } = computeOrderTotals(
+      [{ price: line.price, quantity, isTaxable: line.isTaxable }],
+      taxRate,
+    );
 
     await prisma.order.create({
       data: {
         orderNumber: DEMO.orderNumber(9000 + index),
-        total: subtotal.plus(taxAmount).toDecimalPlaces(2),
+        total,
         subtotal,
         taxAmount,
         status: OrderStatus.DELIVERED,
@@ -915,6 +927,7 @@ export async function seedDemoData() {
               quantity,
               price: line.price,
               cost: line.cost,
+              isTaxable: line.isTaxable,
             },
           ],
         },

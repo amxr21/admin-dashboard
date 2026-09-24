@@ -44,6 +44,12 @@ const schema: ResourceSchema = {
       description: 'Tax is added on the invoice, not here.',
     },
     {
+      name: 'isTaxable',
+      label: 'Charge VAT on this product',
+      type: 'boolean',
+      defaultValue: true,
+    },
+    {
       name: 'stock',
       label: 'Stock',
       type: 'number',
@@ -65,6 +71,7 @@ const existing = {
   id: 'p1',
   name: 'Ceramic Planter',
   price: '34.99',
+  isTaxable: true,
   stock: 12,
   isActive: true,
   status: 'ACTIVE',
@@ -175,6 +182,30 @@ describe('which fields appear', () => {
     renderForm(existing, 'ar');
     expect(await screen.findByLabelText(/الاسم/)).toHaveValue('Ceramic Planter');
     expect(screen.getByLabelText(/السعر/)).toHaveValue('34.99');
+    expect(
+      screen.getByRole('checkbox', {
+        name: 'تطبيق ضريبة القيمة المضافة على هذا المنتج',
+      }),
+    ).toBeChecked();
+  });
+
+  it('starts a new product with VAT enabled and sends the explicit choice', async () => {
+    createRow.mockResolvedValue({ id: 'new' });
+    renderForm();
+
+    const vat = await screen.findByRole('checkbox', {
+      name: 'Charge VAT on this product',
+    });
+    expect(vat).toBeChecked();
+
+    await userEvent.type(screen.getByLabelText(/name/i), 'Vase');
+    await userEvent.type(screen.getByLabelText(/price/i), '5.00');
+    await userEvent.click(vat);
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(createRow).toHaveBeenCalled());
+    const payload = createRow.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(payload.isTaxable).toBe(false);
   });
 
   it('keeps a product draft open while a category is created in another tab', async () => {

@@ -51,13 +51,19 @@ interface ErrorBody {
   error: { code: string; message: string };
 }
 
-async function makeProduct(price: string, stock = 100, categoryId?: string) {
+async function makeProduct(
+  price: string,
+  stock = 100,
+  categoryId?: string,
+  isTaxable = true,
+) {
   const product = await prisma.product.create({
     data: {
       name: `${RUN} item ${String(productIds.length)}`,
       price: new Prisma.Decimal(price),
       stock,
       status: ProductStatus.ACTIVE,
+      isTaxable,
       ...(categoryId ? { categoryId } : {}),
     },
   });
@@ -433,6 +439,44 @@ describe('a fixed-amount code', () => {
 });
 
 describe('tax is charged on what the customer actually pays', () => {
+  it('taxes only eligible products and snapshots that choice on each line', async () => {
+    await setTaxRate('5');
+    const taxable = await makeProduct('100.00', 10, undefined, true);
+    const exempt = await makeProduct('50.00', 10, undefined, false);
+
+    const res = await request(app)
+      .post('/api/v1/public/orders')
+      .set('X-API-Key', storefrontKey)
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        branchId,
+        items: [
+          { productId: taxable.id, quantity: 1 },
+          { productId: exempt.id, quantity: 2 },
+        ],
+        contact: { name: 'Ali', phone: '+971500000000' },
+        paymentMethod: 'cash',
+        fulfillment: 'Pickup',
+      });
+
+    expect(res.status).toBe(201);
+    const body = (res.body as CheckoutBody).data;
+    expect(body.subtotal).toBe('200.00');
+    expect(body.taxAmount).toBe('5.00');
+    expect(body.total).toBe('205.00');
+
+    const order = await prisma.order.findUniqueOrThrow({
+      where: { orderNumber: body.orderNumber },
+      select: { items: { select: { productId: true, isTaxable: true } } },
+    });
+    expect(order.items).toEqual(
+      expect.arrayContaining([
+        { productId: taxable.id, isTaxable: true },
+        { productId: exempt.id, isTaxable: false },
+      ]),
+    );
+  });
+
   it('computes tax on the DISCOUNTED subtotal, not the full one', async () => {
     /**
      * The ordering rule, and the reason it matters: taxing the full subtotal

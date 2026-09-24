@@ -69,6 +69,7 @@ async function makeProduct(opts: {
   stock?: number;
   status?: ProductStatus;
   categoryId?: string;
+  isTaxable?: boolean;
 }) {
   const product = await prisma.product.create({
     data: {
@@ -79,6 +80,7 @@ async function makeProduct(opts: {
       ...(opts.barcode ? { barcode: opts.barcode } : {}),
       ...(opts.sku ? { sku: opts.sku } : {}),
       ...(opts.categoryId ? { categoryId: opts.categoryId } : {}),
+      ...(opts.isTaxable === undefined ? {} : { isTaxable: opts.isTaxable }),
     },
   });
   productIds.push(product.id);
@@ -451,6 +453,54 @@ describe('taking a sale (O5.7, O5.8)', () => {
     });
     expect(movement?.delta).toBe(-2);
     expect(movement?.branchId).toBe(branchId);
+  });
+
+  it('does not charge VAT for an exempt product and snapshots the exemption', async () => {
+    const product = await makeProduct({
+      sku: `${RUN}-VAT-EXEMPT`,
+      price: '100.00',
+      stock: 2,
+      isTaxable: false,
+    });
+    await stockAt(product.id, 2);
+
+    const previous = await prisma.setting.findUnique({ where: { key: 'store.taxRate' } });
+    await prisma.setting.upsert({
+      where: { key: 'store.taxRate' },
+      create: { key: 'store.taxRate', value: 5 },
+      update: { value: 5 },
+    });
+
+    try {
+      const res = await sell({
+        lines: [{ productId: product.id, quantity: 1 }],
+        method: 'cash',
+        tendered: '100.00',
+      });
+
+      expect(res.status).toBe(201);
+      const body = res.body as {
+        data: { orderId: string; subtotal: string; taxAmount: string; total: string };
+      };
+      expect(body.data.subtotal).toBe('100.00');
+      expect(body.data.taxAmount).toBe('0.00');
+      expect(body.data.total).toBe('100.00');
+
+      const line = await prisma.orderItem.findFirstOrThrow({
+        where: { orderId: body.data.orderId },
+        select: { isTaxable: true },
+      });
+      expect(line.isTaxable).toBe(false);
+    } finally {
+      if (previous) {
+        await prisma.setting.update({
+          where: { key: 'store.taxRate' },
+          data: { value: previous.value },
+        });
+      } else {
+        await prisma.setting.deleteMany({ where: { key: 'store.taxRate' } });
+      }
+    }
   });
 
   it('replays the original receipt without moving money or stock twice', async () => {
