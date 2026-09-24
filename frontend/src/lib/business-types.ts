@@ -18,6 +18,7 @@
  */
 
 export const BUSINESS_TYPES = [
+  'HOME_BUSINESS',
   'RESTAURANT',
   'CAFE',
   'BAKERY',
@@ -54,6 +55,9 @@ export function isBusinessType(value: string): value is BusinessType {
  * next time that business is edited — never rewritten in place.
  */
 const LEGACY_ALIASES: Record<string, BusinessType> = {
+  'home business': 'HOME_BUSINESS',
+  'home-based business': 'HOME_BUSINESS',
+  'home based business': 'HOME_BUSINESS',
   cafe: 'CAFE',
   coffee: 'CAFE',
   'coffee shop': 'CAFE',

@@ -68,7 +68,7 @@ describe('setup API and persistence', () => {
     const response = await request(app).get('/setup').set('x-test-role', 'OWNER');
     expect(response.status).toBe(200);
     const body = response.body as { data: { templates: unknown[]; current: { features: Record<string, boolean> }; completedAt: string | null } };
-    expect(body.data.templates).toHaveLength(18);
+    expect(body.data.templates).toHaveLength(19);
     expect(body.data.current.features.delivery).toBe(true);
     expect(body.data.completedAt).toBeNull();
   });
