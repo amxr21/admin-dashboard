@@ -4,7 +4,7 @@ import { render, screen } from '@/test/render';
 import { WidgetSection } from '../widget-section';
 
 describe('WidgetSection surface hierarchy', () => {
-  it('keeps compact widgets plain by default', () => {
+  it('gives compact widgets a bounded card surface by default', () => {
     render(
       <WidgetSection title="Compact summary" icon="orders">
         <p>Summary</p>
@@ -12,21 +12,18 @@ describe('WidgetSection surface hierarchy', () => {
     );
 
     const section = screen.getByRole('region', { name: 'Compact summary' });
-    expect(section).not.toHaveClass('bg-card', 'rounded-lg', 'border', 'p-4');
+    expect(section).toHaveClass('bg-card', 'rounded-lg', 'border', 'p-4');
   });
 
-  it('gives dense widgets a semantic card surface when requested', () => {
+  it('allows an intentionally unbounded section to opt out', () => {
     render(
-      <WidgetSection title="Dense data" icon="revenue" surface="card">
-        <p>Chart</p>
+      <WidgetSection title="Unbounded data" icon="revenue" surface="plain">
+        <p>Summary</p>
       </WidgetSection>,
     );
 
-    expect(screen.getByRole('region', { name: 'Dense data' })).toHaveClass(
-      'bg-card',
-      'rounded-lg',
-      'border',
-      'p-4',
+    expect(screen.getByRole('region', { name: 'Unbounded data' })).not.toHaveClass(
+      'bg-card', 'rounded-lg', 'border', 'p-4',
     );
   });
 });
