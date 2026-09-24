@@ -119,6 +119,72 @@ export function computeDiscountedTaxAmount(
   return taxableAfterDiscount.times(taxRate).toDecimalPlaces(2);
 }
 
+export interface RefundableLine {
+  /** `OrderItem.price` — the list price, before any line discount. */
+  price: Prisma.Decimal;
+  quantity: number;
+  discountPercent?: Prisma.Decimal | null;
+  /** NULL on lines that predate per-product VAT; those were all taxed. */
+  isTaxable?: boolean | null;
+}
+
+export interface RefundOrderSnapshot {
+  subtotal: Prisma.Decimal | null;
+  discountAmount: Prisma.Decimal | null;
+  taxAmount: Prisma.Decimal | null;
+  total: Prisma.Decimal;
+  lines: readonly RefundableLine[];
+}
+
+function chargedValue(line: RefundableLine): Prisma.Decimal {
+  const gross = line.price.times(line.quantity);
+  return line.discountPercent == null
+    ? gross
+    : gross.times(new Prisma.Decimal(100).minus(line.discountPercent)).dividedBy(100);
+}
+
+/**
+ * What the customer actually paid for some of an order's lines — the most a
+ * return of those lines can refund, before any restocking fee.
+ *
+ * The line's charged value, less its proportional share of the order-level
+ * discount, plus its proportional share of the snapshotted `taxAmount` among
+ * the TAXABLE lines. Reading the snapshot rather than re-applying today's rate
+ * means returning a whole order refunds exactly the tax that was charged, and
+ * an exempt line never refunds VAT it never carried.
+ *
+ * Orders with no `subtotal` predate the tax columns: there is no recorded tax
+ * split to refund against, so they fall back to the charged goods value.
+ */
+export function computeRefundableValue(
+  order: RefundOrderSnapshot,
+  returned: readonly RefundableLine[],
+): Prisma.Decimal {
+  const zero = new Prisma.Decimal(0);
+  const sum = (lines: readonly RefundableLine[]) =>
+    lines.reduce((total, line) => total.plus(chargedValue(line)), zero);
+
+  const goods = sum(returned);
+
+  if (order.subtotal === null) return goods.toDecimalPlaces(2);
+
+  const discountShare =
+    order.discountAmount && order.subtotal.gt(0)
+      ? order.discountAmount.times(goods).dividedBy(order.subtotal)
+      : zero;
+
+  const orderTaxable = sum(order.lines.filter((line) => line.isTaxable !== false));
+  const taxShare =
+    order.taxAmount && orderTaxable.gt(0)
+      ? order.taxAmount
+          .times(sum(returned.filter((line) => line.isTaxable !== false)))
+          .dividedBy(orderTaxable)
+      : zero;
+
+  const refundable = Prisma.Decimal.max(goods.minus(discountShare).plus(taxShare), zero);
+  return Prisma.Decimal.min(refundable, order.total).toDecimalPlaces(2);
+}
+
 /** The common case: read the rate and compute in one call. */
 export async function priceOrder(lines: readonly PriceableLine[]): Promise<OrderTotals> {
   return computeOrderTotals(lines, await getTaxRate());

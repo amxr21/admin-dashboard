@@ -78,6 +78,9 @@ export interface ReturnDetail {
    *  different facts. */
   restockingFeePercent: string | null;
   restocked: boolean;
+  /** What the customer paid for the returned lines — their discount share
+   *  and VAT included — before any restocking fee. The server's refund cap. */
+  refundableValue: string;
   /** Staff's own words for the rejection. Null on anything not (yet) rejected. */
   rejectionReason: string | null;
   createdAt: string;

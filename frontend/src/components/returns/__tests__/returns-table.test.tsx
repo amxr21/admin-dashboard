@@ -115,6 +115,7 @@ function makeDetail(overrides: Partial<ReturnDetail> = {}): ReturnDetail {
     refundAmount: null,
     restockingFeePercent: null,
     restocked: false,
+    refundableValue: '50.00',
     rejectionReason: null,
     createdAt: '2026-07-20T00:00:00.000Z',
     approvedByName: null,

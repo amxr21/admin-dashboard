@@ -19,6 +19,7 @@ import { ASSIGNMENT_ON_ORDER_STATUS, canTransition } from '../config/orders.conf
 
 import { defaultBranchId } from './inventory.service.js';
 import { assertRefundReason } from './refund-reason.js';
+import { computeRefundableValue } from './order-math.service.js';
 /**
  * Returns / RMA — the one thing the resource engine cannot express, for the
  * same reason orders is bespoke: approving a return is a PROCEDURE (validate
@@ -184,7 +185,19 @@ async function serialiseReturn(id: string, branchId?: string) {
       createdAt: true,
       approvedByName: true,
       approvedAt: true,
-      order: { select: { id: true, orderNumber: true, status: true, placedAt: true } },
+      order: {
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+          placedAt: true,
+          subtotal: true,
+          discountAmount: true,
+          taxAmount: true,
+          total: true,
+          items: { select: { price: true, quantity: true, discountPercent: true, isTaxable: true } },
+        },
+      },
       // Exchange (O9.8) — null until the replacement sale completes, a real
       // "started but not finished" state, not a gap to hide.
       exchangeOrder: { select: { id: true, orderNumber: true } },
@@ -197,6 +210,8 @@ async function serialiseReturn(id: string, branchId?: string) {
             select: {
               id: true,
               price: true,
+              discountPercent: true,
+              isTaxable: true,
               productId: true,
               product: { select: { id: true, name: true, sku: true } },
             },
@@ -220,6 +235,12 @@ async function serialiseReturn(id: string, branchId?: string) {
     refundAmount: money(row.refundAmount),
     restockingFeePercent: row.restockingFeePercent?.toFixed(2) ?? null,
     restocked: row.restocked,
+    // The refund cap before any restocking fee, from the SAME math the
+    // approve path enforces, so the screen can never offer more than it allows.
+    refundableValue: computeRefundableValue(
+      { ...row.order, lines: row.order.items },
+      row.items.map((item) => ({ ...item.orderItem, quantity: item.quantity })),
+    ).toFixed(2),
     rejectionReason: row.rejectionReason,
     createdAt: row.createdAt.toISOString(),
     approvedByName: row.approvedByName,
@@ -451,7 +472,9 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
           select: {
             id: true,
             quantity: true,
-            orderItem: { select: { productId: true, price: true } },
+            orderItem: {
+              select: { productId: true, price: true, discountPercent: true, isTaxable: true },
+            },
           },
         },
       },
@@ -472,6 +495,11 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
         id: true,
         status: true,
         branchId: true,
+        subtotal: true,
+        discountAmount: true,
+        taxAmount: true,
+        total: true,
+        items: { select: { price: true, quantity: true, discountPercent: true, isTaxable: true } },
         assignment: { select: { id: true } },
       },
     });
@@ -582,14 +610,16 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
 
       // Capped to what was ACCEPTED, not what was asked (B4.8) — refunding
       // the full request after refusing a line would pay for goods the shop
-      // never took back. Still the line-item price recorded AT THE TIME OF
-      // ORDER, never a live product price. The fee then reduces the CAP —
-      // the operator still enters what was actually paid back, same as
-      // before this existed.
-      const itemsValue = decisions.reduce(
-        (sum, decision) =>
-          sum.add(decision.item.orderItem.price.mul(decision.quantity)),
-        new Prisma.Decimal(0),
+      // never took back. Valued from the order's own snapshots — what the
+      // customer actually paid for those lines, including their share of the
+      // discount and of the VAT charged — never a live product price. The fee
+      // then reduces the CAP — the operator still enters what was actually
+      // paid back, same as before this existed.
+      const itemsValue = computeRefundableValue(
+        { ...order, lines: order.items },
+        decisions
+          .filter((decision) => decision.accepted)
+          .map((decision) => ({ ...decision.item.orderItem, quantity: decision.quantity })),
       );
       const maxRefund = itemsValue
         .mul(new Prisma.Decimal(100).minus(restockingFeePercent))
