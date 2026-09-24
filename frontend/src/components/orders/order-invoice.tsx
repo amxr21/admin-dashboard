@@ -186,7 +186,14 @@ export function OrderInvoice({ id }: { id: string }) {
                 <td className="py-2 text-end tabular-nums">
                   {formatter.number(item.quantity)}
                 </td>
-                <td className="py-2 text-end tabular-nums">{money(item.price)}</td>
+                <td className="py-2 text-end tabular-nums">
+                  {money(item.price)}
+                  {item.discountPercent ? (
+                    <span className="text-muted-foreground block text-xs">
+                      {tOrders('items.lineDiscount', { percent: Number(item.discountPercent) })}
+                    </span>
+                  ) : null}
+                </td>
                 <td className="py-2 text-end tabular-nums">{money(item.lineTotal)}</td>
               </tr>
             ))}

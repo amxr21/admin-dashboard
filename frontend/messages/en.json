@@ -1259,6 +1259,7 @@
       "tax": "Tax",
       "total": "Order total",
       "productRemoved": "Product no longer available",
+      "lineDiscount": "{percent}% off",
       "vatExempt": "No VAT"
     },
     "customer": {
@@ -3503,6 +3504,7 @@
     "remove": "Remove {name}",
     "receipt": {
       "taxId": "TRN {id}",
+      "lineDiscount": "{percent}% off",
       "vatExempt": "No VAT",
       "servedBy": "Served by {name}",
       "subtotal": "Subtotal",

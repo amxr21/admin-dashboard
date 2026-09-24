@@ -1259,6 +1259,7 @@
       "tax": "الضريبة",
       "total": "إجمالي الطلب",
       "productRemoved": "المنتج لم يعد متوفراً",
+      "lineDiscount": "خصم {percent}%",
       "vatExempt": "بدون ضريبة القيمة المضافة"
     },
     "customer": {
@@ -3503,6 +3504,7 @@
     "remove": "إزالة {name}",
     "receipt": {
       "taxId": "الرقم الضريبي {id}",
+      "lineDiscount": "خصم {percent}%",
       "vatExempt": "بدون ضريبة القيمة المضافة",
       "servedBy": "بخدمتك {name}",
       "subtotal": "المجموع الفرعي",
