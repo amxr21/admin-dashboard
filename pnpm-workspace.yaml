@@ -19,6 +19,21 @@ packages:
 # version pnpm would then reject at install time.
 minimumReleaseAge: 1440
 
+# Security-only transitive resolutions. Remove an override once every parent
+# package resolves to at least this version on its own. The deepmerge-ts major
+# override is deliberate: Prisma 6.19 calls only its stable `deepmerge` export;
+# Prisma 7 is a much larger migration, while deepmerge-ts 7.x has no patched release.
+overrides:
+  'brace-expansion@<2': 1.1.18
+  'brace-expansion@>=5 <6': 5.0.9
+  deepmerge-ts: 8.0.0
+  ip-address: 10.3.1
+  js-yaml: 4.3.2
+  'nanoid@<3.3.18': 3.3.18
+  'postcss@<8.5.23': 8.5.23
+  'qs@<6.16.0': 6.16.0
+  'undici@<7.29.0': 7.29.0
+
 # pnpm blocks dependency postinstall scripts by default (supply-chain hardening).
 # Each package below is explicitly allowed because it cannot work without its
 # build step — all of them fetch or compile a platform-specific binary:
