@@ -691,6 +691,12 @@
     "canceledOrders": "ملغى",
     "lowStockProducts": "مخزون منخفض",
     "viewReports": "عرض التقارير",
+    "advanced": {
+      "title": "تحليلات متقدمة",
+      "description": "المرتجعات ومزيج المنتجات والطلبات والإشعارات والخط الزمني التفصيلي للنشاط.",
+      "show": "عرض التحليلات",
+      "hide": "إخفاء التحليلات"
+    },
     "resetRange": "إعادة تعيين",
     "lastUpdated": "آخر تحديث {date} {time}",
     "refresh": "تحديث",

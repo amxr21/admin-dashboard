@@ -25,14 +25,13 @@ import { cn } from '@/lib/utils';
 /**
  * The one anatomy every dashboard panel shares.
  *
- * ─── WHY THESE ARE NOT CARDS ANY MORE ────────────────────────────────
- * Giving every panel the same border and fill makes every panel claim equal
- * attention. Compact paired summaries therefore stay plain, separated by
- * their heading rule and the grid spacing. Dense, full-width charts, tables,
- * and feeds can opt into a card so their data has a clear visual boundary.
- *
- * This preserves emphasis for the live floor band and attention queues while
- * making the most information-dense sections easier to scan.
+ * ─── WHY THE DEFAULT IS A BOUNDED CARD ───────────────────────────────
+ * The dashboard sits on the app background. Leaving compact summaries
+ * transparent made adjacent panels visually run together, especially on wide
+ * screens. A semantic card surface gives each question one clear white/light
+ * boundary while tone and content — not missing backgrounds — establish
+ * hierarchy. Callers can still request `plain` for an intentionally unbounded
+ * section.
  *
  * ─── THE ICON IS A SIGNIFIER, NOT DECORATION ─────────────────────────
  * Looked up by NAME rather than passed as a component, for the same reason
@@ -75,8 +74,8 @@ export interface WidgetSectionProps {
   title: string;
   icon: WidgetIcon;
   tone?: WidgetTone;
-  /** A bounded surface for dense, full-width data. Compact summaries stay
-   *  plain so the dashboard keeps a useful visual hierarchy. */
+  /** A bounded surface by default; use plain only for an intentionally
+   *  unbounded section. */
   surface?: WidgetSurface;
   /** Marks a panel that ignores the selected range — same wording the floor
    *  band and the low-stock tile use, so "live" means one thing everywhere. */
@@ -93,7 +92,7 @@ export function WidgetSection({
   title,
   icon,
   tone = 'neutral',
-  surface = 'plain',
+  surface = 'card',
   live = false,
   footNote,
   action,
