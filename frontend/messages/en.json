@@ -1188,6 +1188,7 @@
     "enableGroup": "Use {group}",
     "groupDisabled": "Not used for this record. Switch it on to fill these in.",
     "barcodeUnclassified": "Saved before barcode types were recorded. Choose the type that matches this code so it can be checked.",
+    "isTaxableRateHint": "The store VAT rate ({rate}%) is added at checkout. Turn this off only for a product that is VAT-exempt or zero-rated under your tax rules.",
     "variantOptOutWarning": "Any variants already saved keep their stock and sales history, but this hides the builder that reaches them. Switch this back on to manage them again."
   },
   "datePicker": {
@@ -1257,7 +1258,8 @@
       "subtotal": "Subtotal",
       "tax": "Tax",
       "total": "Order total",
-      "productRemoved": "Product no longer available"
+      "productRemoved": "Product no longer available",
+      "vatExempt": "No VAT"
     },
     "customer": {
       "title": "Customer",
@@ -3501,6 +3503,7 @@
     "remove": "Remove {name}",
     "receipt": {
       "taxId": "TRN {id}",
+      "vatExempt": "No VAT",
       "servedBy": "Served by {name}",
       "subtotal": "Subtotal",
       "tax": "Tax",

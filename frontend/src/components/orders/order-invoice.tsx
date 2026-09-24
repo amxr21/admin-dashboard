@@ -179,6 +179,9 @@ export function OrderInvoice({ id }: { id: string }) {
                       {tOrders('items.productRemoved')}
                     </span>
                   )}
+                  {item.isTaxable === false ? (
+                    <span className="text-muted-foreground block text-xs">{tOrders('items.vatExempt')}</span>
+                  ) : null}
                 </td>
                 <td className="py-2 text-end tabular-nums">
                   {formatter.number(item.quantity)}

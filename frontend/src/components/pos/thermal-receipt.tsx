@@ -31,6 +31,8 @@ export interface ReceiptLine {
   quantity: number;
   /** Unit price, 2dp string. */
   price: string;
+  /** Charged no VAT — printed so the tax line can be checked by hand. */
+  vatExempt?: boolean;
 }
 
 export interface ReceiptData {
@@ -124,6 +126,7 @@ export function ThermalReceipt({
               <tr key={index} className="align-top">
                 <td className="pe-1">
                   {line.quantity}× {line.name}
+                  {line.vatExempt ? <span className="block text-[0.85em]">{t('vatExempt')}</span> : null}
                 </td>
                 <td className="text-end whitespace-nowrap tabular-nums">
                   {(Number(line.price) * line.quantity).toFixed(2)}

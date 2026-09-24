@@ -101,6 +101,8 @@ interface SettingsContextValue {
   storeSupportEmail: string;
   storeSupportPhone: string;
   storeTaxId: string;
+  /** The live `store.taxRate` percent, or null when this user cannot read it. */
+  storeTaxRate: number | null;
   /** The live `store.currency` — an ISO 4217 code (AED/SAR/USD/EUR/GBP).
    *  Formatting only, per the setting's own description: it changes how a
    *  price DISPLAYS, never what it converts to or is stored as. Consumed by
@@ -132,6 +134,7 @@ const BRAND_DEFAULTS = {
   storeSupportEmail: '',
   storeSupportPhone: '',
   storeTaxId: '',
+  storeTaxRate: null,
 };
 
 const DEFAULT_VALUE: SettingsContextValue = {
@@ -338,6 +341,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     storeSupportEmail: brand?.storeSupportEmail || String(effective['store.supportEmail'] ?? ''),
     storeSupportPhone: brand?.storeSupportPhone || String(effective['store.supportPhone'] ?? ''),
     storeTaxId: brand?.storeTaxId || String(effective['store.taxId'] ?? ''),
+    storeTaxRate:
+      effective['store.taxRate'] === undefined || !Number.isFinite(Number(effective['store.taxRate']))
+        ? null
+        : Number(effective['store.taxRate']),
     storeCurrency,
     navLabels,
     refresh: load,

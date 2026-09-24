@@ -1085,6 +1085,15 @@ function FormField({
   const showVariantOptOutWarning =
     field.name === 'hasVariants' && originalValue !== false && value === false;
 
+  // The VAT checkbox names the rate it applies, so "charge VAT" is never a
+  // guess about how much. Falls back to the generic hint when the rate is
+  // not readable by this user.
+  const { storeTaxRate } = useAppSettings();
+  const description =
+    field.name === 'isTaxable' && typeof storeTaxRate === 'number'
+      ? t('isTaxableRateHint', { rate: storeTaxRate })
+      : field.description;
+
   // aria-describedby only when there IS a message — pointing at an element
   // that doesn't exist makes some screen readers announce nothing at all.
   //
@@ -1094,7 +1103,7 @@ function FormField({
   // already uses, and the same reason its hint is hidden while an error shows.
   const aria = {
     'aria-invalid': error ? true : undefined,
-    'aria-describedby': error ? errorId : field.description ? hintId : undefined,
+    'aria-describedby': error ? errorId : description ? hintId : undefined,
   } as const;
 
   function control() {
@@ -1301,7 +1310,7 @@ function FormField({
       // Validation first: a malformed value is the more urgent of the two,
       // and an upload failure on a field that is also invalid can wait.
       error={error ?? imageError ?? undefined}
-      description={field.description}
+      description={description}
       // All three are advisory and all three are about what the user just
       // did, not about what the field is — see `Field`'s own note on why they
       // are a separate category from the description. Falsy entries are

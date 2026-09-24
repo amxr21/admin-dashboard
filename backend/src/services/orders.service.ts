@@ -319,6 +319,7 @@ export async function getOrder(id: string, branchId?: string) {
           id: true,
           quantity: true,
           price: true,
+          isTaxable: true,
           productId: true,
           product: { select: { id: true, name: true, sku: true, imageUrl: true } },
         },
@@ -418,6 +419,8 @@ export async function getOrder(id: string, branchId?: string) {
       // The price the customer actually paid, not today's price.
       price: money(item.price),
       lineTotal: item.price.mul(item.quantity).toFixed(2),
+      // Snapshot from the sale. Null on lines older than per-product VAT.
+      isTaxable: item.isTaxable,
       productId: item.productId,
       // Null when the product was hard-deleted. Line items carry a price
       // snapshot but NOT a name snapshot, so there is nothing to fall back to
