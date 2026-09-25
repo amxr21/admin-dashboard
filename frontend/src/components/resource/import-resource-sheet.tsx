@@ -43,6 +43,15 @@ interface ImportResourceSheetProps {
   onOpenChange: (open: boolean) => void;
   /** Called after a successful apply, so the caller can reload the list. */
   onImported: () => void;
+  /** Same preview/apply/template contract at a different endpoint — variant
+   *  import reuses this sheet. Defaults to the resource engine's. */
+  endpoints?: ImportEndpoints;
+}
+
+export interface ImportEndpoints {
+  preview: (file: File) => Promise<ImportPreview>;
+  apply: (file: File) => Promise<ImportResult>;
+  template: () => Promise<void>;
 }
 
 export function ImportResourceSheet({
@@ -51,6 +60,7 @@ export function ImportResourceSheet({
   open,
   onOpenChange,
   onImported,
+  endpoints,
 }: ImportResourceSheetProps) {
   const t = useTranslations('resource.import');
   const translateError = useTranslatedApiError();
@@ -79,7 +89,7 @@ export function ImportResourceSheet({
     setIsWorking(true);
 
     try {
-      setPreview(await previewResourceImport(resource, chosen));
+      setPreview(await (endpoints ? endpoints.preview(chosen) : previewResourceImport(resource, chosen)));
       setStep('preview');
     } catch (caught) {
       setError(translateError(caught));
@@ -95,7 +105,7 @@ export function ImportResourceSheet({
     setError(null);
 
     try {
-      const applied = await applyResourceImport(resource, file);
+      const applied = await (endpoints ? endpoints.apply(file) : applyResourceImport(resource, file));
       setResult(applied);
       setStep('done');
       // Even a fully-failed apply is worth a reload — nothing changed, but
@@ -146,7 +156,7 @@ export function ImportResourceSheet({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => void downloadImportTemplate(resource)}
+                onClick={() => void (endpoints ? endpoints.template() : downloadImportTemplate(resource))}
               >
                 <Download aria-hidden className="me-1 size-4" />
                 {t('downloadTemplate')}

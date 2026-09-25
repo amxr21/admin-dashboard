@@ -240,7 +240,10 @@ function ProductTile({
    * a NEW zero-stock line in the first place, which this stops outright
    * rather than deferring to the server's refusal on checkout.
    */
-  const isOutOfStock = product.branchStock !== null && product.branchStock <= 0;
+  // A product sold as variants carries its stock on the variants, so its own
+  // count says nothing; the picker shows each variant's stock instead.
+  const hasVariants = (product.variantCount ?? 0) > 0;
+  const isOutOfStock = !hasVariants && product.branchStock !== null && product.branchStock <= 0;
 
   return (
     <button
@@ -265,6 +268,11 @@ function ProductTile({
           <ImageOff className="text-muted-foreground size-6" aria-hidden />
         )}
 
+        {hasVariants ? (
+          <span className="bg-background/90 absolute inset-x-0 bottom-0 px-1.5 py-0.5 text-center text-xs font-medium">
+            {t('options', { count: product.variantCount ?? 0 })}
+          </span>
+        ) : null}
         {isOutOfStock ? (
           <span className="bg-destructive/90 text-destructive-foreground absolute inset-x-0 bottom-0 px-1.5 py-0.5 text-center text-xs font-medium">
             {t('outOfStock')}

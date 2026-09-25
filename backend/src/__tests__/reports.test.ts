@@ -1175,6 +1175,91 @@ describe('refund-rate trend (C3.5)', () => {
   });
 });
 
+describe('VAT summary', () => {
+  interface VatBody {
+    data: {
+      totals: { vatCharged: string; vatRefunded: string; netVat: string };
+      points: {
+        date: string;
+        vatCharged: string;
+        vatRefunded: string;
+        netVat: string;
+        ordersNotRecorded: number;
+        refundsNotRecorded: number;
+      }[];
+    };
+  }
+
+  it('nets VAT refunded against VAT charged and counts rows with no snapshot', async () => {
+    const taxed = await prisma.order.create({
+      data: {
+        orderNumber: `${RUN}-vat-1`,
+        placedAt: new Date('2018-11-10T12:00:00.000Z'),
+        subtotal: new Prisma.Decimal('100.00'),
+        taxAmount: new Prisma.Decimal('5.00'),
+        total: new Prisma.Decimal('105.00'),
+        status: OrderStatus.RETURNED,
+        branchId,
+        items: { create: [{ productId, quantity: 2, price: new Prisma.Decimal('50.00'), isTaxable: true }] },
+      },
+      include: { items: true },
+    });
+    const legacy = await prisma.order.create({
+      data: {
+        orderNumber: `${RUN}-vat-2`,
+        placedAt: new Date('2018-11-12T12:00:00.000Z'),
+        total: new Prisma.Decimal('40.00'),
+        status: OrderStatus.DELIVERED,
+        branchId,
+        items: { create: [{ productId, quantity: 1, price: new Prisma.Decimal('40.00') }] },
+      },
+      include: { items: true },
+    });
+    orderIds.push(taxed.id, legacy.id);
+
+    const recorded = await prisma.return.create({
+      data: {
+        rmaNumber: `${RUN}-RMA-VAT-1`,
+        reason: 'test',
+        status: ReturnStatus.APPROVED,
+        resolution: ReturnResolution.REFUND,
+        refundAmount: new Prisma.Decimal('52.50'),
+        refundTaxAmount: new Prisma.Decimal('2.50'),
+        approvedAt: new Date('2018-11-20T12:00:00.000Z'),
+        orderId: taxed.id,
+        items: { create: [{ orderItemId: taxed.items[0]!.id, quantity: 1 }] },
+      },
+    });
+    const unrecorded = await prisma.return.create({
+      data: {
+        rmaNumber: `${RUN}-RMA-VAT-2`,
+        reason: 'test',
+        status: ReturnStatus.APPROVED,
+        resolution: ReturnResolution.REFUND,
+        refundAmount: new Prisma.Decimal('40.00'),
+        approvedAt: new Date('2018-11-21T12:00:00.000Z'),
+        orderId: legacy.id,
+        items: { create: [{ orderItemId: legacy.items[0]!.id, quantity: 1 }] },
+      },
+    });
+
+    const body = (await get('/reports/vat-summary?from=2018-11-01&to=2018-11-30')).body as VatBody;
+    const point = body.data.points.find((p) => p.date === '2018-11-01');
+
+    expect(point).toMatchObject({
+      vatCharged: '5.00',
+      vatRefunded: '2.50',
+      netVat: '2.50',
+      ordersNotRecorded: 1,
+      refundsNotRecorded: 1,
+    });
+    expect(body.data.totals).toEqual({ vatCharged: '5.00', vatRefunded: '2.50', netVat: '2.50' });
+
+    // Returns before orders: ReturnItem.orderItem is Restrict (see the
+    // refund-rate trend test above).
+    await prisma.return.deleteMany({ where: { id: { in: [recorded.id, unrecorded.id] } } });
+  });
+});
 describe('inventory turnover / dead stock (C3.5)', () => {
   interface TurnoverBody {
     data: {

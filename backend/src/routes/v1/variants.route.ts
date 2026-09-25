@@ -1,8 +1,19 @@
 import { StockMovementReason } from '@prisma/client';
-import { Router } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
+import multer from 'multer';
+import { parse as parseCsvSync } from 'csv-parse/sync';
 import { z } from 'zod';
 
 import { AppError } from '../../errors/AppError.js';
+import { toCsv } from '../../lib/csv.js';
+import { audit } from '../../services/audit.service.js';
+import {
+  VARIANT_EXPORT_COLUMNS,
+  VARIANT_IMPORT_COLUMNS,
+  applyVariantImport,
+  listVariantsForExport,
+  previewVariantImport,
+} from '../../services/variant-import.service.js';
 import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
@@ -39,6 +50,7 @@ const variantBody = z
   .object({
     name: z.string().trim().min(1, 'Name is required').max(120),
     sku: z.string().trim().min(1, 'SKU cannot be blank').max(64).optional(),
+    barcode: z.string().trim().min(1, 'Barcode cannot be blank').max(64).nullable().optional(),
     price: z.string().regex(MONEY_PATTERN, 'Enter a decimal amount with up to 2 decimal places'),
   })
   .strict();
@@ -55,6 +67,71 @@ const adjustBody = z
     note: z.string().trim().max(255).optional(),
   })
   .strict();
+
+/* ── CSV export / import (products area; stock is exported, never imported) ── */
+
+const importUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
+
+function parseVariantUpload(req: Request, res: Response, next: NextFunction) {
+  importUpload.single('file')(req, res, (err: unknown) => {
+    if (!err) {
+      next();
+      return;
+    }
+    if (err instanceof multer.MulterError) {
+      next(
+        AppError.badRequest(
+          err.code === 'LIMIT_FILE_SIZE' ? 'File is too large — the limit is 2MB' : err.message,
+        ),
+      );
+      return;
+    }
+    next(err);
+  });
+}
+
+function parseVariantCsv(req: Request): Record<string, string>[] {
+  if (!req.file) {
+    throw AppError.badRequest('No file uploaded — send it as multipart form field "file"');
+  }
+  try {
+    return parseCsvSync(req.file.buffer, { columns: true, skip_empty_lines: true, trim: true });
+  } catch {
+    throw AppError.badRequest('Could not read this file as CSV. Check it matches the template.');
+  }
+}
+
+variantsRouter.get('/variants/export', ...catalogueGuard, async (req, res) => {
+  const rows = await listVariantsForExport(req.branchId ?? undefined);
+
+  audit(req, { action: 'product_variants.export', entity: 'product_variants', entityId: null, changes: null });
+
+  res
+    .status(200)
+    .type('text/csv')
+    .set('Content-Disposition', 'attachment; filename="variants.csv"')
+    .send(toCsv(rows, VARIANT_EXPORT_COLUMNS));
+});
+
+variantsRouter.get('/variants/import-template', ...catalogueGuard, (_req, res) => {
+  res
+    .status(200)
+    .type('text/csv')
+    .set('Content-Disposition', 'attachment; filename="variants-import-template.csv"')
+    .send(`${VARIANT_IMPORT_COLUMNS.join(',')}\r\n`);
+});
+
+variantsRouter.post('/variants/import', ...catalogueGuard, parseVariantUpload, async (req, res) => {
+  const rows = parseVariantCsv(req);
+
+  if (req.query.dryRun === 'true') {
+    res.status(200).json({ data: await previewVariantImport(rows) });
+    return;
+  }
+
+  // 200 even with row errors — the same contract as the resource import.
+  res.status(200).json({ data: await applyVariantImport(rows, req) });
+});
 
 variantsRouter.get('/products/:productId/variants', ...catalogueGuard, async (req, res) => {
   res.json({
