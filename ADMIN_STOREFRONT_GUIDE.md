@@ -180,6 +180,17 @@ For `Delivery`, `contact.address` is required. Supported payment methods are `ca
 
 `Idempotency-Key` is required for checkout and must be a UUID. Generate it once when the shopper starts a checkout submission, keep the same value while retrying that exact request, and generate a new value for the next checkout. A safe retry returns the original response with `Idempotency-Replayed: true`; reusing the key with changed customer or order data returns `409`. This prevents a timeout or double-click from creating two orders or reducing stock twice.
 
+### Marketing consent (signed-in shoppers)
+
+Campaigns only reach customers who opted in. A storefront can collect that in two places:
+
+- **Checkout tick-boxes.** Add `"marketingConsent": { "email": true, "sms": true }` to the order body, with only the boxes the shopper ticked. This only ever grants consent: an unticked box sends nothing and never withdraws. It works only when the customer Bearer token is sent; for guests it is ignored, because there is no customer record to store consent on. If the shopper opts into SMS and their profile has no phone yet, the checkout phone is saved to it.
+- **Account page.** `PUT /public/me/marketing` with `{ "email": true|false, "sms": true|false }` (either field may be omitted). `false` works exactly like an unsubscribe link: consent is cleared and the address is blocked from campaigns. `GET /public/me` returns the current state as `marketing: { email, sms }`.
+
+Consent is recorded with its date and source (`checkout` or `storefront`), which is the evidence a PDPL/GDPR request needs. Only show the boxes unticked by default. A pre-ticked box is not valid consent.
+
+An email opt-in lifts an earlier unsubscribe for that shopper's own (Google-verified) address. An SMS opt-in never lifts an SMS block, because the phone number isn't verified. Bounced or complained addresses stay blocked.
+
 ### Read signed-in order history
 
 ```http
@@ -201,7 +212,8 @@ Accept-Language: en
 | GET | `/public/categories` | No | No |
 | GET | `/public/discounts` | No | No |
 | POST | `/public/auth/google` | No | No |
-| GET | `/public/me` | No | Yes |
+| GET | `/public/me` (includes `marketing: { email, sms }`) | No | Yes |
+| PUT | `/public/me/marketing` | No | Yes |
 | GET/POST/PATCH/DELETE | `/public/cart` | No | Yes |
 | GET/POST | `/public/wishlist` | No | Yes |
 | POST | `/public/orders` | In JSON body | Optional; also requires a UUID `Idempotency-Key` |
