@@ -49,6 +49,11 @@ export interface OrderItem {
   quantity: number;
   price: string | null;
   lineTotal: string;
+  /** Cashier line discount, 0-100 as a 2dp string; null when none. `lineTotal`
+   *  already has it applied. */
+  discountPercent?: string | null;
+  /** VAT eligibility snapshotted at sale time; null on older lines. */
+  isTaxable?: boolean | null;
   productId: string | null;
   /** Null when the product was hard-deleted — there is no name snapshot. */
   product: { id: string; name: string; sku: string | null; imageUrl: string | null } | null;

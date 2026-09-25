@@ -136,7 +136,9 @@ export interface RefundOrderSnapshot {
   lines: readonly RefundableLine[];
 }
 
-function chargedValue(line: RefundableLine): Prisma.Decimal {
+/** A line's value after its own cashier discount — what the customer paid
+ *  for it before order-level discount and tax. */
+export function chargedValue(line: RefundableLine): Prisma.Decimal {
   const gross = line.price.times(line.quantity);
   return line.discountPercent == null
     ? gross

@@ -642,6 +642,8 @@ export function SaleScreen() {
           name: line.product.name,
           quantity: line.quantity,
           price: line.product.price,
+          discountPercent: line.discountPercent,
+          vatExempt: result.exemptProductIds?.includes(line.product.id) ?? false,
         })),
         subtotal: result.subtotal,
         taxAmount: result.taxAmount,

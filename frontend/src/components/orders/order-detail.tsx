@@ -382,6 +382,11 @@ export function OrderDetail({ id }: { id: string }) {
                     </TableCell>
                     <TableCell className="text-end tabular-nums">
                       {money(item.price)}
+                      {item.discountPercent ? (
+                        <span className="text-muted-foreground block text-xs">
+                          {t('items.lineDiscount', { percent: Number(item.discountPercent) })}
+                        </span>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-end tabular-nums">
                       {money(item.lineTotal)}

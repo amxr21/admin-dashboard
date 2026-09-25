@@ -978,7 +978,13 @@ async function checkoutOnce(
       });
     }
 
-    return { order, totals, change: totalChange, lineCount: priced.length };
+    return {
+      order,
+      totals,
+      change: totalChange,
+      lineCount: priced.length,
+      exemptProductIds: priced.filter((line) => !line.isTaxable).map((line) => line.productId),
+    };
   })();
 
   return {
@@ -989,6 +995,9 @@ async function checkoutOnce(
       taxAmount: created.totals.taxAmount.toFixed(2),
       total: created.totals.total.toFixed(2),
       change: created.change?.toFixed(2) ?? null,
+      /** Lines charged no VAT, from the same snapshot the tax was computed
+       *  on, so the receipt can mark them without a second opinion. */
+      exemptProductIds: created.exemptProductIds,
       /**
        * Who served the customer, for the `Served by` line on the receipt.
        *
