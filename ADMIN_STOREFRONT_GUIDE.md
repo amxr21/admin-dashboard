@@ -180,6 +180,36 @@ For `Delivery`, `contact.address` is required. Supported payment methods are `ca
 
 `Idempotency-Key` is required for checkout and must be a UUID. Generate it once when the shopper starts a checkout submission, keep the same value while retrying that exact request, and generate a new value for the next checkout. A safe retry returns the original response with `Idempotency-Replayed: true`; reusing the key with changed customer or order data returns `409`. This prevents a timeout or double-click from creating two orders or reducing stock twice.
 
+### Products with options (variants)
+
+A product sold in options (sizes, colours, …) is listed with a `variants` array on `GET /public/products`, `/public/products/menu` and `/public/products/:slug`:
+
+```json
+{
+  "id": "<product-id>",
+  "name": "T-shirt",
+  "price": "50.00",
+  "stock": 3,
+  "inStock": true,
+  "variants": [
+    { "id": "<variant-id>", "name": "Large", "price": "55.00", "stock": 0, "inStock": false },
+    { "id": "<variant-id>", "name": "Small", "price": "45.00", "stock": 3, "inStock": true }
+  ]
+}
+```
+
+Each option has its own price and its own stock at the chosen branch. For a product with options, the product's `stock`/`inStock` is the total across its options.
+
+When `variants` is not empty, every checkout line for that product must name the option:
+
+```json
+{ "productId": "<product-id>", "variantId": "<variant-id>", "quantity": 1 }
+```
+
+A line without `variantId` is refused with `400 Choose an option for <product>`. Two options of the same product are two lines. The order history and tracking responses show the option bought as `items[].variant` (`null` for a plain product).
+
+The server-side cart (`/public/cart`) is still product-level. A storefront that sells options should keep the chosen option in its own cart state and send `variantId` at checkout.
+
 ### Marketing consent (signed-in shoppers)
 
 Campaigns only reach customers who opted in. A storefront can collect that in two places:

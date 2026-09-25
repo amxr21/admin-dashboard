@@ -310,6 +310,8 @@ const checkoutBody = z
         z
           .object({
             productId: z.string().min(1).max(64),
+            // The option bought; required when the product has any.
+            variantId: z.string().min(1).max(64).optional(),
             quantity: z.coerce.number().int().min(1).max(99),
           })
           .strict(),
