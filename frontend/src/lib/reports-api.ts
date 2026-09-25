@@ -222,6 +222,21 @@ export interface CategoryBreakdown {
   }[];
 }
 
+export interface VatSummary {
+  range: DateRange;
+  totals: { vatCharged: string; vatRefunded: string; netVat: string };
+  points: {
+    date: string;
+    vatCharged: string;
+    vatRefunded: string;
+    netVat: string;
+    /** Orders from before tax was snapshotted — counted, never guessed. */
+    ordersNotRecorded: number;
+    /** Refunds approved before their VAT portion was recorded. */
+    refundsNotRecorded: number;
+  }[];
+}
+
 export interface RefundRateTrend {
   range: DateRange;
   points: { date: string; revenue: string; refunded: string; refundRate: number }[];
@@ -359,6 +374,10 @@ export async function fetchStaffActivity(range: DateRange): Promise<StaffActivit
 
 export async function fetchCategoryBreakdown(range: DateRange): Promise<CategoryBreakdown> {
   return apiFetch<CategoryBreakdown>(`/reports/category-breakdown?${query({ ...range })}`);
+}
+
+export async function fetchVatSummary(range: DateRange): Promise<VatSummary> {
+  return apiFetch<VatSummary>(`/reports/vat-summary?${query({ ...range })}`);
 }
 
 export async function fetchRefundRateTrend(range: DateRange): Promise<RefundRateTrend> {
@@ -613,6 +632,7 @@ export type ReportView =
   | 'staff-activity'
   | 'category-breakdown'
   | 'refund-rate-trend'
+  | 'vat-summary'
   | 'inventory-turnover'
   | 'explorer'
   | 'customer-geography'

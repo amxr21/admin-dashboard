@@ -42,6 +42,7 @@ import {
   browseProducts,
   checkout,
   discardParkedSale,
+  fetchPosVariants,
   fetchTenders,
   listParkedSales,
   parkSale,
@@ -49,13 +50,17 @@ import {
   scanProduct,
   voidSale,
   type AcceptedTender,
+  type BrowsedProduct,
   type ParkedSale,
   type CheckoutInput,
+  type PosVariant,
+  type PosVariantRef,
 } from '@/lib/pos-api';
 import { requestIntentFor, type RequestIntent } from '@/lib/request-intent';
 import { addOrderNote } from '@/lib/orders-api';
 import { ThermalReceipt, type ReceiptData } from '@/components/pos/thermal-receipt';
 import { ProductGrid } from '@/components/pos/product-grid';
+import { VariantPickerDialog } from '@/components/pos/variant-picker-dialog';
 import { ManagerOverrideDialog } from '@/components/pos/manager-override-dialog';
 import { TillReturnSheet } from '@/components/pos/till-return-sheet';
 import { useAppSettings } from '@/components/providers/settings-provider';
@@ -114,6 +119,26 @@ interface CartProduct {
   price: string;
   branchStock: number | null;
   status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+  /** The variant being sold; its price and stock are already in the fields
+   *  above. Absent for a plain product. */
+  variant?: PosVariantRef | null;
+}
+
+/** One line per product AND variant — two sizes of one shirt are two lines. */
+function lineKey(line: { product: CartProduct }): string {
+  return `${line.product.id}:${line.product.variant?.id ?? ''}`;
+}
+
+/** Safe in an element id, unlike the colon in `lineKey`. */
+function lineDomId(line: { product: CartProduct }): string {
+  return lineKey(line).replace(':', '-');
+}
+
+/** What a cashier and a receipt call the line. */
+function lineName(line: { product: CartProduct }): string {
+  return line.product.variant
+    ? `${line.product.name} (${line.product.variant.name})`
+    : line.product.name;
 }
 
 interface CartLine {
@@ -132,6 +157,8 @@ export function SaleScreen() {
   const checkoutIntentRef = useRef<RequestIntent | null>(null);
 
   const [lines, setLines] = useState<CartLine[]>([]);
+  /** A tapped product whose variants are being chosen from. */
+  const [pickerProduct, setPickerProduct] = useState<BrowsedProduct | null>(null);
   /** Set once a manager approves a discount above the cap, for the CURRENT
    *  sale only — cleared whenever the cart empties, so the next customer's
    *  sale needs its own approval rather than inheriting the last one's. */
@@ -313,11 +340,12 @@ export function SaleScreen() {
     setNoteSaved(false);
 
     setLines((current) => {
-      const existing = current.find((line) => line.product.id === product.id);
+      const key = lineKey({ product });
+      const existing = current.find((line) => lineKey(line) === key);
 
       if (existing) {
         return current.map((line) =>
-          line.product.id === product.id ? { ...line, quantity: line.quantity + 1 } : line,
+          lineKey(line) === key ? { ...line, quantity: line.quantity + 1 } : line,
         );
       }
 
@@ -325,16 +353,36 @@ export function SaleScreen() {
     });
   }
 
+  /** A grid tap: a product sold as variants opens the picker instead. */
+  function addFromGrid(product: BrowsedProduct) {
+    if ((product.variantCount ?? 0) > 0) {
+      setPickerProduct(product);
+      return;
+    }
+    addToCart(product);
+  }
+
+  function addPickedVariant(product: BrowsedProduct, variant: PosVariant) {
+    setPickerProduct(null);
+    addToCart({
+      ...product,
+      price: variant.price,
+      branchStock: variant.branchStock,
+      variant: { id: variant.id, name: variant.name, sku: variant.sku },
+    });
+    refocus();
+  }
+
   /** A cashier types a discount on one line (O9 Tier 3). Clamped, never
    *  refused client-side — the SERVER is the one that actually decides
    *  whether it needs a manager, the same "warn, don't block" split the
    *  over-stock warning already uses. */
-  function setLineDiscount(productId: string, rawPercent: string) {
+  function setLineDiscount(key: string, rawPercent: string) {
     const trimmed = rawPercent.trim();
 
     setLines((current) =>
       current.map((line) => {
-        if (line.product.id !== productId) return line;
+        if (lineKey(line) !== key) return line;
 
         if (trimmed === '') return { ...line, discountPercent: null };
 
@@ -359,6 +407,7 @@ export function SaleScreen() {
       await parkSale(
         lines.map((line) => ({
           productId: line.product.id,
+          ...(line.product.variant ? { variantId: line.product.variant.id } : {}),
           quantity: line.quantity,
           ...(line.discountPercent !== null ? { discountPercent: line.discountPercent } : {}),
         })),
@@ -394,10 +443,27 @@ export function SaleScreen() {
       const products = await browseProducts({ ids: resumed.lines.map((line) => line.productId) });
       const byId = new Map(products.map((product) => [product.id, product]));
 
+      // Variant lines re-read each variant's CURRENT price and stock too.
+      const variantProductIds = [
+        ...new Set(resumed.lines.filter((line) => line.variantId).map((line) => line.productId)),
+      ];
+      const variantsById = new Map<string, PosVariant>(
+        (await Promise.all(variantProductIds.map((id) => fetchPosVariants(id))))
+          .flat()
+          .map((variant) => [variant.id, variant]),
+      );
+
       const restored: CartLine[] = resumed.lines
         .map((line): CartLine | null => {
-          const product = byId.get(line.productId);
-          if (!product) return null;
+          const base = byId.get(line.productId);
+          if (!base) return null;
+          let product: CartProduct = base;
+          if (line.variantId) {
+            const variant = variantsById.get(line.variantId);
+            if (!variant) return null;
+            const ref: PosVariantRef = { id: variant.id, name: variant.name, sku: variant.sku };
+            product = { ...base, price: variant.price, branchStock: variant.branchStock, variant: ref };
+          }
           return {
             product,
             quantity: line.quantity,
@@ -486,12 +552,12 @@ export function SaleScreen() {
     }
   }
 
-  function setQuantity(productId: string, quantity: number) {
+  function setQuantity(key: string, quantity: number) {
     setLines((current) =>
       quantity <= 0
-        ? current.filter((line) => line.product.id !== productId)
+        ? current.filter((line) => lineKey(line) !== key)
         : current.map((line) =>
-            line.product.id === productId ? { ...line, quantity } : line,
+            lineKey(line) === key ? { ...line, quantity } : line,
           ),
     );
     refocus();
@@ -594,6 +660,7 @@ export function SaleScreen() {
       const checkoutInput: CheckoutInput = {
         lines: lines.map((line) => ({
           productId: line.product.id,
+          ...(line.product.variant ? { variantId: line.product.variant.id } : {}),
           quantity: line.quantity,
           ...(line.discountPercent !== null ? { discountPercent: line.discountPercent } : {}),
         })),
@@ -639,9 +706,11 @@ export function SaleScreen() {
         orderNumber: result.orderNumber,
         soldAt: new Date().toLocaleString(),
         lines: lines.map((line) => ({
-          name: line.product.name,
+          name: lineName(line),
           quantity: line.quantity,
           price: line.product.price,
+          discountPercent: line.discountPercent,
+          vatExempt: result.exemptProductIds?.includes(line.product.id) ?? false,
         })),
         subtotal: result.subtotal,
         taxAmount: result.taxAmount,
@@ -950,9 +1019,14 @@ export function SaleScreen() {
         {lines.length > 0 ? (
           <ul className="divide-y rounded-lg border">
             {lines.map((line) => (
-              <li key={line.product.id} className="flex items-center gap-3 px-4 py-3">
+              <li key={lineKey(line)} className="flex items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{line.product.name}</p>
+                  <p className="truncate font-medium">{lineName(line)}</p>
+                  {line.product.variant ? (
+                    <p className="text-muted-foreground force-ltr truncate text-xs">
+                      {line.product.variant.sku}
+                    </p>
+                  ) : null}
                   <p className="text-muted-foreground text-sm tabular-nums">
                     {line.product.price}
                   </p>
@@ -980,13 +1054,13 @@ export function SaleScreen() {
                     </p>
                   ) : null}
                   <div className="mt-1 flex items-center gap-1.5">
-                    <Label htmlFor={`discount-${line.product.id}`} className="sr-only">
-                      {t('discountLabel', { name: line.product.name })}
+                    <Label htmlFor={`discount-${lineDomId(line)}`} className="sr-only">
+                      {t('discountLabel', { name: lineName(line) })}
                     </Label>
                     <Input
-                      id={`discount-${line.product.id}`}
+                      id={`discount-${lineDomId(line)}`}
                       value={line.discountPercent === null ? '' : String(line.discountPercent)}
-                      onChange={(event) => setLineDiscount(line.product.id, event.target.value)}
+                      onChange={(event) => setLineDiscount(lineKey(line), event.target.value)}
                       placeholder={t('discountPlaceholder')}
                       inputMode="decimal"
                       className="force-ltr h-7 w-20 text-xs"
@@ -999,8 +1073,8 @@ export function SaleScreen() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setQuantity(line.product.id, line.quantity - 1)}
-                    aria-label={t('decrease', { name: line.product.name })}
+                    onClick={() => setQuantity(lineKey(line), line.quantity - 1)}
+                    aria-label={t('decrease', { name: lineName(line) })}
                   >
                     <Minus className="size-4" aria-hidden />
                   </Button>
@@ -1008,16 +1082,16 @@ export function SaleScreen() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setQuantity(line.product.id, line.quantity + 1)}
-                    aria-label={t('increase', { name: line.product.name })}
+                    onClick={() => setQuantity(lineKey(line), line.quantity + 1)}
+                    aria-label={t('increase', { name: lineName(line) })}
                   >
                     <Plus className="size-4" aria-hidden />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setQuantity(line.product.id, 0)}
-                    aria-label={t('remove', { name: line.product.name })}
+                    onClick={() => setQuantity(lineKey(line), 0)}
+                    aria-label={t('remove', { name: lineName(line) })}
                   >
                     <Trash2 className="size-4" aria-hidden />
                   </Button>
@@ -1031,7 +1105,12 @@ export function SaleScreen() {
             above stays exact-match for the few products that carry a code.
             Tapping a tile calls the same addToCart() a scan does, so the
             de-dupe rule cannot differ between the two paths. */}
-        <ProductGrid onAdd={addToCart} disabled={isSelling} refreshKey={gridRefreshKey} />
+        <ProductGrid onAdd={addFromGrid} disabled={isSelling} refreshKey={gridRefreshKey} />
+        <VariantPickerDialog
+          product={pickerProduct}
+          onPick={addPickedVariant}
+          onClose={() => setPickerProduct(null)}
+        />
       </div>
 
       <aside className="space-y-4 rounded-lg border p-4">
@@ -1275,11 +1354,11 @@ export function SaleScreen() {
                   <ul className="divide-y rounded-md border text-start">
                     {lines.map((line) => (
                       <li
-                        key={line.product.id}
+                        key={lineKey(line)}
                         className="text-foreground flex items-center justify-between px-3 py-2 text-sm"
                       >
                         <span className="truncate">
-                          {line.product.name}
+                          {lineName(line)}
                           <span className="text-muted-foreground ms-1 tabular-nums">
                             × {line.quantity}
                           </span>

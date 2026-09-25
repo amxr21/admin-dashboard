@@ -1,4 +1,6 @@
-import { apiFetch } from '@/lib/api';
+import { apiDownload, apiFetch, apiUpload } from '@/lib/api';
+import type { ImportPreview, ImportResult } from '@/lib/resource-api';
+import type { ImportEndpoints } from '@/components/resource/import-resource-sheet';
 import { STOCK_REASONS, type StockMovementReason } from '@/lib/inventory-api';
 
 /**
@@ -15,6 +17,8 @@ export interface Variant {
   id: string;
   name: string;
   sku: string;
+  /** Optional scannable code; unique when present. */
+  barcode?: string | null;
   price: string;
   stock: number;
   productId: string;
@@ -30,6 +34,8 @@ export async function fetchVariants(productId: string): Promise<Variant[]> {
 export interface VariantInput {
   name: string;
   sku?: string;
+  /** NULL clears it. */
+  barcode?: string | null;
   price: string;
 }
 
@@ -121,3 +127,25 @@ export interface VariantReconcileResult {
 export async function fetchVariantReconcile(variantId: string): Promise<VariantReconcileResult> {
   return apiFetch<VariantReconcileResult>(`/variants/${variantId}/reconcile`);
 }
+
+/* ── CSV export / import. Same preview → apply contract as the resource
+ *    engine, so `ImportResourceSheet` drives it unchanged. Stock is exported
+ *    but never imported — stock changes are movements with a reason. ── */
+
+export async function exportVariantsCsv(): Promise<void> {
+  await apiDownload('/variants/export', 'variants.csv');
+}
+
+export const variantImportEndpoints: ImportEndpoints = {
+  preview: (file) => {
+    const formData = new FormData();
+    formData.set('file', file);
+    return apiUpload<ImportPreview>('/variants/import?dryRun=true', formData);
+  },
+  apply: (file) => {
+    const formData = new FormData();
+    formData.set('file', file);
+    return apiUpload<ImportResult>('/variants/import', formData);
+  },
+  template: () => apiDownload('/variants/import-template', 'variants-import-template.csv'),
+};
