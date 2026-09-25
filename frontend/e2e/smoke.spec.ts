@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * One real E2E test so CI has something true to run, rather than an empty
- * suite masquerading as coverage. Delete once real flows have their own specs
- * covering the home route.
+ * The root has no page of its own: it redirects to the dashboard, which sends
+ * a signed-out visitor to sign in. This proves that whole journey renders.
  */
-test('home page loads and renders', async ({ page }) => {
+test('home page sends a signed-out visitor to sign in', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'admin-dashboard' })).toBeVisible();
+  await expect(page).toHaveURL(/\/login/);
+  await expect(page.getByRole('heading', { name: 'Admin sign in' })).toBeVisible();
 });
