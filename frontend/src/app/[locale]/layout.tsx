@@ -1,14 +1,5 @@
 import type { Metadata } from 'next';
-import {
-  Cairo,
-  IBM_Plex_Sans_Arabic,
-  Inter,
-  Manrope,
-  Noto_Sans_Arabic,
-  Roboto,
-  Tajawal,
-  Work_Sans,
-} from 'next/font/google';
+import localFont from 'next/font/local';
 import { NextIntlClientProvider, hasLocale } from 'next-intl';
 import { setRequestLocale } from 'next-intl/server';
 import { notFound } from 'next/navigation';
@@ -30,9 +21,11 @@ import '../globals.css';
  * needs the resolved locale for its `lang` and `dir` attributes, and those are
  * only known once that segment is parsed.
  *
- * Fonts are registered here, at setup. next/font self-hosts the files at build
- * time: no runtime request to Google, no layout shift from a late webfont, no
- * third-party tracking.
+ * Fonts are registered here, at setup. The files come from the @fontsource
+ * packages in node_modules via next/font/local, so neither the build nor the
+ * browser ever talks to Google: no build flake when fonts.googleapis.com
+ * hiccups, no layout shift from a late webfont, no third-party tracking.
+ * Paths are relative to THIS file (next/font/local resolves them that way).
  *
  * FOUR Latin/Arabic PAIRS, one per script each. Arabic MUST have a real Arabic
  * face — a Latin-only font falls back to whatever the OS provides, which
@@ -44,7 +37,8 @@ import '../globals.css';
  * token" rule `--primary`/`--radius` already follow (see apply-appearance.ts).
  * Registering all four here costs nothing at runtime: the browser only
  * fetches the @font-face files for whichever family is actually applied to
- * rendered text, never the other three.
+ * rendered text, never the other three. Only the default pair is PRELOADED
+ * (`preload: false` on the rest) so every page load doesn't pull ~18 files.
  *
  * Static (non-variable) faces need every weight this app uses named
  * explicitly, or the browser synthesises a faux-bold/faux-medium — see the
@@ -55,35 +49,75 @@ import '../globals.css';
  * for offering them as an option.
  */
 
-const interLatin = Inter({ subsets: ['latin'], variable: '--font-latin-default', display: 'swap' });
-const ibmPlexArabic = IBM_Plex_Sans_Arabic({
-  subsets: ['arabic'],
-  weight: ['100', '200', '300', '400', '500', '600', '700'],
+const interLatin = localFont({
+  src: '../../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2',
+  weight: '100 900',
+  variable: '--font-latin-default',
+  display: 'swap',
+});
+const ibmPlexArabic = localFont({
+  src: [
+    { path: '../../../node_modules/@fontsource/ibm-plex-sans-arabic/files/ibm-plex-sans-arabic-arabic-100-normal.woff2', weight: '100', style: 'normal' },
+    { path: '../../../node_modules/@fontsource/ibm-plex-sans-arabic/files/ibm-plex-sans-arabic-arabic-200-normal.woff2', weight: '200', style: 'normal' },
+    { path: '../../../node_modules/@fontsource/ibm-plex-sans-arabic/files/ibm-plex-sans-arabic-arabic-300-normal.woff2', weight: '300', style: 'normal' },
+    { path: '../../../node_modules/@fontsource/ibm-plex-sans-arabic/files/ibm-plex-sans-arabic-arabic-400-normal.woff2', weight: '400', style: 'normal' },
+    { path: '../../../node_modules/@fontsource/ibm-plex-sans-arabic/files/ibm-plex-sans-arabic-arabic-500-normal.woff2', weight: '500', style: 'normal' },
+    { path: '../../../node_modules/@fontsource/ibm-plex-sans-arabic/files/ibm-plex-sans-arabic-arabic-600-normal.woff2', weight: '600', style: 'normal' },
+    { path: '../../../node_modules/@fontsource/ibm-plex-sans-arabic/files/ibm-plex-sans-arabic-arabic-700-normal.woff2', weight: '700', style: 'normal' },
+  ],
   variable: '--font-arabic-default',
   display: 'swap',
 });
 
-const manropeLatin = Manrope({ subsets: ['latin'], variable: '--font-latin-modern', display: 'swap' });
-const cairoArabic = Cairo({ subsets: ['arabic'], variable: '--font-arabic-modern', display: 'swap' });
+const manropeLatin = localFont({
+  src: '../../../node_modules/@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2',
+  weight: '200 800',
+  variable: '--font-latin-modern',
+  display: 'swap',
+  preload: false,
+});
+const cairoArabic = localFont({
+  src: '../../../node_modules/@fontsource-variable/cairo/files/cairo-arabic-wght-normal.woff2',
+  weight: '200 1000',
+  variable: '--font-arabic-modern',
+  display: 'swap',
+  preload: false,
+});
 
-const workSansLatin = Work_Sans({ subsets: ['latin'], variable: '--font-latin-neutral', display: 'swap' });
-const tajawalArabic = Tajawal({
-  subsets: ['arabic'],
-  weight: ['400', '500', '700'],
+const workSansLatin = localFont({
+  src: '../../../node_modules/@fontsource-variable/work-sans/files/work-sans-latin-wght-normal.woff2',
+  weight: '100 900',
+  variable: '--font-latin-neutral',
+  display: 'swap',
+  preload: false,
+});
+const tajawalArabic = localFont({
+  src: [
+    { path: '../../../node_modules/@fontsource/tajawal/files/tajawal-arabic-400-normal.woff2', weight: '400', style: 'normal' },
+    { path: '../../../node_modules/@fontsource/tajawal/files/tajawal-arabic-500-normal.woff2', weight: '500', style: 'normal' },
+    { path: '../../../node_modules/@fontsource/tajawal/files/tajawal-arabic-700-normal.woff2', weight: '700', style: 'normal' },
+  ],
   variable: '--font-arabic-neutral',
   display: 'swap',
+  preload: false,
 });
 
-const robotoLatin = Roboto({
-  subsets: ['latin'],
-  weight: ['400', '500', '700'],
+const robotoLatin = localFont({
+  src: [
+    { path: '../../../node_modules/@fontsource/roboto/files/roboto-latin-400-normal.woff2', weight: '400', style: 'normal' },
+    { path: '../../../node_modules/@fontsource/roboto/files/roboto-latin-500-normal.woff2', weight: '500', style: 'normal' },
+    { path: '../../../node_modules/@fontsource/roboto/files/roboto-latin-700-normal.woff2', weight: '700', style: 'normal' },
+  ],
   variable: '--font-latin-classic',
   display: 'swap',
+  preload: false,
 });
-const notoSansArabic = Noto_Sans_Arabic({
-  subsets: ['arabic'],
+const notoSansArabic = localFont({
+  src: '../../../node_modules/@fontsource-variable/noto-sans-arabic/files/noto-sans-arabic-arabic-wght-normal.woff2',
+  weight: '100 900',
   variable: '--font-arabic-classic',
   display: 'swap',
+  preload: false,
 });
 
 const FONT_VARIABLES = [
