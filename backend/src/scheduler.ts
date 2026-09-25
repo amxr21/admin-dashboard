@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import { pruneCampaignRecipients, runCampaignTick } from './services/campaign-dispatcher.js';
 import { ScheduleFrequency } from '@prisma/client';
 
 import { logger } from './logger.js';
@@ -84,6 +85,22 @@ export function startScheduler(): void {
     if (new Date().getUTCDay() === 1) void runDue(ScheduleFrequency.WEEKLY);
     // First of the month.
     if (new Date().getUTCDate() === 1) void runDue(ScheduleFrequency.MONTHLY);
+  });
+
+  // Campaign delivery: one rate-limited batch a minute (see campaign-dispatcher.ts).
+  cron.schedule('* * * * *', () => {
+    void runCampaignTick();
+  });
+
+  // Recipient retention runs daily, beside the other maintenance above.
+  cron.schedule('30 6 * * *', () => {
+    void pruneCampaignRecipients()
+      .then((count) => {
+        if (count > 0) logger.info({ event: 'campaign.recipients.pruned', count });
+      })
+      .catch((error: unknown) => {
+        logger.error({ event: 'campaign.recipients.prune.failed', error: error instanceof Error ? error.message : String(error) });
+      });
   });
 
   logger.info({ event: 'scheduledReports.scheduler.started' });

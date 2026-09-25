@@ -26,6 +26,7 @@ import { NavPendingIndicator } from '@/components/shell/nav-pending-indicator';
 import { getDirection } from '@/i18n/routing';
 import { cn } from '@/lib/utils';
 import { isSetupPathEnabled } from '@/lib/setup-visibility';
+import { useCampaignsAvailable } from '@/hooks/useCampaignsAvailable';
 
 /**
  * Which nav item each live count belongs to, by href. A map rather than a
@@ -69,6 +70,7 @@ export function SidebarNav({ role, canAccessArea: canAccess = canAccessArea, onN
   // hydration on an Arabic page — a real mismatch, not just a flash).
   const isRtl = getDirection(useLocale()) === 'rtl';
   const navCounts = useNavCounts(role);
+  const campaignsAvailable = useCampaignsAvailable(role);
 
   /**
    * Schema-driven entries, merged with the hand-written ones.
@@ -153,7 +155,10 @@ export function SidebarNav({ role, canAccessArea: canAccess = canAccessArea, onN
         // Hide whole groups the role cannot reach, rather than leaving an
         // empty heading behind.
         const visible = group.items.filter(
-          (item) => (!item.area || canAccess(role, item.area)) && isSetupPathEnabled(item.href, enabledFeatures),
+          (item) =>
+            (!item.area || canAccess(role, item.area)) &&
+            isSetupPathEnabled(item.href, enabledFeatures) &&
+            (!item.requiresCampaigns || campaignsAvailable),
         );
         if (visible.length === 0) return null;
 

@@ -1056,6 +1056,18 @@ model Customer {
   /// vocabulary, deliberately (see the design note on Order.internalNotes).
   internalNotes   String? @map("internal_notes") @db.Text
 
+  /// Marketing consent, one per channel. False by default: a customer who
+  /// gave an address to receive their ORDER updates has not agreed to
+  /// promotions (operational-contact-only is the default). The timestamp and
+  /// source record WHEN and HOW consent was given, which is what a regulator
+  /// (UAE PDPL, GDPR) asks for; they are cleared when consent is withdrawn.
+  emailMarketingConsent Boolean   @default(false) @map("email_marketing_consent")
+  emailConsentAt        DateTime? @map("email_consent_at")
+  emailConsentSource    String?   @map("email_consent_source") @db.VarChar(40)
+  smsMarketingConsent   Boolean   @default(false) @map("sms_marketing_consent")
+  smsConsentAt          DateTime? @map("sms_consent_at")
+  smsConsentSource      String?   @map("sms_consent_source") @db.VarChar(40)
+
   /// ─── Storefront sign-in (Google) ──────────────────────────────────
   /// Google's stable subject id (`sub`). NULL for a customer created by staff
   /// or by a guest checkout — those rows are order history, not accounts, and
@@ -1081,6 +1093,7 @@ model Customer {
   wishlistItems      WishlistItem[]
   cases              CustomerCase[]
   orderNotifications CustomerOrderNotification[]
+  campaignRecipients CampaignRecipient[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2643,4 +2656,121 @@ model RolePermission {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("role_permissions")
+}
+
+// ─── Customer outreach campaigns ──────────────────────────────────────
+
+enum CampaignChannel {
+  EMAIL
+  SMS
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  COMPLETED
+  CANCELED
+  FAILED
+}
+
+enum CampaignRecipientStatus {
+  PENDING
+  SENDING
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+}
+
+enum SuppressionReason {
+  UNSUBSCRIBED
+  BOUNCED
+  COMPLAINED
+  MANUAL
+}
+
+/// One message sent to a chosen audience over one channel.
+///
+/// Content is stored because the campaign IS the content; recipients are
+/// materialised into `CampaignRecipient` only when sending starts, so the
+/// audience is fixed at that moment and a customer added later is not sent
+/// a campaign they were never counted in.
+model Campaign {
+  id        String          @id @default(cuid())
+  name      String          @db.VarChar(120)
+  channel   CampaignChannel
+  status    CampaignStatus  @default(DRAFT)
+  /// Email only. Both languages optional individually, but at least one
+  /// language's content must exist to send; each recipient gets their own.
+  subjectEn String?         @map("subject_en") @db.VarChar(200)
+  subjectAr String?         @map("subject_ar") @db.VarChar(200)
+  bodyEn    String?         @map("body_en") @db.Text
+  bodyAr    String?         @map("body_ar") @db.Text
+  /// Inserted wherever `{{discount_code}}` appears.
+  discountCode String?      @map("discount_code") @db.VarChar(64)
+  /// The audience filter (see `campaign-audience.service.ts`), validated on write.
+  audience  Json
+  /// The branch whose name `{{branch_name}}` uses and whose timezone the
+  /// schedule was chosen in. Null means the whole business.
+  branchId  String?         @map("branch_id") @db.VarChar(64)
+  scheduledAt DateTime?     @map("scheduled_at")
+  startedAt   DateTime?     @map("started_at")
+  completedAt DateTime?     @map("completed_at")
+  /// Frozen when sending starts.
+  audienceSize Int?         @map("audience_size")
+  lastError    String?      @map("last_error") @db.VarChar(500)
+
+  createdById String?       @map("created_by_id")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  recipients CampaignRecipient[]
+
+  @@index([status, scheduledAt])
+  @@map("campaigns")
+}
+
+/// One customer's copy of a campaign. The unique pair is the duplicate-send
+/// guard: a customer can never be queued twice for the same campaign.
+model CampaignRecipient {
+  id         String                  @id @default(cuid())
+  campaignId String                  @map("campaign_id")
+  campaign   Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  /// SetNull: deleting a customer (erasure request) must not be blocked by
+  /// campaign history, and the address below is erased with it.
+  customerId String?                 @map("customer_id")
+  customer   Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  /// The email or E.164 phone at send time; cleared by the retention job.
+  address    String?                 @db.VarChar(255)
+  locale     String                  @default("en") @db.VarChar(5)
+  status     CampaignRecipientStatus @default(PENDING)
+  attempts   Int                     @default(0)
+  nextAttemptAt     DateTime?        @map("next_attempt_at")
+  providerMessageId String?          @map("provider_message_id") @db.VarChar(128)
+  lastError  String?                 @map("last_error") @db.VarChar(300)
+  sentAt     DateTime?               @map("sent_at")
+  createdAt  DateTime                @default(now()) @map("created_at")
+  updatedAt  DateTime                @updatedAt @map("updated_at")
+
+  @@unique([campaignId, customerId])
+  @@index([campaignId, status])
+  @@index([providerMessageId])
+  @@map("campaign_recipients")
+}
+
+/// Addresses that must never receive marketing again on a channel —
+/// unsubscribes, hard bounces, complaints. Checked at audience time AND at
+/// send time, independent of the customer row, so re-creating a customer
+/// with the same address does not re-subscribe them.
+model MarketingSuppression {
+  id        String            @id @default(cuid())
+  channel   CampaignChannel
+  /// Lower-cased email, or E.164 phone.
+  address   String            @db.VarChar(255)
+  reason    SuppressionReason
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  @@unique([channel, address])
+  @@map("marketing_suppressions")
 }

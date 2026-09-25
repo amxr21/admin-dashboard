@@ -76,6 +76,22 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
 
+  // ─── Customer campaigns ────────────────────────────────────────────
+  // All optional: a deployment without them simply cannot send that channel,
+  // and the campaigns screen says which piece is missing. Secrets live here,
+  // never in `Setting`, for the same reason SMTP_PASSWORD does.
+  //
+  // The API's own public base URL (…/api/v1), for unsubscribe links and
+  // provider status callbacks. No default: a guessed host would put a dead
+  // unsubscribe link in real customers' inboxes.
+  PUBLIC_API_URL: z.string().url().optional(),
+  // SMS via Twilio. TWILIO_FROM is the registered sender ID or number.
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_FROM: z.string().optional(),
+  // Shared secret for the provider-neutral email events webhook (bounces,
+  // complaints, deliveries), sent as the `X-Webhook-Secret` header.
+  EMAIL_WEBHOOK_SECRET: z.string().min(16).optional(),
   // Comma-separated origin list → string[].
   CORS_ORIGINS: z
     .string()

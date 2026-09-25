@@ -509,7 +509,60 @@ export const SETTINGS = {
    * discount cap. 0 means no window at all — every return is always within
    * it, never treated as "unset".
    */
-  'returns.windowDays': {
+  // ─── Customer campaigns ────────────────────────────────────────────
+  'campaigns.defaultCountryCode': {
+    type: 'string',
+    default: '971',
+    area: 'settings',
+    max: 4,
+    label: 'Default country calling code for SMS',
+    description:
+      'Added to customer phone numbers saved without one (for example 050 1234567) so SMS can reach them. Digits only: 971 for the UAE.',
+    placeholder: 'e.g. 971',
+  },  'campaigns.smsCostPerSegment': {
+    type: 'number',
+    default: 0,
+    area: 'settings',
+    min: 0,
+    max: 100,
+    label: 'SMS cost per segment',
+    description:
+      'What your SMS provider charges per message segment, in the store currency. Used only to estimate a campaign\'s cost before sending; 0 hides the estimate.',
+    placeholder: 'e.g. 0.18',
+  },
+  'campaigns.largeAudienceThreshold': {
+    type: 'number',
+    default: 200,
+    area: 'settings',
+    min: 1,
+    max: 1000000,
+    label: 'Large campaign confirmation',
+    description:
+      'A campaign going to at least this many customers asks the sender to type the exact recipient count before it sends.',
+    placeholder: 'e.g. 200',
+  },
+  'campaigns.sendsPerMinute': {
+    type: 'number',
+    default: 60,
+    area: 'settings',
+    min: 1,
+    max: 1000,
+    label: 'Campaign sending rate (per minute)',
+    description:
+      'The most campaign messages sent in one minute. Keep it within your email and SMS providers\' limits.',
+    placeholder: 'e.g. 60',
+  },
+  'campaigns.recipientRetentionDays': {
+    type: 'number',
+    default: 180,
+    area: 'settings',
+    min: 30,
+    max: 730,
+    label: 'Keep recipient records (days)',
+    description:
+      'After this many days, a finished campaign keeps only its totals: each recipient\'s address and delivery detail is erased.',
+    placeholder: 'e.g. 180',
+  },  'returns.windowDays': {
     type: 'number',
     default: 30,
     area: 'settings',

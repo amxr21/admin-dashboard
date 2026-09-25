@@ -362,6 +362,7 @@
     "reviews": "Reviews",
     "delivery": "Delivery",
     "customerCases": "Customer service",
+    "campaigns": "Campaigns",
     "returns": "Returns",
     "reports": "Reports",
     "settings": "Settings",
@@ -389,6 +390,7 @@
     },
     "descriptions": {
       "dashboard": "Revenue, orders, and what needs attention today, at a glance.",
+      "campaigns": "Email and SMS offers to customers who agreed to receive them.",
       "orders": "Every order, its line items, and where it is in the fulfillment workflow.",
       "products": "Your catalogue — name, price, stock, and category for everything you sell.",
       "inventory": "Stock levels as a log of what happened, not a number you edit directly.",
@@ -1070,6 +1072,8 @@
       "city": "City",
       "country": "Country",
       "internalNotes": "Internal notes",
+      "emailMarketingConsent": "Agreed to marketing emails",
+      "smsMarketingConsent": "Agreed to marketing SMS",
       "code": "Code",
       "value": "Value",
       "maxUses": "Max uses",
@@ -3955,5 +3959,179 @@
     "GYM": "Gym",
     "LAUNDRY": "Laundry",
     "OTHER": "Other"
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "subtitle": "Email and SMS offers to customers who agreed to hear from you.",
+    "new": "New campaign",
+    "channel": {
+      "EMAIL": "Email",
+      "SMS": "SMS"
+    },
+    "status": {
+      "DRAFT": "Draft",
+      "SCHEDULED": "Scheduled",
+      "SENDING": "Sending",
+      "COMPLETED": "Sent",
+      "CANCELED": "Canceled",
+      "FAILED": "Failed"
+    },
+    "readiness": {
+      "label": "Channels",
+      "ready": "Ready",
+      "notReady": "Not set up",
+      "help": "A channel that is not set up cannot send. Email needs the email settings and a public API address for unsubscribe links; SMS needs an SMS provider. Your technical contact adds these on the server."
+    },
+    "empty": {
+      "title": "No campaigns yet",
+      "body": "Create one to send an offer to customers who have agreed to receive marketing."
+    },
+    "columns": {
+      "name": "Campaign",
+      "channel": "Channel",
+      "status": "Status",
+      "recipients": "Recipients",
+      "sent": "Sent",
+      "when": "When"
+    },
+    "audience": {
+      "mode": "Choose customers by",
+      "modeFilter": "Filters",
+      "modeManual": "Picking them",
+      "customers": "Customers",
+      "pickCustomer": "Add a customer",
+      "branch": "Bought at branch",
+      "anyBranch": "Any branch",
+      "customerType": "Customers",
+      "anyCustomer": "New and returning",
+      "newCustomers": "New (one order or none)",
+      "returningCustomers": "Returning (two or more orders)",
+      "products": "Bought any of these products",
+      "pickProduct": "Add a product",
+      "categories": "Bought from any of these categories",
+      "pickCategory": "Add a category",
+      "inactiveDays": "Inactive for (days)",
+      "inactivePlaceholder": "e.g. 60",
+      "inactiveHint": "Customers who have ordered before but not in this many days.",
+      "minSpend": "Spent at least",
+      "maxSpend": "Spent at most",
+      "remove": "Remove {name}"
+    },
+    "reach": {
+      "title": "Who will receive it",
+      "counting": "Counting…",
+      "willReceive": "customers will receive it",
+      "matched": "Match the audience",
+      "excluded": {
+        "noConsent": {
+          "EMAIL": "Have not agreed to marketing emails",
+          "SMS": "Have not agreed to marketing SMS"
+        },
+        "noAddress": {
+          "EMAIL": "Have no email address",
+          "SMS": "Have no usable phone number"
+        },
+        "suppressed": {
+          "EMAIL": "Unsubscribed or bounced",
+          "SMS": "Opted out"
+        }
+      },
+      "sample": "Including {names}",
+      "segments": "{count, plural, one {Each message is # SMS segment} other {Each message is # SMS segments}}",
+      "cost": "Estimated cost {amount} ({segments} segments)",
+      "costUnknown": "Set the SMS cost per segment in Settings to see an estimate."
+    },
+    "editor": {
+      "basics": "Campaign",
+      "name": "Name (only you see this)",
+      "channel": "Send by",
+      "branch": "Sending as",
+      "wholeBusiness": "The whole business",
+      "branchHint": "Used for the branch name in the message and for the schedule's time zone.",
+      "discountCode": "Discount code (optional)",
+      "discountCodeHint": "Create the code in Discounts first. It replaces {{discount_code}} in the message.",
+      "message": "Message",
+      "languagesHint": "Write it in English, Arabic or both. Each customer gets the language they use, or the one you wrote.",
+      "language": {
+        "en": "English",
+        "ar": "Arabic"
+      },
+      "subject": "Subject",
+      "body": "Message",
+      "insert": "Insert:",
+      "insertLabel": "Insert a placeholder",
+      "placeholders": {
+        "customer_name": "Customer's first name",
+        "store_name": "Store name",
+        "branch_name": "Branch name",
+        "discount_code": "Discount code"
+      },
+      "templates": {
+        "label": "Start from a template",
+        "discount": {
+          "name": "Discount offer"
+        },
+        "clearance": {
+          "name": "Clearance sale"
+        }
+      },
+      "audience": "Audience",
+      "previewTitle": "Preview",
+      "previewDevice": "Preview size",
+      "previewLanguage": "Preview language",
+      "desktop": "Desktop",
+      "mobile": "Phone",
+      "noSubject": "(no subject)",
+      "noBody": "(no message yet)",
+      "unsubscribeFooter": "Unsubscribe link added automatically",
+      "save": "Save draft",
+      "savedToast": "Draft saved",
+      "testSend": "Send a test",
+      "sendOrSchedule": "Send or schedule",
+      "delete": "Delete draft",
+      "deleted": "Campaign deleted"
+    },
+    "test": {
+      "title": "Send a test",
+      "emailBody": "A copy goes to your own email address. No customer receives it.",
+      "smsBody": "A copy goes to the number you enter. No customer receives it.",
+      "phone": "Your phone number",
+      "cancel": "Cancel",
+      "send": "Send test",
+      "sent": "Test sent"
+    },
+    "send": {
+      "title": "Send this campaign",
+      "summary": "{count, plural, one {\"{name}\" will go to # customer.} other {\"{name}\" will go to # customers.}}",
+      "whenLabel": "When",
+      "now": "Now",
+      "later": "Later",
+      "date": "Date",
+      "time": "Time",
+      "timezone": "Times are in {zone}.",
+      "confirmLabel": "This is a large campaign. Type {count} to confirm.",
+      "cancel": "Cancel",
+      "schedule": "Schedule",
+      "sendNow": "Send now",
+      "scheduled": "Campaign scheduled",
+      "sending": "Campaign is sending"
+    },
+    "detail": {
+      "crumb": "Campaign",
+      "scheduledFor": "Sends {when}",
+      "cancelSchedule": "Cancel schedule",
+      "stop": "Stop sending",
+      "canceled": "Campaign canceled",
+      "content": "Message",
+      "outcomes": {
+        "recipients": "Recipients",
+        "pending": "Waiting",
+        "sent": "Sent",
+        "delivered": "Delivered",
+        "failed": "Failed",
+        "bounced": "Bounced"
+      },
+      "outcomesHelp": "Delivered is confirmed by the provider when it reports back; Sent means the provider accepted the message. Addresses that bounce or opt out are never messaged again."
+    }
   }
 }
