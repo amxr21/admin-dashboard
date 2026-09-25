@@ -14,6 +14,7 @@ import { notifyCustomerOrderStatus } from './customer-order-notifications.servic
 import { normalizePhone } from '../lib/phone.js';
 import { optionalDateOnlyBounds } from '../lib/date-range.js';
 import { assertRefundReason } from './refund-reason.js';
+import { chargedValue } from './order-math.service.js';
 
 /**
  * Orders — the one resource the generic engine cannot express.
@@ -319,6 +320,8 @@ export async function getOrder(id: string, branchId?: string) {
           id: true,
           quantity: true,
           price: true,
+          discountPercent: true,
+          isTaxable: true,
           productId: true,
           product: { select: { id: true, name: true, sku: true, imageUrl: true } },
           variantId: true,
@@ -420,7 +423,12 @@ export async function getOrder(id: string, branchId?: string) {
       quantity: item.quantity,
       // The price the customer actually paid, not today's price.
       price: money(item.price),
-      lineTotal: item.price.mul(item.quantity).toFixed(2),
+      // After the line's own cashier discount, so the lines add up to the
+      // subtotal printed beneath them.
+      lineTotal: chargedValue(item).toFixed(2),
+      discountPercent: item.discountPercent?.toFixed(2) ?? null,
+      // Snapshot from the sale. Null on lines older than per-product VAT.
+      isTaxable: item.isTaxable,
       productId: item.productId,
       // Null when the product was hard-deleted. Line items carry a price
       // snapshot but NOT a name snapshot, so there is nothing to fall back to

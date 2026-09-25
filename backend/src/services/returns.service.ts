@@ -19,8 +19,13 @@ import { ASSIGNMENT_ON_ORDER_STATUS, canTransition } from '../config/orders.conf
 
 import { defaultBranchId } from './inventory.service.js';
 import { assertRefundReason } from './refund-reason.js';
+import {
+  chargedValue,
+  computeRefundBreakdown,
+  computeRefundTaxAmount,
+  computeRefundableValue,
+} from './order-math.service.js';
 import { restoreVariantStock } from './variants.service.js';
-import { computeRefundableValue } from './order-math.service.js';
 /**
  * Returns / RMA — the one thing the resource engine cannot express, for the
  * same reason orders is bespoke: approving a return is a PROCEDURE (validate
@@ -257,7 +262,7 @@ async function serialiseReturn(id: string, branchId?: string) {
       quantity: item.quantity,
       orderItemId: item.orderItem.id,
       price: money(item.orderItem.price),
-      lineTotal: item.orderItem.price.mul(item.quantity).toFixed(2),
+      lineTotal: chargedValue({ ...item.orderItem, quantity: item.quantity }).toFixed(2),
       // Null when the product was hard-deleted — same honesty as the order
       // detail page, never a blank row pretending nothing happened.
       product: item.orderItem.product,
@@ -598,6 +603,7 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
     }
 
     let refundAmount: Prisma.Decimal | null = null;
+    let refundTaxAmount: Prisma.Decimal | null = null;
     let restockingFeePercent: Prisma.Decimal | null = null;
 
     if (input.resolution === ReturnResolution.REFUND) {
@@ -622,12 +628,13 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
       // discount and of the VAT charged — never a live product price. The fee
       // then reduces the CAP — the operator still enters what was actually
       // paid back, same as before this existed.
-      const itemsValue = computeRefundableValue(
+      const breakdown = computeRefundBreakdown(
         { ...order, lines: order.items },
         decisions
           .filter((decision) => decision.accepted)
           .map((decision) => ({ ...decision.item.orderItem, quantity: decision.quantity })),
       );
+      const itemsValue = breakdown.refundable;
       const maxRefund = itemsValue
         .mul(new Prisma.Decimal(100).minus(restockingFeePercent))
         .dividedBy(100);
@@ -645,6 +652,8 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
       }
 
       refundAmount = requested;
+      // The VAT inside what was actually paid back, for the VAT report.
+      refundTaxAmount = computeRefundTaxAmount(breakdown, requested);
       appliedRestockingFeePercent = restockingFeePercent;
     }
 
@@ -759,6 +768,7 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
         approvedAt: new Date(),
         resolution: input.resolution,
         refundAmount,
+        refundTaxAmount,
         // URG-009 — written in the same transaction as the refund itself, so
         // a rolled-back approval cannot leave a reason for a refund that was
         // never given. Only meaningful on a REFUND; `assertRefundReason` has

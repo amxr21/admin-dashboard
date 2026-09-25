@@ -39,6 +39,7 @@ import {
   getProductReviewSummary,
   getProductsWithoutReviews,
   getRefundRateTrend,
+  getVatSummary,
   getReturnReasons,
   getReturnResolutionBreakdown,
   getReturnsSummary,
@@ -455,6 +456,26 @@ reportsRouter.get('/reports/category-breakdown', ...guard, async (req, res) => {
   res.json({ data: breakdown });
 });
 
+reportsRouter.get('/reports/vat-summary', ...guard, async (req, res) => {
+  const parsed = rangeQuery.safeParse(req.query);
+  if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
+
+  const summary = await getVatSummary(scoped(req, parsed.data));
+
+  if (parsed.data.format && parsed.data.format !== 'json') {
+    await sendExport(res, parsed.data.format, 'VAT summary', 'vat-summary', summary.points, [
+      { header: 'Month', value: (r) => r.date },
+      { header: 'VAT charged', value: (r) => r.vatCharged },
+      { header: 'VAT refunded', value: (r) => r.vatRefunded },
+      { header: 'Net VAT', value: (r) => r.netVat },
+      { header: 'Orders without a tax record', value: (r) => r.ordersNotRecorded },
+      { header: 'Refunds without a VAT record', value: (r) => r.refundsNotRecorded },
+    ], { from: parsed.data.from, to: parsed.data.to });
+    return;
+  }
+
+  res.json({ data: summary });
+});
 reportsRouter.get('/reports/refund-rate-trend', ...guard, async (req, res) => {
   const parsed = rangeQuery.safeParse(req.query);
   if (!parsed.success) throw AppError.badRequest('Invalid range', parsed.error.flatten());
