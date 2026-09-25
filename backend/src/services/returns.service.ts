@@ -19,6 +19,7 @@ import { ASSIGNMENT_ON_ORDER_STATUS, canTransition } from '../config/orders.conf
 
 import { defaultBranchId } from './inventory.service.js';
 import { assertRefundReason } from './refund-reason.js';
+import { restoreVariantStock } from './variants.service.js';
 import { computeRefundableValue } from './order-math.service.js';
 /**
  * Returns / RMA — the one thing the resource engine cannot express, for the
@@ -473,7 +474,13 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
             id: true,
             quantity: true,
             orderItem: {
-              select: { productId: true, price: true, discountPercent: true, isTaxable: true },
+              select: {
+                productId: true,
+                variantId: true,
+                price: true,
+                discountPercent: true,
+                isTaxable: true,
+              },
             },
           },
         },
@@ -673,6 +680,19 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
       for (const decision of decisions) {
         // A refused line goes back to the customer, so nothing is restocked.
         if (!decision.accepted) continue;
+
+        // A variant line goes back onto that variant's own stock.
+        if (decision.item.orderItem.variantId && restockBranchId) {
+          await restoreVariantStock(tx, {
+            variantId: decision.item.orderItem.variantId,
+            branchId: restockBranchId,
+            quantity: decision.quantity,
+            reason: 'RETURNED',
+            note: `Return ${id}`,
+            actorId: input.actorId,
+          });
+          continue;
+        }
 
         // Hard-deleted product: nothing left to restock against.
         if (!decision.item.orderItem.productId) continue;

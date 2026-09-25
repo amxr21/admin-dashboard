@@ -21,6 +21,31 @@ export interface ScannedProduct {
   branchStock: number | null;
   totalStock: number;
   status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+  /** Set when the code named a variant: price and stock are then that
+   *  variant's own. */
+  variant?: PosVariantRef | null;
+}
+
+/** The variant on a cart line — enough to send and to print. */
+export interface PosVariantRef {
+  id: string;
+  name: string;
+  sku: string;
+}
+
+export interface PosVariant extends PosVariantRef {
+  barcode: string | null;
+  price: string;
+  /** Same meaning as `ScannedProduct.branchStock`. */
+  branchStock: number | null;
+}
+
+/** The variant picker behind a browse tile. */
+export async function fetchPosVariants(productId: string): Promise<PosVariant[]> {
+  const result = await apiFetch<{ variants: PosVariant[] }>(
+    `/pos/products/${encodeURIComponent(productId)}/variants`,
+  );
+  return result.variants;
 }
 
 export async function scanProduct(code: string): Promise<ScannedProduct> {
@@ -48,6 +73,8 @@ export interface BrowsedProduct {
   /** Same meaning as `ScannedProduct.branchStock`. */
   branchStock: number | null;
   status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+  /** Above zero, tapping the tile opens a variant picker. */
+  variantCount?: number;
 }
 
 export async function browseProducts(params: {
@@ -95,6 +122,7 @@ export async function searchPosCustomers(query: string): Promise<PosCustomer[]> 
 
 export interface CheckoutLine {
   productId: string;
+  variantId?: string;
   quantity: number;
   /** A cashier's ad-hoc discount on THIS line (O9 Tier 3), 0-100. Was
    *  missing from this interface entirely — `sale-screen.tsx` sent it via an
@@ -251,6 +279,7 @@ export async function voidSale(
  */
 export interface ParkedSaleLine {
   productId: string;
+  variantId?: string;
   quantity: number;
   discountPercent?: number;
 }

@@ -52,6 +52,9 @@ export interface OrderItem {
   productId: string | null;
   /** Null when the product was hard-deleted — there is no name snapshot. */
   product: { id: string; name: string; sku: string | null; imageUrl: string | null } | null;
+  /** The variant sold, snapshotted at sale time. Null on a plain product line;
+   *  `id` is null when the variant has since been deleted. */
+  variant?: { id: string | null; name: string; sku: string | null } | null;
 }
 
 export interface OrderStatusEntry {
