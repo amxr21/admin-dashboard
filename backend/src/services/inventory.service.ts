@@ -607,7 +607,13 @@ export async function adjustStock(productId: string, input: AdjustStockInput, re
     };
   });
 
-  if (result.crossedIntoLowStock && (await getSettingValue('notifications.lowStockAlerts'))) {
+  // No alerts for a business that switched inventory off: it said it does not
+  // track stock, so a low count is not news.
+  if (
+    result.crossedIntoLowStock &&
+    (await getSettingValue('notifications.lowStockAlerts')) &&
+    Boolean(await getSettingValue('features.inventory.enabled'))
+  ) {
     notify({
       type: 'inventory.low-stock',
       title: result.product.name,

@@ -5,7 +5,8 @@ import { SETTINGS, validateSetting } from './settings.config.js';
 import { normalizeFeatures, SETUP_FEATURE_KEYS, type SetupFeature } from './setup-features.config.js';
 
 export const SETUP_LABEL_KEYS = ['products', 'orders', 'staff', 'inventory', 'delivery', 'returns', 'reports'] as const;
-export const SETUP_DEFAULT_KEYS = ['products.defaultHasVariants', 'products.defaultHasColors', 'products.defaultHasBarcode', 'store.currency', 'store.taxRate', 'returns.windowDays', 'inventory.lowStockThreshold', 'pos.maxCashierDiscountPercent', 'pos.tenderRate.AED', 'pos.tenderRate.SAR', 'pos.tenderRate.USD', 'pos.tenderRate.EUR', 'pos.tenderRate.GBP'] as const;
+export const SETUP_DEFAULT_KEYS = ['products.defaultHasVariants', 'products.defaultHasColors', 'products.defaultHasBarcode', 'store.currency', 'store.taxRate', 'notifications.lowStockAlerts', 'setup.fulfilment', 'setup.sellsOnline', 'setup.paymentMethods', 'setup.wantsCampaigns', 'returns.windowDays', 'inventory.lowStockThreshold', 'pos.maxCashierDiscountPercent', 'pos.tenderRate.AED', 'pos.tenderRate.SAR', 'pos.tenderRate.USD', 'pos.tenderRate.EUR', 'pos.tenderRate.GBP'] as const;
+export const PAYMENT_METHODS = ['cash', 'cardOnDelivery', 'online'] as const;
 export const EDITABLE_SETUP_ROLES = ['MANAGER', 'FULFILLMENT', 'CASHIER', 'SUPPORT', 'DEMO'] as const;
 export const setupDraftSchema = z.object({
   businessType: z.enum(BUSINESS_TYPES),
@@ -19,6 +20,13 @@ export const setupDraftSchema = z.object({
     if (draft.defaults[key] === undefined) continue;
     const result = validateSetting(key, draft.defaults[key]);
     if (!result.ok) ctx.addIssue({ code: 'custom', path: ['defaults', key], message: result.message });
+  }
+  const methods = draft.defaults['setup.paymentMethods'];
+  if (typeof methods === 'string') {
+    const listed = methods.split(',').filter(Boolean);
+    if (listed.length === 0 || listed.some(method => !(PAYMENT_METHODS as readonly string[]).includes(method))) {
+      ctx.addIssue({ code: 'custom', path: ['defaults', 'setup.paymentMethods'], message: `Choose one or more of: ${PAYMENT_METHODS.join(', ')}` });
+    }
   }
 });
 export type SetupDraft = z.infer<typeof setupDraftSchema>;

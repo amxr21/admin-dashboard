@@ -99,6 +99,13 @@ export const SETTINGS = {
   'setup.completedAt': { type: 'string', default: '', area: 'settings', label: 'completedAt', max: 60, setupOnly: true },
   'setup.skippedAt': { type: 'string', default: '', area: 'settings', label: 'skippedAt', max: 60, setupOnly: true },
   'setup.businessType': { type: 'string', default: '', area: 'settings', label: 'businessType', max: 60, setupOnly: true },
+  // Setup-wizard answers that have no feature switch of their own. Recorded so
+  // the guide and checklists can follow what the owner said; paymentMethods
+  // is a comma list checked against PAYMENT_METHODS in setup.config.ts.
+  'setup.fulfilment': { type: 'enum', options: ['pickup', 'delivery', 'both'], default: 'both', area: 'settings', label: 'fulfilment', setupOnly: true },
+  'setup.sellsOnline': { type: 'boolean', default: false, area: 'settings', label: 'sellsOnline', setupOnly: true },
+  'setup.paymentMethods': { type: 'string', default: 'cash', area: 'settings', label: 'paymentMethods', max: 60, setupOnly: true },
+  'setup.wantsCampaigns': { type: 'boolean', default: false, area: 'settings', label: 'wantsCampaigns', setupOnly: true },
   'products.defaultHasVariants': { type: 'boolean', default: false, area: 'settings', label: 'New products: variants', setupOnly: true },
   'products.defaultHasColors': { type: 'boolean', default: false, area: 'settings', label: 'New products: colors', setupOnly: true },
   'products.defaultHasBarcode': { type: 'boolean', default: false, area: 'settings', label: 'New products: barcode', setupOnly: true },
