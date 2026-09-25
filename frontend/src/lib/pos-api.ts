@@ -120,6 +120,9 @@ export interface CheckoutResult {
    * served the customer, not whoever is signed in at the time it prints.
    */
   soldByName: string | null;
+  /** Products charged no VAT on this sale. Absent on replays recorded before
+   *  this field existed. */
+  exemptProductIds?: string[];
   /**
    * URG-034 — the foreign-currency figures for the receipt, all null on a
    * base-currency sale (the overwhelming majority).

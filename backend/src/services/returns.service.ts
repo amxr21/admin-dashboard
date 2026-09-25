@@ -24,6 +24,7 @@ import {
   computeRefundTaxAmount,
   computeRefundableValue,
 } from './order-math.service.js';
+import { chargedValue, computeRefundableValue } from './order-math.service.js';
 /**
  * Returns / RMA — the one thing the resource engine cannot express, for the
  * same reason orders is bespoke: approving a return is a PROCEDURE (validate
@@ -260,7 +261,7 @@ async function serialiseReturn(id: string, branchId?: string) {
       quantity: item.quantity,
       orderItemId: item.orderItem.id,
       price: money(item.orderItem.price),
-      lineTotal: item.orderItem.price.mul(item.quantity).toFixed(2),
+      lineTotal: chargedValue({ ...item.orderItem, quantity: item.quantity }).toFixed(2),
       // Null when the product was hard-deleted — same honesty as the order
       // detail page, never a blank row pretending nothing happened.
       product: item.orderItem.product,
