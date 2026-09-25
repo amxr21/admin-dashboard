@@ -17,13 +17,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CollapsibleSection } from '@/components/ui/collapsible-section';
 import { cn } from '@/lib/utils';
 import { AREAS, type Area, type StaffRole } from '@/config/areas';
+import { SetupQuestions } from '@/components/setup/setup-questions';
 import { applySetup, fetchSetup, previewSetup, skipSetup, SETUP_FEATURE_KEYS, type SetupDraft, type SetupPreview, type SetupState, type SetupValue } from '@/lib/setup-api';
 
 // `names` is no longer its own step — a step whose default action is "leave
 // every field blank" earned nothing. The label edits it held now live inline
 // in the Review step (see SetupReview), where the owner is already looking at
 // what will change and can rename in the same place.
-const STEPS = ['entry', 'business', 'features', 'products', 'people', 'operations', 'review'] as const;
+const STEPS = ['entry', 'business', 'questions', 'features', 'products', 'people', 'operations', 'review'] as const;
+/** Answered in the Questions step, so never repeated as raw fields later. */
+const QUESTION_KEYS = new Set(['notifications.lowStockAlerts', 'setup.fulfilment', 'setup.sellsOnline', 'setup.paymentMethods', 'setup.wantsCampaigns']);
 /**
  * Joins a list with the locale's own separator and conjunction. A hardcoded
  * separator is wrong in one locale by construction — Arabic uses `،` where
@@ -116,7 +119,7 @@ function OwnerSetupWizard() {
   if (!data.templates.length) return <p>{t('empty')}</p>;
   if (finished) return <section className="space-y-4"><h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold">{t(finished === 'skipped' ? 'skippedTitle' : 'done')}</h1><p>{t(finished === 'skipped' ? 'skipped' : 'rerun')}</p>{refreshFailed ? <div role="alert" className="space-y-2"><p>{t('refreshFailed')}</p><Button variant="outline" disabled={busy} onClick={() => { setBusy(true); void syncSettings().finally(() => setBusy(false)); }}>{t('refreshAction')}</Button></div> : null}<Button asChild className="min-h-11"><Link href="/admin/settings">{t('settings')}</Link></Button></section>;
   const stepKey = STEPS[step] ?? 'entry';
-  const definitions = data.defaultDefinitions.filter(def => stepKey === 'products' ? def.key.startsWith('products.') : !def.key.startsWith('products.') && defaultRelevant(def.key, draft));
+  const definitions = data.defaultDefinitions.filter(def => !QUESTION_KEYS.has(def.key)).filter(def => stepKey === 'products' ? def.key.startsWith('products.') : !def.key.startsWith('products.') && defaultRelevant(def.key, draft));
   const enabledAreas = new Set(data.features.filter(feature => draft.features[feature.key]).flatMap(feature => feature.area ? [feature.area] : []));
   // Products/customers/catalogue remain available independently of optional modules.
   for (const area of ['products', 'categories', 'customers', 'discounts', 'reviews'] as const) enabledAreas.add(area);
@@ -150,6 +153,7 @@ function OwnerSetupWizard() {
         <p className="text-muted-foreground text-sm">{t('skipSafe')}</p>
       </div> : null}
       {stepKey === 'business' ? <div className="space-y-3"><Label htmlFor="setup-business">{t('businessType')}</Label><Select value={draft.businessType} onValueChange={chooseTemplate}><SelectTrigger id="setup-business" className="min-h-11"><SelectValue /></SelectTrigger><SelectContent>{data.templates.map(template => <SelectItem key={template.businessType} value={template.businessType}>{tTypes(template.businessType)}</SelectItem>)}</SelectContent></Select><SetupTemplateSummary template={data.templates.find(item => item.businessType === draft.businessType)} /><Button variant="outline" className="min-h-11" onClick={() => chooseTemplate(draft.businessType)}>{t('loadTemplate')}</Button><p className="text-muted-foreground text-sm">{t('recommendations')}</p></div> : null}
+      {stepKey === 'questions' ? <SetupQuestions draft={draft} onChange={change} /> : null}
       {stepKey === 'features' ? <div className="grid gap-3 sm:grid-cols-2">{data.features.map(feature => {
         const requiredBy = data.features.filter(item => draft.features[item.key] && item.dependsOn.includes(feature.key));
         return <div key={feature.key} className="bg-card rounded-lg border p-4"><div className="flex min-h-11 items-center gap-3"><Settings2 className="text-muted-foreground size-4 shrink-0" aria-hidden /><Checkbox id={`feature-${feature.key}`} checked={draft.features[feature.key]} disabled={!feature.canDisable || requiredBy.length > 0} onCheckedChange={checked => {
@@ -243,12 +247,18 @@ function SetupReview({ preview, draft, labelKeys, onChange }: { preview: SetupPr
   const t = useTranslations('setup');
   const locale = useLocale();
   const nav = useTranslations('nav');
-  function displayValue(value: SetupValue): string { return typeof value === 'boolean' ? t(value ? 'enabled' : 'hidden') : String(value); }
+  function displayValue(key: string, value: SetupValue): string {
+    if (typeof value === 'boolean') return t(value ? 'enabled' : 'hidden');
+    // Answers stored as codes read back in words.
+    if (key === 'setup.fulfilment') return t(`questions.fulfilment.${String(value)}`);
+    if (key === 'setup.paymentMethods') return listFormat(locale, String(value).split(',').filter(Boolean).map(method => t(`questions.payments.${method}`)));
+    return String(value);
+  }
   return <div className="space-y-4"><p>{t('preserve')}</p><div className="grid gap-4 sm:grid-cols-2">{(['enabledFeatures', 'disabledFeatures'] as const).map(group => <div key={group} className="rounded-lg border p-4"><h3 className="font-semibold">{t(group)}</h3><ul className="mt-2 space-y-1">{preview[group].map(key => <li key={key}>{t(`features.${key}.title`)}</li>)}</ul>{!preview[group].length ? <p>{t('none')}</p> : null}</div>)}</div>
     {/* Label editing lives here now, not a step of its own. Optional: leaving a
         field blank keeps the built-in translated label. */}
     <div><h3 className="font-semibold">{t('steps.names')}</h3><p className="text-muted-foreground mb-2 text-sm">{t('displayOnly')}</p><div className="grid gap-4 sm:grid-cols-2">{labelKeys.map(key => <div key={key} className="space-y-2"><Label htmlFor={`label-${key}`}>{nav(key)}</Label><Input id={`label-${key}`} maxLength={40} dir="auto" value={draft.labels[key] ?? ''} placeholder={nav(key)} onChange={event => onChange({ ...draft, labels: { ...draft.labels, [key]: event.target.value } })} /></div>)}</div></div>
-    <h3 className="font-semibold">{t('steps.operations')}</h3><dl className="grid gap-2 sm:grid-cols-2">{Object.entries(preview.settingChanges).map(([key, value]) => <div key={key}><dt className="text-muted-foreground text-sm">{t(`defaults.${key.replaceAll('.', '_')}`)}</dt><dd><bdi>{displayValue(value)}</bdi></dd></div>)}</dl>
+    <h3 className="font-semibold">{t('steps.operations')}</h3><dl className="grid gap-2 sm:grid-cols-2">{Object.entries(preview.settingChanges).map(([key, value]) => <div key={key}><dt className="text-muted-foreground text-sm">{t(`defaults.${key.replaceAll('.', '_')}`)}</dt><dd><bdi>{displayValue(key, value)}</bdi></dd></div>)}</dl>
     <h3 className="font-semibold">{t('steps.people')}</h3>{preview.permissionChanges.length ? preview.permissionChanges.map(change => <div key={change.role} className="rounded-lg border p-3"><strong>{t(`roles.${change.role}`)}</strong><p>{t('grant')}: {listFormat(locale, change.grant.map(area => t(`areas.${area}`))) || t('none')}</p><p>{t('revoke')}: {listFormat(locale, change.revoke.map(area => t(`areas.${area}`))) || t('none')}</p>{/* State the revoke as a consequence, not just a diff: whoever holds this role loses those areas on their next sign-in. */}{change.revoke.length ? <p className="text-muted-foreground mt-1 text-sm">{t('revokeConsequence', { role: t(`roles.${change.role}`), areas: listFormat(locale, change.revoke.map(area => t(`areas.${area}`))) })}</p> : null}</div>) : <p>{t('permissionsUnchanged')}</p>}
     {preview.warnings.map(warning => <p key={`${warning.code}-${warning.feature}`} role="status" className="bg-muted rounded-lg border p-3">{t(`warnings.${warning.code}`, { feature: t(`features.${warning.feature}.title`) })}</p>)}
   </div>;

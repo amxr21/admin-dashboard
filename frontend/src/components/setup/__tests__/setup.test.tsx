@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
-import { render, screen, waitFor } from '@/test/render';
+import { render, screen, waitFor, within } from '@/test/render';
 import { SetupWizard } from '../setup-wizard';
 import { SetupPrompt } from '../setup-prompt';
 import { SetupFeatureGate } from '../setup-feature-gate';
@@ -45,6 +45,7 @@ describe('business setup', () => {
     await user.click(screen.getByRole('combobox'));
     await user.click(screen.getByRole('option', { name: 'Cafe' }));
     await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.click(screen.getByRole('button', { name: 'Next' })); // past the Questions step
     expect(screen.getByRole('checkbox', { name: 'Delivery' })).not.toBeChecked();
     await user.click(screen.getByRole('checkbox', { name: 'Delivery' }));
     await user.click(screen.getByRole('button', { name: 'Next' }));
@@ -73,10 +74,32 @@ describe('business setup', () => {
     expect(enabledSummary).toHaveTextContent('Inventory');
     expect(enabledSummary).toHaveTextContent('Delivery');
     await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.click(screen.getByRole('button', { name: 'Next' })); // past the Questions step
     expect(screen.getByRole('checkbox', { name: 'Point of sale' })).not.toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Orders' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Inventory' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Delivery' })).toBeChecked();
+  });
+  it('maps plain answers onto features and defaults', async () => {
+    const user = userEvent.setup();
+    render(<SetupWizard />);
+    await user.click(await screen.findByRole('button', { name: 'Start setup' }));
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', { name: 'Home business' }));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    const inventory = screen.getByRole('group', { name: 'Do you track inventory?' });
+    await user.click(within(inventory).getByRole('button', { name: 'No' }));
+    const vat = screen.getByRole('group', { name: 'Do you need to charge VAT?' });
+    await user.click(within(vat).getByRole('button', { name: 'Yes' }));
+    expect(within(vat).getByRole('button', { name: 'Yes' })).toHaveAttribute('aria-pressed', 'true');
+    const fulfilment = screen.getByRole('group', { name: 'How do customers get their orders?' });
+    await user.click(within(fulfilment).getByRole('button', { name: 'They collect' }));
+
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByRole('checkbox', { name: 'Inventory' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Point of sale' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Delivery' })).not.toBeChecked();
   });
   it('shows retry after loading fails', async () => {
     mocks.fetch.mockRejectedValueOnce(new Error('offline'));
