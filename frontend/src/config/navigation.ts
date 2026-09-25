@@ -11,6 +11,7 @@ import {
   FolderTree,
   History,
   LayoutDashboard,
+  Megaphone,
   LogIn,
   MessagesSquare,
   Package,
@@ -45,6 +46,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** Omit for items every authenticated user may see. */
   area?: Area;
+  /** Hidden until an email or SMS provider can actually send. */
+  requiresCampaigns?: boolean;
 }
 
 export interface NavGroup {
@@ -101,6 +104,7 @@ export const NAVIGATION: readonly NavGroup[] = [
     items: [
       { href: '/admin/delivery', labelKey: 'delivery', icon: Truck, area: 'delivery' },
       { href: '/admin/customer-cases', labelKey: 'customerCases', icon: MessagesSquare, area: 'customers' },
+      { href: '/admin/campaigns', labelKey: 'campaigns', icon: Megaphone, area: 'customers', requiresCampaigns: true },
     ],
   },
   {

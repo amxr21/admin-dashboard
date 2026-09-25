@@ -31,6 +31,10 @@ export interface ReceiptLine {
   quantity: number;
   /** Unit price, 2dp string. */
   price: string;
+  /** Cashier line discount, 0-100; the printed line total has it applied. */
+  discountPercent?: number | null;
+  /** Charged no VAT — printed so the tax line can be checked by hand. */
+  vatExempt?: boolean;
 }
 
 export interface ReceiptData {
@@ -124,9 +128,13 @@ export function ThermalReceipt({
               <tr key={index} className="align-top">
                 <td className="pe-1">
                   {line.quantity}× {line.name}
+                  {line.discountPercent ? (
+                    <span className="block text-[0.85em]">{t('lineDiscount', { percent: line.discountPercent })}</span>
+                  ) : null}
+                  {line.vatExempt ? <span className="block text-[0.85em]">{t('vatExempt')}</span> : null}
                 </td>
                 <td className="text-end whitespace-nowrap tabular-nums">
-                  {(Number(line.price) * line.quantity).toFixed(2)}
+                  {((Number(line.price) * line.quantity * (100 - (line.discountPercent ?? 0))) / 100).toFixed(2)}
                 </td>
               </tr>
             ))}

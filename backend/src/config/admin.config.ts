@@ -576,6 +576,25 @@ export const ADMIN_RESOURCES: readonly ResourceConfig[] = [
       // access to this resource at all, so "staff-only" falls out of the
       // existing permission model rather than needing a new rule.
       { name: 'internalNotes', label: 'Internal notes', type: 'longtext', inList: false, placeholder: 'e.g. Prefers afternoon delivery; called about order 1042' },
+      // Marketing consent, one per channel, off by default: an address given
+      // for order updates is not agreement to promotions. Tick only with the
+      // customer's own agreement; the time and source are recorded for you.
+      {
+        name: 'emailMarketingConsent',
+        label: 'Agreed to marketing emails',
+        type: 'boolean',
+        inList: false,
+        defaultValue: false,
+        description: 'Tick only when the customer has agreed to receive promotional emails. The date is recorded automatically.',
+      },
+      {
+        name: 'smsMarketingConsent',
+        label: 'Agreed to marketing SMS',
+        type: 'boolean',
+        inList: false,
+        defaultValue: false,
+        description: 'Tick only when the customer has agreed to receive promotional text messages. The date is recorded automatically.',
+      },
       { name: 'createdAt', label: 'Created', type: 'datetime', inForm: false, readOnly: true, sortable: true },
     ],
   },

@@ -362,6 +362,12 @@ export function OrderDetail({ id }: { id: string }) {
                       {item.product ? (
                         <div className="min-w-0">
                           <p className="truncate font-medium">{item.product.name}</p>
+                          {item.variant ? (
+                            <p className="text-muted-foreground truncate text-xs">
+                              {item.variant.name}
+                              {item.variant.sku ? <span className="force-ltr ms-1">· {item.variant.sku}</span> : null}
+                            </p>
+                          ) : null}
                           {item.product.sku ? (
                             <p className="text-muted-foreground force-ltr truncate text-xs">
                               {item.product.sku}
@@ -382,6 +388,11 @@ export function OrderDetail({ id }: { id: string }) {
                     </TableCell>
                     <TableCell className="text-end tabular-nums">
                       {money(item.price)}
+                      {item.discountPercent ? (
+                        <span className="text-muted-foreground block text-xs">
+                          {t('items.lineDiscount', { percent: Number(item.discountPercent) })}
+                        </span>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-end tabular-nums">
                       {money(item.lineTotal)}

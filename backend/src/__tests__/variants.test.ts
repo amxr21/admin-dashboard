@@ -523,3 +523,88 @@ describe('stock: the log explains the number, same rule as products', () => {
     expect(otherStock).toBeNull();
   });
 });
+
+describe('variant CSV import and export', () => {
+  async function productWithSku() {
+    const productId = await makeProduct();
+    const sku = `${RUN}-P-${Math.random().toString(36).slice(2, 8)}`;
+    await prisma.product.update({ where: { id: productId }, data: { sku } });
+    return { productId, sku };
+  }
+
+  function upload(csv: string, dryRun: boolean) {
+    return request(app)
+      .post(`/api/v1/variants/import${dryRun ? '?dryRun=true' : ''}`)
+      .set(auth(ownerToken))
+      .attach('file', Buffer.from(csv), 'variants.csv');
+  }
+
+  interface ImportBody {
+    data: { totalRows: number; validRows: number; errors: { row: number; field: string | null }[]; imported?: number };
+  }
+
+  it('creates and updates variants by SKU, all in one commit', async () => {
+    const { productId, sku } = await productWithSku();
+    const existing = await prisma.productVariant.create({
+      data: { productId, name: 'Old name', sku: `${RUN}-IMP-A`, price: new Prisma.Decimal('1.00') },
+    });
+
+    const csv = [
+      'Product SKU,Variant name,Variant SKU,Barcode,Price',
+      `${sku},Small,${RUN}-IMP-A,${RUN}-IMP-BC,12.50`,
+      `${sku},Large,${RUN}-IMP-B,,14.00`,
+    ].join('\n');
+
+    const preview = await upload(csv, true);
+    expect((preview.body as ImportBody).data).toMatchObject({ totalRows: 2, validRows: 2, errors: [] });
+    expect(await prisma.productVariant.count({ where: { productId } })).toBe(1);
+
+    const applied = await upload(csv, false);
+    expect((applied.body as ImportBody).data.imported).toBe(2);
+
+    const updated = await prisma.productVariant.findUnique({ where: { id: existing.id } });
+    expect(updated).toMatchObject({ name: 'Small', barcode: `${RUN}-IMP-BC` });
+    expect(updated?.price.toFixed(2)).toBe('12.50');
+    expect(await prisma.productVariant.count({ where: { productId } })).toBe(2);
+  });
+
+  it('writes nothing when any row is invalid, and names the row and field', async () => {
+    const { productId, sku } = await productWithSku();
+
+    const csv = [
+      'Product SKU,Variant name,Variant SKU,Barcode,Price',
+      `${sku},Fine,${RUN}-IMP-OK,,3.00`,
+      `${sku},Duplicate,${RUN}-IMP-OK,,3.00`,
+      `NO-SUCH-PRODUCT,Orphan,${RUN}-IMP-ORPHAN,,3.00`,
+      `${sku},Bad price,${RUN}-IMP-BAD,,three`,
+    ].join('\n');
+
+    const res = await upload(csv, false);
+    const body = (res.body as ImportBody).data;
+
+    expect(body.imported).toBe(0);
+    expect(body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ row: 3, field: 'Variant SKU' }),
+        expect.objectContaining({ row: 4, field: 'Product SKU' }),
+        expect.objectContaining({ row: 5, field: 'Price' }),
+      ]),
+    );
+    expect(await prisma.productVariant.count({ where: { productId } })).toBe(0);
+  });
+
+  it('exports every variant with its product and codes', async () => {
+    const { productId, sku } = await productWithSku();
+    await prisma.productVariant.create({
+      data: { productId, name: 'Export me', sku: `${RUN}-EXP-1`, barcode: `${RUN}-EXP-BC`, price: new Prisma.Decimal('7.00') },
+    });
+
+    const res = await request(app).get('/api/v1/variants/export').set(auth(ownerToken));
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.text.split(/\r?\n/)[0]).toBe('Product SKU,Product name,Variant name,Variant SKU,Barcode,Price,Stock');
+    expect(res.text).toContain(`${sku},`);
+    expect(res.text).toContain(`${RUN}-EXP-1,${RUN}-EXP-BC,7.00`);
+  });
+});

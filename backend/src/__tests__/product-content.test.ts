@@ -92,8 +92,15 @@ beforeAll(async () => {
     makeUser(StaffRole.OWNER),
     makeUser(StaffRole.SUPPORT),
   ]);
+  // The key must belong to the OWNER. The two users above are created in
+  // parallel, so `userIds` is in whichever order their writes finished —
+  // `userIds[0]` was the SUPPORT user often enough to fail CI with a 403.
+  const owner = await prisma.user.findUniqueOrThrow({
+    where: { email: `${RUN}-owner@example.test` },
+    select: { id: true },
+  });
   storefrontKey = (
-    await createApiKey(userIds[0]!, 'Storefront test', 'Exercise localized catalogue', 'Test suite')
+    await createApiKey(owner.id, 'Storefront test', 'Exercise localized catalogue', 'Test suite')
   ).key;
 });
 

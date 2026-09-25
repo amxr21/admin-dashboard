@@ -126,3 +126,56 @@ for (const scenario of [
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
 }
+
+async function asHomeBusiness(page: Page) {
+  await page.route('**/api/v1/settings', (route) =>
+    route.fulfill({ json: { data: { settings: [{ key: 'setup.businessType', value: 'HOME_BUSINESS', label: 'businessType' }] } } }),
+  );
+  await page.route('**/api/v1/r/customers**', (route) =>
+    route.fulfill({
+      json: {
+        data: {
+          rows: [{ id: 'customer-1', name: 'Mariam Ali', email: 'mariam@example.test', phone: null, createdAt: '2026-09-24T09:00:00.000Z' }],
+          total: 1,
+          page: 1,
+          pageSize: 5,
+          totalPages: 1,
+        },
+      },
+    }),
+  );
+}
+
+test('a Home Business starts on the Simple view and remembers a switch to Detailed', async ({ page }) => {
+  await asHomeBusiness(page);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.goto('/en/admin', { waitUntil: 'domcontentloaded' });
+
+  const simple = page.getByRole('button', { name: 'Simple', exact: true });
+  await expect(simple).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText("Today's sales")).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Quick actions' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'New sale' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Mariam Ali' })).toBeVisible();
+  // No chart or advanced analysis on the simple view.
+  await expect(page.getByRole('button', { name: /Advanced insights/ })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  await page.getByRole('button', { name: 'Detailed', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Advanced insights/ })).toBeVisible();
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('button', { name: 'Detailed', exact: true })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('the Arabic Simple view fits a phone right-to-left', async ({ page }) => {
+  await asHomeBusiness(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/ar/admin', { waitUntil: 'domcontentloaded' });
+
+  await expect(page.getByRole('button', { name: 'مبسّطة', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('مبيعات اليوم')).toBeVisible();
+  expect(await page.locator('html').getAttribute('dir')).toBe('rtl');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});

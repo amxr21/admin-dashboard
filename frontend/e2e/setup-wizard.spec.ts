@@ -221,6 +221,11 @@ test('owner completes setup, sees retained-data warning, and can rerun it', asyn
   await page.getByRole('combobox', { name: 'Business type' }).click();
   await page.getByRole('option', { name: 'Cafe' }).click();
   await advance(page);
+  // The Questions step reads back the Cafe preset: no delivery.
+  await expect(
+    page.getByRole('group', { name: 'How do customers get their orders?' }).getByRole('button', { name: 'They collect' }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await advance(page);
   await expect(page.getByRole('checkbox', { name: 'Delivery' })).not.toBeChecked();
 
   await advance(page);
@@ -255,6 +260,13 @@ test('owner can select the lean Home business preset', async ({ page }) => {
   await expect(enabledSummary).toContainText('Inventory');
   await expect(enabledSummary).toContainText('Delivery');
   await advance(page);
+  // Answering "no inventory" also switches off the till, which depends on it.
+  await page
+    .getByRole('group', { name: 'Do you track inventory?' })
+    .getByRole('button', { name: 'No', exact: true })
+    .click();
+  await advance(page);
+  await expect(page.getByRole('checkbox', { name: 'Inventory' })).not.toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Point of sale' })).not.toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Orders' })).toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Delivery' })).toBeChecked();
@@ -274,10 +286,10 @@ for (const { locale, width, height } of [
     await expect(page.locator('html')).toHaveAttribute('lang', locale);
     await expect(page.locator('html')).toHaveAttribute('dir', locale === 'ar' ? 'rtl' : 'ltr');
 
-    for (let step = 0; step < 7; step += 1) {
+    for (let step = 0; step < 8; step += 1) {
       await expect(page.locator('main').getByRole('heading', { level: 2 }).first()).toBeVisible();
       await expectNoHorizontalOverflow(page);
-      if (step < 6) await advance(page);
+      if (step < 7) await advance(page);
     }
 
     await expect(

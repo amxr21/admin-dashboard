@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { ArrowLeft, ArrowRight, PackagePlus } from 'lucide-react';
 
@@ -9,6 +9,7 @@ import {
   ADVANCED_INSIGHTS_REGION_ID,
   AdvancedInsightsToggle,
 } from '@/components/dashboard/advanced-insights-toggle';
+import { DashboardModeToggle } from '@/components/dashboard/dashboard-mode-toggle';
 import { DayTimelineWidget } from '@/components/dashboard/day-timeline-widget';
 import { FloorBand } from '@/components/dashboard/floor-band';
 import { FulfillmentHealthWidget } from '@/components/dashboard/fulfillment-health-widget';
@@ -20,6 +21,7 @@ import { RevenueChart, type RevenuePoint } from '@/components/dashboard/revenue-
 import { ReturnsSummaryWidget } from '@/components/dashboard/returns-summary-widget';
 import { StatTile } from '@/components/dashboard/stat-tile';
 import { BranchSummary } from '@/components/dashboard/branch-summary';
+import { SimpleDashboard } from '@/components/dashboard/simple-dashboard';
 import { StatusBreakdownWidget } from '@/components/dashboard/status-breakdown-widget';
 import { TemplateSwitcher } from '@/components/dashboard/template-switcher';
 import { TopProductsWidget } from '@/components/dashboard/top-products-widget';
@@ -42,6 +44,8 @@ import { useUrlState } from '@/hooks/useUrlState';
 import { landingFor } from '@/config/areas';
 import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
 import { useEffectiveRole } from '@/components/providers/effective-role-provider';
+import { useAppSettings } from '@/components/providers/settings-provider';
+import { defaultModeFor, readMode, writeMode, type DashboardMode } from '@/lib/dashboard-mode';
 import {
   DEFAULT_DASHBOARD_COMPARISON,
   parseDashboardState,
@@ -106,7 +110,45 @@ import {
  * with a guessed value — it's simply not built yet. See the roadmap.
  */
 
+/**
+ * Simple or Detailed. The choice is remembered per browser; with none stored,
+ * a Home Business starts Simple and every other business keeps the Detailed
+ * page it already had. Both views read the EFFECTIVE role, so View As shows
+ * exactly what that role would see.
+ */
 export function DashboardOverview() {
+  const { user } = useAuth();
+  const previewRole = useEffectiveRole();
+  const role = previewRole ?? user?.role ?? null;
+  const { businessType, isLoading } = useAppSettings();
+  const [mode, setMode] = useState<DashboardMode | null>(null);
+
+  // Resolved after settings load, so the business-type default is not decided
+  // from the empty placeholder and then flipped a moment later.
+  useEffect(() => {
+    if (isLoading) return;
+    setMode((current) => current ?? readMode() ?? defaultModeFor(businessType));
+  }, [isLoading, businessType]);
+
+  if (mode === null) return <Skeleton className="h-40 w-full" />;
+
+  const controls = (
+    <DashboardModeToggle
+      value={mode}
+      onChange={(next) => {
+        setMode(next);
+        writeMode(next);
+      }}
+    />
+  );
+
+  return mode === 'simple' ? (
+    <SimpleDashboard role={role} controls={controls} />
+  ) : (
+    <DetailedDashboard controls={controls} />
+  );
+}
+function DetailedDashboard({ controls }: { controls: ReactNode }) {
   const canAccessArea = useCanAccessArea();
   const t = useTranslations('dashboard');
   const { user } = useAuth();
@@ -407,6 +449,7 @@ export function DashboardOverview() {
               isLoading={isLoading}
               lastUpdated={lastUpdated}
             />
+            {controls}
             {/* Sits with the range/comparison controls because it is the same
                 kind of thing: it changes what the page shows, not the data. */}
             {canSeeReports ? (

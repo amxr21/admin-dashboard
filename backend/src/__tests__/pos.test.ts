@@ -2027,3 +2027,155 @@ describe('exchange (O9.8)', () => {
     expect((await prisma.return.findUnique({ where: { id: foreignReturn.id } }))?.exchangeOrderId).toBeNull();
   });
 });
+
+describe('selling product variants', () => {
+  function sell(body: Record<string, unknown>) {
+    return request(app)
+      .post('/api/v1/pos/checkout')
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
+      .send(body);
+  }
+
+  async function shirtWithSizes() {
+    const product = await makeProduct({ sku: `${RUN}-SHIRT-${randomUUID().slice(0, 6)}`, price: '20.00' });
+    await prisma.branchStock.create({ data: { productId: product.id, branchId, quantity: 0 } });
+    const small = await prisma.productVariant.create({
+      data: { productId: product.id, name: 'Small', sku: `${RUN}-S-${randomUUID().slice(0, 6)}`, barcode: `${RUN}-BS-${randomUUID().slice(0, 6)}`, price: new Prisma.Decimal('18.00'), stock: 4 },
+    });
+    const large = await prisma.productVariant.create({
+      data: { productId: product.id, name: 'Large', sku: `${RUN}-L-${randomUUID().slice(0, 6)}`, price: new Prisma.Decimal('22.00'), stock: 1 },
+    });
+    await prisma.branchVariantStock.createMany({
+      data: [
+        { variantId: small.id, branchId, quantity: 4 },
+        { variantId: large.id, branchId, quantity: 1 },
+      ],
+    });
+    return { product, small, large };
+  }
+
+  it('scans a variant by its SKU or barcode, with its own price and stock', async () => {
+    const { product, small } = await shirtWithSizes();
+
+    for (const code of [small.sku, small.barcode!]) {
+      const res = await scan(code, ownerToken, branchId);
+      expect(res.status).toBe(200);
+      const body = res.body as { data: { product: { id: string; price: string; branchStock: number; variant: { id: string; name: string } | null } } };
+      expect(body.data.product).toMatchObject({ id: product.id, price: '18.00', branchStock: 4 });
+      expect(body.data.product.variant).toMatchObject({ id: small.id, name: 'Small' });
+    }
+  });
+
+  it('sells two sizes of one product as two lines, from variant stock, with snapshots', async () => {
+    const { product, small, large } = await shirtWithSizes();
+
+    const res = await sell({
+      lines: [
+        { productId: product.id, variantId: small.id, quantity: 2 },
+        { productId: product.id, variantId: large.id, quantity: 1 },
+      ],
+      method: 'card',
+    });
+
+    expect(res.status).toBe(201);
+    const orderId = (res.body as { data: { orderId: string; total: string } }).data.orderId;
+    expect((res.body as { data: { total: string } }).data.total).toBe('58.00');
+
+    const items = await prisma.orderItem.findMany({
+      where: { orderId },
+      orderBy: { variantName: 'desc' },
+      select: { variantId: true, variantName: true, variantSku: true, price: true, quantity: true },
+    });
+    expect(items).toEqual([
+      { variantId: small.id, variantName: 'Small', variantSku: small.sku, price: new Prisma.Decimal('18.00'), quantity: 2 },
+      { variantId: large.id, variantName: 'Large', variantSku: large.sku, price: new Prisma.Decimal('22.00'), quantity: 1 },
+    ]);
+
+    const stock = await prisma.branchVariantStock.findMany({
+      where: { branchId, variantId: { in: [small.id, large.id] } },
+      select: { variantId: true, quantity: true },
+    });
+    expect(Object.fromEntries(stock.map((row) => [row.variantId, row.quantity]))).toEqual({
+      [small.id]: 2,
+      [large.id]: 0,
+    });
+    // The product's own shelf count is untouched by a variant sale.
+    const productStock = await prisma.branchStock.findUnique({
+      where: { productId_branchId: { productId: product.id, branchId } },
+    });
+    expect(productStock?.quantity).toBe(0);
+  });
+
+  it('refuses more of a variant than its branch stock', async () => {
+    const { product, large } = await shirtWithSizes();
+
+    const res = await sell({ lines: [{ productId: product.id, variantId: large.id, quantity: 2 }], method: 'card' });
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error: { message: string } }).error.message).toContain('Only 1');
+  });
+
+  it('refuses a variant that belongs to a different product', async () => {
+    const first = await shirtWithSizes();
+    const second = await shirtWithSizes();
+
+    const res = await sell({
+      lines: [{ productId: first.product.id, variantId: second.small.id, quantity: 1 }],
+      method: 'card',
+    });
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error: { details: { field: string } } }).error.details.field).toBe('variantId');
+  });
+
+  it('puts variant stock back when the sale is voided', async () => {
+    const { product, small } = await shirtWithSizes();
+    const sold = await sell({ lines: [{ productId: product.id, variantId: small.id, quantity: 3 }], method: 'card' });
+    const orderId = (sold.body as { data: { orderId: string } }).data.orderId;
+
+    const res = await request(app)
+      .post(`/api/v1/pos/orders/${orderId}/void`)
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
+      .send({});
+
+    expect(res.status).toBe(200);
+    const stock = await prisma.branchVariantStock.findUnique({
+      where: { variantId_branchId: { variantId: small.id, branchId } },
+    });
+    expect(stock?.quantity).toBe(4);
+    expect((await prisma.productVariant.findUnique({ where: { id: small.id } }))?.stock).toBe(4);
+  });
+
+  it("lists a product's variants for the picker, and flags it in browse", async () => {
+    const { product, small } = await shirtWithSizes();
+
+    const list = await request(app)
+      .get(`/api/v1/pos/products/${product.id}/variants`)
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId);
+    expect(list.status).toBe(200);
+    const variants = (list.body as { data: { variants: { id: string; branchStock: number }[] } }).data.variants;
+    expect(variants.find((v) => v.id === small.id)?.branchStock).toBe(4);
+
+    const grid = await browse({ q: small.sku }, ownerToken, branchId);
+    const tile = (grid.body as { data: { products: { id: string; variantCount: number }[] } }).data.products.find(
+      (p) => p.id === product.id,
+    );
+    expect(tile?.variantCount).toBe(2);
+  });
+
+  it('refuses a variant code already used by a product', async () => {
+    const product = await makeProduct({ sku: `${RUN}-TAKEN-${randomUUID().slice(0, 6)}` });
+
+    const res = await request(app)
+      .post(`/api/v1/products/${product.id}/variants`)
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
+      .send({ name: 'Clash', sku: product.sku, price: '1.00' });
+
+    expect(res.status).toBe(409);
+    expect((res.body as { error: { details: { fields: string[] } } }).error.details.fields).toEqual(['sku']);
+  });
+});
