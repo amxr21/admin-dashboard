@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import {
   computeDiscountedTaxAmount,
   computeOrderTotals,
+  computeRefundBreakdown,
+  computeRefundTaxAmount,
   computeRefundableValue,
 } from '../services/order-math.service.js';
 
@@ -191,5 +193,38 @@ describe('computeRefundableValue', () => {
     const line = { price: D('40'), quantity: 2 };
     const order = { subtotal: null, discountAmount: null, taxAmount: null, total: D('80'), lines: [line] };
     expect(computeRefundableValue(order, [line]).toFixed(2)).toBe('80.00');
+  });
+});
+describe('computeRefundTaxAmount', () => {
+  const taxable = { price: D('100'), quantity: 1, isTaxable: true };
+  const exempt = { price: D('50'), quantity: 1, isTaxable: false };
+  const mixed = {
+    subtotal: D('150'),
+    discountAmount: D('30'),
+    taxAmount: D('4'),
+    total: D('124'),
+    lines: [taxable, exempt],
+  };
+
+  it('records all the VAT when the full refundable value is paid back', () => {
+    const breakdown = computeRefundBreakdown(mixed, [taxable]);
+    expect(computeRefundTaxAmount(breakdown, D('84'))?.toFixed(2)).toBe('4.00');
+  });
+
+  it('scales the VAT down with a restocking fee', () => {
+    // 10% fee: 75.60 of 84.00 paid back carries 90% of the 4.00 VAT.
+    const breakdown = computeRefundBreakdown(mixed, [taxable]);
+    expect(computeRefundTaxAmount(breakdown, D('75.60'))?.toFixed(2)).toBe('3.60');
+  });
+
+  it('records zero VAT for a line charged none', () => {
+    const breakdown = computeRefundBreakdown(mixed, [exempt]);
+    expect(computeRefundTaxAmount(breakdown, D('40'))?.toFixed(2)).toBe('0.00');
+  });
+
+  it('records nothing for an order with no tax snapshot', () => {
+    const line = { price: D('40'), quantity: 1 };
+    const order = { subtotal: null, discountAmount: null, taxAmount: null, total: D('40'), lines: [line] };
+    expect(computeRefundTaxAmount(computeRefundBreakdown(order, [line]), D('40'))).toBeNull();
   });
 });

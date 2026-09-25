@@ -652,6 +652,29 @@
       "retry": "Try again"
     },
     "title": "Dashboard",
+    "recentCustomers": {
+      "title": "Recent customers",
+      "viewAll": "All customers",
+      "empty": "No customers yet.",
+      "unnamed": "Unnamed customer"
+    },
+    "todaySales": "Today's sales",
+    "todayOrders": "Orders today",
+    "simple": {
+      "title": "Today",
+      "todayOnly": "Today so far",
+      "moreInReports": "Trends, comparisons and charts are in the Detailed view and in Reports.",
+      "firstSteps": {
+        "title": "Welcome — let's get your first order in",
+        "body": "Add your products, choose how customers get their orders, and run a test order. The launch checklist walks you through each step.",
+        "action": "Open the launch checklist"
+      }
+    },
+    "mode": {
+      "label": "Dashboard view",
+      "simple": "Simple",
+      "detailed": "Detailed"
+    },
     "subtitle": "A snapshot of revenue, orders and stock for the selected period.",
     "revenue": "Revenue",
     "revenueOverTime": "Revenue over time",
@@ -762,12 +785,19 @@
     "quickActions": {
       "title": "Quick actions",
       "addProduct": "Add product",
+      "newSale": "New sale",
+      "orders": "Orders",
+      "addCustomer": "Add customer",
+      "newDiscount": "New discount",
+      "stock": "Stock",
       "lowStock": "View low stock",
       "auditTrail": "Audit trail",
       "orderHistory": "Order history"
     },
     "definitions": {
       "totalRevenue": "Total money taken from orders placed in this period. Canceled orders are excluded — they never took money. Returned orders are NOT excluded: the money moved and then came back, which is a different fact from a sale that never happened. Each order contributes the total recorded when it was placed, so editing a price today never rewrites past revenue.",
+      "todaySales": "Money taken from orders placed today at this branch. Canceled orders are excluded — they never took money.",
+      "todayOrders": "Every order placed today at this branch, including canceled ones.",
       "grossProfit": "Revenue minus cost of goods sold, over the order lines that have a cost recorded. Lines with no recorded cost are left out entirely rather than counted as pure profit, so this is a partial figure — the note underneath says how much of the period it covers. Cost is the one captured at the time of sale, not the product's cost today.",
       "grossMarginPercent": "Gross profit as a share of revenue, measured only over the order lines that have a recorded cost — including revenue from uncosted lines would inflate it. Shown as a dash when no line in this period has a cost recorded, because that is unknown, not zero.",
       "totalOrders": "Every order placed in this period, INCLUDING canceled ones. An order that was placed and then canceled did happen; it simply realized no money, which is why it still counts here but not in Revenue.",
@@ -961,6 +991,7 @@
   },
   "resource": {
     "yes": "Yes",
+    "variantsLabel": "Variants",
     "no": "No",
     "empty": "No {label} yet.",
     "total": "{count, plural, =0 {No records} one {# record} other {# records}}",
@@ -985,7 +1016,9 @@
       "deleteRow": "Delete {label}",
       "deleteSelected": "Delete selected",
       "clearFilters": "Clear filters",
-      "import": "Import"
+      "import": "Import",
+      "importVariants": "Import variants",
+      "exportVariants": "Export variants"
     },
     "notice": {
       "created": "Created.",
@@ -1192,6 +1225,7 @@
     "enableGroup": "Use {group}",
     "groupDisabled": "Not used for this record. Switch it on to fill these in.",
     "barcodeUnclassified": "Saved before barcode types were recorded. Choose the type that matches this code so it can be checked.",
+    "isTaxableRateHint": "The store VAT rate ({rate}%) is added at checkout. Turn this off only for a product that is VAT-exempt or zero-rated under your tax rules.",
     "variantOptOutWarning": "Any variants already saved keep their stock and sales history, but this hides the builder that reaches them. Switch this back on to manage them again."
   },
   "datePicker": {
@@ -1261,7 +1295,9 @@
       "subtotal": "Subtotal",
       "tax": "Tax",
       "total": "Order total",
-      "productRemoved": "Product no longer available"
+      "productRemoved": "Product no longer available",
+      "lineDiscount": "{percent}% off",
+      "vatExempt": "No VAT"
     },
     "customer": {
       "title": "Customer",
@@ -1555,6 +1591,8 @@
     "colourHint": "Common colour names are suggested. Type any other colour if none fit.",
     "sku": "Unique SKU",
     "skuHint": "Optional when adding; leave blank to generate one. Entered codes must be unique.",
+    "barcode": "Barcode (optional)",
+    "barcodeHint": "The code printed on this option's label. Scanning it at the till sells this option. Must be unique.",
     "price": "Price",
     "stock": "{count, plural, one {# in stock} other {# in stock}}",
     "add": "Add",
@@ -2549,6 +2587,21 @@
         "percentOfTotal": "% of total"
       }
     },
+    "vatSummary": {
+      "title": "VAT summary",
+      "description": "VAT charged on sales less VAT refunded, by month.",
+      "subtitle": "Net VAT for the period, from the tax recorded at checkout and at each refund approval.",
+      "empty": "No data in this period.",
+      "notRecordedNote": "Some orders or refunds predate VAT snapshots, so their VAT is not included. They are counted in the last two columns rather than estimated.",
+      "columns": {
+        "month": "Month",
+        "vatCharged": "VAT charged",
+        "vatRefunded": "VAT refunded",
+        "netVat": "Net VAT",
+        "ordersNotRecorded": "Orders without a tax record",
+        "refundsNotRecorded": "Refunds without a VAT record"
+      }
+    },
     "refundRateTrend": {
       "title": "Refund rate trend",
       "description": "Refunded value as a share of revenue, by month.",
@@ -3494,6 +3547,13 @@
     "change": "Change {amount}",
     "overStock": "Only {available} in stock here",
     "scanOutOfStock": "{name} is out of stock at this branch",
+    "variants": {
+      "title": "Choose an option for {name}",
+      "description": "Each option has its own price and stock at this branch.",
+      "empty": "This product has no options to sell.",
+      "soldOut": "Sold out",
+      "inStock": "{count} in stock"
+    },
     "tenderedPlaceholder": "Cash received",
     "tenderedMissing": "Enter the cash received",
     "tenderedShort": "That is {short} less than the total",
@@ -3505,6 +3565,8 @@
     "remove": "Remove {name}",
     "receipt": {
       "taxId": "TRN {id}",
+      "lineDiscount": "{percent}% off",
+      "vatExempt": "No VAT",
       "servedBy": "Served by {name}",
       "subtotal": "Subtotal",
       "tax": "Tax",
@@ -3526,6 +3588,7 @@
       "empty": "No products yet. Add one from Products.",
       "noMatches": "No products match that search.",
       "outOfStock": "Out of stock here",
+      "options": "{count, plural, one {# option} other {# options}}",
       "hideSoldOut": "Hide sold out",
       "allSoldOut": "Everything here is sold out. Turn off \"Hide sold out\" to see it."
     },

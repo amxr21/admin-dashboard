@@ -190,7 +190,7 @@ function resolveRange(params: RangeParams): { start: Date; end: Date } {
   return { start, end };
 }
 
-type TimestampColumn = 'placed_at' | 'o.placed_at' | 'created_at';
+type TimestampColumn = 'placed_at' | 'o.placed_at' | 'created_at' | 'r.approved_at';
 
 function offsetText(minutes: number): string {
   const sign = minutes < 0 ? '-' : '+';
@@ -1702,6 +1702,94 @@ export async function getExplorerRows(
 }
 
 /**
+ * VAT summary — VAT charged on sales and VAT paid back on refunds, by month.
+ *
+ * Read from snapshots only: `Order.taxAmount` (set once at checkout) and
+ * `Return.refundTaxAmount` (set once at approval). Sales bucket by the order's
+ * month; refunds by the month they were APPROVED, which is when the money went
+ * back. Rows without a snapshot are counted, never guessed: an order or refund
+ * from before these columns existed shows up in the "not recorded" counts so
+ * the totals are never quietly incomplete. Goodwill refunds are not VAT credit
+ * notes and are not included.
+ */
+export async function getVatSummary(params: RangeParams) {
+  const { start, end } = resolveRange(params);
+  const placedAt = zonedTimestampSql('o.placed_at', params, start, end);
+  const approvedAt = zonedTimestampSql('r.approved_at', params, start, end);
+
+  const [chargedRows, refundedRows] = await Promise.all([
+    prisma.$queryRaw<{ bucket: string; charged: Prisma.Decimal | null; unrecorded: Prisma.Decimal }[]>`
+      SELECT DATE_FORMAT(${placedAt}, '%Y-%m-01') AS bucket,
+             SUM(o.tax_amount) AS charged,
+             SUM(CASE WHEN o.tax_amount IS NULL THEN 1 ELSE 0 END) AS unrecorded
+      FROM orders o
+      WHERE o.placed_at >= ${start} AND o.placed_at < ${end}
+        AND o.status NOT IN (${Prisma.join(EXCLUDED_FROM_REVENUE)})${branchSql(params)}
+      GROUP BY bucket
+    `,
+    prisma.$queryRaw<{ bucket: string; refunded: Prisma.Decimal | null; unrecorded: Prisma.Decimal }[]>`
+      SELECT DATE_FORMAT(${approvedAt}, '%Y-%m-01') AS bucket,
+             SUM(r.refund_tax_amount) AS refunded,
+             SUM(CASE WHEN r.refund_tax_amount IS NULL THEN 1 ELSE 0 END) AS unrecorded
+      FROM returns r
+      JOIN orders o ON o.id = r.order_id
+      WHERE r.approved_at >= ${start} AND r.approved_at < ${end}
+        AND r.refund_amount IS NOT NULL${branchSql(params)}
+      GROUP BY bucket
+    `,
+  ]);
+
+  const zero = new Prisma.Decimal(0);
+  const months = new Map<string, { charged: Prisma.Decimal; refunded: Prisma.Decimal; ordersNotRecorded: number; refundsNotRecorded: number }>();
+  const month = (bucket: string) => {
+    const existing = months.get(bucket);
+    if (existing) return existing;
+    const created = { charged: zero, refunded: zero, ordersNotRecorded: 0, refundsNotRecorded: 0 };
+    months.set(bucket, created);
+    return created;
+  };
+
+  for (const row of chargedRows) {
+    const entry = month(row.bucket);
+    entry.charged = new Prisma.Decimal(row.charged ?? 0);
+    entry.ordersNotRecorded = Number(row.unrecorded);
+  }
+  for (const row of refundedRows) {
+    const entry = month(row.bucket);
+    entry.refunded = new Prisma.Decimal(row.refunded ?? 0);
+    entry.refundsNotRecorded = Number(row.unrecorded);
+  }
+
+  const points = [...months.entries()]
+    .map(([date, entry]) => ({
+      date,
+      vatCharged: entry.charged.toFixed(2),
+      vatRefunded: entry.refunded.toFixed(2),
+      netVat: entry.charged.minus(entry.refunded).toFixed(2),
+      ordersNotRecorded: entry.ordersNotRecorded,
+      refundsNotRecorded: entry.refundsNotRecorded,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const totals = points.reduce(
+    (sum, point) => ({
+      vatCharged: sum.vatCharged.plus(point.vatCharged),
+      vatRefunded: sum.vatRefunded.plus(point.vatRefunded),
+    }),
+    { vatCharged: zero, vatRefunded: zero },
+  );
+
+  return {
+    range: { from: params.from, to: params.to },
+    totals: {
+      vatCharged: totals.vatCharged.toFixed(2),
+      vatRefunded: totals.vatRefunded.toFixed(2),
+      netVat: totals.vatCharged.minus(totals.vatRefunded).toFixed(2),
+    },
+    points,
+  };
+}
+/**
  * Refund-rate trend (C3.5) — refunded value as a share of revenue, bucketed
  * by month. Distinct from `getReturnsSummary`'s single-window snapshot: this
  * is the shape needed to answer "is our refund rate getting better or
@@ -2899,7 +2987,20 @@ export const REPORT_REGISTRY: Record<string, ReportRegistryEntry<never>> = {
     ],
     isRangeScoped: true,
   }),
-  'refund-rate-trend': entry({
+  'vat-summary': entry({
+    label: 'VAT summary',
+    fetch: getVatSummary,
+    rows: (r) => r.points,
+    csvColumns: [
+      { header: 'Month', value: (r) => r.date },
+      { header: 'VAT charged', value: (r) => r.vatCharged },
+      { header: 'VAT refunded', value: (r) => r.vatRefunded },
+      { header: 'Net VAT', value: (r) => r.netVat },
+      { header: 'Orders without a tax record', value: (r) => r.ordersNotRecorded },
+      { header: 'Refunds without a VAT record', value: (r) => r.refundsNotRecorded },
+    ],
+    isRangeScoped: true,
+  }),  'refund-rate-trend': entry({
     label: 'Refund rate trend',
     fetch: getRefundRateTrend,
     rows: (r) => r.points,

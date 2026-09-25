@@ -60,6 +60,8 @@ interface SettingsContextValue {
   enabledFeatures: EnabledFeatures;
   setupCompletedAt: string;
   setupSkippedAt: string;
+  /** The setup wizard's business type, e.g. HOME_BUSINESS; empty until chosen. */
+  businessType: string;
   productDefaults: Partial<Record<'hasVariants' | 'hasColors' | 'hasBarcode', boolean>>;
   isLoading: boolean;
   tablePageSize: number;
@@ -101,6 +103,8 @@ interface SettingsContextValue {
   storeSupportEmail: string;
   storeSupportPhone: string;
   storeTaxId: string;
+  /** The live `store.taxRate` percent, or null when this user cannot read it. */
+  storeTaxRate: number | null;
   /** The live `store.currency` — an ISO 4217 code (AED/SAR/USD/EUR/GBP).
    *  Formatting only, per the setting's own description: it changes how a
    *  price DISPLAYS, never what it converts to or is stored as. Consumed by
@@ -132,12 +136,14 @@ const BRAND_DEFAULTS = {
   storeSupportEmail: '',
   storeSupportPhone: '',
   storeTaxId: '',
+  storeTaxRate: null,
 };
 
 const DEFAULT_VALUE: SettingsContextValue = {
   enabledFeatures: {},
   setupCompletedAt: '',
   setupSkippedAt: '',
+  businessType: '',
   productDefaults: {},
   isLoading: true,
   tablePageSize: 20,
@@ -293,6 +299,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     enabledFeatures: Object.fromEntries(SETUP_FEATURE_KEYS.map(key => [key, byKey[`features.${key}.enabled`] !== false])),
     setupCompletedAt: String(byKey['setup.completedAt'] ?? ''),
     setupSkippedAt: String(byKey['setup.skippedAt'] ?? ''),
+    businessType: String(byKey['setup.businessType'] ?? ''),
     productDefaults: byKey['setup.completedAt'] ? {
       hasVariants: byKey['products.defaultHasVariants'] === true,
       hasColors: byKey['products.defaultHasColors'] === true,
@@ -338,6 +345,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     storeSupportEmail: brand?.storeSupportEmail || String(effective['store.supportEmail'] ?? ''),
     storeSupportPhone: brand?.storeSupportPhone || String(effective['store.supportPhone'] ?? ''),
     storeTaxId: brand?.storeTaxId || String(effective['store.taxId'] ?? ''),
+    storeTaxRate:
+      effective['store.taxRate'] === undefined || !Number.isFinite(Number(effective['store.taxRate']))
+        ? null
+        : Number(effective['store.taxRate']),
     storeCurrency,
     navLabels,
     refresh: load,

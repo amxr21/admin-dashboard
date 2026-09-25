@@ -171,6 +171,7 @@ export function ProductVariantsPanel({
                       <p className="truncate font-medium">{variant.name}</p>
                       <p className="text-muted-foreground force-ltr truncate text-xs">
                         {variant.sku}
+                        {variant.barcode ? ` · ${variant.barcode}` : ''}
                       </p>
                     </div>
                     <p className="tabular-nums">{variant.price}</p>
@@ -298,6 +299,7 @@ function VariantForm({
 
   const [name, setName] = useState(variant?.name ?? '');
   const [sku, setSku] = useState(variant?.sku ?? '');
+  const [barcode, setBarcode] = useState(variant?.barcode ?? '');
   const [price, setPrice] = useState(variant?.price ?? '');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -315,6 +317,9 @@ function VariantForm({
       const input = {
         name: name.trim(),
         ...(sku.trim() ? { sku: sku.trim() } : {}),
+        // On an edit an emptied field clears the barcode; on a create it is
+        // simply not sent.
+        ...(barcode.trim() ? { barcode: barcode.trim() } : variant?.barcode ? { barcode: null } : {}),
         price: price.trim(),
       };
       const saved = variant ? await updateVariant(variant.id, input) : await createVariant(productId, input);
@@ -322,6 +327,7 @@ function VariantForm({
       if (!variant) {
         setName('');
         setSku('');
+        setBarcode('');
         setPrice('');
       }
     } catch (caught) {
@@ -373,6 +379,21 @@ function VariantForm({
             {t('skuHint')}
           </p>
         </div>
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor="variant-barcode">{t('barcode')}</Label>
+        <Input
+          id="variant-barcode"
+          className="force-ltr"
+          value={barcode}
+          onChange={(event) => setBarcode(event.target.value)}
+          maxLength={64}
+          aria-describedby="variant-barcode-hint"
+        />
+        <p id="variant-barcode-hint" className="text-muted-foreground text-xs">
+          {t('barcodeHint')}
+        </p>
       </div>
 
       <div className="space-y-1">

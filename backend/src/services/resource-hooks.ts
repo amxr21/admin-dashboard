@@ -271,6 +271,24 @@ export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>>
        * because declaring "this is an EAN-13" is exactly the moment to find
        * out the saved digits are not one.
        */
+      // A product code must not equal any variant's SKU or barcode: a scan at
+      // the till has to resolve to exactly one sellable thing.
+      for (const field of ['sku', 'barcode'] as const) {
+        const code = data[field];
+        if (typeof code !== 'string' || code === '') continue;
+
+        const clash = await prisma.productVariant.findFirst({
+          where: { OR: [{ sku: code }, { barcode: code }] },
+          select: { id: true },
+        });
+
+        if (clash) {
+          throw AppError.conflict(`The code ${code} is already used by a product variant`, {
+            fields: [field],
+          });
+        }
+      }
+
       const touchesBarcode =
         Object.prototype.hasOwnProperty.call(data, 'barcode') ||
         Object.prototype.hasOwnProperty.call(data, 'barcodeType');
