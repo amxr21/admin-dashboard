@@ -1,8 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Runs against a live preview URL in CI (Vercel FE + Render BE), never
- * against a locally-built app — see .github/workflows/e2e.yml.
+ * In CI this runs against a `next start` of the built app on the runner, with
+ * no backend: specs mock their API calls with page.route(). See
+ * .github/workflows/e2e.yml. Locally, run it with CI=1 too (1 worker): 8
+ * parallel workers starve the server into spurious React #418 errors.
  *
  * project-test-gen writes the specs under e2e/; this only configures how
  * they run.
