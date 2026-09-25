@@ -66,6 +66,11 @@ const DOMAINS: ReportDomain[] = [
         descriptionKey: 'paymentMethodBreakdown.description',
       },
       {
+        href: '/admin/reports/vat-summary',
+        titleKey: 'vatSummary.title',
+        descriptionKey: 'vatSummary.description',
+      },
+      {
         href: '/admin/reports/product-margin',
         titleKey: 'productMargin.title',
         descriptionKey: 'productMargin.description',

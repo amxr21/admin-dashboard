@@ -9,9 +9,8 @@ import type { Request } from 'express';
 
 /**
  * Product variants — a flat row ("Red / Large") with its own price, stock
- * and SKU, not an attribute matrix. Inventory-only in this pass: no relation
- * to `OrderItem` — this codebase has no real checkout flow to wire a variant
- * selection into (see the `Discount` model's own note on the same gap).
+ * and SKU, not an attribute matrix. Sold at the POS: an `OrderItem` records
+ * the variant it sold, with name and SKU snapshots (see `pos.service.ts`).
  *
  * Stock follows the EXACT same append-only movement-log pattern as
  * `Product.stock` (see `inventory.service.ts`) rather than a plain editable
@@ -28,6 +27,7 @@ function serializeVariant(variant: {
   id: string;
   name: string;
   sku: string;
+  barcode: string | null;
   price: Prisma.Decimal;
   stock: number;
   productId: string;
@@ -56,6 +56,7 @@ export async function listVariants(productId: string, branchId?: string) {
       id: true,
       name: true,
       sku: true,
+      barcode: true,
       price: true,
       stock: true,
       productId: true,
@@ -81,7 +82,45 @@ export async function listVariants(productId: string, branchId?: string) {
 export interface VariantInput {
   name: string;
   sku?: string;
+  /** NULL clears it. */
+  barcode?: string | null;
   price: string;
+}
+
+/**
+ * A variant code must not already name something else a till can scan: another
+ * variant's SKU or barcode is caught by the unique indexes, but a PRODUCT's
+ * SKU or barcode, or another variant's code in the OTHER column, is not — and
+ * a scan that could resolve to two things sells the wrong one.
+ */
+async function assertVariantCodesFree(
+  codes: { sku?: string | undefined; barcode?: string | null | undefined },
+  excludeVariantId?: string,
+) {
+  for (const field of ['sku', 'barcode'] as const) {
+    const code = codes[field];
+    if (!code) continue;
+
+    const [product, variant] = await Promise.all([
+      prisma.product.findFirst({
+        where: { OR: [{ sku: code }, { barcode: code }] },
+        select: { id: true },
+      }),
+      prisma.productVariant.findFirst({
+        where: {
+          OR: [{ sku: code }, { barcode: code }],
+          ...(excludeVariantId ? { id: { not: excludeVariantId } } : {}),
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    if (product || variant) {
+      throw AppError.conflict(`The code ${code} is already used by another product or variant`, {
+        fields: [field],
+      });
+    }
+  }
 }
 
 export async function createVariant(productId: string, input: VariantInput, req: Request) {
@@ -90,6 +129,8 @@ export async function createVariant(productId: string, input: VariantInput, req:
     select: { id: true },
   });
   if (!product) throw AppError.notFound('Product not found');
+
+  await assertVariantCodesFree({ sku: input.sku, barcode: input.barcode });
 
   // Codes supplied by an admin are preserved. When omitted, generate a
   // stable code once at creation so API clients from before this invariant do
@@ -103,6 +144,7 @@ export async function createVariant(productId: string, input: VariantInput, req:
           productId,
           name: input.name,
           sku: input.sku ?? `VAR-${randomUUID()}`,
+          barcode: input.barcode ?? null,
           price: new Prisma.Decimal(input.price),
         },
       });
@@ -136,9 +178,12 @@ export async function updateVariant(
   const before = await prisma.productVariant.findUnique({ where: { id } });
   if (!before) throw AppError.notFound('Variant not found');
 
+  await assertVariantCodesFree({ sku: input.sku, barcode: input.barcode }, id);
+
   const data: Prisma.ProductVariantUpdateInput = {};
   if (input.name !== undefined) data.name = input.name;
   if (input.sku !== undefined) data.sku = input.sku;
+  if (input.barcode !== undefined) data.barcode = input.barcode;
   if (input.price !== undefined) data.price = new Prisma.Decimal(input.price);
 
   try {
@@ -188,7 +233,13 @@ function translateVariantWriteError(error: unknown): unknown {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
     return error;
   }
-  return AppError.conflict('Another variant already uses this SKU', { fields: ['sku'] });
+  const target: unknown = error.meta?.target;
+  const targets = Array.isArray(target) ? target.map(String) : typeof target === 'string' ? [target] : [];
+  const field = targets.some((name) => name.includes('barcode')) ? 'barcode' : 'sku';
+  return AppError.conflict(
+    field === 'barcode' ? 'Another variant already uses this barcode' : 'Another variant already uses this SKU',
+    { fields: [field] },
+  );
 }
 
 /* ── Stock, identical shape to inventory.service.ts, scoped to a variant ── */
@@ -416,4 +467,43 @@ export async function reconcileVariant(variantId: string, branchId?: string) {
     fromMovements,
     agrees: (branchId ? (variant.branchStock[0]?.quantity ?? 0) : variant.stock) === fromMovements,
   };
+}
+
+/**
+ * Put sold variant units back — the void and return-restock counterpart of the
+ * POS sale's claim. Movement first, then the branch row and the running total,
+ * inside the caller's transaction.
+ */
+export async function restoreVariantStock(
+  tx: Prisma.TransactionClient,
+  input: {
+    variantId: string;
+    branchId: string;
+    quantity: number;
+    reason: StockMovementReason;
+    note: string;
+    actorId: string | null;
+  },
+) {
+  await tx.stockMovement.create({
+    data: {
+      variantId: input.variantId,
+      branchId: input.branchId,
+      delta: input.quantity,
+      reason: input.reason,
+      note: input.note,
+      actorId: input.actorId,
+    },
+  });
+
+  await tx.branchVariantStock.upsert({
+    where: { variantId_branchId: { variantId: input.variantId, branchId: input.branchId } },
+    create: { variantId: input.variantId, branchId: input.branchId, quantity: input.quantity },
+    update: { quantity: { increment: input.quantity } },
+  });
+
+  await tx.productVariant.update({
+    where: { id: input.variantId },
+    data: { stock: { increment: input.quantity } },
+  });
 }

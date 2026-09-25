@@ -14,6 +14,7 @@ import {
   browseProducts,
   checkout,
   discardParkedSale,
+  listPosVariants,
   listParkedSales,
   parkSale,
   resumeParkedSale,
@@ -118,6 +119,14 @@ posRouter.get('/pos/browse', ...guard, async (req, res) => {
  * so the two have different natural refetch rates and belong in different
  * requests.
  */
+/** The variant picker behind a browse tile: each variant's own price and
+ *  stock at this till's branch. */
+posRouter.get('/pos/products/:productId/variants', ...guard, async (req, res) => {
+  const variants = await listPosVariants(String(req.params.productId), req.branchId ?? null);
+
+  res.status(200).json({ data: { variants } });
+});
+
 posRouter.get('/pos/browse/categories', ...guard, async (req, res) => {
   const categories = await browseCategories(req.branchId ?? null);
 
@@ -154,6 +163,7 @@ const checkoutSchema = z.object({
     .array(
       z.object({
         productId: z.string().trim().min(1),
+        variantId: z.string().trim().min(1).optional(),
         quantity: z.number().int().positive(),
         // Range checked again in the service (0-100) — Zod only proves it
         // is A number here; the service is where the cap comparison and
@@ -331,6 +341,7 @@ posRouter.post('/pos/orders/:orderId/void', ...guard, async (req, res) => {
 
 const parkLineSchema = z.object({
   productId: z.string().trim().min(1),
+  variantId: z.string().trim().min(1).optional(),
   quantity: z.number().int().positive(),
   discountPercent: z.number().min(0).max(100).optional(),
 });

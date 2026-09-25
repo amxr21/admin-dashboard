@@ -324,6 +324,9 @@ export async function getOrder(id: string, branchId?: string) {
           isTaxable: true,
           productId: true,
           product: { select: { id: true, name: true, sku: true, imageUrl: true } },
+          variantId: true,
+          variantName: true,
+          variantSku: true,
         },
       },
       notes: {
@@ -431,6 +434,12 @@ export async function getOrder(id: string, branchId?: string) {
       // snapshot but NOT a name snapshot, so there is nothing to fall back to
       // and the UI has to say so rather than render a blank row.
       product: item.product,
+      // Snapshots from the sale, so a renamed or deleted variant still prints
+      // as what was sold. Null on a plain product line.
+      variant:
+        item.variantName !== null
+          ? { id: item.variantId, name: item.variantName, sku: item.variantSku }
+          : null,
     })),
     statusHistory: order.statusHistory.map((entry) => ({
       ...entry,

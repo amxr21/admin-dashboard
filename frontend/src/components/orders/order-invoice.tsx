@@ -179,6 +179,12 @@ export function OrderInvoice({ id }: { id: string }) {
                       {tOrders('items.productRemoved')}
                     </span>
                   )}
+                  {item.variant ? (
+                    <span className="text-muted-foreground block text-xs">
+                      {item.variant.name}
+                      {item.variant.sku ? <span className="force-ltr ms-1">· {item.variant.sku}</span> : null}
+                    </span>
+                  ) : null}
                   {item.isTaxable === false ? (
                     <span className="text-muted-foreground block text-xs">{tOrders('items.vatExempt')}</span>
                   ) : null}
