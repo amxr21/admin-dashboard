@@ -382,7 +382,7 @@ function ResultGroup({
               // Primary-tinted, not `--accent` (amber) — matches the sidebar's
               // own active-link treatment, so "highlighted here" and
               // "selected there" read as the same concept.
-              index === activeIndex ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted',
+              index === activeIndex ? 'bg-primary/10 text-primary-strong' : 'text-foreground hover:bg-muted',
             )}
           >
             {result.kind === 'page' ? (

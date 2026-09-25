@@ -26,6 +26,7 @@ import { NavPendingIndicator } from '@/components/shell/nav-pending-indicator';
 import { getDirection } from '@/i18n/routing';
 import { cn } from '@/lib/utils';
 import { isSetupPathEnabled } from '@/lib/setup-visibility';
+import { useCampaignsAvailable } from '@/hooks/useCampaignsAvailable';
 
 /**
  * Which nav item each live count belongs to, by href. A map rather than a
@@ -69,6 +70,7 @@ export function SidebarNav({ role, canAccessArea: canAccess = canAccessArea, onN
   // hydration on an Arabic page — a real mismatch, not just a flash).
   const isRtl = getDirection(useLocale()) === 'rtl';
   const navCounts = useNavCounts(role);
+  const campaignsAvailable = useCampaignsAvailable(role, canAccess);
 
   /**
    * Schema-driven entries, merged with the hand-written ones.
@@ -153,7 +155,10 @@ export function SidebarNav({ role, canAccessArea: canAccess = canAccessArea, onN
         // Hide whole groups the role cannot reach, rather than leaving an
         // empty heading behind.
         const visible = group.items.filter(
-          (item) => (!item.area || canAccess(role, item.area)) && isSetupPathEnabled(item.href, enabledFeatures),
+          (item) =>
+            (!item.area || canAccess(role, item.area)) &&
+            isSetupPathEnabled(item.href, enabledFeatures) &&
+            (!item.requiresCampaigns || campaignsAvailable),
         );
         if (visible.length === 0) return null;
 
@@ -304,7 +309,8 @@ function NavLinkItem({ item, collapsed, isRtl, isActive, onNavigate, count }: Na
               'relative flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors',
               collapsed && 'justify-center px-2',
               isActive
-                ? 'bg-primary/10 text-primary font-medium'
+                // Brand blue as text on its own tint needs the stronger shade for AA.
+                ? 'bg-primary/10 text-primary-strong font-medium'
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground',
             )}
           >
@@ -331,7 +337,7 @@ function NavLinkItem({ item, collapsed, isRtl, isActive, onNavigate, count }: Na
               ) : (
                 <span
                   aria-hidden
-                  className="bg-primary/10 text-primary flex min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-xs font-medium tabular-nums"
+                  className="bg-primary/10 text-primary-strong flex min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-xs font-medium tabular-nums"
                 >
                   {formattedCount}
                 </span>

@@ -261,3 +261,45 @@ export async function sendEmailToRecipients(
     return false;
   }
 }
+
+/**
+ * One marketing email to one customer — the campaign sender's transport.
+ *
+ * Unlike the alert senders this THROWS, with the SMTP reply code attached,
+ * because the campaign dispatcher needs to tell a temporary refusal (4xx:
+ * retry later) from a permanent one (5xx: stop, and suppress on a hard
+ * bounce). Carries RFC 8058 one-click unsubscribe headers so mail clients can
+ * offer their own Unsubscribe button.
+ */
+export async function sendMarketingEmail(message: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  unsubscribeUrl: string;
+}): Promise<{ messageId: string | null }> {
+  const configuration = await resolveEmailDeliveryConfiguration();
+  const client = configuration.configured ? getTransporter() : null;
+
+  if (!client || !configuration.fromAddress) {
+    throw Object.assign(new Error(`Email is not configured (${configuration.readinessCode})`), {
+      responseCode: 0,
+      notConfigured: true,
+    });
+  }
+
+  const info = (await client.sendMail({
+    from: buildFrom(configuration.fromAddress, configuration.senderName),
+    to: message.to,
+    subject: message.subject,
+    html: message.html,
+    text: message.text,
+    ...(configuration.replyToAddress ? { replyTo: configuration.replyToAddress } : {}),
+    headers: {
+      'List-Unsubscribe': `<${message.unsubscribeUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
+  })) as { messageId?: string };
+
+  return { messageId: info.messageId ?? null };
+}

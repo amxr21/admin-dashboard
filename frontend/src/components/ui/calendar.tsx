@@ -64,12 +64,12 @@ export function Calendar({ className, classNames, showOutsideDays = true, ...pro
         button_previous: cn(
           'inline-flex size-7 items-center justify-center rounded-md',
           // Same convention as select.tsx — primary-tinted, not amber.
-          'text-muted-foreground hover:text-primary hover:bg-primary/10',
+          'text-muted-foreground hover:text-primary-strong hover:bg-primary/10',
           'transition-colors duration-200 disabled:opacity-30',
         ),
         button_next: cn(
           'inline-flex size-7 items-center justify-center rounded-md',
-          'text-muted-foreground hover:text-primary hover:bg-primary/10',
+          'text-muted-foreground hover:text-primary-strong hover:bg-primary/10',
           'transition-colors duration-200 disabled:opacity-30',
         ),
         month_grid: 'w-full border-collapse',

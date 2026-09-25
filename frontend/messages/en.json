@@ -3,6 +3,47 @@
     "title": "Business setup",
     "scope": "Applies to all businesses and branches in this installation.",
     "intro": "Choose recommended features for your business, then adjust them to suit your work. Setup is optional.",
+    "questions": {
+      "intro": "A few plain questions. Each answer fills in the next steps for you, and you can still change anything there.",
+      "yes": "Yes",
+      "no": "No",
+      "inventory": {
+        "question": "Do you track inventory?",
+        "hint": "Choose No if everything is made to order. Stock pages and low-stock alerts switch off, and so does the till, which needs stock counts."
+      },
+      "fulfilment": {
+        "question": "How do customers get their orders?",
+        "pickup": "They collect",
+        "delivery": "We deliver",
+        "both": "Both"
+      },
+      "employees": {
+        "question": "Do you have employees?",
+        "hint": "Choose Yes to manage staff accounts, roles and shifts."
+      },
+      "vat": {
+        "question": "Do you need to charge VAT?",
+        "hint": "Yes sets the store VAT rate to {rate}% if none is set. You can change the rate in Defaults, and mark any product as VAT-free."
+      },
+      "website": {
+        "question": "Do you sell through a website?",
+        "hint": "Your website places orders here through the storefront connection; the launch checklist covers setting it up."
+      },
+      "payments": {
+        "question": "How do customers pay?",
+        "cash": "Cash",
+        "cardOnDelivery": "Card on delivery",
+        "online": "Online payment"
+      },
+      "options": {
+        "question": "Do your products come in sizes or options?",
+        "hint": "Yes starts new products with the options builder turned on."
+      },
+      "campaigns": {
+        "question": "Do you want to send customers email or SMS campaigns?",
+        "hint": "Campaign tools stay hidden until a sending provider and customer consent are set up."
+      }
+    },
     "rerun": "You can run setup again from Settings at any time.",
     "preserve": "Hidden features keep all their existing data. Enabling them again restores access through navigation.",
     "ownerOnly": "Only an owner or developer can run business setup.",
@@ -26,6 +67,7 @@
     "steps": {
       "entry": "Welcome",
       "business": "Business type",
+      "questions": "Questions",
       "features": "Features",
       "names": "Names",
       "products": "Catalogue",
@@ -104,6 +146,11 @@
       "products_defaultHasBarcode": "New products have barcodes",
       "store_currency": "Store currency",
       "store_taxRate": "Tax / VAT (%)",
+      "notifications_lowStockAlerts": "Low-stock alerts",
+      "setup_fulfilment": "How customers get their orders",
+      "setup_sellsOnline": "Sells through a website",
+      "setup_paymentMethods": "Payment methods",
+      "setup_wantsCampaigns": "Interested in email/SMS campaigns",
       "returns_windowDays": "Return window (days; 0 = no limit)",
       "inventory_lowStockThreshold": "Low-stock threshold",
       "pos_maxCashierDiscountPercent": "Maximum cashier discount (%)",
@@ -362,6 +409,7 @@
     "reviews": "Reviews",
     "delivery": "Delivery",
     "customerCases": "Customer service",
+    "campaigns": "Campaigns",
     "returns": "Returns",
     "reports": "Reports",
     "settings": "Settings",
@@ -389,6 +437,7 @@
     },
     "descriptions": {
       "dashboard": "Revenue, orders, and what needs attention today, at a glance.",
+      "campaigns": "Email and SMS offers to customers who agreed to receive them.",
       "orders": "Every order, its line items, and where it is in the fulfillment workflow.",
       "products": "Your catalogue — name, price, stock, and category for everything you sell.",
       "inventory": "Stock levels as a log of what happened, not a number you edit directly.",
@@ -1103,6 +1152,8 @@
       "city": "City",
       "country": "Country",
       "internalNotes": "Internal notes",
+      "emailMarketingConsent": "Agreed to marketing emails",
+      "smsMarketingConsent": "Agreed to marketing SMS",
       "code": "Code",
       "value": "Value",
       "maxUses": "Max uses",
@@ -3903,11 +3954,16 @@
           "profile": { "label": "Complete the customer-facing profile", "detail": "Set the trading name, logo, contact channel, currency, tax rate, pickup address, and the hours when customers can expect a reply." },
           "location": { "label": "Configure one home location", "detail": "Create or review the home branch, choose its real timezone, keep it active only when accepting orders, and use its ID for catalogue and checkout requests." },
           "catalogue": { "label": "Publish a small, complete catalogue", "detail": "Create every sellable item with a clear name, price, tax behavior, image, availability, and English and Arabic content where required." },
+          "vat": { "label": "Confirm your VAT choice", "detail": "Check the store VAT rate matches your registration, set Charge VAT on this product for each item, and add your tax number to receipts if you are registered." },
           "inventory": { "label": "Choose how inventory will work", "detail": "Keep Inventory enabled and record opening quantities for stocked goods, or disable it in Business setup when every item is made-to-order or non-stocked." },
           "delivery": { "label": "Define pickup and delivery promises", "detail": "Document service areas, fees, address requirements, preparation time, handoff steps, failed-delivery handling, and the person responsible for each order." },
+          "payments": { "label": "Set up how you get paid", "detail": "Decide which of cash, card on delivery and online payment you accept, test each one end to end, and note who reconciles the money each day." },
           "customers": { "label": "Verify customer records and consent", "detail": "Capture only necessary contact details, prevent duplicates, and record valid email or SMS marketing consent before sending promotions." },
           "discounts": { "label": "Test discounts before publishing", "detail": "Confirm code, dates, limits, eligible products, branch behavior, tax calculation, and one rejected and one accepted checkout example." },
           "orders": { "label": "Run the complete order workflow", "detail": "Create an order, confirm it, prepare it, assign delivery or pickup, complete it, and verify stock, customer history, totals, and notifications at every step." },
+          "receipt": { "label": "Check a printed or shared receipt", "detail": "Print or share a receipt for a test order and confirm the business name, items, VAT line, total and contact details are correct in English and Arabic." },
+          "refund": { "label": "Test a cancellation and a refund", "detail": "Cancel one test order and refund another, then confirm stock, the refund amount, the VAT refunded and the customer record are all right." },
+          "dailySummary": { "label": "Read the day back", "detail": "At the end of a test day, open the dashboard and reports and confirm the sales, orders and VAT totals match what you took." },
           "acceptance": { "label": "Complete a real-device acceptance run", "detail": "Place English and Arabic test orders from a phone, test sold-out and invalid-discount cases, complete delivery and pickup, then verify the dashboard and reports." }
         }},
         "restaurant": { "title": "Restaurant readiness", "description": "Complete after selecting Restaurant. The template is a starting preset; this checklist turns the configured workspace into a tested counter-service operation.", "items": {
@@ -4018,5 +4074,179 @@
     "GYM": "Gym",
     "LAUNDRY": "Laundry",
     "OTHER": "Other"
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "subtitle": "Email and SMS offers to customers who agreed to hear from you.",
+    "new": "New campaign",
+    "channel": {
+      "EMAIL": "Email",
+      "SMS": "SMS"
+    },
+    "status": {
+      "DRAFT": "Draft",
+      "SCHEDULED": "Scheduled",
+      "SENDING": "Sending",
+      "COMPLETED": "Sent",
+      "CANCELED": "Canceled",
+      "FAILED": "Failed"
+    },
+    "readiness": {
+      "label": "Channels",
+      "ready": "Ready",
+      "notReady": "Not set up",
+      "help": "A channel that is not set up cannot send. Email needs the email settings and a public API address for unsubscribe links; SMS needs an SMS provider. Your technical contact adds these on the server."
+    },
+    "empty": {
+      "title": "No campaigns yet",
+      "body": "Create one to send an offer to customers who have agreed to receive marketing."
+    },
+    "columns": {
+      "name": "Campaign",
+      "channel": "Channel",
+      "status": "Status",
+      "recipients": "Recipients",
+      "sent": "Sent",
+      "when": "When"
+    },
+    "audience": {
+      "mode": "Choose customers by",
+      "modeFilter": "Filters",
+      "modeManual": "Picking them",
+      "customers": "Customers",
+      "pickCustomer": "Add a customer",
+      "branch": "Bought at branch",
+      "anyBranch": "Any branch",
+      "customerType": "Customers",
+      "anyCustomer": "New and returning",
+      "newCustomers": "New (one order or none)",
+      "returningCustomers": "Returning (two or more orders)",
+      "products": "Bought any of these products",
+      "pickProduct": "Add a product",
+      "categories": "Bought from any of these categories",
+      "pickCategory": "Add a category",
+      "inactiveDays": "Inactive for (days)",
+      "inactivePlaceholder": "e.g. 60",
+      "inactiveHint": "Customers who have ordered before but not in this many days.",
+      "minSpend": "Spent at least",
+      "maxSpend": "Spent at most",
+      "remove": "Remove {name}"
+    },
+    "reach": {
+      "title": "Who will receive it",
+      "counting": "Counting…",
+      "willReceive": "customers will receive it",
+      "matched": "Match the audience",
+      "excluded": {
+        "noConsent": {
+          "EMAIL": "Have not agreed to marketing emails",
+          "SMS": "Have not agreed to marketing SMS"
+        },
+        "noAddress": {
+          "EMAIL": "Have no email address",
+          "SMS": "Have no usable phone number"
+        },
+        "suppressed": {
+          "EMAIL": "Unsubscribed or bounced",
+          "SMS": "Opted out"
+        }
+      },
+      "sample": "Including {names}",
+      "segments": "{count, plural, one {Each message is # SMS segment} other {Each message is # SMS segments}}",
+      "cost": "Estimated cost {amount} ({segments} segments)",
+      "costUnknown": "Set the SMS cost per segment in Settings to see an estimate."
+    },
+    "editor": {
+      "basics": "Campaign",
+      "name": "Name (only you see this)",
+      "channel": "Send by",
+      "branch": "Sending as",
+      "wholeBusiness": "The whole business",
+      "branchHint": "Used for the branch name in the message and for the schedule's time zone.",
+      "discountCode": "Discount code (optional)",
+      "discountCodeHint": "Create the code in Discounts first. It replaces {{discount_code}} in the message.",
+      "message": "Message",
+      "languagesHint": "Write it in English, Arabic or both. Each customer gets the language they use, or the one you wrote.",
+      "language": {
+        "en": "English",
+        "ar": "Arabic"
+      },
+      "subject": "Subject",
+      "body": "Message",
+      "insert": "Insert:",
+      "insertLabel": "Insert a placeholder",
+      "placeholders": {
+        "customer_name": "Customer's first name",
+        "store_name": "Store name",
+        "branch_name": "Branch name",
+        "discount_code": "Discount code"
+      },
+      "templates": {
+        "label": "Start from a template",
+        "discount": {
+          "name": "Discount offer"
+        },
+        "clearance": {
+          "name": "Clearance sale"
+        }
+      },
+      "audience": "Audience",
+      "previewTitle": "Preview",
+      "previewDevice": "Preview size",
+      "previewLanguage": "Preview language",
+      "desktop": "Desktop",
+      "mobile": "Phone",
+      "noSubject": "(no subject)",
+      "noBody": "(no message yet)",
+      "unsubscribeFooter": "Unsubscribe link added automatically",
+      "save": "Save draft",
+      "savedToast": "Draft saved",
+      "testSend": "Send a test",
+      "sendOrSchedule": "Send or schedule",
+      "delete": "Delete draft",
+      "deleted": "Campaign deleted"
+    },
+    "test": {
+      "title": "Send a test",
+      "emailBody": "A copy goes to your own email address. No customer receives it.",
+      "smsBody": "A copy goes to the number you enter. No customer receives it.",
+      "phone": "Your phone number",
+      "cancel": "Cancel",
+      "send": "Send test",
+      "sent": "Test sent"
+    },
+    "send": {
+      "title": "Send this campaign",
+      "summary": "{count, plural, one {\"{name}\" will go to # customer.} other {\"{name}\" will go to # customers.}}",
+      "whenLabel": "When",
+      "now": "Now",
+      "later": "Later",
+      "date": "Date",
+      "time": "Time",
+      "timezone": "Times are in {zone}.",
+      "confirmLabel": "This is a large campaign. Type {count} to confirm.",
+      "cancel": "Cancel",
+      "schedule": "Schedule",
+      "sendNow": "Send now",
+      "scheduled": "Campaign scheduled",
+      "sending": "Campaign is sending"
+    },
+    "detail": {
+      "crumb": "Campaign",
+      "scheduledFor": "Sends {when}",
+      "cancelSchedule": "Cancel schedule",
+      "stop": "Stop sending",
+      "canceled": "Campaign canceled",
+      "content": "Message",
+      "outcomes": {
+        "recipients": "Recipients",
+        "pending": "Waiting",
+        "sent": "Sent",
+        "delivered": "Delivered",
+        "failed": "Failed",
+        "bounced": "Bounced"
+      },
+      "outcomesHelp": "Delivered is confirmed by the provider when it reports back; Sent means the provider accepted the message. Addresses that bounce or opt out are never messaged again."
+    }
   }
 }

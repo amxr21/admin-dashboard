@@ -116,23 +116,30 @@ body:has([data-slot='app-shell']) {
   /* ─── Brand ──────────────────────────────────────────────────── */
   --primary: #2563eb;
   --primary-foreground: #ffffff;
+  /* Brand blue as TEXT on a primary tint (selected rows, active presets):
+     --primary itself is 4.2–4.5:1 there, this clears AA. */
+  --primary-strong: #1d4ed8;
 
   /* ─── Secondary / muted / accent ─────────────────────────────── */
   --secondary: #f3f4f6;
   --secondary-foreground: #1a1a1a;
   --muted: #f3f4f6;
-  --muted-foreground: #6b7280; /* the only token for de-emphasised text */
+  --muted-foreground: #5f6673; /* the only token for de-emphasised text — AA on --muted as well as white */
   --accent: #d97706; /* amber — used sparingly, for emphasis not decoration */
   --accent-foreground: #ffffff;
 
   /* ─── Status ─────────────────────────────────────────────────── */
-  --destructive: #dc2626;
+  /* Each status colour is used as TEXT on white and on a 15% tint of itself
+     (badges), so each is the darkest shade that still reads as its hue while
+     clearing WCAG AA 4.5:1 in both places. The -600 shades used before sat at
+     2.8–4.5:1 as text. */
+  --destructive: #b91c1c;
   --destructive-foreground: #ffffff;
-  --success: #16a34a;
+  --success: #166534;
   --success-foreground: #ffffff;
-  --warning: #d97706;
+  --warning: #92400e;
   --warning-foreground: #ffffff;
-  --info: #2563eb;
+  --info: #1d4ed8;
   --info-foreground: #ffffff;
 
   /* ─── Lines & focus ──────────────────────────────────────────── */
@@ -175,7 +182,10 @@ body:has([data-slot='app-shell']) {
 
   /* ─── Brand ──────────────────────────────────────────────────── */
   --primary: #3b82f6; /* brighter than light tier — see header note */
-  --primary-foreground: #ffffff;
+  /* Dark text on the brighter blue: white on #3b82f6 is 3.7:1, this is 5.1:1
+     (the same choice the dark status foregrounds make). */
+  --primary-foreground: #0f1115;
+  --primary-strong: #93c5fd; /* lighter on dark tints, same job as the light tier's */
 
   /* ─── Secondary / muted / accent ─────────────────────────────── */
   --secondary: #21252d;
@@ -293,6 +303,7 @@ html[lang='ar'] {
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-strong: var(--primary-strong);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);

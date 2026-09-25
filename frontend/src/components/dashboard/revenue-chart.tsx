@@ -225,7 +225,7 @@ function ChartLegend({
         <span className="inline-flex items-center gap-1.5">
           <span className="h-0.5 w-4 shrink-0" style={{ backgroundColor: 'var(--chart-2)' }} />
           {t('revenueChart.profit')}
-          <span className="text-muted-foreground/80">
+          <span className="text-muted-foreground">
             ·{' '}
             {t('revenueChart.profitCoverage', {
               costed: profitCoverage.costedLines,
@@ -272,7 +272,7 @@ function ChartTooltip({ active, payload, comparisonLabel, drillDownEnabled }: Ch
       <p className="text-muted-foreground mb-1 text-xs">
         {formatter.dateTime(new Date(datum.date), 'short')}
         {datum.isProvisional ? (
-          <span className="text-muted-foreground/80 ms-1.5">
+          <span className="text-muted-foreground ms-1.5">
             · {t('revenueChart.inProgress')}
           </span>
         ) : null}

@@ -199,7 +199,7 @@ export function DateRangePresetField({
                 }}
                 className={cn(
                   'flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-start text-sm',
-                  isActive ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted',
+                  isActive ? 'bg-primary/10 text-primary-strong' : 'text-foreground hover:bg-muted',
                 )}
               >
                 {t(`presets.${PRESET_LABEL_KEY[preset]}`)}
@@ -215,7 +215,7 @@ export function DateRangePresetField({
             onClick={() => setCustomExpanded(true)}
             className={cn(
               'flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-start text-sm',
-              activePreset === null ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted',
+              activePreset === null ? 'bg-primary/10 text-primary-strong' : 'text-foreground hover:bg-muted',
             )}
           >
             {t('presets.custom')}

@@ -430,7 +430,7 @@ function PaletteGroup({
             onMouseEnter={() => onHover(index)}
             className={cn(
               'flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-start text-sm',
-              index === activeIndex ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted',
+              index === activeIndex ? 'bg-primary/10 text-primary-strong' : 'text-foreground hover:bg-muted',
             )}
           >
             {Icon ? <Icon className="mt-0.5 size-4 shrink-0" aria-hidden /> : null}

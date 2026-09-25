@@ -80,13 +80,38 @@ export interface ResourceHooks {
 
 export const RESOURCE_HOOKS: Readonly<Record<string, ResourceHooks | undefined>> = {
   customers: {
-    beforeWrite: (data): Promise<void> => {
-      if (!Object.prototype.hasOwnProperty.call(data, 'phone')) return Promise.resolve();
-      const phone = data.phone;
-      data.phoneNormalized = typeof phone === 'string' && phone.trim()
-        ? normalizePhone(phone)
+    beforeWrite: async (data: Record<string, unknown>, id: string | null): Promise<void> => {
+      if (Object.prototype.hasOwnProperty.call(data, 'phone')) {
+        const phone = data.phone;
+        data.phoneNormalized = typeof phone === 'string' && phone.trim()
+          ? normalizePhone(phone)
+          : null;
+      }
+
+      /**
+       * Marketing consent evidence: WHEN and HOW it was given. Stamped only on
+       * the false → true change, so re-saving a customer never rewrites the
+       * original consent date; cleared on withdrawal.
+       */
+      const stored = id
+        ? await prisma.customer.findUnique({
+            where: { id },
+            select: { emailMarketingConsent: true, smsMarketingConsent: true },
+          })
         : null;
-      return Promise.resolve();
+      for (const [flag, at, source] of [
+        ['emailMarketingConsent', 'emailConsentAt', 'emailConsentSource'],
+        ['smsMarketingConsent', 'smsConsentAt', 'smsConsentSource'],
+      ] as const) {
+        if (!Object.prototype.hasOwnProperty.call(data, flag)) continue;
+        if (data[flag] === true && stored?.[flag] !== true) {
+          data[at] = new Date();
+          data[source] = 'admin';
+        } else if (data[flag] === false) {
+          data[at] = null;
+          data[source] = null;
+        }
+      }
     },
   },
   categories: {

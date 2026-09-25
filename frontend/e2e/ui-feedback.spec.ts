@@ -31,7 +31,10 @@ async function mockWorkspace(page: Page) {
     if (path === '/auth/me') data = user;
     if (path === '/r/_schema') data = { resources: [] };
     if (path === '/settings') data = { settings: [] };
-    if (path === '/policies' || path === '/auth/me/sessions' || path === '/auth/me/api-keys') data = [];
+    // The permission model's real shape; a list-shaped placeholder here made
+    // the role provider throw as soon as it loaded.
+    if (path === '/roles') data = { roles: [], areas: [] };
+    if (path === '/policies' || path === '/auth/me/sessions' || path === '/auth/me/api-keys' || path === '/staff/sessions/active') data = [];
     if (path === '/auth/me/2fa') data = { enabled: false, remainingBackupCodes: 0 };
     if (path === '/danger-zone/demo-data') data = {
       orders: 0, products: 0, customers: 0, couriers: 0, categories: 0,
