@@ -53,6 +53,29 @@ updates:
       production:
         dependency-type: production
         update-types: [minor, patch]
+    # Majors that are MIGRATIONS, not bumps, as of 2026-09-26. Each one left
+    # as an open PR also holds one of the 5 slots below: #48-#52 sat open from
+    # July to September and blocked every other update, minor and patch
+    # included. Remove an entry when you actually take that migration on.
+    #   - typescript 7: the native (Go) compiler. typescript-eslint supports
+    #     only <6.1, and Next's type checking uses the JS API.
+    #   - eslint / @eslint/js 10: the backend is on 10. The frontend is held on
+    #     9 because eslint-config-next 15 loads through @rushstack/eslint-patch,
+    #     which ESLint 10 breaks. That clears with the Next 16 upgrade.
+    #   - prisma / @prisma/client 7+: datasource `url` leaves the schema for
+    #     prisma.config.ts, a driver adapter becomes mandatory, and the client
+    #     generator changes, across the 130+ files that import it.
+    ignore:
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      - dependency-name: eslint
+        update-types: [version-update:semver-major]
+      - dependency-name: '@eslint/js'
+        update-types: [version-update:semver-major]
+      - dependency-name: prisma
+        update-types: [version-update:semver-major]
+      - dependency-name: '@prisma/client'
+        update-types: [version-update:semver-major]
     open-pull-requests-limit: 5
 
   - package-ecosystem: github-actions
