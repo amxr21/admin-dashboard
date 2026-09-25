@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
-import type { StaffRole } from '@/config/areas';
+import type { Area, StaffRole } from '@/config/areas';
 import { fetchCampaignReadiness } from '@/lib/campaigns-api';
 
 /** One readiness request per page load, shared by every caller. */
@@ -14,8 +13,12 @@ let cached: Promise<boolean> | null = null;
  * customers AND at least one channel (email or SMS) can actually send.
  * Until a provider is configured the tools stay out of the way.
  */
-export function useCampaignsAvailable(role: StaffRole | null): boolean {
-  const canAccessArea = useCanAccessArea();
+export function useCampaignsAvailable(
+  role: StaffRole | null,
+  // The caller's own permission check — the sidebar passes the one it already
+  // uses for every other item, so this hook adds no second source of truth.
+  canAccessArea: (role: StaffRole, area: Area) => boolean,
+): boolean {
   const allowed = role !== null && canAccessArea(role, 'customers');
   const [available, setAvailable] = useState(false);
 

@@ -70,7 +70,7 @@ export function SidebarNav({ role, canAccessArea: canAccess = canAccessArea, onN
   // hydration on an Arabic page — a real mismatch, not just a flash).
   const isRtl = getDirection(useLocale()) === 'rtl';
   const navCounts = useNavCounts(role);
-  const campaignsAvailable = useCampaignsAvailable(role);
+  const campaignsAvailable = useCampaignsAvailable(role, canAccess);
 
   /**
    * Schema-driven entries, merged with the hand-written ones.
