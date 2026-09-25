@@ -179,11 +179,27 @@ export function OrderInvoice({ id }: { id: string }) {
                       {tOrders('items.productRemoved')}
                     </span>
                   )}
+                  {item.variant ? (
+                    <span className="text-muted-foreground block text-xs">
+                      {item.variant.name}
+                      {item.variant.sku ? <span className="force-ltr ms-1">· {item.variant.sku}</span> : null}
+                    </span>
+                  ) : null}
+                  {item.isTaxable === false ? (
+                    <span className="text-muted-foreground block text-xs">{tOrders('items.vatExempt')}</span>
+                  ) : null}
                 </td>
                 <td className="py-2 text-end tabular-nums">
                   {formatter.number(item.quantity)}
                 </td>
-                <td className="py-2 text-end tabular-nums">{money(item.price)}</td>
+                <td className="py-2 text-end tabular-nums">
+                  {money(item.price)}
+                  {item.discountPercent ? (
+                    <span className="text-muted-foreground block text-xs">
+                      {tOrders('items.lineDiscount', { percent: Number(item.discountPercent) })}
+                    </span>
+                  ) : null}
+                </td>
                 <td className="py-2 text-end tabular-nums">{money(item.lineTotal)}</td>
               </tr>
             ))}

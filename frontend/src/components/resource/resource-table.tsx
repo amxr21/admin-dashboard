@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import { useGSAP } from '@gsap/react';
-import { FilterX, History, Pencil, Plus, SearchX, Trash2, Upload } from 'lucide-react';
+import { Download, FilterX, History, Pencil, Plus, SearchX, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -26,6 +26,7 @@ import { RefreshButton } from '@/components/refresh-button';
 import { RowActions, type RowAction } from '@/components/row-actions';
 import { TablePagination } from '@/components/table-pagination';
 import { ImportResourceSheet } from '@/components/resource/import-resource-sheet';
+import { exportVariantsCsv, variantImportEndpoints } from '@/lib/variants-api';
 import { StockAdjustSheet } from '@/components/inventory/stock-adjust-sheet';
 import type { InventoryRow } from '@/lib/inventory-api';
 import { ResourceCell } from '@/components/resource/resource-cell';
@@ -300,6 +301,7 @@ export function ResourceTable({ schema }: ResourceTableProps) {
   const [formRow, setFormRow] = useState<ResourceRow | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isVariantImportOpen, setIsVariantImportOpen] = useState(false);
 
   /**
    * F3.2 — opening stock, offered immediately after a product is created.
@@ -747,6 +749,23 @@ export function ResourceTable({ schema }: ResourceTableProps) {
             <Upload aria-hidden />
             {t('actions.import')}
           </Button>
+          {/* Variants have their own file: they live under a product and their
+              stock is a movement log, so they are not a generic resource. */}
+          {schema.resource === 'products' ? (
+            <>
+              <Button variant="outline" onClick={() => setIsVariantImportOpen(true)}>
+                <Upload aria-hidden />
+                {t('actions.importVariants')}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => void exportVariantsCsv().catch((caught: unknown) => setError(translateError(caught)))}
+              >
+                <Download aria-hidden />
+                {t('actions.exportVariants')}
+              </Button>
+            </>
+          ) : null}
           <Button
             onClick={() => {
               setFormRow(null);
@@ -767,6 +786,17 @@ export function ResourceTable({ schema }: ResourceTableProps) {
         onOpenChange={setIsImportOpen}
         onImported={() => void load()}
       />
+
+      {schema.resource === 'products' ? (
+        <ImportResourceSheet
+          resource="product_variants"
+          resourceLabel={t('variantsLabel')}
+          open={isVariantImportOpen}
+          onOpenChange={setIsVariantImportOpen}
+          onImported={() => void load()}
+          endpoints={variantImportEndpoints}
+        />
+      ) : null}
 
       <AlertDialog
         open={pendingDelete !== null}
