@@ -16,6 +16,7 @@ import {
   RotateCcw,
   ShoppingCart,
   Truck,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -47,6 +48,7 @@ const ICONS = {
   inventory: Boxes,
   returns: RotateCcw,
   delivery: Truck,
+  customers: Users,
   payments: CreditCard,
   activity: ClipboardList,
   branches: Building2,

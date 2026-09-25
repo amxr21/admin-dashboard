@@ -60,6 +60,8 @@ interface SettingsContextValue {
   enabledFeatures: EnabledFeatures;
   setupCompletedAt: string;
   setupSkippedAt: string;
+  /** The setup wizard's business type, e.g. HOME_BUSINESS; empty until chosen. */
+  businessType: string;
   productDefaults: Partial<Record<'hasVariants' | 'hasColors' | 'hasBarcode', boolean>>;
   isLoading: boolean;
   tablePageSize: number;
@@ -138,6 +140,7 @@ const DEFAULT_VALUE: SettingsContextValue = {
   enabledFeatures: {},
   setupCompletedAt: '',
   setupSkippedAt: '',
+  businessType: '',
   productDefaults: {},
   isLoading: true,
   tablePageSize: 20,
@@ -293,6 +296,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     enabledFeatures: Object.fromEntries(SETUP_FEATURE_KEYS.map(key => [key, byKey[`features.${key}.enabled`] !== false])),
     setupCompletedAt: String(byKey['setup.completedAt'] ?? ''),
     setupSkippedAt: String(byKey['setup.skippedAt'] ?? ''),
+    businessType: String(byKey['setup.businessType'] ?? ''),
     productDefaults: byKey['setup.completedAt'] ? {
       hasVariants: byKey['products.defaultHasVariants'] === true,
       hasColors: byKey['products.defaultHasColors'] === true,
