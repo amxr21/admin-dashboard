@@ -336,7 +336,7 @@ export function DashboardOverview() {
    * number complete?" is precisely the question it exists to answer.
    */
   const costCoverageNote = overview ? (
-    <span className="text-muted-foreground/80 text-xs whitespace-nowrap">
+    <span className="text-muted-foreground text-xs whitespace-nowrap">
       {overview.costCoverage.costedLines === overview.costCoverage.totalLines
         ? t('costCoverageAll')
         : t('costCoverage', {

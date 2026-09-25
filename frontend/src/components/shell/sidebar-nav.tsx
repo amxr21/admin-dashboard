@@ -304,7 +304,8 @@ function NavLinkItem({ item, collapsed, isRtl, isActive, onNavigate, count }: Na
               'relative flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors',
               collapsed && 'justify-center px-2',
               isActive
-                ? 'bg-primary/10 text-primary font-medium'
+                // Brand blue as text on its own tint needs the stronger shade for AA.
+                ? 'bg-primary/10 text-primary-strong font-medium'
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground',
             )}
           >
@@ -331,7 +332,7 @@ function NavLinkItem({ item, collapsed, isRtl, isActive, onNavigate, count }: Na
               ) : (
                 <span
                   aria-hidden
-                  className="bg-primary/10 text-primary flex min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-xs font-medium tabular-nums"
+                  className="bg-primary/10 text-primary-strong flex min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-xs font-medium tabular-nums"
                 >
                   {formattedCount}
                 </span>

@@ -58,7 +58,7 @@ function DropdownMenuItem({
       className={cn(
         'relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none',
         // Same convention as select.tsx — primary-tinted, not amber.
-        'focus:bg-primary/10 focus:text-primary',
+        'focus:bg-primary/10 focus:text-primary-strong',
         'data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10',
         'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         '[&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:pointer-events-none',
@@ -83,7 +83,7 @@ function DropdownMenuCheckboxItem({
       // into one column instead of jittering left-right per row.
       className={cn(
         'relative flex cursor-default items-center gap-2 rounded-sm py-1.5 ps-8 pe-2 text-sm outline-none select-none',
-        'focus:bg-primary/10 focus:text-primary',
+        'focus:bg-primary/10 focus:text-primary-strong',
         'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         className,
       )}

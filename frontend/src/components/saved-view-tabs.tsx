@@ -59,7 +59,7 @@ export function SavedViewTabs<TFilters extends Record<string, string>>({
             className={cn(
               'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
               isActive
-                ? 'bg-primary/10 text-primary'
+                ? 'bg-primary/10 text-primary-strong'
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground',
             )}
           >

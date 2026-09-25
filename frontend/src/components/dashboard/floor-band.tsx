@@ -619,7 +619,7 @@ export function FloorBand({ data, template, isLoading = false }: FloorBandProps)
           {t('takenToday', { amount: formatter.number(Number(data.totals.taken), 'currency') })}
         </span>
         {/* Says outright that the range picker does not reach this band. */}
-        <span className="text-muted-foreground/80 ms-auto text-[11px]">{t('liveNote')}</span>
+        <span className="text-muted-foreground ms-auto text-[11px]">{t('liveNote')}</span>
         <Link href="/admin/shifts" className="text-primary text-xs font-semibold hover:underline">
           {t('allShifts')}
         </Link>

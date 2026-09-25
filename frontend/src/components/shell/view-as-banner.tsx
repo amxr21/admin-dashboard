@@ -23,7 +23,7 @@ export function ViewAsBanner({ role, onExit }: ViewAsBannerProps) {
     <div
       role="status"
       aria-live="polite"
-      className="bg-primary/10 text-primary border-primary/20 flex items-center justify-between gap-3 border-b px-4 py-2 text-sm"
+      className="bg-primary/10 text-primary-strong border-primary/20 flex items-center justify-between gap-3 border-b px-4 py-2 text-sm"
     >
       <span>{t('banner', { role: tRoles(role) })}</span>
       <Button variant="outline" size="sm" onClick={onExit}>

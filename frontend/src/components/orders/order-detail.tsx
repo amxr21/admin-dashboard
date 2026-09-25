@@ -277,7 +277,7 @@ export function OrderDetail({ id }: { id: string }) {
                   <Store className="size-3.5" aria-hidden />
                   {order.branch.name}
                   {order.branch.code ? (
-                    <span className="text-muted-foreground/80">({order.branch.code})</span>
+                    <span className="text-muted-foreground">({order.branch.code})</span>
                   ) : null}
                 </span>
               </>
