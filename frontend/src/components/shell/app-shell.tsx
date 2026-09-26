@@ -36,6 +36,7 @@ import { usePathname } from '@/i18n/navigation';
 import { cn } from '@/lib/utils';
 import { SetupFeatureGate } from '@/components/setup/setup-feature-gate';
 import { SetupPrompt } from '@/components/setup/setup-prompt';
+import { DeveloperViewBanner } from '@/components/setup/developer-setup-panel';
 
 /**
  * The dashboard chrome: sidebar, topbar, content area.
@@ -340,6 +341,10 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
             <ViewAsBanner role={previewedRole} onExit={() => setPreviewedRole(null)} />
           </div>
         ) : null}
+
+        <div className="shrink-0">
+          <DeveloperViewBanner />
+        </div>
 
         {/* DEVELOPER only — an operational surface, not a business area, so it
             is gated on the role directly rather than an `area`. See

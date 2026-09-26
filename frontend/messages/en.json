@@ -1,6 +1,19 @@
 {
   "setup": {
     "title": "Business setup",
+    "developer": {
+      "title": "Developer view",
+      "showEverything": "Show every feature",
+      "showEverythingHint": "Ignores the setup choices so every page and menu entry is visible. Only in this browser, and only for you: owners and staff still see what setup chose.",
+      "resetTitle": "Reset setup",
+      "resetHint": "Marks setup as never run, so the owner is taken to the wizard on their next visit, like a new account. Current choices stay and pre-fill the wizard.",
+      "resetConfirm": "The owner will be sent to the setup wizard again. Nothing already configured is changed.",
+      "reset": "Reset setup",
+      "cancel": "Cancel",
+      "resetDone": "Setup reset. The owner will see the wizard next time.",
+      "banner": "Developer view: showing every feature, setup choices ignored.",
+      "turnOff": "Turn off"
+    },
     "scope": "Applies to all businesses and branches in this installation.",
     "intro": "Choose recommended features for your business, then adjust them to suit your work. Setup is optional.",
     "questions": {

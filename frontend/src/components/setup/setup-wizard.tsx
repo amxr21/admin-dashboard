@@ -18,6 +18,7 @@ import { CollapsibleSection } from '@/components/ui/collapsible-section';
 import { cn } from '@/lib/utils';
 import { AREAS, type Area, type StaffRole } from '@/config/areas';
 import { SetupQuestions } from '@/components/setup/setup-questions';
+import { DeveloperSetupPanel } from '@/components/setup/developer-setup-panel';
 import { applySetup, fetchSetup, previewSetup, skipSetup, SETUP_FEATURE_KEYS, type SetupDraft, type SetupPreview, type SetupState, type SetupValue } from '@/lib/setup-api';
 
 // `names` is no longer its own step — a step whose default action is "leave
@@ -45,6 +46,7 @@ export function SetupWizard() {
 
 function OwnerSetupWizard() {
   const t = useTranslations('setup');
+  const isDeveloper = useAuth().user?.role === 'DEVELOPER';
   const locale = useLocale();
   const tTypes = useTranslations('businessTypes');
   const translateError = useTranslatedApiError();
@@ -126,6 +128,7 @@ function OwnerSetupWizard() {
   const labelKeys = LABEL_KEYS.filter(key => key === 'products' || draft.features[key as keyof typeof draft.features]);
 
   return <section className="mx-auto max-w-4xl space-y-5" aria-busy={busy}>
+    {isDeveloper ? <DeveloperSetupPanel /> : null}
     <header className="space-y-2"><h1 className="text-2xl font-semibold">{t('title')}</h1><p className="text-muted-foreground text-sm">{t('scope')}</p></header>
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2 text-sm">
