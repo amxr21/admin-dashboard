@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { CampaignRecipientStatus, type CampaignChannel, type SuppressionReason } from '@prisma/client';
 
 import { env } from '../config/env.js';
+import { normalizePhone } from '../lib/phone.js';
 import { prisma } from '../db/prisma.js';
 import { logger } from '../logger.js';
 import { normaliseAddress, toE164 } from './campaign-audience.service.js';
@@ -164,4 +165,86 @@ export async function recordEmailEvent(event: EmailEvent) {
   if (event.type !== 'bounced') {
     await prisma.customer.updateMany({ where: { email: address }, data: withdrawFields('EMAIL') });
   }
+}
+
+/* ── Self-service consent (storefront) ─────────────────────────────── */
+
+export interface OwnConsentChoice {
+  email?: boolean | undefined;
+  sms?: boolean | undefined;
+}
+
+export interface OwnConsent {
+  email: boolean;
+  sms: boolean;
+}
+
+/**
+ * A signed-in shopper changing their OWN marketing consent, from the
+ * storefront account page (`source: 'storefront'`) or the checkout tick-box
+ * (`source: 'checkout'`). An omitted channel is left alone.
+ *
+ * Granting stamps WHEN/HOW only on the false → true change, like the admin
+ * path. Withdrawing does exactly what an unsubscribe link does: clear the
+ * consent and suppress the address.
+ *
+ * A fresh opt-in lifts an UNSUBSCRIBED suppression for the EMAIL address
+ * only, because that address is Google-verified to belong to this shopper.
+ * The phone is not verified, so an SMS opt-in never lifts a suppression:
+ * otherwise typing someone else's number would undo their STOP. Bounces,
+ * complaints and manual blocks always stay.
+ */
+export async function setOwnMarketingConsent(
+  customerId: string,
+  choice: OwnConsentChoice,
+  source: 'storefront' | 'checkout',
+  /** The phone typed at checkout: saved to the profile only when it has none, so an SMS opt-in has a number. */
+  checkoutPhone?: string,
+): Promise<OwnConsent> {
+  const customer = await prisma.customer.findUniqueOrThrow({
+    where: { id: customerId },
+    select: { email: true, phone: true, phoneNormalized: true, emailMarketingConsent: true, smsMarketingConsent: true },
+  });
+  const countryCode = String(await getSettingValue('campaigns.defaultCountryCode')).replace(/\D/g, '') || '971';
+
+  const data: Record<string, unknown> = {};
+  if (choice.sms && checkoutPhone && !customer.phone) {
+    data.phone = checkoutPhone;
+    data.phoneNormalized = normalizePhone(checkoutPhone);
+  }
+
+  for (const channel of ['EMAIL', 'SMS'] as const) {
+    const wanted = channel === 'EMAIL' ? choice.email : choice.sms;
+    if (wanted === undefined) continue;
+
+    const current = channel === 'EMAIL' ? customer.emailMarketingConsent : customer.smsMarketingConsent;
+    const address = channel === 'EMAIL' ? customer.email : toE164(customer.phoneNormalized, countryCode);
+
+    if (wanted) {
+      if (channel === 'EMAIL' && address) {
+        await prisma.marketingSuppression.deleteMany({
+          where: { channel, address: normaliseAddress(channel, address), reason: 'UNSUBSCRIBED' },
+        });
+      }
+      if (!current) {
+        Object.assign(
+          data,
+          channel === 'EMAIL'
+            ? { emailMarketingConsent: true, emailConsentAt: new Date(), emailConsentSource: source }
+            : { smsMarketingConsent: true, smsConsentAt: new Date(), smsConsentSource: source },
+        );
+      }
+    } else {
+      if (address) await suppressAddress(channel, address, 'UNSUBSCRIBED');
+      Object.assign(data, withdrawFields(channel));
+    }
+  }
+
+  const updated = await prisma.customer.update({
+    where: { id: customerId },
+    data,
+    select: { emailMarketingConsent: true, smsMarketingConsent: true },
+  });
+  logger.info({ event: 'campaign.consent.self-service', source, channels: Object.keys(choice) });
+  return { email: updated.emailMarketingConsent, sms: updated.smsMarketingConsent };
 }

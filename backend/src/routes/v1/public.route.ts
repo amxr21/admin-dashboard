@@ -13,6 +13,7 @@ import {
   requireUser,
 } from '../../middleware/authenticate.js';
 import { requireArea } from '../../middleware/authorize.js';
+import { setOwnMarketingConsent } from '../../services/campaign-consent.service.js';
 import { loginWithGoogle } from '../../services/customer-auth.service.js';
 import {
   addToCart,
@@ -212,8 +213,25 @@ publicRouter.get('/public/me', authenticateCustomer, (req, res) => {
       email: customer.email,
       phone: customer.phone,
       picture: customer.picture,
+      marketing: { email: customer.emailMarketingConsent, sms: customer.smsMarketingConsent },
     },
   });
+});
+
+const marketingConsentBody = z
+  .object({ email: z.boolean().optional(), sms: z.boolean().optional() })
+  .strict();
+
+/**
+ * The shopper's own marketing preferences (account page). `true` opts in,
+ * `false` opts out exactly like an unsubscribe link, an omitted channel is
+ * unchanged. Only ever the token's own customer — see THE OWNERSHIP RULE.
+ */
+publicRouter.put('/public/me/marketing', authenticateCustomer, async (req, res) => {
+  const parsed = marketingConsentBody.safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest('Invalid marketing preferences');
+
+  res.json({ data: await setOwnMarketingConsent(requireCustomer(req).id, parsed.data, 'storefront') });
 });
 
 // ─── Cart (customer auth) ───────────────────────────────────────────
@@ -292,6 +310,8 @@ const checkoutBody = z
         z
           .object({
             productId: z.string().min(1).max(64),
+            // The option bought; required when the product has any.
+            variantId: z.string().min(1).max(64).optional(),
             quantity: z.coerce.number().int().min(1).max(99),
           })
           .strict(),
@@ -325,6 +345,15 @@ const checkoutBody = z
       .max(48)
       .transform((value) => value.toUpperCase())
       .optional(),
+    /**
+     * The checkout's "send me offers" tick-boxes. Grant-only and signed-in
+     * only: an unticked box is not a withdrawal, and a guest has no customer
+     * record to hold consent, so it is ignored for guests.
+     */
+    marketingConsent: z
+      .object({ email: z.literal(true).optional(), sms: z.literal(true).optional() })
+      .strict()
+      .optional(),
   })
   .strict()
   // Delivery without an address is not a fulfillable order. Checked here rather
@@ -355,8 +384,9 @@ publicRouter.post('/public/orders', requireArea('orders'), checkoutRateLimit, op
 
   // The customer comes from the verified token or is null (guest) — never from
   // the request body.
+  const { marketingConsent, ...order } = parsed.data;
   const execution = await checkout(
-    parsed.data,
+    order,
     req.customer?.id ?? null,
     requireUser(req).id,
     parsedIdempotencyKey.data,
@@ -369,6 +399,14 @@ publicRouter.post('/public/orders', requireArea('orders'), checkoutRateLimit, op
     orderNumber: execution.value.orderNumber,
     customerId: req.customer?.id ?? null,
   });
+
+  // After the order, never inside it: a consent write must not be able to
+  // fail a paid-for order. Granting is idempotent, so a replay is harmless.
+  if (req.customer && marketingConsent && (marketingConsent.email || marketingConsent.sms)) {
+    await setOwnMarketingConsent(req.customer.id, marketingConsent, 'checkout', order.contact.phone).catch(
+      (error: unknown) => req.log.warn({ event: 'storefront.consent.failed', err: error }),
+    );
+  }
 
   res.set('Idempotency-Replayed', execution.replayed ? 'true' : 'false');
   res.status(201).json({ data: execution.value });

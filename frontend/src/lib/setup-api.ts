@@ -42,4 +42,5 @@ export interface SetupPreview {
 export const fetchSetup = () => apiFetch<SetupState>('/setup');
 export const previewSetup = (draft: SetupDraft) => apiFetch<SetupPreview>('/setup/preview', { method: 'POST', body: JSON.stringify(draft) });
 export const applySetup = (draft: SetupDraft) => apiFetch<SetupPreview>('/setup', { method: 'PUT', body: JSON.stringify(draft) });
+export const resetSetup = () => apiFetch<{ reset: boolean }>('/setup/reset', { method: 'POST', body: '{}' });
 export const skipSetup = () => apiFetch<{ skippedAt: string }>('/setup/skip', { method: 'POST', body: '{}' });
