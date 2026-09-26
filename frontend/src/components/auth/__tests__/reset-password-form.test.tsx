@@ -68,6 +68,23 @@ describe('successful redemption', () => {
   });
 });
 
+describe('arriving from an invite link', () => {
+  it('prefills the code, says activate, and signs in with the activation notice', async () => {
+    redeemPasswordReset.mockResolvedValue(undefined);
+    render(<ResetPasswordForm initialToken="LINKTOKEN" invite />);
+
+    expect(screen.getByLabelText(/activation code/i)).toHaveValue('LINKTOKEN');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/^new password$/i), 'brand-new-password');
+    await user.type(screen.getByLabelText(/confirm new password/i), 'brand-new-password');
+    await user.click(screen.getByRole('button', { name: /activate account/i }));
+
+    expect(redeemPasswordReset).toHaveBeenCalledWith('LINKTOKEN', 'brand-new-password');
+    expect(replace).toHaveBeenCalledWith('/login?activated=1');
+  });
+});
+
 describe('client-side guards', () => {
   it('refuses mismatched passwords without calling the API', async () => {
     render(<ResetPasswordForm />);

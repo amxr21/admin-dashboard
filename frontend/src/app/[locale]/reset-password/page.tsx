@@ -1,4 +1,3 @@
-import { KeyRound } from 'lucide-react';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { PasswordRecoveryPanel } from '@/components/auth/password-recovery-panel';
@@ -8,7 +7,10 @@ import { Link } from '@/i18n/navigation';
 import { Reveal } from '@/components/motion/reveal';
 
 /**
- * Where a locked-out person redeems the token an admin handed them.
+ * Where a locked-out person redeems the token an admin handed them, and where
+ * an invited person activates their account. The heading is rendered by
+ * `PasswordRecoveryPanel`, because which of the two it is comes from the URL
+ * fragment and only the browser can read that.
  *
  * Deliberately outside the admin shell and unauthenticated — the whole point is
  * that the user cannot sign in yet. Same chrome as /login (locale + theme
@@ -35,15 +37,6 @@ export default async function ResetPasswordPage({
       <div className="flex flex-1 items-center justify-center p-4">
         <Reveal>
           <div className="bg-card w-full max-w-sm rounded-lg border p-6 shadow-sm">
-            <div className="mb-6 flex flex-col items-center text-center">
-              {/* A key is symmetric — never .icon-directional. */}
-              <span className="bg-primary text-primary-foreground mb-4 flex size-12 items-center justify-center rounded-xl">
-                <KeyRound className="size-6" aria-hidden />
-              </span>
-              <h1 className="text-xl font-semibold">{t('title')}</h1>
-              <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
-            </div>
-
             <PasswordRecoveryPanel />
 
             <p className="text-muted-foreground mt-4 text-center text-sm">
