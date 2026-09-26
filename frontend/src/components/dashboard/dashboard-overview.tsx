@@ -22,6 +22,7 @@ import { ReturnsSummaryWidget } from '@/components/dashboard/returns-summary-wid
 import { StatTile } from '@/components/dashboard/stat-tile';
 import { BranchSummary } from '@/components/dashboard/branch-summary';
 import { SimpleDashboard } from '@/components/dashboard/simple-dashboard';
+import { FirstStepsCard } from '@/components/dashboard/first-steps-card';
 import { StatusBreakdownWidget } from '@/components/dashboard/status-breakdown-widget';
 import { TemplateSwitcher } from '@/components/dashboard/template-switcher';
 import { TopProductsWidget } from '@/components/dashboard/top-products-widget';
@@ -523,6 +524,14 @@ function DetailedDashboard({ controls }: { controls: ReactNode }) {
         Putting it inside the grid would place it under the range picker's
         implied scope, which does not reach it.
       */}
+      {/* Same rule as SimpleDashboard: never having taken an order means the
+          grid below is all zeros, so point at the launch checklist first. */}
+      {canSeeReports && !isLoading && latestOrders !== null && latestOrders.length === 0 ? (
+        <Reveal>
+          <FirstStepsCard />
+        </Reveal>
+      ) : null}
+
       {canSeeReports ? (
         <Reveal>
           <FloorBand data={floor} template={template} isLoading={isLoading} />
