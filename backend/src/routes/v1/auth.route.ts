@@ -4,6 +4,7 @@ import { AuditOutcome } from '@prisma/client';
 import QRCode from 'qrcode';
 
 import { AREAS } from '../../config/roles.js';
+import { prisma } from '../../db/prisma.js';
 import { AppError } from '../../errors/AppError.js';
 import { accountEmailSchema } from '../../lib/identity-validation.js';
 import { audit } from '../../services/audit.service.js';
@@ -375,6 +376,20 @@ authRouter.patch('/auth/me', authenticate, async (req, res) => {
   });
 
   res.status(200).json({ data: updated });
+});
+
+/**
+ * POST /api/v1/auth/me/onboarded
+ *
+ * The first-login welcome was finished or dismissed. Own row only, like
+ * PATCH /auth/me, and idempotent: the first timestamp is kept.
+ */
+authRouter.post('/auth/me/onboarded', authenticate, async (req, res) => {
+  const actor = requireUser(req);
+  if (!actor.onboardedAt) {
+    await prisma.user.update({ where: { id: actor.id }, data: { onboardedAt: new Date() } });
+  }
+  res.status(200).json({ data: { ok: true } });
 });
 
 const changePasswordSchema = z

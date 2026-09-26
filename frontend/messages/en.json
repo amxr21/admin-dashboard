@@ -1,6 +1,37 @@
 {
   "setup": {
     "title": "Business setup",
+    "look": {
+      "intro": "Pick how the app looks for everyone at this store. You can see each choice right away.",
+      "accent": "Accent colour",
+      "font": "Font",
+      "corners": "Corners",
+      "later": "You can change any of this later in Settings.",
+      "fonts": {
+        "default": "Default",
+        "modern": "Modern",
+        "neutral": "Neutral",
+        "classic": "Classic"
+      },
+      "radius": {
+        "sharp": "Sharp",
+        "default": "Standard",
+        "round": "Round"
+      }
+    },
+    "developer": {
+      "title": "Developer view",
+      "showEverything": "Show every feature",
+      "showEverythingHint": "Ignores the setup choices so every page and menu entry is visible. Only in this browser, and only for you: owners and staff still see what setup chose.",
+      "resetTitle": "Reset setup",
+      "resetHint": "Marks setup as never run, so the owner is taken to the wizard on their next visit, like a new account. Current choices stay and pre-fill the wizard.",
+      "resetConfirm": "The owner will be sent to the setup wizard again. Nothing already configured is changed.",
+      "reset": "Reset setup",
+      "cancel": "Cancel",
+      "resetDone": "Setup reset. The owner will see the wizard next time.",
+      "banner": "Developer view: showing every feature, setup choices ignored.",
+      "turnOff": "Turn off"
+    },
     "scope": "Applies to all businesses and branches in this installation.",
     "intro": "Choose recommended features for your business, then adjust them to suit your work. Setup is optional.",
     "questions": {
@@ -73,6 +104,7 @@
       "products": "Catalogue",
       "people": "People and permissions",
       "operations": "Defaults",
+      "look": "Look & feel",
       "review": "Review"
     },
     "businessType": "Business type",
@@ -4265,5 +4297,19 @@
       },
       "outcomesHelp": "Delivered is confirmed by the provider when it reports back; Sent means the provider accepted the message. Addresses that bounce or opt out are never messaged again."
     }
+  },
+  "firstLogin": {
+    "title": "Welcome! Let's set up your profile",
+    "intro": "Just a few things so the app feels like yours. You can change them any time.",
+    "name": "Your name",
+    "language": "Language",
+    "theme": "Appearance",
+    "themes": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "Automatic"
+    },
+    "skip": "Skip for now",
+    "save": "Save and continue"
   }
 }

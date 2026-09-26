@@ -10,7 +10,8 @@ import { isSetupPathEnabled } from '@/lib/setup-visibility';
 
 const mocks = vi.hoisted(() => ({ fetch: vi.fn(), preview: vi.fn(), apply: vi.fn(), skip: vi.fn(), refresh: vi.fn(), role: 'OWNER', settings: { isLoading: false, setupCompletedAt: '', setupSkippedAt: '', enabledFeatures: {} as Record<string, boolean> } }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { role: mocks.role } }) }));
-vi.mock('@/components/providers/settings-provider', () => ({ useAppSettings: () => ({ ...mocks.settings, refresh: mocks.refresh }) }));
+vi.mock('@/components/providers/settings-provider', () => ({ useAppSettings: () => ({ ...mocks.settings, refresh: mocks.refresh, previewSetting: vi.fn(), clearPreview: vi.fn() }) }));
+vi.mock('@/lib/settings-api', () => ({ fetchSettings: vi.fn().mockResolvedValue([]), saveSettings: vi.fn() }));
 vi.mock('@/lib/setup-api', async importOriginal => ({ ...await importOriginal<typeof import('@/lib/setup-api')>(), fetchSetup: mocks.fetch, previewSetup: mocks.preview, applySetup: mocks.apply, skipSetup: mocks.skip }));
 
 function fixture(): SetupState {
@@ -50,8 +51,8 @@ describe('business setup', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Delivery' }));
     await user.click(screen.getByRole('button', { name: 'Next' }));
     // The `names` step is gone; its label inputs now live in Review. Walk
-    // products → people → operations (2 Next clicks), then Review.
-    for (let i = 0; i < 2; i++) await user.click(screen.getByRole('button', { name: 'Next' }));
+    // products → people → operations → look & feel (3 Next clicks), then Review.
+    for (let i = 0; i < 3; i++) await user.click(screen.getByRole('button', { name: 'Next' }));
     await user.click(screen.getByRole('button', { name: 'Review changes' }));
     expect(await screen.findByText('Hidden sections')).toBeInTheDocument();
     // The Cafe preset renamed Products → "Menu items"; the editable label
