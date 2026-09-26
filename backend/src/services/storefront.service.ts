@@ -82,6 +82,55 @@ export interface PublicProduct {
   /** Convenience for the common case, so the UI doesn't re-derive `stock > 0`. */
   inStock: boolean;
   category: { id: string; name: string; slug: string | null } | null;
+  /**
+   * The product's options (size, colour, …) with THIS branch's stock. Present
+   * on the branch-scoped catalogue routes only (list, menu, product page), not
+   * on cart/wishlist rows. When non-empty, checkout must name one of these as
+   * `variantId`, and the product's own `stock`/`inStock` are the options'
+   * total.
+   */
+  variants?: PublicVariant[];
+}
+
+export interface PublicVariant {
+  id: string;
+  name: string;
+  /** Fixed-2 string, same as the product price. */
+  price: string;
+  stock: number;
+  inStock: boolean;
+}
+
+/** The catalogue select for one branch: product fields, its branch stock and its options' branch stock. */
+function branchProductSelect(branchId: string) {
+  return {
+    ...PUBLIC_PRODUCT_SELECT,
+    branchStock: { where: { branchId }, select: { quantity: true }, take: 1 },
+    variants: {
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        branchStock: { where: { branchId }, select: { quantity: true }, take: 1 },
+      },
+      orderBy: { name: 'asc' },
+    },
+  } satisfies Prisma.ProductSelect;
+}
+
+type BranchProductRow = Prisma.ProductGetPayload<{ select: ReturnType<typeof branchProductSelect> }>;
+
+/** A branch-scoped catalogue row, options included. */
+function toBranchProduct(product: BranchProductRow, locale: ProductLocale): PublicProduct {
+  const variants = product.variants.map((variant) => {
+    const stock = Math.max(0, variant.branchStock[0]?.quantity ?? 0);
+    return { id: variant.id, name: variant.name, price: variant.price.toFixed(2), stock, inStock: stock > 0 };
+  });
+  const stock = variants.length > 0
+    ? variants.reduce((sum, variant) => sum + variant.stock, 0)
+    : (product.branchStock[0]?.quantity ?? 0);
+
+  return { ...toPublicProduct(product, locale, stock), variants };
 }
 
 /**
@@ -152,15 +201,10 @@ export async function listPublicProducts(
   await requirePublicBranch(branchId);
   const products = await prisma.product.findMany({
     where: { ...PUBLIC_PRODUCT_WHERE, branchStock: { some: { branchId } } },
-    select: {
-      ...PUBLIC_PRODUCT_SELECT,
-      branchStock: { where: { branchId }, select: { quantity: true }, take: 1 },
-    },
+    select: branchProductSelect(branchId),
     orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
   });
-  return products.map((product) =>
-    toPublicProduct(product, locale, product.branchStock[0]?.quantity ?? 0),
-  );
+  return products.map((product) => toBranchProduct(product, locale));
 }
 
 export interface PublicMenuCategory {
@@ -193,10 +237,7 @@ export async function getPublicMenu(
       slug: true,
       products: {
         where: { ...PUBLIC_PRODUCT_WHERE, branchStock: { some: { branchId } } },
-        select: {
-          ...PUBLIC_PRODUCT_SELECT,
-          branchStock: { where: { branchId }, select: { quantity: true }, take: 1 },
-        },
+        select: branchProductSelect(branchId),
         orderBy: { name: 'asc' },
       },
     },
@@ -208,9 +249,7 @@ export async function getPublicMenu(
       id: category.id,
       title: category.name,
       slug: category.slug,
-      items: category.products.map((product) =>
-        toPublicProduct(product, locale, product.branchStock[0]?.quantity ?? 0),
-      ),
+      items: category.products.map((product) => toBranchProduct(product, locale)),
     }));
 }
 
@@ -223,15 +262,12 @@ export async function getPublicProductBySlug(
   await requirePublicBranch(branchId);
   const product = await prisma.product.findFirst({
     where: { slug, ...PUBLIC_PRODUCT_WHERE, branchStock: { some: { branchId } } },
-    select: {
-      ...PUBLIC_PRODUCT_SELECT,
-      branchStock: { where: { branchId }, select: { quantity: true }, take: 1 },
-    },
+    select: branchProductSelect(branchId),
   });
 
   if (!product) throw AppError.notFound('Product not found');
 
-  return toPublicProduct(product, locale, product.branchStock[0]?.quantity ?? 0);
+  return toBranchProduct(product, locale);
 }
 
 // ─── Categories ─────────────────────────────────────────────────────
@@ -574,7 +610,8 @@ export interface CheckoutContact {
 
 export interface CheckoutInput {
   branchId: string;
-  items: { productId: string; quantity: number }[];
+  /** `variantId` names the option bought; required when the product has any. */
+  items: { productId: string; variantId?: string | undefined; quantity: number }[];
   contact: CheckoutContact;
   paymentMethod: string;
   fulfillment: string;
@@ -798,6 +835,46 @@ async function nextOrderNumber(tx: Prisma.TransactionClient): Promise<string> {
 }
 
 /**
+ * The option half of the stock write: the same guarded claim as a plain
+ * product line (the quantity condition lives in the WHERE clause, a lost race
+ * is a 409), against the variant's own branch stock and running total — the
+ * shape the POS uses in `claimVariantStock`.
+ */
+async function claimVariantLine(
+  tx: Prisma.TransactionClient,
+  line: { variantId: string; name: string; quantity: number },
+  branchId: string,
+  orderNumber: string,
+) {
+  const soldOut = () =>
+    AppError.conflict(`${line.name} just sold out at this branch — please adjust your cart and try again`);
+  try {
+    const claimed = await tx.branchVariantStock.updateMany({
+      where: { variantId: line.variantId, branchId, quantity: { gte: line.quantity } },
+      data: { quantity: { decrement: line.quantity } },
+    });
+    if (claimed.count === 0) throw soldOut();
+  } catch (err) {
+    if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2034') throw err;
+    throw soldOut();
+  }
+  await tx.productVariant.update({
+    where: { id: line.variantId },
+    data: { stock: { decrement: line.quantity } },
+  });
+  await tx.stockMovement.create({
+    data: {
+      variantId: line.variantId,
+      branchId,
+      delta: -line.quantity,
+      reason: StockMovementReason.SOLD,
+      note: `Order ${orderNumber}`,
+      actorId: null,
+    },
+  });
+}
+
+/**
  * Place an order. Works for guests and signed-in customers.
  *
  * The whole thing runs in ONE transaction because four writes have to agree:
@@ -839,16 +916,22 @@ async function checkoutOnce(
       throw AppError.badRequest('Select an active branch', { field: 'branchId' });
     }
 
-    // Collapse duplicate lines first: the same product twice would otherwise
-    // decrement stock twice while creating two order rows for one intent.
-    const quantities = new Map<string, number>();
+    // Collapse duplicate lines first: the same product (and option) twice
+    // would otherwise decrement stock twice while creating two order rows for
+    // one intent.
+    const quantities = new Map<string, { productId: string; variantId: string | null; quantity: number }>();
     for (const item of input.items) {
-      quantities.set(item.productId, (quantities.get(item.productId) ?? 0) + item.quantity);
+      const key = `${item.productId}:${item.variantId ?? ''}`;
+      const existing = quantities.get(key);
+      if (existing) existing.quantity += item.quantity;
+      else quantities.set(key, { productId: item.productId, variantId: item.variantId ?? null, quantity: item.quantity });
     }
+    const productIds = [...new Set(input.items.map((item) => item.productId))];
+    const variantIds = [...new Set(input.items.flatMap((item) => (item.variantId ? [item.variantId] : [])))];
 
     const products = await tx.product.findMany({
       where: {
-        id: { in: [...quantities.keys()] },
+        id: { in: productIds },
         ...PUBLIC_PRODUCT_WHERE,
         branchStock: { some: { branchId: input.branchId } },
       },
@@ -862,9 +945,25 @@ async function checkoutOnce(
           select: { quantity: true },
           take: 1,
         },
+        _count: { select: { variants: true } },
       },
     });
     const byId = new Map(products.map((product) => [product.id, product]));
+
+    const variants = variantIds.length > 0
+      ? await tx.productVariant.findMany({
+          where: { id: { in: variantIds } },
+          select: {
+            id: true,
+            productId: true,
+            name: true,
+            sku: true,
+            price: true,
+            branchStock: { where: { branchId: input.branchId }, select: { quantity: true }, take: 1 },
+          },
+        })
+      : [];
+    const variantById = new Map(variants.map((variant) => [variant.id, variant]));
 
     let subtotal = new Prisma.Decimal(0);
     let taxableSubtotal = new Prisma.Decimal(0);
@@ -875,35 +974,55 @@ async function checkoutOnce(
       quantity: number;
       price: Prisma.Decimal;
       isTaxable: boolean;
+      variantId: string | null;
+      variantName: string | null;
+      variantSku: string | null;
     }[] = [];
 
-    for (const [productId, quantity] of quantities) {
+    for (const { productId, variantId, quantity } of quantities.values()) {
       const product = byId.get(productId);
 
       // Unknown or unavailable — named generically, since the caller supplied
       // the id and doesn't need to learn whether it exists but is a draft.
       if (!product) throw AppError.badRequest('One or more items are no longer available');
 
+      // A product sold in options is only ever sold AS an option. Selling
+      // "T-shirt" with no size would draw on a product-level stock row nobody
+      // counts, and hand the packer a line they can't pick.
+      const variant = variantId ? variantById.get(variantId) : undefined;
+      if (variantId && (!variant || variant.productId !== productId)) {
+        throw AppError.badRequest('One or more items are no longer available', { field: 'variantId' });
+      }
+      if (!variant && product._count.variants > 0) {
+        throw AppError.badRequest(`Choose an option for ${product.name}`, { field: 'variantId', productId });
+      }
+
+      const name = variant ? `${product.name} (${variant.name})` : product.name;
+      const price = variant ? variant.price : product.price;
+
       // Fails the common case early — before an order row, its items and a
       // movement log are written and then rolled back — and names the exact
       // remaining count, which the decrement below cannot report.
-      const available = product.branchStock[0]?.quantity ?? 0;
+      const available = (variant ? variant.branchStock[0]?.quantity : product.branchStock[0]?.quantity) ?? 0;
       if (available < quantity) {
         throw AppError.conflict(
-          `Only ${String(available)} × ${product.name} left at this branch — please adjust your cart`,
+          `Only ${String(Math.max(0, available))} × ${name} left at this branch — please adjust your cart`,
         );
       }
 
-      subtotal = subtotal.plus(product.price.times(quantity));
+      subtotal = subtotal.plus(price.times(quantity));
       if (product.isTaxable) {
-        taxableSubtotal = taxableSubtotal.plus(product.price.times(quantity));
+        taxableSubtotal = taxableSubtotal.plus(price.times(quantity));
       }
       lines.push({
         productId,
-        name: product.name,
+        name,
         quantity,
-        price: product.price,
+        price,
         isTaxable: product.isTaxable,
+        variantId: variant?.id ?? null,
+        variantName: variant?.name ?? null,
+        variantSku: variant?.sku ?? null,
       });
     }
 
@@ -919,7 +1038,7 @@ async function checkoutOnce(
           tx,
           input.discountCode,
           subtotal,
-          [...quantities.keys()],
+          productIds,
           customerId,
         )
       : null;
@@ -953,6 +1072,9 @@ async function checkoutOnce(
       items: {
         create: lines.map((line) => ({
           productId: line.productId,
+          variantId: line.variantId,
+          variantName: line.variantName,
+          variantSku: line.variantSku,
           quantity: line.quantity,
           price: line.price,
           isTaxable: line.isTaxable,
@@ -1014,6 +1136,10 @@ async function checkoutOnce(
     // the second one either waits or is aborted as a deadlock — it never
     // applies to a stale count. The P2034 branch below is that abort.
     for (const line of lines) {
+      if (line.variantId !== null) {
+        await claimVariantLine(tx, { ...line, variantId: line.variantId }, input.branchId, order.orderNumber);
+        continue;
+      }
       try {
         const claimed = await tx.branchStock.updateMany({
           where: {
@@ -1121,7 +1247,8 @@ export interface PublicOrder {
   taxAmount: string | null;
   total: string;
   placedAt: Date;
-  items: { name: string; quantity: number; price: string }[];
+  /** `variant` is the option bought (e.g. "Large"), or null for a plain product. */
+  items: { name: string; variant: string | null; quantity: number; price: string }[];
 }
 
 const PUBLIC_ORDER_SELECT = {
@@ -1135,6 +1262,7 @@ const PUBLIC_ORDER_SELECT = {
     select: {
       quantity: true,
       price: true,
+      variantName: true,
       product: { select: { name: true } },
     },
   },
@@ -1156,6 +1284,7 @@ function toPublicOrder(
       // A deleted product leaves the line intact (OrderItem.productId is
       // SetNull) — show a placeholder rather than crashing on the history page.
       name: item.product?.name ?? 'Item no longer available',
+      variant: item.variantName,
       quantity: item.quantity,
       price: item.price.toFixed(2),
     })),
