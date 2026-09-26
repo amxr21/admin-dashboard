@@ -77,8 +77,8 @@ importers:
         specifier: ^9.1.1
         version: 9.1.1
       otplib:
-        specifier: ^12.0.1
-        version: 12.0.1
+        specifier: ^13.5.0
+        version: 13.5.0
       pdfkit:
         specifier: ^0.20.2
         version: 0.20.2
@@ -154,7 +154,7 @@ importers:
         version: 8.70.1(eslint@10.11.0(jiti@2.7.0))(typescript@5.9.3)
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.1)(yaml@2.9.0))
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.1)(yaml@2.9.0))
 
   frontend:
     dependencies:
@@ -314,7 +314,7 @@ importers:
         version: 11.2.12
       jsdom:
         specifier: ^29.1.1
-        version: 29.1.1(@noble/hashes@1.8.0)
+        version: 29.1.1(@noble/hashes@2.4.0)
       tailwindcss:
         specifier: ^4.0.0
         version: 4.3.3
@@ -326,7 +326,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.1)(yaml@2.9.0))
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.1)(yaml@2.9.0))
 
 packages:
 
@@ -1097,6 +1097,10 @@ packages:
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
     engines: {node: ^14.21.3 || >=16}
 
+  '@noble/hashes@2.4.0':
+    resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
+    engines: {node: '>= 20.19.0'}
+
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
     engines: {node: '>= 8'}
@@ -1155,23 +1159,23 @@ packages:
     resolution: {integrity: sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg==}
     engines: {node: '>=14'}
 
-  '@otplib/core@12.0.1':
-    resolution: {integrity: sha512-4sGntwbA/AC+SbPhbsziRiD+jNDdIzsZ3JUyfZwjtKyc/wufl1pnSIaG4Uqx8ymPagujub0o92kgBnB89cuAMA==}
+  '@otplib/core@13.5.0':
+    resolution: {integrity: sha512-2rURdkYkb3BDhMs3j/oCCPTve1ybJ6ruLfLfSe1ZSPV+y6RFTbLfAuT0m0ZCnps88ogkIq9t/+Li/kg5RofQwQ==}
 
-  '@otplib/plugin-crypto@12.0.1':
-    resolution: {integrity: sha512-qPuhN3QrT7ZZLcLCyKOSNhuijUi9G5guMRVrxq63r9YNOxxQjPm59gVxLM+7xGnHnM6cimY57tuKsjK7y9LM1g==}
-    deprecated: Please upgrade to v13 of otplib. Refer to otplib docs for migration paths
+  '@otplib/hotp@13.5.0':
+    resolution: {integrity: sha512-1EwwAti05CeWJn4xXOVMBK9N6dIJlJw/cQkQyiL9OVlkeS452wAve3ffodi+5IUZdWoF1wxVug38RisdxDqDWw==}
 
-  '@otplib/plugin-thirty-two@12.0.1':
-    resolution: {integrity: sha512-MtT+uqRso909UkbrrYpJ6XFjj9D+x2Py7KjTO9JDPhL0bJUYVu5kFP4TFZW4NFAywrAtFRxOVY261u0qwb93gA==}
-    deprecated: Please upgrade to v13 of otplib. Refer to otplib docs for migration paths
+  '@otplib/plugin-base32-scure@13.5.0':
+    resolution: {integrity: sha512-3JEIHindUMiIeNL0jXepSAkZ/7IkWq4sPdG9eXK0lrMXZG9RdKu5oz/4tuuTodtsFUPYhKlRMqv5xUvQIkMIaA==}
 
-  '@otplib/preset-default@12.0.1':
-    resolution: {integrity: sha512-xf1v9oOJRyXfluBhMdpOkr+bsE+Irt+0D5uHtvg6x1eosfmHCsCC6ej/m7FXiWqdo0+ZUI6xSKDhJwc8yfiOPQ==}
-    deprecated: Please upgrade to v13 of otplib. Refer to otplib docs for migration paths
+  '@otplib/plugin-crypto-noble@13.5.0':
+    resolution: {integrity: sha512-fihOAGFvc4b8XTKyIK3jifFP2nLrUNc2bOaJ3UkUKJjy1XI2FbHKG0WmOH+jFsPfa6VsOnouCnEmSznDxIe0pA==}
 
-  '@otplib/preset-v11@12.0.1':
-    resolution: {integrity: sha512-9hSetMI7ECqbFiKICrNa4w70deTUfArtwXykPUvSHWOdzOlfa9ajglu7mNCntlvxycTiOAXkQGwjQCzzDEMRMg==}
+  '@otplib/totp@13.5.0':
+    resolution: {integrity: sha512-GD9LzQnbHDwXCp79s8AaiA5cJR6luX5fEr9AN32AWx4ooRvllPbMkG80gHSA0jbGCnAIX/ChyOtTZ8tgJHMkSg==}
+
+  '@otplib/uri@13.5.0':
+    resolution: {integrity: sha512-LsL1hqTEgJHY40U2eb/Qp6OR1tKkNGwHQTrqqjIuJj0cawGWkLEmeUFK1MHzWBQ4bgy5IdeB5Et7gIDSAH/CRw==}
 
   '@oxc-project/types@0.139.0':
     resolution: {integrity: sha512-r9gHphtCs+1M7J0pw6Sn/hh/Wpa/iQrOOkrNAlVLF/gHq+/CJmHIWKKUUhdWjcD6CIa8idarspCsASiXCXvFUw==}
@@ -2006,6 +2010,9 @@ packages:
 
   '@schummar/icu-type-parser@1.21.5':
     resolution: {integrity: sha512-bXHSaW5jRTmke9Vd0h5P7BtWZG9Znqb8gSDxZnxaGSJnGwPLDPfS+3g0BKzeWqzgZPsIVZkM7m2tbo18cm5HBw==}
+
+  '@scure/base@2.4.0':
+    resolution: {integrity: sha512-thZ1TuJwFwBblOhgsjDKvvGirBxNp+wSvY/DR6tJBJOTDhdAAcHJ8Vbr2eFnqaxeca4+t0i9KBf+uHYGWwZORg==}
 
   '@sentry/babel-plugin-component-annotate@5.3.0':
     resolution: {integrity: sha512-p4q8gn8wcFqZGP/s2MnJCAAd8fTikaU6A0mM97RDHQgStcrYiaS0Sc5zUNfb1V+UOLPuvdEdL6MwyxfzjYJQTA==}
@@ -4896,8 +4903,8 @@ packages:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
 
-  otplib@12.0.1:
-    resolution: {integrity: sha512-xDGvUOQjop7RDgxTQ+o4pOol0/3xSZzawTiPKRrHnQWAy0WjhNs/5HdIDJCrqC4MBynmjXgULc6YfioaxZeFgg==}
+  otplib@13.5.0:
+    resolution: {integrity: sha512-RpcC6aq4rANX6MverMuU3pqHVLgMPO7vl6qR8ga7YzoEHlPJknJ58cSVAaf3jBYnasiQVQHXXl2mj/4pYlsVEQ==}
 
   own-keys@1.0.2:
     resolution: {integrity: sha512-19YVAg7T+WTrxggPukVq7DjTv6+PJ867TmhCvBsYwmbFCsZd344rq2Ld1p0wo8f8Qrrhgp82c6FJRqdXWtSEhg==}
@@ -5565,10 +5572,6 @@ packages:
     resolution: {integrity: sha512-bWnjSNscmuI+GJze6ZupnHP8G/cTcsJF+bXCeQknk2SHQsgbNJnLrqiH9jZ2W4STPVXH2mDKKRX3iwPhc9Cn/Q==}
     engines: {node: '>=10'}
     hasBin: true
-
-  thirty-two@1.0.2:
-    resolution: {integrity: sha512-OEI0IWCe+Dw46019YLl6V10Us5bi574EvlJEOcAkB29IzQ/mYD1A6RyNHLjZPiHCmuodxvgF6U+vZO1L15lxVA==}
-    engines: {node: '>=0.2.6'}
 
   thread-stream@4.2.0:
     resolution: {integrity: sha512-e2zZ96wSChazBsbENf/Pcm/4swHt2cEKQ92rhUjkL9GCKiTDJIaTBenjE/m9DXi0QBmTMDkFDdOomUy20A1tDQ==}
@@ -6361,9 +6364,9 @@ snapshots:
       '@eslint/core': 1.2.1
       levn: 0.4.1
 
-  '@exodus/bytes@1.15.1(@noble/hashes@1.8.0)':
+  '@exodus/bytes@1.15.1(@noble/hashes@2.4.0)':
     optionalDependencies:
-      '@noble/hashes': 1.8.0
+      '@noble/hashes': 2.4.0
 
   '@fast-csv/format@4.3.5':
     dependencies:
@@ -6646,6 +6649,8 @@ snapshots:
 
   '@noble/hashes@1.8.0': {}
 
+  '@noble/hashes@2.4.0': {}
+
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
       '@nodelib/fs.stat': 2.0.5
@@ -6703,28 +6708,32 @@ snapshots:
 
   '@opentelemetry/semantic-conventions@1.43.0': {}
 
-  '@otplib/core@12.0.1': {}
+  '@otplib/core@13.5.0': {}
 
-  '@otplib/plugin-crypto@12.0.1':
+  '@otplib/hotp@13.5.0':
     dependencies:
-      '@otplib/core': 12.0.1
+      '@otplib/core': 13.5.0
+      '@otplib/uri': 13.5.0
 
-  '@otplib/plugin-thirty-two@12.0.1':
+  '@otplib/plugin-base32-scure@13.5.0':
     dependencies:
-      '@otplib/core': 12.0.1
-      thirty-two: 1.0.2
+      '@otplib/core': 13.5.0
+      '@scure/base': 2.4.0
 
-  '@otplib/preset-default@12.0.1':
+  '@otplib/plugin-crypto-noble@13.5.0':
     dependencies:
-      '@otplib/core': 12.0.1
-      '@otplib/plugin-crypto': 12.0.1
-      '@otplib/plugin-thirty-two': 12.0.1
+      '@noble/hashes': 2.4.0
+      '@otplib/core': 13.5.0
 
-  '@otplib/preset-v11@12.0.1':
+  '@otplib/totp@13.5.0':
     dependencies:
-      '@otplib/core': 12.0.1
-      '@otplib/plugin-crypto': 12.0.1
-      '@otplib/plugin-thirty-two': 12.0.1
+      '@otplib/core': 13.5.0
+      '@otplib/hotp': 13.5.0
+      '@otplib/uri': 13.5.0
+
+  '@otplib/uri@13.5.0':
+    dependencies:
+      '@otplib/core': 13.5.0
 
   '@oxc-project/types@0.139.0': {}
 
@@ -7440,6 +7449,8 @@ snapshots:
   '@rushstack/eslint-patch@1.16.1': {}
 
   '@schummar/icu-type-parser@1.21.5': {}
+
+  '@scure/base@2.4.0': {}
 
   '@sentry/babel-plugin-component-annotate@5.3.0': {}
 
@@ -8196,7 +8207,7 @@ snapshots:
       obug: 2.2.1
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.1)(yaml@2.9.0))
+      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.1)(yaml@2.9.0))
 
   '@vitest/expect@4.1.11':
     dependencies:
@@ -8828,10 +8839,10 @@ snapshots:
 
   data-uri-to-buffer@4.0.1: {}
 
-  data-urls@7.0.0(@noble/hashes@1.8.0):
+  data-urls@7.0.0(@noble/hashes@2.4.0):
     dependencies:
       whatwg-mimetype: 5.0.0
-      whatwg-url: 16.0.1(@noble/hashes@1.8.0)
+      whatwg-url: 16.0.1(@noble/hashes@2.4.0)
     transitivePeerDependencies:
       - '@noble/hashes'
 
@@ -9754,9 +9765,9 @@ snapshots:
 
   hookified@2.2.0: {}
 
-  html-encoding-sniffer@6.0.0(@noble/hashes@1.8.0):
+  html-encoding-sniffer@6.0.0(@noble/hashes@2.4.0):
     dependencies:
-      '@exodus/bytes': 1.15.1(@noble/hashes@1.8.0)
+      '@exodus/bytes': 1.15.1(@noble/hashes@2.4.0)
     transitivePeerDependencies:
       - '@noble/hashes'
 
@@ -10015,17 +10026,17 @@ snapshots:
     dependencies:
       argparse: 2.0.1
 
-  jsdom@29.1.1(@noble/hashes@1.8.0):
+  jsdom@29.1.1(@noble/hashes@2.4.0):
     dependencies:
       '@asamuzakjp/css-color': 5.1.11
       '@asamuzakjp/dom-selector': 7.1.1
       '@bramus/specificity': 2.4.2
       '@csstools/css-syntax-patches-for-csstree': 1.1.7(css-tree@3.2.1)
-      '@exodus/bytes': 1.15.1(@noble/hashes@1.8.0)
+      '@exodus/bytes': 1.15.1(@noble/hashes@2.4.0)
       css-tree: 3.2.1
-      data-urls: 7.0.0(@noble/hashes@1.8.0)
+      data-urls: 7.0.0(@noble/hashes@2.4.0)
       decimal.js: 10.6.0
-      html-encoding-sniffer: 6.0.0(@noble/hashes@1.8.0)
+      html-encoding-sniffer: 6.0.0(@noble/hashes@2.4.0)
       is-potential-custom-element-name: 1.0.1
       lru-cache: 11.5.2
       parse5: 8.0.1
@@ -10036,7 +10047,7 @@ snapshots:
       w3c-xmlserializer: 5.0.0
       webidl-conversions: 8.0.1
       whatwg-mimetype: 5.0.0
-      whatwg-url: 16.0.1(@noble/hashes@1.8.0)
+      whatwg-url: 16.0.1(@noble/hashes@2.4.0)
       xml-name-validator: 5.0.0
     transitivePeerDependencies:
       - '@noble/hashes'
@@ -10564,11 +10575,14 @@ snapshots:
       type-check: 0.4.0
       word-wrap: 1.2.5
 
-  otplib@12.0.1:
+  otplib@13.5.0:
     dependencies:
-      '@otplib/core': 12.0.1
-      '@otplib/preset-default': 12.0.1
-      '@otplib/preset-v11': 12.0.1
+      '@otplib/core': 13.5.0
+      '@otplib/hotp': 13.5.0
+      '@otplib/plugin-base32-scure': 13.5.0
+      '@otplib/plugin-crypto-noble': 13.5.0
+      '@otplib/totp': 13.5.0
+      '@otplib/uri': 13.5.0
 
   own-keys@1.0.2:
     dependencies:
@@ -11381,8 +11395,6 @@ snapshots:
       commander: 2.20.3
       source-map-support: 0.5.21
 
-  thirty-two@1.0.2: {}
-
   thread-stream@4.2.0:
     dependencies:
       real-require: 1.0.0
@@ -11654,7 +11666,7 @@ snapshots:
       tsx: 4.23.1
       yaml: 2.9.0
 
-  vitest@4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.1)(yaml@2.9.0)):
+  vitest@4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.1)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.11
       '@vitest/mocker': 4.1.11(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.1)(yaml@2.9.0))
@@ -11680,7 +11692,7 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@types/node': 26.1.1
       '@vitest/coverage-v8': 4.1.11(vitest@4.1.11)
-      jsdom: 29.1.1(@noble/hashes@1.8.0)
+      jsdom: 29.1.1(@noble/hashes@2.4.0)
     transitivePeerDependencies:
       - msw
 
@@ -11742,9 +11754,9 @@ snapshots:
 
   whatwg-mimetype@5.0.0: {}
 
-  whatwg-url@16.0.1(@noble/hashes@1.8.0):
+  whatwg-url@16.0.1(@noble/hashes@2.4.0):
     dependencies:
-      '@exodus/bytes': 1.15.1(@noble/hashes@1.8.0)
+      '@exodus/bytes': 1.15.1(@noble/hashes@2.4.0)
       tr46: 6.0.0
       webidl-conversions: 8.0.1
     transitivePeerDependencies:
