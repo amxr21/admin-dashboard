@@ -36,6 +36,9 @@ import { usePathname } from '@/i18n/navigation';
 import { cn } from '@/lib/utils';
 import { SetupFeatureGate } from '@/components/setup/setup-feature-gate';
 import { SetupPrompt } from '@/components/setup/setup-prompt';
+import { FirstLogin } from '@/components/onboarding/first-login';
+import { useOptionalAuth } from '@/hooks/useAuth';
+import { DeveloperViewBanner } from '@/components/setup/developer-setup-panel';
 
 /**
  * The dashboard chrome: sidebar, topbar, content area.
@@ -76,6 +79,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   const { resources } = useResourceSchema();
   const { logoUrl, sidebarMode, storeName } = useAppSettings();
   const canAccessArea = useCanAccessArea();
+  const sessionUser = useOptionalAuth()?.user;
   const pageTitle = usePageTitle();
   const breadcrumbSegments = useBreadcrumbSegments();
   // Collapse/expand is a personal per-browser preference, separate from
@@ -191,7 +195,8 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
   return (
     <EffectiveRoleProvider role={effectiveRole}>
     <div data-slot="app-shell" className="flex h-dvh min-h-0 overflow-hidden">
-      <OnboardingWelcome />
+      {/* The tips card waits until a new user's profile welcome is done: one modal at a time. */}
+      {sessionUser?.onboardedAt === null ? null : <OnboardingWelcome role={user.role} />}
       <GlobalLoadingOverlay />
 
       {/* Desktop sidebar. Hidden below lg; the drawer covers those widths.
@@ -340,6 +345,12 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
             <ViewAsBanner role={previewedRole} onExit={() => setPreviewedRole(null)} />
           </div>
         ) : null}
+
+        <div className="shrink-0">
+          <DeveloperViewBanner />
+        </div>
+
+        <FirstLogin isPreviewing={isPreviewing} />
 
         {/* DEVELOPER only — an operational surface, not a business area, so it
             is gated on the role directly rather than an `area`. See

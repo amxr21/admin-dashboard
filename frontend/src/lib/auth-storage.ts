@@ -45,6 +45,8 @@ export interface SessionUser {
   email: string;
   name: string | null;
   role: StaffRole;
+  /** Null until the first-login welcome is finished; absent on an old cached session (treated as "don't show"). */
+  onboardedAt?: string | null;
 }
 
 /** Reads the token, or null when absent or unreadable. */

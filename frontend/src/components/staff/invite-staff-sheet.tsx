@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -24,11 +24,13 @@ import { isAccountEmailValid, normalizeAccountEmail } from '@/lib/identity-valid
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { ResetTokenPanel } from '@/components/staff/reset-token-panel';
+import type { Locale } from '@/i18n/routing';
+import { recoveryPageUrl } from '@/lib/recovery-link';
 import {
   STAFF_ROLES,
   canAssign,
   inviteStaff,
-  type ResetTokenResult,
+  type InviteStaffResult,
   type StaffRole,
 } from '@/lib/staff-api';
 
@@ -63,6 +65,7 @@ export function InviteStaffSheet({
   onInvited,
 }: InviteStaffSheetProps) {
   const t = useTranslations('staff');
+  const locale = useLocale() as Locale;
   // URG-013 — shared format-example placeholders (see resource-form.tsx's
   // placeholderFor).
   const tCommon = useTranslations('common');
@@ -100,7 +103,7 @@ export function InviteStaffSheet({
   const [error, setError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [issued, setIssued] = useState<ResetTokenResult | null>(null);
+  const [issued, setIssued] = useState<InviteStaffResult | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -179,6 +182,7 @@ export function InviteStaffSheet({
         role,
         ...(requiresBranch && branchId ? { branchId } : {}),
         ...(accessExpiresAt ? { accessExpiresAt: `${accessExpiresAt}T23:59:59.999Z` } : {}),
+        activationUrl: recoveryPageUrl(locale),
       });
 
       // The account exists now — the list should reflect it immediately,
@@ -203,6 +207,8 @@ export function InviteStaffSheet({
         staffEmail={issued.staff.email}
         token={issued.token}
         expiresAt={issued.expiresAt}
+        mode="invite"
+        emailed={issued.emailed}
         onDone={() => {
           reset();
           onOpenChange(false);

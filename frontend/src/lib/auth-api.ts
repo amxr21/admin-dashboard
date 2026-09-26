@@ -106,6 +106,11 @@ export async function updateOwnProfile(input: UpdateProfileInput) {
  * including the one that made this request, so the caller must seed the new
  * token immediately or their next request 401s despite just succeeding.
  */
+/** The first-login welcome was finished or skipped. Own account only. */
+export async function markOnboarded(): Promise<void> {
+  await apiFetch('/auth/me/onboarded', { method: 'POST', body: '{}' });
+}
+
 export async function changeOwnPassword(
   currentPassword: string,
   newPassword: string,

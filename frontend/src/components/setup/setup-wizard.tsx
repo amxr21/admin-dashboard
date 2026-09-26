@@ -18,13 +18,16 @@ import { CollapsibleSection } from '@/components/ui/collapsible-section';
 import { cn } from '@/lib/utils';
 import { AREAS, type Area, type StaffRole } from '@/config/areas';
 import { SetupQuestions } from '@/components/setup/setup-questions';
+import { DeveloperSetupPanel } from '@/components/setup/developer-setup-panel';
+import { SetupLook, type LookDraft, type LookKey } from '@/components/setup/setup-look';
+import { fetchSettings, saveSettings, type Setting } from '@/lib/settings-api';
 import { applySetup, fetchSetup, previewSetup, skipSetup, SETUP_FEATURE_KEYS, type SetupDraft, type SetupPreview, type SetupState, type SetupValue } from '@/lib/setup-api';
 
 // `names` is no longer its own step — a step whose default action is "leave
 // every field blank" earned nothing. The label edits it held now live inline
 // in the Review step (see SetupReview), where the owner is already looking at
 // what will change and can rename in the same place.
-const STEPS = ['entry', 'business', 'questions', 'features', 'products', 'people', 'operations', 'review'] as const;
+const STEPS = ['entry', 'business', 'questions', 'features', 'products', 'people', 'operations', 'look', 'review'] as const;
 /** Answered in the Questions step, so never repeated as raw fields later. */
 const QUESTION_KEYS = new Set(['notifications.lowStockAlerts', 'setup.fulfilment', 'setup.sellsOnline', 'setup.paymentMethods', 'setup.wantsCampaigns']);
 /**
@@ -45,10 +48,14 @@ export function SetupWizard() {
 
 function OwnerSetupWizard() {
   const t = useTranslations('setup');
+  const isDeveloper = useAuth().user?.role === 'DEVELOPER';
   const locale = useLocale();
   const tTypes = useTranslations('businessTypes');
   const translateError = useTranslatedApiError();
-  const { refresh } = useAppSettings();
+  const { refresh, previewSetting, clearPreview } = useAppSettings();
+  /** Store appearance for the Look & feel step; saved with the wizard, previewed live until then. */
+  const [appearanceSettings, setAppearanceSettings] = useState<Setting[]>([]);
+  const [look, setLook] = useState<LookDraft>({});
   const [data, setData] = useState<SetupState | null>(null);
   const [draft, setDraft] = useState<SetupDraft | null>(null);
   const [preview, setPreview] = useState<SetupPreview | null>(null);
@@ -72,6 +79,17 @@ function OwnerSetupWizard() {
     return () => { active = false; };
   }, [revision, translateError]);
   useEffect(() => { heading.current?.focus(); }, [step, finished]);
+  useEffect(() => {
+    fetchSettings().then(setAppearanceSettings).catch(() => setAppearanceSettings([]));
+    // Leaving without saving must not leave a previewed accent on the whole app.
+    return () => clearPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  function changeLook(key: LookKey, value: string) {
+    setLook((current) => ({ ...current, [key]: value }));
+    previewSetting(key, value);
+    setDirty(true);
+  }
 
   function change(next: SetupDraft) { setDraft(next); setDirty(true); setPreview(null); setError(null); }
   /**
@@ -108,6 +126,8 @@ function OwnerSetupWizard() {
     setBusy(true); setError(null);
     try {
       if (skip) await skipSetup(); else await applySetup(draft);
+      if (!skip && Object.keys(look).length > 0) await saveSettings(look);
+      if (skip) clearPreview();
       setDirty(false); setFinished(skip ? 'skipped' : 'applied');
       toast.success(t(skip ? 'skipped' : 'saved'));
       await syncSettings();
@@ -126,6 +146,7 @@ function OwnerSetupWizard() {
   const labelKeys = LABEL_KEYS.filter(key => key === 'products' || draft.features[key as keyof typeof draft.features]);
 
   return <section className="mx-auto max-w-4xl space-y-5" aria-busy={busy}>
+    {isDeveloper ? <DeveloperSetupPanel /> : null}
     <header className="space-y-2"><h1 className="text-2xl font-semibold">{t('title')}</h1><p className="text-muted-foreground text-sm">{t('scope')}</p></header>
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2 text-sm">
@@ -143,6 +164,7 @@ function OwnerSetupWizard() {
     <h2 ref={heading} tabIndex={-1} className="text-xl font-semibold outline-none">{t(`steps.${stepKey}`)}</h2>
     {errorBlock}
     <fieldset disabled={busy} className="min-w-0 space-y-4">
+      {stepKey === 'look' ? <SetupLook settings={appearanceSettings} value={look} onChange={changeLook} /> : null}
       {stepKey === 'entry' ? <div className="bg-card space-y-3 rounded-lg border p-4">
         {/* A returning owner already ran setup — say so, and what is in place,
             instead of the identical first-timer copy. `completedAt` is already

@@ -17,6 +17,7 @@ import {
   listPosVariants,
   listParkedSales,
   parkSale,
+  quoteSale,
   resumeParkedSale,
   scanProduct,
   searchPosCustomers,
@@ -242,6 +243,16 @@ const checkoutSchema = z.object({
 });
 
 const idempotencyKeySchema = z.string().uuid().max(64);
+
+/**
+ * POST /api/v1/pos/quote: the real total (VAT included) for a cart, from the
+ * same math checkout uses. Read-only; nothing is reserved or sold.
+ */
+posRouter.post('/pos/quote', ...guard, async (req, res) => {
+  const parsed = checkoutSchema.pick({ lines: true }).safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest('Invalid sale', parsed.error.flatten());
+  res.json({ data: await quoteSale(parsed.data.lines) });
+});
 
 /**
  * POST /api/v1/pos/checkout — take a sale.

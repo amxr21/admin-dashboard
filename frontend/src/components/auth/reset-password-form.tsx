@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -37,8 +37,19 @@ import { redeemPasswordReset } from '@/lib/auth-api';
  * The backend answers unknown, already-used, and expired tokens with the same
  * generic error on purpose — distinguishing them would let someone probe which
  * tokens exist. This form does not try to be more helpful than that.
+ *
+ * `initialToken` arrives from a link (see PasswordRecoveryPanel) after the
+ * first render, since it is read from the URL fragment on mount. `invite`
+ * only changes the wording and the sign-in notice — redeeming an invite is
+ * the same server call as redeeming a reset.
  */
-export function ResetPasswordForm() {
+export function ResetPasswordForm({
+  initialToken,
+  invite = false,
+}: {
+  initialToken?: string | undefined;
+  invite?: boolean;
+} = {}) {
   const t = useTranslations('auth.reset');
   const tStates = useTranslations('states.error');
   const router = useRouter();
@@ -48,6 +59,10 @@ export function ResetPasswordForm() {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (initialToken) setToken(initialToken);
+  }, [initialToken]);
 
   function messageFor(caught: unknown): string {
     if (!(caught instanceof ApiError)) return tStates('network');
@@ -82,7 +97,7 @@ export function ResetPasswordForm() {
       // Redemption revokes every existing session server-side, so there is
       // nothing to resume — send them to sign in fresh. `replace`, so Back
       // cannot return to a form whose token is now spent.
-      router.replace('/login?reset=1');
+      router.replace(invite ? '/login?activated=1' : '/login?reset=1');
     } catch (caught) {
       setError(messageFor(caught));
       // Clear the passwords but KEEP the token: if the failure was a weak
@@ -106,7 +121,7 @@ export function ResetPasswordForm() {
       ) : null}
 
       <div className="space-y-2">
-        <Label htmlFor="reset-token">{t('token')}</Label>
+        <Label htmlFor="reset-token">{invite ? t('activateToken') : t('token')}</Label>
         <Input
           id="reset-token"
           name="token"
@@ -155,8 +170,10 @@ export function ResetPasswordForm() {
         {isSubmitting ? (
           <>
             <Loader2 className="size-4 animate-spin" aria-hidden />
-            {t('submitting')}
+            {invite ? t('activateSubmitting') : t('submitting')}
           </>
+        ) : invite ? (
+          t('activateSubmit')
         ) : (
           t('submit')
         )}

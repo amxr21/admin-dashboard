@@ -15,6 +15,8 @@ import { fetchSettings } from '@/lib/settings-api';
 import { fetchBrand, type ResolvedBrand } from '@/lib/branches-api';
 import { readBranchId } from '@/lib/auth-storage';
 import { SETUP_FEATURE_KEYS } from '@/lib/setup-api';
+import { readDeveloperView, writeDeveloperView } from '@/lib/developer-view';
+import { useOptionalAuth } from '@/hooks/useAuth';
 import type { EnabledFeatures } from '@/lib/setup-visibility';
 
 /**
@@ -58,6 +60,9 @@ type Value = string | boolean | number;
 
 interface SettingsContextValue {
   enabledFeatures: EnabledFeatures;
+  /** A DEVELOPER looking at every feature, setup choices ignored (see lib/developer-view.ts). */
+  developerView: boolean;
+  setDeveloperView: (on: boolean) => void;
   setupCompletedAt: string;
   setupSkippedAt: string;
   /** The setup wizard's business type, e.g. HOME_BUSINESS; empty until chosen. */
@@ -141,6 +146,8 @@ const BRAND_DEFAULTS = {
 
 const DEFAULT_VALUE: SettingsContextValue = {
   enabledFeatures: {},
+  developerView: false,
+  setDeveloperView: () => undefined,
   setupCompletedAt: '',
   setupSkippedAt: '',
   businessType: '',
@@ -175,6 +182,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [byKey, setByKey] = useState<Record<string, Value>>({});
   const [overrides, setOverrides] = useState<Record<string, Value>>({});
+  const isDeveloper = useOptionalAuth()?.user?.role === 'DEVELOPER';
+  const [developerViewStored, setDeveloperViewStored] = useState(false);
+  useEffect(() => setDeveloperViewStored(readDeveloperView()), []);
+  const setDeveloperView = useCallback((on: boolean) => {
+    writeDeveloperView(on);
+    setDeveloperViewStored(on);
+  }, []);
+  const developerView = isDeveloper && developerViewStored;
 
   /**
    * The brand resolved against the ACTIVE branch (F8.5), or null before it
@@ -296,7 +311,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
 
   const value: SettingsContextValue = {
-    enabledFeatures: Object.fromEntries(SETUP_FEATURE_KEYS.map(key => [key, byKey[`features.${key}.enabled`] !== false])),
+    enabledFeatures: Object.fromEntries(
+      SETUP_FEATURE_KEYS.map(key => [key, developerView || byKey[`features.${key}.enabled`] !== false]),
+    ),
+    developerView,
+    setDeveloperView,
     setupCompletedAt: String(byKey['setup.completedAt'] ?? ''),
     setupSkippedAt: String(byKey['setup.skippedAt'] ?? ''),
     businessType: String(byKey['setup.businessType'] ?? ''),

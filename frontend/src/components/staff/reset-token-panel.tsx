@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslations } from 'next-intl';
-import { Check, Copy, KeyRound, TriangleAlert } from 'lucide-react';
+import { useLocale, useTranslations } from 'next-intl';
+import { Check, Copy, KeyRound, Link2, Mail, TriangleAlert } from 'lucide-react';
 
 import {
   AlertDialog,
@@ -12,9 +12,11 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { Locale } from '@/i18n/routing';
+import { recoveryLink } from '@/lib/recovery-link';
 
 /**
- * Shows a freshly issued password-reset token — once.
+ * Shows a freshly issued password-reset or invite token — once.
  *
  * Same one-time-reveal contract as `AccessCodePanel`, and deliberately the same
  * shape: the server stores only an HMAC, so this really is the only time the
@@ -27,6 +29,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
  * their own password at /reset-password. Both paths exist because handing over
  * a token requires the other person to be reachable; setting one directly does
  * not.
+ *
+ * ─── LINK FIRST, CODE AS FALLBACK ────────────────────────────────────
+ * The link opens /reset-password with the token already filled in, so the
+ * recipient never has to find the page or type a code. The bare code stays
+ * for when a link can't be sent (read out over the phone, typed on another
+ * device). `mode="invite"` changes the wording only — an invite is a new
+ * account being activated, not a password being reset.
  */
 
 interface ResetTokenPanelProps {
@@ -35,26 +44,36 @@ interface ResetTokenPanelProps {
   /** ISO timestamp — the token stops working after this. */
   expiresAt: string;
   onDone: () => void;
+  mode?: 'reset' | 'invite';
+  /** Invite only: the server also emailed the code. */
+  emailed?: boolean;
 }
+
+type Copied = 'link' | 'code' | null;
 
 export function ResetTokenPanel({
   staffEmail,
   token,
   expiresAt,
   onDone,
+  mode = 'reset',
+  emailed = false,
 }: ResetTokenPanelProps) {
-  const t = useTranslations('staff.resetToken');
-  const [copied, setCopied] = useState(false);
+  const t = useTranslations(mode === 'invite' ? 'staff.inviteToken' : 'staff.resetToken');
+  const locale = useLocale() as Locale;
+  const [copied, setCopied] = useState<Copied>(null);
 
-  async function copy() {
+  const link = recoveryLink(locale, token, mode === 'invite');
+
+  async function copy(what: Exclude<Copied, null>) {
     try {
-      await navigator.clipboard.writeText(token);
-      setCopied(true);
+      await navigator.clipboard.writeText(what === 'link' ? link : token);
+      setCopied(what);
     } catch {
       // Clipboard access can be refused (insecure context, permissions). The
       // token is on screen and selectable, so this is a convenience failing,
       // not the feature failing — say nothing rather than raise an alarm.
-      setCopied(false);
+      setCopied(null);
     }
   }
 
@@ -83,27 +102,60 @@ export function ResetTokenPanel({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* force-ltr and tabular-nums: this is a credential, so it must not
-              reorder in an Arabic layout. `select-all` makes one click select
-              the whole thing when copy is unavailable. */}
-          <code className="bg-card force-ltr flex-1 select-all rounded-md border px-3 py-2 text-center text-lg font-medium tracking-widest tabular-nums">
-            {token}
-          </code>
+        {emailed ? (
+          <p role="status" className="bg-muted flex items-start gap-2 rounded-md px-3 py-2 text-sm">
+            <Mail className="mt-0.5 size-4 shrink-0" aria-hidden />
+            {t('emailed', { email: staffEmail })}
+          </p>
+        ) : null}
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => void copy()}
-                aria-label={t('copy')}
-              >
-                {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('copy')}</TooltipContent>
-          </Tooltip>
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">{t('linkLabel')}</p>
+          <div className="flex items-center gap-2">
+            <code className="bg-card force-ltr flex min-w-0 flex-1 items-center gap-2 rounded-md border px-3 py-2 text-xs">
+              <Link2 className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
+              <span className="truncate select-all">{link}</span>
+            </code>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => void copy('link')}
+                  aria-label={t('copyLink')}
+                >
+                  {copied === 'link' ? <Check aria-hidden /> : <Copy aria-hidden />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t('copyLink')}</TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <p className="text-muted-foreground text-sm">{t('codeLabel')}</p>
+          <div className="flex items-center gap-2">
+            {/* force-ltr and tabular-nums: this is a credential, so it must not
+                reorder in an Arabic layout. `select-all` makes one click select
+                the whole thing when copy is unavailable. */}
+            <code className="bg-card force-ltr flex-1 select-all rounded-md border px-3 py-2 text-center text-lg font-medium tracking-widest tabular-nums">
+              {token}
+            </code>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => void copy('code')}
+                  aria-label={t('copy')}
+                >
+                  {copied === 'code' ? <Check aria-hidden /> : <Copy aria-hidden />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t('copy')}</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
 
         <p className="text-muted-foreground text-sm">{t('expires', { at: expiryLabel })}</p>
@@ -111,7 +163,7 @@ export function ResetTokenPanel({
 
         <div className="flex items-center justify-between gap-3">
           <p className="text-muted-foreground text-sm">
-            {copied ? t('copied') : t('copyHint')}
+            {copied === 'link' ? t('linkCopied') : copied === 'code' ? t('copied') : t('copyHint')}
           </p>
           <Button size="sm" onClick={onDone}>
             {t('done')}
