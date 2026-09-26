@@ -28,6 +28,7 @@ import {
 } from '../../services/login-history.service.js';
 import { assertPasswordMeetsPolicy } from '../../services/settings.service.js';
 import { audit } from '../../services/audit.service.js';
+import { sendStaffInviteEmail } from '../../services/staff-invite-email.service.js';
 
 /**
  * Staff accounts.
@@ -104,6 +105,10 @@ const inviteBody = z
     role: z.nativeEnum(StaffRole, { message: 'Choose a role' }),
     branchId: z.string().trim().min(1, 'Choose a branch').optional(),
     accessExpiresAt: z.string().datetime().optional(),
+    /** Where the dashboard's recovery page lives, for the emailed link. Only
+     * honoured when its origin is a configured CORS origin — see
+     * staff-invite-email.service.ts. */
+    activationUrl: z.string().trim().url().max(500).optional(),
   })
   .strict()
   .superRefine((input, context) => {
@@ -191,7 +196,20 @@ staffRouter.post('/staff/invite', ...guard, async (req, res) => {
   if (!parsed.success) throw AppError.badRequest('Invalid request', parsed.error.flatten());
 
   const actor = requireUser(req);
-  const result = await inviteStaff(actor, parsed.data);
+  const { activationUrl, ...input } = parsed.data;
+  const result = await inviteStaff(actor, input);
+
+  // Awaited, not deferred: this is an authenticated admin action with no
+  // enumeration concern, and the admin needs to know whether the person was
+  // actually emailed or still has to be handed the link.
+  const emailed = await sendStaffInviteEmail({
+    email: result.staff.email,
+    name: result.staff.name,
+    role: result.staff.role,
+    token: result.token,
+    expiresAt: new Date(result.expiresAt),
+    activationUrl,
+  });
 
   // Same rule as every other token issuance: the token itself is never
   // logged, only the fact that one was issued.
@@ -200,9 +218,10 @@ staffRouter.post('/staff/invite', ...guard, async (req, res) => {
     staffId: result.staff.id,
     role: result.staff.role,
     userId: actor.id,
+    emailed,
   });
 
-  res.status(201).json({ data: result });
+  res.status(201).json({ data: { ...result, emailed } });
 });
 
 staffRouter.patch('/staff/:id', ...guard, async (req, res) => {

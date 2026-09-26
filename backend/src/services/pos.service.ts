@@ -572,6 +572,59 @@ async function claimVariantStock(
     data: { stock: { decrement: line.quantity } },
   });
 }
+/** A line's unit price after the cashier's percentage discount. Shared by checkout and the quote. */
+function chargedPriceFor(price: Prisma.Decimal, discountPercent: number | null): Prisma.Decimal {
+  return discountPercent === null
+    ? price
+    : price.times(new Prisma.Decimal(100).minus(discountPercent)).dividedBy(100);
+}
+
+export interface SaleQuote {
+  subtotal: string;
+  taxAmount: string;
+  total: string;
+}
+
+/**
+ * What `checkout` WOULD charge for these lines, without selling anything: the
+ * same prices, the same discount formula and the same `computeOrderTotals`,
+ * so the tile till's "Charge 52.50" and the quick-tender buttons are the
+ * receipt's own figure, VAT included, not a pre-tax estimate. Stock, discount
+ * caps and payment rules are still checked by checkout itself.
+ */
+export async function quoteSale(lines: Pick<CheckoutLine, 'productId' | 'variantId' | 'quantity' | 'discountPercent'>[]): Promise<SaleQuote> {
+  const productIds = [...new Set(lines.map((line) => line.productId))];
+  const variantIds = [...new Set(lines.flatMap((line) => (line.variantId ? [line.variantId] : [])))];
+  const [products, variants, taxRate] = await Promise.all([
+    prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true, price: true, isTaxable: true } }),
+    variantIds.length > 0
+      ? prisma.productVariant.findMany({ where: { id: { in: variantIds } }, select: { id: true, price: true, productId: true } })
+      : Promise.resolve([]),
+    getTaxRate(),
+  ]);
+  const productById = new Map(products.map((product) => [product.id, product]));
+  const variantById = new Map(variants.map((variant) => [variant.id, variant]));
+
+  const totals = computeOrderTotals(
+    lines.map((line) => {
+      const product = productById.get(line.productId);
+      if (!product) throw AppError.badRequest('Product not found', { field: 'productId' });
+      const variant = line.variantId ? variantById.get(line.variantId) : undefined;
+      if (line.variantId && (!variant || variant.productId !== line.productId)) {
+        throw AppError.badRequest('That variant does not belong to this product', { field: 'variantId' });
+      }
+      return {
+        price: chargedPriceFor(variant ? variant.price : product.price, line.discountPercent ?? null),
+        quantity: line.quantity,
+        isTaxable: product.isTaxable,
+      };
+    }),
+    taxRate,
+  );
+
+  return { subtotal: totals.subtotal.toFixed(2), taxAmount: totals.taxAmount.toFixed(2), total: totals.total.toFixed(2) };
+}
+
 /**
  * Take a sale.
  *
@@ -871,10 +924,7 @@ async function checkoutOnce(
       // a discount reduces what the customer owes, so it has to reach the
       // arithmetic somewhere, and `price` itself is the one place it must
       // NOT reach.
-      const chargedPrice =
-        discountPercent === null
-          ? price
-          : price.times(new Prisma.Decimal(100).minus(discountPercent)).dividedBy(100);
+      const chargedPrice = chargedPriceFor(price, discountPercent);
 
       return {
         productId: line.productId,

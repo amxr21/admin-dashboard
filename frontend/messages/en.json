@@ -365,7 +365,13 @@
       "submitting": "Setting password…",
       "rateLimited": "Too many attempts from this address. Try again shortly.",
       "backToLogin": "Back to sign in",
-      "done": "Password set. Sign in with your new password."
+      "done": "Password set. Sign in with your new password.",
+      "activated": "Account activated. Sign in with your new password.",
+      "activateTitle": "Activate your account",
+      "activateSubtitle": "Choose a password to finish setting up your account.",
+      "activateToken": "Activation code",
+      "activateSubmit": "Activate account",
+      "activateSubmitting": "Activating…"
     },
     "forgot": {
       "title": "Forgot your password?",
@@ -2484,10 +2490,15 @@
       "title": "Reset token for {email}",
       "shownOnce": "This token is shown once. Copy it now — it cannot be retrieved later.",
       "copy": "Copy token",
-      "copyHint": "Copy the token and hand it over directly.",
+      "copyHint": "Send them the link, or read out the code.",
       "copied": "Token copied.",
       "expires": "Expires {at}.",
       "handOver": "Give it to them directly. They set their own password, so you never learn it.",
+      "linkLabel": "Reset link",
+      "copyLink": "Copy link",
+      "linkCopied": "Link copied.",
+      "codeLabel": "Or give them this code to enter on the password page:",
+      "emailed": "A copy was emailed to {email}.",
       "done": "Done"
     },
     "filters": {
@@ -2497,10 +2508,25 @@
       "active": "Active",
       "inactive": "Inactive"
     },
+    "inviteToken": {
+      "title": "Activation link for {email}",
+      "shownOnce": "This link is shown once. Copy it now — it cannot be retrieved later.",
+      "linkLabel": "Activation link",
+      "copyLink": "Copy link",
+      "linkCopied": "Link copied.",
+      "codeLabel": "Or give them this code to enter on the password page:",
+      "copy": "Copy code",
+      "copied": "Code copied.",
+      "copyHint": "Send them the link.",
+      "expires": "Works once. Expires {at}.",
+      "handOver": "They open it, choose their own password, and sign in — you never learn it.",
+      "emailed": "We also emailed {email} the activation code.",
+      "done": "Done"
+    },
     "invite": {
       "title": "Invite someone to staff",
-      "description": "Creates the account and gives you a one-time activation code to hand over — you never see or set their password.",
-      "send": "Send invite"
+      "description": "Creates the account and gives you a one-time activation link to send them — you never see or set their password.",
+      "send": "Create invite"
     },
     "detail": {
       "back": "Back to staff",
@@ -3618,6 +3644,40 @@
   },
   "pos": {
     "title": "Till",
+    "tiles": {
+      "modeLabel": "Till layout",
+      "modes": {
+        "tiles": "Tiles",
+        "full": "Full till"
+      },
+      "ticket": "Current sale",
+      "clear": "Clear",
+      "empty": "Tap a product to start a sale.",
+      "items": "{count, plural, one {# item} other {# items}}",
+      "subtotal": "Before VAT {amount}",
+      "charge": "Charge",
+      "saleDone": "Sale complete",
+      "newSale": "New sale",
+      "payTitle": "Take payment",
+      "payDescription": "Choose cash or card, enter what the customer handed over, then complete the sale.",
+      "toPay": "To pay",
+      "loadingTotal": "Working out the total",
+      "method": "Payment method",
+      "methods": {
+        "cash": "Cash",
+        "card": "Card"
+      },
+      "received": "Received",
+      "exact": "Exact",
+      "change": "Change",
+      "short": "Still to pay",
+      "keypad": "Amount keypad",
+      "backspace": "Delete last digit",
+      "cardHint": "Take the payment on the card terminal, then complete the sale here once it's approved.",
+      "back": "Back",
+      "taking": "Taking payment…",
+      "complete": "Complete sale"
+    },
     "subtitle": "Scan items, take payment, print a receipt.",
     "scanLabel": "Scan or type a code",
     "scanPlaceholder": "Barcode or SKU",
@@ -3944,7 +4004,7 @@
         "title": "Manage staff access",
         "summary": "Access follows both the staff role and branch assignment. Hiding a menu item is not the security control; the API enforces every request.",
         "steps": {
-          "invite": "Create or invite the staff account using the person's own email address.",
+          "invite": "Invite the person from Staff using their own email address, then send them the activation link. When email is set up they also receive the code by email.",
           "branch": "Assign branch-scoped roles to every branch where the person is expected to work.",
           "role": "Choose the narrowest role that supports the person's duties; do not use Owner as a shortcut.",
           "review": "Use View as role and a real test login to confirm the resulting navigation and refused actions.",
@@ -3992,7 +4052,7 @@
       "saveFailed": "Progress could not be saved in this browser. Your current ticks will remain until you leave or refresh this page.",
       "groups": {
         "setup": { "title": "Initial business setup", "description": "Complete once before real staff or customer activity begins.", "items": {
-          "owner": { "label": "Activate the customer Owner", "detail": "Use the Owner's real account and remove temporary operator ownership when it is no longer required." },
+          "owner": { "label": "Activate the customer Owner", "detail": "Invite the Owner from Staff with the role Owner and send them the activation link. Remove temporary operator ownership when it is no longer required." },
           "profile": { "label": "Complete the brand profile", "detail": "Verify trading name, logo, contact details, locale, and customer-facing identity." },
           "currency": { "label": "Confirm currency and money formatting", "detail": "Check dashboard, storefront, receipts, and reports use the same approved currency." },
           "tax": { "label": "Confirm tax settings", "detail": "Verify the rate, calculation order, receipt display, and one known-value example." },
