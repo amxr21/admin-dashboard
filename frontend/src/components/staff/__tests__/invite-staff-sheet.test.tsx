@@ -103,7 +103,7 @@ describe('InviteStaffSheet', () => {
     );
 
     await userEvent.type(screen.getByLabelText(/email/i), 'new@example.test');
-    await userEvent.click(screen.getByRole('button', { name: /send invite/i }));
+    await userEvent.click(screen.getByRole('button', { name: /create invite/i }));
 
     await waitFor(() => expect(inviteStaff).toHaveBeenCalled());
     // The row must appear in the list WHILE the token is still on screen —
@@ -113,7 +113,32 @@ describe('InviteStaffSheet', () => {
     expect(await screen.findByText('ABCD-EFGH-JKMN')).toBeInTheDocument();
   });
 
-  it('keeps Send Invite disabled until an email is entered', () => {
+  it('sends its recovery page and reveals an invite link, not a reset token', async () => {
+    inviteStaff.mockResolvedValueOnce({
+      staff: { id: 's9', email: 'new@example.test' },
+      token: 'ABCD-EFGH-JKMN',
+      expiresAt: '2099-01-01T00:00:00.000Z',
+      emailed: true,
+    });
+    render(
+      <InviteStaffSheet actorRole="OWNER" open onOpenChange={vi.fn()} onInvited={vi.fn()} />,
+    );
+
+    await userEvent.type(screen.getByLabelText(/email/i), 'new@example.test');
+    await userEvent.click(screen.getByRole('button', { name: /create invite/i }));
+
+    await waitFor(() => expect(inviteStaff).toHaveBeenCalled());
+    const payload = inviteStaff.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload.activationUrl).toMatch(/\/reset-password$/);
+
+    // The token rides in the fragment, flagged as an invite.
+    expect(await screen.findByText(/#token=ABCD-EFGH-JKMN&invite=1$/)).toBeInTheDocument();
+    expect(screen.getByText(/activation link for new@example\.test/i)).toBeInTheDocument();
+    expect(screen.getByText(/emailed new@example\.test/i)).toBeInTheDocument();
+    expect(screen.queryByText(/reset token/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps Create invite disabled until an email is entered', () => {
     render(
       <InviteStaffSheet actorRole="OWNER" open onOpenChange={vi.fn()} onInvited={vi.fn()} />,
     );
@@ -121,7 +146,7 @@ describe('InviteStaffSheet', () => {
     // Same convention as StaffSheet's create mode: disabled rather than
     // clickable-then-rejected, so there's nothing for `inviteStaff` to be
     // called with in the first place.
-    expect(screen.getByRole('button', { name: /send invite/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /create invite/i })).toBeDisabled();
   });
 
   it('sends accessExpiresAt as end-of-day UTC when a date is picked', async () => {
@@ -136,7 +161,7 @@ describe('InviteStaffSheet', () => {
     const day20 = await screen.findByRole('gridcell', { name: '20' });
     await userEvent.click(day20.querySelector('button') ?? day20);
 
-    await userEvent.click(screen.getByRole('button', { name: /send invite/i }));
+    await userEvent.click(screen.getByRole('button', { name: /create invite/i }));
 
     await waitFor(() => expect(inviteStaff).toHaveBeenCalled());
     const payload = inviteStaff.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -151,7 +176,7 @@ describe('InviteStaffSheet', () => {
     );
 
     await userEvent.type(screen.getByLabelText(/email/i), 'preselect@example.test');
-    await userEvent.click(screen.getByRole('button', { name: /send invite/i }));
+    await userEvent.click(screen.getByRole('button', { name: /create invite/i }));
 
     await waitFor(() => expect(inviteStaff).toHaveBeenCalled());
     const payload = inviteStaff.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -168,7 +193,7 @@ describe('InviteStaffSheet', () => {
     );
 
     await userEvent.type(screen.getByLabelText(/email/i), 'fallback@example.test');
-    await userEvent.click(screen.getByRole('button', { name: /send invite/i }));
+    await userEvent.click(screen.getByRole('button', { name: /create invite/i }));
 
     await waitFor(() => expect(inviteStaff).toHaveBeenCalled());
     const payload = inviteStaff.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -186,7 +211,7 @@ describe('InviteStaffSheet', () => {
     );
 
     await userEvent.type(screen.getByLabelText(/email/i), 'taken@example.test');
-    await userEvent.click(screen.getByRole('button', { name: /send invite/i }));
+    await userEvent.click(screen.getByRole('button', { name: /create invite/i }));
 
     expect(await screen.findByText(/already in use/i)).toBeInTheDocument();
   });
