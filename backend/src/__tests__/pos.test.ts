@@ -390,6 +390,47 @@ describe('taking a sale (O5.7, O5.8)', () => {
     );
   });
 
+  it('quotes exactly what checkout then charges, VAT and discounts included', async () => {
+    const taxed = await makeProduct({ sku: `${RUN}-QUOTE-T`, price: '19.99', stock: 5 });
+    const exempt = await makeProduct({ sku: `${RUN}-QUOTE-E`, price: '7.50', stock: 5, isTaxable: false });
+    await stockAt(taxed.id, 5);
+    await stockAt(exempt.id, 5);
+    const lines = [
+      { productId: taxed.id, quantity: 3, discountPercent: 10 },
+      { productId: exempt.id, quantity: 2 },
+    ];
+
+    const previous = await prisma.setting.findUnique({ where: { key: 'store.taxRate' } });
+    await prisma.setting.upsert({
+      where: { key: 'store.taxRate' },
+      create: { key: 'store.taxRate', value: 5 },
+      update: { value: 5 },
+    });
+
+    try {
+      const quote = await request(app)
+        .post('/api/v1/pos/quote')
+        .set(auth(ownerToken))
+        .set('X-Branch-Id', branchId)
+        .send({ lines });
+      expect(quote.status).toBe(200);
+      const quoted = (quote.body as { data: { subtotal: string; taxAmount: string; total: string } }).data;
+
+      const sale = await sell({ lines, method: 'cash', tendered: quoted.total });
+      expect(sale.status).toBe(201);
+      const charged = (sale.body as { data: { subtotal: string; taxAmount: string; total: string } }).data;
+
+      expect(quoted).toEqual({ subtotal: charged.subtotal, taxAmount: charged.taxAmount, total: charged.total });
+      expect(Number(quoted.taxAmount)).toBeGreaterThan(0);
+    } finally {
+      if (previous) {
+        await prisma.setting.update({ where: { key: 'store.taxRate' }, data: { value: previous.value } });
+      } else {
+        await prisma.setting.deleteMany({ where: { key: 'store.taxRate' } });
+      }
+    }
+  });
+
   it('creates the order, moves the stock and records the payment', async () => {
     const product = await makeProduct({ sku: `${RUN}-SELL-1`, price: '10.00', stock: 5 });
     await stockAt(product.id, 5);

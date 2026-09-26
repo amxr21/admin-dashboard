@@ -251,6 +251,18 @@ export async function checkout(
   });
 }
 
+export interface SaleQuote {
+  subtotal: string;
+  taxAmount: string;
+  /** What checkout will charge for these lines, VAT included. */
+  total: string;
+}
+
+/** The real total for a cart, from the server's own checkout math. Sells nothing. */
+export async function quoteSale(lines: CheckoutLine[]): Promise<SaleQuote> {
+  return apiFetch<SaleQuote>('/pos/quote', { method: 'POST', body: JSON.stringify({ lines }) });
+}
+
 /**
  * Void a just-completed sale (O9 Tier 3) — distinct from a return: same
  * sale, undone at the same register moments later, not a customer bringing

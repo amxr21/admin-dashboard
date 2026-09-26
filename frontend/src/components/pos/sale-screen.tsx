@@ -5,6 +5,8 @@ import { useTranslations } from 'next-intl';
 import {
   AlertTriangle,
   ArchiveRestore,
+  LayoutGrid,
+  List,
   Minus,
   Plus,
   Printer,
@@ -63,6 +65,9 @@ import { ProductGrid } from '@/components/pos/product-grid';
 import { VariantPickerDialog } from '@/components/pos/variant-picker-dialog';
 import { ManagerOverrideDialog } from '@/components/pos/manager-override-dialog';
 import { TillReturnSheet } from '@/components/pos/till-return-sheet';
+import { TilePaymentDialog } from '@/components/pos/tile-payment-dialog';
+import { useEffectiveRole } from '@/components/providers/effective-role-provider';
+import { defaultTillMode, readTillMode, writeTillMode, type TillMode } from '@/lib/till-mode';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import type { ManagerOverrideResult } from '@/lib/auth-api';
 import type { ReturnResolution } from '@/lib/returns-api';
@@ -157,6 +162,17 @@ export function SaleScreen() {
   const checkoutIntentRef = useRef<RequestIntent | null>(null);
 
   const [lines, setLines] = useState<CartLine[]>([]);
+  /** Tiles (big squares, one Charge button) or the full till — see lib/till-mode.ts. */
+  const role = useEffectiveRole();
+  const [tillMode, setTillModeState] = useState<TillMode>('full');
+  useEffect(() => {
+    setTillModeState(readTillMode() ?? defaultTillMode(role ?? undefined));
+  }, [role]);
+  function setTillMode(mode: TillMode) {
+    writeTillMode(mode);
+    setTillModeState(mode);
+  }
+  const [tilePayOpen, setTilePayOpen] = useState(false);
   /** A tapped product whose variants are being chosen from. */
   const [pickerProduct, setPickerProduct] = useState<BrowsedProduct | null>(null);
   /** Set once a manager approves a discount above the cap, for the CURRENT
@@ -650,8 +666,10 @@ export function SaleScreen() {
     return short > 0 ? t('tenderedShort', { short: short.toFixed(2) }) : null;
   }, [lines, isSplitting, splitLines, method, tendered, estimate, activeTender, t]);
 
-  async function takePayment() {
-    if (lines.length === 0 || isSelling) return;
+  /** Resolves true when the sale went through, so a caller can close its own screen. */
+  async function takePayment(): Promise<boolean> {
+    if (lines.length === 0 || isSelling) return false;
+    let sold = false;
 
     setIsSelling(true);
     setError(null);
@@ -765,6 +783,7 @@ export function SaleScreen() {
       // available. Found by walking through an actual sale end to end, not
       // by testing the grid's fetch logic in isolation.
       setGridRefreshKey((n) => n + 1);
+      sold = true;
     } catch (caught) {
       // A 400 here is a real refusal the cashier must read — not enough
       // stock, tendered less than the total — so it is shown verbatim rather
@@ -794,7 +813,9 @@ export function SaleScreen() {
        */
       if (!confirmOpenRef.current) refocus();
     }
+    return sold;
   }
+
 
   /**
    * Void the sale just rung up (O9 Tier 3) — same register, moments later,
@@ -850,7 +871,232 @@ export function SaleScreen() {
     }
   }
 
+  const modeSwitch = (
+    <div className="flex justify-end">
+      <div role="radiogroup" aria-label={t('tiles.modeLabel')} className="bg-muted inline-flex rounded-lg p-1">
+        {(['tiles', 'full'] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            role="radio"
+            aria-checked={tillMode === mode}
+            onClick={() => setTillMode(mode)}
+            className={
+              tillMode === mode
+                ? 'bg-background flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium shadow-sm'
+                : 'text-muted-foreground flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm'
+            }
+          >
+            {mode === 'tiles' ? <LayoutGrid className="size-4" aria-hidden /> : <List className="size-4" aria-hidden />}
+            {t(`tiles.modes.${mode}`)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (tillMode === 'tiles') {
+    const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
+    const checkoutLines = lines.map((line) => ({
+      productId: line.product.id,
+      ...(line.product.variant ? { variantId: line.product.variant.id } : {}),
+      quantity: line.quantity,
+      ...(line.discountPercent !== null ? { discountPercent: line.discountPercent } : {}),
+    }));
+
+    function charge() {
+      setError(null);
+      // The tile screen has no split, foreign currency or card reference:
+      // start every payment from the plain single-method shape.
+      setIsSplitting(false);
+      setTenderCurrency('');
+      setMethod('cash');
+      setTendered('');
+      if (needsOverride && overrideToken === null) {
+        setOverrideDialogOpen(true);
+        return;
+      }
+      setTilePayOpen(true);
+    }
+
+    return (
+      <div className="space-y-4">
+        {modeSwitch}
+        <div className="grid gap-4 lg:grid-cols-[1fr_24rem]">
+          <div className="min-w-0 space-y-4">
+            {/* Kept for barcode scanners, which type into the focused field. */}
+            <form onSubmit={(event) => void submitScan(event)} className="flex gap-2">
+              <Label htmlFor="pos-scan" className="sr-only">{t('scanLabel')}</Label>
+              <Input
+                id="pos-scan"
+                ref={scanField}
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+                placeholder={t('scanPlaceholder')}
+                className="force-ltr min-h-11"
+                autoComplete="off"
+                disabled={isScanning}
+              />
+              <Button type="submit" variant="outline" className="min-h-11" disabled={isScanning || code.trim() === ''}>
+                <ScanLine className="size-4" aria-hidden />
+                {t('add')}
+              </Button>
+            </form>
+
+            <ProductGrid size="large" onAdd={addFromGrid} disabled={isSelling} refreshKey={gridRefreshKey} />
+            <VariantPickerDialog product={pickerProduct} onPick={addPickedVariant} onClose={() => setPickerProduct(null)} />
+          </div>
+
+          <aside className="bg-card flex flex-col gap-3 rounded-xl border-2 p-4 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-8rem)] lg:self-start">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">{t('tiles.ticket')}</h2>
+              {lines.length > 0 ? (
+                <Button variant="ghost" size="sm" onClick={() => setLines([])} disabled={isSelling}>
+                  {t('tiles.clear')}
+                </Button>
+              ) : null}
+            </div>
+
+            {lastSale && lines.length === 0 ? (
+              <div className="bg-success/10 space-y-3 rounded-xl p-4 text-center" role="status">
+                <p className="text-success text-lg font-semibold">{t('tiles.saleDone')}</p>
+                {lastSale.change !== null ? (
+                  <p className="text-3xl font-bold tabular-nums">{t('change', { amount: lastSale.change })}</p>
+                ) : null}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" className="min-h-12" onClick={() => window.print()}>
+                    <Printer className="size-4" aria-hidden />
+                    {t('printReceipt')}
+                  </Button>
+                  <Button className="min-h-12" onClick={() => { setLastSale(null); setLastSaleOrderId(null); refocus(); }}>
+                    {t('tiles.newSale')}
+                  </Button>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => void voidLastSale()}
+                  disabled={isVoiding}
+                >
+                  {isVoiding ? t('voiding') : t('voidSale')}
+                </Button>
+              </div>
+            ) : null}
+
+            {lines.length === 0 && !lastSale ? (
+              <p className="text-muted-foreground rounded-xl border border-dashed px-4 py-10 text-center">{t('tiles.empty')}</p>
+            ) : null}
+
+            <ul className="-mx-1 flex-1 space-y-2 overflow-y-auto px-1">
+              {lines.map((line) => {
+                const key = lineKey(line);
+                return (
+                  <li key={key} className="flex items-center gap-2 rounded-lg border p-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{lineName(line)}</p>
+                      <p className="text-muted-foreground text-sm tabular-nums">
+                        {(Number(line.product.price) * line.quantity).toFixed(2)}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="size-11"
+                      aria-label={t('decrease', { name: lineName(line) })}
+                      onClick={() => setQuantity(key, line.quantity - 1)}
+                      disabled={isSelling}
+                    >
+                      <Minus className="size-5" aria-hidden />
+                    </Button>
+                    <span className="w-8 text-center text-lg font-semibold tabular-nums" aria-live="polite">{line.quantity}</span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="size-11"
+                      aria-label={t('increase', { name: lineName(line) })}
+                      onClick={() => setQuantity(key, line.quantity + 1)}
+                      disabled={isSelling}
+                    >
+                      <Plus className="size-5" aria-hidden />
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+
+            {error && !tilePayOpen ? (
+              <p role="alert" className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">{error}</p>
+            ) : null}
+
+            <div className="space-y-1 border-t pt-3">
+              <div className="flex items-baseline justify-between text-sm">
+                <span className="text-muted-foreground">{t('tiles.items', { count: itemCount })}</span>
+                <span className="text-muted-foreground">{t('tiles.subtotal', { amount: estimate })}</span>
+              </div>
+              <Button className="min-h-16 w-full text-xl font-semibold" onClick={charge} disabled={lines.length === 0 || isSelling}>
+                {t('tiles.charge')}
+              </Button>
+            </div>
+          </aside>
+        </div>
+
+        {/* Phones and small tablets: the ticket sits below the products, so
+            Charge stays within thumb reach here instead. */}
+        {lines.length > 0 ? (
+          <div className="bg-background/95 sticky bottom-0 z-10 -mx-4 flex items-center gap-3 border-t px-4 py-3 backdrop-blur lg:hidden">
+            <span className="text-muted-foreground text-sm">{t('tiles.items', { count: itemCount })}</span>
+            <Button className="min-h-12 flex-1 text-lg font-semibold" onClick={charge} disabled={isSelling}>
+              {t('tiles.charge')}
+            </Button>
+          </div>
+        ) : null}
+
+        <TilePaymentDialog
+          open={tilePayOpen}
+          onOpenChange={setTilePayOpen}
+          lines={checkoutLines}
+          method={method === 'card' ? 'card' : 'cash'}
+          onMethodChange={(next) => { setMethod(next); setTendered(''); }}
+          tendered={tendered}
+          onTenderedChange={setTendered}
+          isSelling={isSelling}
+          error={error}
+          onConfirm={() => {
+            void takePayment().then((sold) => { if (sold) setTilePayOpen(false); });
+          }}
+        />
+
+        <ManagerOverrideDialog
+          open={overrideDialogOpen}
+          onOpenChange={setOverrideDialogOpen}
+          reason={t('managerOverride.discountReason', { max: maxCashierDiscountPercent })}
+          onApproved={(result: ManagerOverrideResult) => {
+            setOverrideToken(result.overrideToken);
+            setTilePayOpen(true);
+          }}
+        />
+        <ManagerOverrideDialog
+          open={voidOverrideOpen}
+          onOpenChange={setVoidOverrideOpen}
+          reason={t('managerOverride.voidReason')}
+          onApproved={(result: ManagerOverrideResult) => {
+            void voidLastSale(result.overrideToken);
+          }}
+        />
+
+        {lastSale ? (
+          <div className="sr-only print:not-sr-only">
+            <ThermalReceipt data={lastSale} />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
+    <div className="space-y-4">
+      {modeSwitch}
     <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
       <div className="space-y-4">
         <form onSubmit={(event) => void submitScan(event)} className="space-y-2">
@@ -1503,6 +1749,7 @@ export function SaleScreen() {
           <ThermalReceipt data={lastSale} />
         </div>
       ) : null}
+    </div>
     </div>
   );
 }
