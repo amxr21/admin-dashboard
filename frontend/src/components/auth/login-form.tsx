@@ -46,9 +46,12 @@ import { hasPendingSessionRecovery, takeSessionReturnPath } from '@/lib/session-
  */
 function ResetSuccessNotice({ suppressed }: { suppressed: boolean }) {
   const t = useTranslations('auth');
-  const justReset = useSearchParams().get('reset') === '1';
+  const searchParams = useSearchParams();
+  const justReset = searchParams.get('reset') === '1';
+  // An invite redeemed on /reset-password lands here too, with its own wording.
+  const justActivated = searchParams.get('activated') === '1';
 
-  if (!justReset || suppressed) return null;
+  if ((!justReset && !justActivated) || suppressed) return null;
 
   return (
     <div
@@ -57,7 +60,7 @@ function ResetSuccessNotice({ suppressed }: { suppressed: boolean }) {
     >
       {/* Icon AND colour — never colour alone, per the app-wide rule. */}
       <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden />
-      <span>{t('reset.done')}</span>
+      <span>{justActivated ? t('reset.activated') : t('reset.done')}</span>
     </div>
   );
 }

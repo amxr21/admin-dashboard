@@ -61,6 +61,7 @@ import {
   bulkSetStaffActive,
   fetchStaff,
   issueStaffResetToken,
+  STAFF_ROLES,
   unlockStaff,
   type ResetTokenResult,
   type StaffListResult,
@@ -88,14 +89,9 @@ const ALL = 'all';
 /** Defaults are omitted from the URL, so an unfiltered list has a clean one. */
 const URL_DEFAULTS = { page: '1', search: '', role: ALL, status: ALL, pageSize: '' };
 
-const ROLE_OPTIONS: readonly StaffRole[] = [
-  'DEVELOPER',
-  'OWNER',
-  'MANAGER',
-  'FULFILLMENT',
-  'SUPPORT',
-  'DEMO',
-];
+/** The shared rank-ordered list, not a local copy: a hand-kept list here
+ * silently left CASHIER unfilterable when that role was added. */
+const ROLE_OPTIONS: readonly StaffRole[] = STAFF_ROLES;
 
 /** A hand-edited `?role=WIZARD` must fall back to "all" rather than reach the
  * API as a 400 the user can do nothing about. */

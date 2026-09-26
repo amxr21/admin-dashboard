@@ -196,7 +196,7 @@ export function AppShell({ children, user, onSignOut }: AppShellProps) {
     <EffectiveRoleProvider role={effectiveRole}>
     <div data-slot="app-shell" className="flex h-dvh min-h-0 overflow-hidden">
       {/* The tips card waits until a new user's profile welcome is done: one modal at a time. */}
-      {sessionUser?.onboardedAt === null ? null : <OnboardingWelcome />}
+      {sessionUser?.onboardedAt === null ? null : <OnboardingWelcome role={user.role} />}
       <GlobalLoadingOverlay />
 
       {/* Desktop sidebar. Hidden below lg; the drawer covers those widths.
