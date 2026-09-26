@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+const SETUP_DONE = { key: 'setup.completedAt', value: '2026-09-01T00:00:00.000Z', label: 'completedAt' };
+
 test.setTimeout(60_000);
 
 const owner = {
@@ -25,7 +27,8 @@ async function mockDashboard(page: Page) {
 
     if (path === '/auth/me') data = owner;
     else if (path === '/r/_schema') data = { resources: [] };
-    else if (path === '/settings') data = { settings: [] };
+    // A store that has been set up: a never-set-up owner is sent to the setup wizard on first visit.
+    else if (path === '/settings') data = { settings: [SETUP_DONE] };
     else if (path === '/policies') data = [];
     else if (path === '/roles') data = { roles: [], areas: [] };
     else if (path === '/shifts/me') data = { shift: null };
@@ -129,7 +132,7 @@ for (const scenario of [
 
 async function asHomeBusiness(page: Page) {
   await page.route('**/api/v1/settings', (route) =>
-    route.fulfill({ json: { data: { settings: [{ key: 'setup.businessType', value: 'HOME_BUSINESS', label: 'businessType' }] } } }),
+    route.fulfill({ json: { data: { settings: [{ key: 'setup.businessType', value: 'HOME_BUSINESS', label: 'businessType' }, SETUP_DONE] } } }),
   );
   await page.route('**/api/v1/r/customers**', (route) =>
     route.fulfill({
