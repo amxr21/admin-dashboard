@@ -55,6 +55,8 @@ interface ProductGridProps {
    * the NEXT customer after the last unit had just been sold to this one.
    */
   refreshKey?: number;
+  /** `large` is the tile till: big category buttons and big square tiles for touch. */
+  size?: 'regular' | 'large';
 }
 
 /** Debounced the same amount as the resource table's own search box — long
@@ -62,7 +64,8 @@ interface ProductGridProps {
  *  short enough that it still reads as instant. */
 const SEARCH_DEBOUNCE_MS = 250;
 
-export function ProductGrid({ onAdd, disabled = false, refreshKey }: ProductGridProps) {
+export function ProductGrid({ onAdd, disabled = false, refreshKey, size = 'regular' }: ProductGridProps) {
+  const large = size === 'large';
   const t = useTranslations('pos.grid');
 
   const [categories, setCategories] = useState<BrowseCategory[]>([]);
@@ -160,11 +163,12 @@ export function ProductGrid({ onAdd, disabled = false, refreshKey }: ProductGrid
       </div>
 
       {categories.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
+        <div className={large ? 'flex flex-wrap gap-2' : 'flex flex-wrap gap-1.5'}>
           <Button
             type="button"
             variant={activeCategory === null ? 'default' : 'outline'}
-            size="sm"
+            size={large ? 'lg' : 'sm'}
+            className={large ? 'min-h-12 px-5 text-base' : undefined}
             onClick={() => setActiveCategory(null)}
             disabled={disabled}
           >
@@ -175,7 +179,8 @@ export function ProductGrid({ onAdd, disabled = false, refreshKey }: ProductGrid
               key={category.id}
               type="button"
               variant={activeCategory === category.id ? 'default' : 'outline'}
-              size="sm"
+              size={large ? 'lg' : 'sm'}
+              className={large ? 'min-h-12 px-5 text-base' : undefined}
               onClick={() => setActiveCategory(category.id)}
               disabled={disabled}
             >
@@ -197,7 +202,13 @@ export function ProductGrid({ onAdd, disabled = false, refreshKey }: ProductGrid
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+      <div
+        className={
+          large
+            ? 'grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'
+            : 'grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4'
+        }
+      >
         {isLoading
           ? // Index as key is fine here — fixed-count loading placeholders,
             // never reordered or individually removed.
@@ -207,6 +218,7 @@ export function ProductGrid({ onAdd, disabled = false, refreshKey }: ProductGrid
           : visibleProducts.map((product) => (
               <ProductTile
                 key={product.id}
+                large={large}
                 product={product}
                 onAdd={() => onAdd(product)}
                 disabled={disabled}
@@ -221,7 +233,9 @@ function ProductTile({
   product,
   onAdd,
   disabled,
+  large = false,
 }: {
+  large?: boolean;
   product: BrowsedProduct;
   onAdd: () => void;
   disabled: boolean;
@@ -244,6 +258,40 @@ function ProductTile({
   // count says nothing; the picker shows each variant's stock instead.
   const hasVariants = (product.variantCount ?? 0) > 0;
   const isOutOfStock = !hasVariants && product.branchStock !== null && product.branchStock <= 0;
+
+  if (large) {
+    // A tap target first and a picture second: the name is what a cashier
+    // reads at speed, so it stays big even when a photo is present.
+    return (
+      <button
+        type="button"
+        onClick={onAdd}
+        disabled={disabled || isOutOfStock}
+        className={`border-border bg-card hover:bg-accent focus-visible:ring-ring relative flex ${product.imageUrl && !imageFailed ? 'aspect-square' : 'aspect-[4/3]'} flex-col overflow-hidden rounded-xl border-2 text-start shadow-sm transition-colors focus-visible:ring-2 focus-visible:outline-none active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50`}
+      >
+        {product.imageUrl && !imageFailed ? (
+          // eslint-disable-next-line @next/next/no-img-element -- same reason as the regular tile below.
+          <img src={product.imageUrl} alt="" className="h-1/2 w-full object-cover" onError={() => setImageFailed(true)} />
+        ) : (
+          <div className="bg-primary/10 h-2 w-full" aria-hidden />
+        )}
+        <div className={`flex flex-1 flex-col justify-between gap-1 p-3 ${hasVariants || isOutOfStock ? 'pt-8' : ''}`}>
+          <p className="line-clamp-3 text-base leading-snug font-semibold">{product.name}</p>
+          <p className="text-lg font-semibold tabular-nums">{product.price}</p>
+        </div>
+        {hasVariants ? (
+          <span className="bg-primary text-primary-foreground absolute end-2 top-2 rounded-full px-2 py-0.5 text-xs font-medium">
+            {t('options', { count: product.variantCount ?? 0 })}
+          </span>
+        ) : null}
+        {isOutOfStock ? (
+          <span className="bg-destructive text-destructive-foreground absolute end-2 top-2 rounded-full px-2 py-0.5 text-xs font-medium">
+            {t('outOfStock')}
+          </span>
+        ) : null}
+      </button>
+    );
+  }
 
   return (
     <button

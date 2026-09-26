@@ -3644,6 +3644,40 @@
   },
   "pos": {
     "title": "Till",
+    "tiles": {
+      "modeLabel": "Till layout",
+      "modes": {
+        "tiles": "Tiles",
+        "full": "Full till"
+      },
+      "ticket": "Current sale",
+      "clear": "Clear",
+      "empty": "Tap a product to start a sale.",
+      "items": "{count, plural, one {# item} other {# items}}",
+      "subtotal": "Before VAT {amount}",
+      "charge": "Charge",
+      "saleDone": "Sale complete",
+      "newSale": "New sale",
+      "payTitle": "Take payment",
+      "payDescription": "Choose cash or card, enter what the customer handed over, then complete the sale.",
+      "toPay": "To pay",
+      "loadingTotal": "Working out the total",
+      "method": "Payment method",
+      "methods": {
+        "cash": "Cash",
+        "card": "Card"
+      },
+      "received": "Received",
+      "exact": "Exact",
+      "change": "Change",
+      "short": "Still to pay",
+      "keypad": "Amount keypad",
+      "backspace": "Delete last digit",
+      "cardHint": "Take the payment on the card terminal, then complete the sale here once it's approved.",
+      "back": "Back",
+      "taking": "Taking payment…",
+      "complete": "Complete sale"
+    },
     "subtitle": "Scan items, take payment, print a receipt.",
     "scanLabel": "Scan or type a code",
     "scanPlaceholder": "Barcode or SKU",
