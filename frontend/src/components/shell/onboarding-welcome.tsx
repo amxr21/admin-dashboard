@@ -3,8 +3,11 @@
 import { useTranslations } from 'next-intl';
 import { Bell, PanelLeftClose, Search, Settings } from 'lucide-react';
 
+import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
+import { useAppSettings } from '@/components/providers/settings-provider';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import type { StaffRole } from '@/config/areas';
 import { useOnboardingWelcome } from '@/hooks/useOnboardingWelcome';
 
 /**
@@ -22,16 +25,24 @@ import { useOnboardingWelcome } from '@/hooks/useOnboardingWelcome';
  * other centered panel in the app (resource-form.tsx's modal edit mode,
  * AlertDialog), so this doesn't introduce a second modal look.
  */
-export function OnboardingWelcome() {
+export function OnboardingWelcome({ role }: { role?: StaffRole }) {
   const t = useTranslations('onboarding');
+  const tCommon = useTranslations('common');
+  const { storeName } = useAppSettings();
+  const canAccessArea = useCanAccessArea();
   const { shouldShow, dismiss } = useOnboardingWelcome();
+
+  const title = t('title', { name: storeName.trim() || tCommon('appName') });
+  // The bell and Settings are both gated on the `settings` area in the shell,
+  // so a cashier must not be pointed at two things they will never see.
+  const seesSettings = role === undefined || canAccessArea(role, 'settings');
 
   return (
     <Sheet open={shouldShow} onOpenChange={(next) => { if (!next) dismiss(); }}>
-      <SheetContent variant="modal" title={t('title')}>
+      <SheetContent variant="modal" title={title}>
         <div className="space-y-4">
           <div>
-            <h2 className="text-lg font-semibold">{t('title')}</h2>
+            <h2 className="text-lg font-semibold">{title}</h2>
             <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
           </div>
 
@@ -40,18 +51,22 @@ export function OnboardingWelcome() {
               <Search className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden />
               <span>{t('items.search')}</span>
             </li>
-            <li className="flex items-start gap-3">
-              <Bell className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden />
-              <span>{t('items.notifications')}</span>
-            </li>
+            {seesSettings ? (
+              <li className="flex items-start gap-3">
+                <Bell className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden />
+                <span>{t('items.notifications')}</span>
+              </li>
+            ) : null}
             <li className="flex items-start gap-3">
               <PanelLeftClose className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden />
               <span>{t('items.sidebar')}</span>
             </li>
-            <li className="flex items-start gap-3">
-              <Settings className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden />
-              <span>{t('items.settings')}</span>
-            </li>
+            {seesSettings ? (
+              <li className="flex items-start gap-3">
+                <Settings className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden />
+                <span>{t('items.settings')}</span>
+              </li>
+            ) : null}
           </ul>
 
           <div className="flex justify-end pt-2">

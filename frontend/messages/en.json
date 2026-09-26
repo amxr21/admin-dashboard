@@ -3139,7 +3139,7 @@
     "failed": "Upload failed. Try again."
   },
   "onboarding": {
-    "title": "Welcome to admin-dashboard",
+    "title": "Welcome to {name}",
     "subtitle": "A few things that are easy to miss on a first look.",
     "items": {
       "search": "Search (top bar) jumps straight to any page — faster than hunting through the sidebar.",

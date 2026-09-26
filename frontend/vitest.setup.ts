@@ -1,5 +1,6 @@
 import { createElement, type ReactNode } from 'react';
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
+import { toast } from 'sonner';
 
 import '@testing-library/jest-dom/vitest';
 
@@ -153,3 +154,13 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
 if (typeof window !== 'undefined') {
   window.localStorage.setItem('admin-dashboard:onboarding-welcome-seen', 'true');
 }
+
+/**
+ * sonner keeps its toasts in a module-level store that outlives a test's
+ * `<Toaster>` (since 2.0.8). Without this, a toast raised in one test is
+ * still in the store when the next test mounts its Toaster, and a
+ * `findByText` for the same message finds two.
+ */
+afterEach(() => {
+  toast.dismiss();
+});
