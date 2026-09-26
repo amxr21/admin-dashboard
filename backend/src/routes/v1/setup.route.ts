@@ -5,7 +5,7 @@ import { authenticate, requireUser } from '../../middleware/authenticate.js';
 import { requireDeveloperVisible, requireRole } from '../../middleware/authorize.js';
 import { AppError } from '../../errors/AppError.js';
 import { setupDraftSchema } from '../../config/setup.config.js';
-import { applySetup, previewSetup, readSetup, skipSetup } from '../../services/setup.service.js';
+import { applySetup, previewSetup, readSetup, resetSetup, skipSetup } from '../../services/setup.service.js';
 import { audit } from '../../services/audit.service.js';
 
 export const setupRouter = Router();
@@ -33,5 +33,13 @@ setupRouter.post('/setup/skip', async (req, res) => {
   if (!z.object({}).strict().safeParse(req.body ?? {}).success) throw AppError.badRequest('Expected an empty request');
   const data = await skipSetup();
   audit(req, { action: 'setup.skipped', entity: 'setup' });
+  res.json({ data });
+});
+
+// Developer only: the owner's own "start over" is simply running the wizard again.
+setupRouter.post('/setup/reset', requireRole(StaffRole.DEVELOPER), async (req, res) => {
+  if (!z.object({}).strict().safeParse(req.body ?? {}).success) throw AppError.badRequest('Expected an empty request');
+  const data = await resetSetup();
+  audit(req, { action: 'setup.reset', entity: 'setup' });
   res.json({ data });
 });

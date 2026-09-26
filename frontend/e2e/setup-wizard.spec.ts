@@ -232,6 +232,7 @@ test('owner completes setup, sees retained-data warning, and can rerun it', asyn
   await expect(page.getByLabel('Products', { exact: true })).toHaveCount(0);
   await advance(page);
   await advance(page);
+  await advance(page); // past Look & feel
   await advance(page);
 
   await expect(page.getByLabel('Products', { exact: true })).toHaveValue('Menu items');
@@ -286,10 +287,10 @@ for (const { locale, width, height } of [
     await expect(page.locator('html')).toHaveAttribute('lang', locale);
     await expect(page.locator('html')).toHaveAttribute('dir', locale === 'ar' ? 'rtl' : 'ltr');
 
-    for (let step = 0; step < 8; step += 1) {
+    for (let step = 0; step < 9; step += 1) {
       await expect(page.locator('main').getByRole('heading', { level: 2 }).first()).toBeVisible();
       await expectNoHorizontalOverflow(page);
-      if (step < 7) await advance(page);
+      if (step < 8) await advance(page);
     }
 
     await expect(

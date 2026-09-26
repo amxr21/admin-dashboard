@@ -82,6 +82,17 @@ export async function applySetup(draft: SetupDraft, actorId: string) {
   return { ...preview, completedAt };
 }
 
+/**
+ * Puts setup back to "never run": the owner sees the setup prompt (and the
+ * first-login redirect) again, as on a new account. The choices already
+ * applied — features, defaults, labels — stay exactly as they are; the wizard
+ * opens pre-filled with them.
+ */
+export async function resetSetup() {
+  await prisma.setting.deleteMany({ where: { key: { in: ['setup.completedAt', 'setup.skippedAt'] } } });
+  return { reset: true };
+}
+
 export async function skipSetup() {
   const skippedAt = new Date().toISOString();
   await prisma.setting.upsert({ where: { key: 'setup.skippedAt' }, create: { key: 'setup.skippedAt', value: skippedAt }, update: { value: skippedAt } });
