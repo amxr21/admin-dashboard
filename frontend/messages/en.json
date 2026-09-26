@@ -1,6 +1,24 @@
 {
   "setup": {
     "title": "Business setup",
+    "look": {
+      "intro": "Pick how the app looks for everyone at this store. You can see each choice right away.",
+      "accent": "Accent colour",
+      "font": "Font",
+      "corners": "Corners",
+      "later": "You can change any of this later in Settings.",
+      "fonts": {
+        "default": "Default",
+        "modern": "Modern",
+        "neutral": "Neutral",
+        "classic": "Classic"
+      },
+      "radius": {
+        "sharp": "Sharp",
+        "default": "Standard",
+        "round": "Round"
+      }
+    },
     "developer": {
       "title": "Developer view",
       "showEverything": "Show every feature",
@@ -86,6 +104,7 @@
       "products": "Catalogue",
       "people": "People and permissions",
       "operations": "Defaults",
+      "look": "Look & feel",
       "review": "Review"
     },
     "businessType": "Business type",
@@ -4278,5 +4297,19 @@
       },
       "outcomesHelp": "Delivered is confirmed by the provider when it reports back; Sent means the provider accepted the message. Addresses that bounce or opt out are never messaged again."
     }
+  },
+  "firstLogin": {
+    "title": "Welcome! Let's set up your profile",
+    "intro": "Just a few things so the app feels like yours. You can change them any time.",
+    "name": "Your name",
+    "language": "Language",
+    "theme": "Appearance",
+    "themes": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "Automatic"
+    },
+    "skip": "Skip for now",
+    "save": "Save and continue"
   }
 }

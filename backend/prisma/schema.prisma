@@ -396,6 +396,8 @@ model User {
   /// Optional time-boxed access, e.g. a contractor. NULL = never expires.
   accessExpiresAt DateTime? @map("access_expires_at")
   lastLoginAt     DateTime? @map("last_login_at")
+  /// First-login welcome finished or dismissed; NULL shows it on next sign-in.
+  onboardedAt     DateTime? @map("onboarded_at")
 
   /// Bumped to invalidate every token this user holds.
   ///
