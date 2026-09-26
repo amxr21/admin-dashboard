@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Rocket } from 'lucide-react';
 
 import { AttentionPills } from '@/components/dashboard/attention-pills';
+import { FirstStepsCard } from '@/components/dashboard/first-steps-card';
 import { FulfillmentHealthWidget } from '@/components/dashboard/fulfillment-health-widget';
 import { LatestOrdersWidget } from '@/components/dashboard/latest-orders-widget';
 import { LowStockWidget } from '@/components/dashboard/low-stock-widget';
@@ -12,7 +12,6 @@ import { QuickActions } from '@/components/dashboard/quick-actions';
 import { RecentCustomersWidget } from '@/components/dashboard/recent-customers-widget';
 import { StatTile } from '@/components/dashboard/stat-tile';
 import { RefreshButton } from '@/components/refresh-button';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Link } from '@/i18n/navigation';
 import { useAppSettings } from '@/components/providers/settings-provider';
@@ -128,24 +127,7 @@ export function SimpleDashboard({ role, controls }: SimpleDashboardProps) {
         </p>
       ) : null}
 
-      {isNewBusiness ? (
-        <section className="bg-card rounded-lg border p-5 shadow-xs" aria-labelledby="first-steps-title">
-          <div className="flex items-start gap-3">
-            <span className="bg-primary/10 text-primary grid size-9 shrink-0 place-items-center rounded-lg" aria-hidden>
-              <Rocket className="size-4" />
-            </span>
-            <div className="min-w-0">
-              <h3 id="first-steps-title" className="font-semibold">
-                {t('simple.firstSteps.title')}
-              </h3>
-              <p className="text-muted-foreground mt-1 text-sm">{t('simple.firstSteps.body')}</p>
-              <Button asChild size="sm" className="mt-3">
-                <Link href="/admin/guide/checklists">{t('simple.firstSteps.action')}</Link>
-              </Button>
-            </div>
-          </div>
-        </section>
-      ) : null}
+      {isNewBusiness ? <FirstStepsCard /> : null}
 
       {canSeeReports ? (
         <div className="grid grid-cols-12 gap-4">
