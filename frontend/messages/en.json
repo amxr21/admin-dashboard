@@ -1251,7 +1251,24 @@
     "manageGallery": "Manage gallery",
     "manageLocalizedContent": "Localized content",
     "viewHistory": "Version history",
-    "variantsAfterSave": "Save this product first — localized content, variants and gallery images attach to a real product record, which doesn't exist yet.",
+    "variantsAfterSave": "Save this product first — localized content and gallery images attach to a real product record, which doesn't exist yet.",
+    "variantDrafts": {
+      "title": "Options",
+      "hint": "Add each size, colour or flavour this product comes in. They're created together with the product. SKUs are generated for you.",
+      "name": "Option",
+      "namePlaceholder": "e.g. Large",
+      "price": "Price",
+      "stock": "Starting stock",
+      "add": "Add option",
+      "remove": "Remove option {index}",
+      "someFailed": "The product was saved, but {count, plural, one {# option} other {# options}} couldn't be added. Open Manage variants to finish.",
+      "errors": {
+        "nameRequired": "Give this option a name.",
+        "nameDuplicate": "Two options have the same name.",
+        "priceInvalid": "Enter a price like 12 or 12.50.",
+        "stockInvalid": "Starting stock must be a whole number."
+      }
+    },
     "noOptions": "None available.",
     "errors": {
       "required": "This field is required.",
