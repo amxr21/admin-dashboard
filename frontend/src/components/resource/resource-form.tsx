@@ -27,6 +27,14 @@ import { ProductContentPanel } from '@/components/resource/product-content-panel
 import { ProductHistoryPanel } from '@/components/resource/product-history-panel';
 import { ProductVariantsPanel } from '@/components/resource/product-variants-panel';
 import {
+  VariantDraftRows,
+  createDraftVariants,
+  emptyDraft,
+  validateDrafts,
+  type VariantDraft,
+} from '@/components/resource/variant-draft-rows';
+import { toast } from 'sonner';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -377,6 +385,18 @@ export function ResourceForm({
   // form rather than nested inside it, so this stays the one place a
   // conditional `schema.resource === 'products'` check exists.
   const [variantsPanelOpen, setVariantsPanelOpen] = useState(false);
+  /** Options typed while creating a product — see variant-draft-rows.tsx. */
+  const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>([]);
+  const [variantDraftErrors, setVariantDraftErrors] = useState<Record<number, string>>({});
+  const showVariantDrafts = !isEdit && schema.resource === 'products' && values.hasVariants === true;
+  // Ticking the box should show somewhere to type the first option straight away.
+  useEffect(() => {
+    if (showVariantDrafts) {
+      setVariantDrafts((rows) => (rows.length > 0 ? rows : [emptyDraft(typeof values.price === 'string' ? values.price : '')]));
+    }
+    // Only when the box is ticked; a later price edit must not reset the rows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showVariantDrafts]);
   const [galleryPanelOpen, setGalleryPanelOpen] = useState(false);
   const [contentPanelOpen, setContentPanelOpen] = useState(false);
   const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
@@ -622,7 +642,10 @@ export function ResourceForm({
       if (message) errors[field.name] = message;
     }
 
-    if (Object.keys(errors).length > 0) {
+    const draftErrors = showVariantDrafts ? validateDrafts(variantDrafts) : {};
+    setVariantDraftErrors(draftErrors);
+
+    if (Object.keys(errors).length > 0 || Object.keys(draftErrors).length > 0) {
       setFieldErrors(errors);
       setFormError(null);
       return;
@@ -646,6 +669,10 @@ export function ResourceForm({
         // The response row was previously discarded; it carries the new id,
         // which is the only way a follow-up action can address the record.
         created = await createRow(schema.resource, payload);
+        if (showVariantDrafts && created?.id != null) {
+          const failed = await createDraftVariants(String(created.id), variantDrafts);
+          if (failed > 0) toast.error(t('variantDrafts.someFailed', { count: failed }));
+        }
       }
 
       setIsDirty(false);
@@ -825,6 +852,19 @@ export function ResourceForm({
               price={values.price}
               cost={values.cost}
             />
+
+            {showVariantDrafts ? (
+              <VariantDraftRows
+                rows={variantDrafts}
+                errors={variantDraftErrors}
+                defaultPrice={typeof values.price === 'string' ? values.price : ''}
+                disabled={isSaving}
+                onChange={(rows) => {
+                  setVariantDrafts(rows);
+                  setIsDirty(true);
+                }}
+              />
+            ) : null}
 
             {schema.resource === 'products' ? (
               <div className="border-t pt-4">
