@@ -10,8 +10,9 @@ import { useEffect, useState } from 'react';
  * the real value takes over after mount, with no hydration mismatch.
  *
  * Per-browser, not per-account: a shared machine (or a staff member using a
- * new laptop) should see it again, same as `sidebar-collapsed`. There is no
- * per-role variant of the content, so no server round-trip is worth adding
+ * new laptop) should see it again, same as `sidebar-collapsed`. The tips are
+ * filtered by role at render time but the flag carries no role, so no server
+ * round-trip is worth adding
  * just to sync "have I seen the tour" across devices.
  */
 

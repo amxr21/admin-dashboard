@@ -65,6 +65,11 @@ updates:
     #   - prisma / @prisma/client 7+: datasource `url` leaves the schema for
     #     prisma.config.ts, a driver adapter becomes mandatory, and the client
     #     generator changes, across the 130+ files that import it.
+    #   - next / eslint-config-next 16: a framework upgrade (#296 failed build,
+    #     lint and tests). Planned as its own piece of work, together with
+    #     moving the frontend to ESLint 10.
+    #   - vitest / @vitest/coverage-v8 5: a test-runner major (#294/#295 failed
+    #     CI); both packages must move together.
     ignore:
       - dependency-name: typescript
         update-types: [version-update:semver-major]
@@ -75,6 +80,14 @@ updates:
       - dependency-name: prisma
         update-types: [version-update:semver-major]
       - dependency-name: '@prisma/client'
+        update-types: [version-update:semver-major]
+      - dependency-name: next
+        update-types: [version-update:semver-major]
+      - dependency-name: eslint-config-next
+        update-types: [version-update:semver-major]
+      - dependency-name: vitest
+        update-types: [version-update:semver-major]
+      - dependency-name: '@vitest/coverage-v8'
         update-types: [version-update:semver-major]
     open-pull-requests-limit: 5
 

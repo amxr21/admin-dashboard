@@ -291,6 +291,15 @@ export interface InviteStaffInput {
   role: StaffRole;
   branchId?: string;
   accessExpiresAt?: string;
+  /** This dashboard's /reset-password URL, so the invite email can link to
+   * it. The server only uses it when the origin is a configured CORS origin. */
+  activationUrl?: string;
+}
+
+export interface InviteStaffResult extends ResetTokenResult {
+  /** Whether the server also emailed the code. False when email is not set
+   * up — the admin then has to hand the link over themselves. */
+  emailed: boolean;
 }
 
 /**
@@ -300,8 +309,8 @@ export interface InviteStaffInput {
  * action the spec names for this page; `createStaff` above (an admin typing
  * a password on someone else's behalf) was previously the ONLY way in.
  */
-export async function inviteStaff(input: InviteStaffInput): Promise<ResetTokenResult> {
-  return apiFetch<ResetTokenResult>('/staff/invite', {
+export async function inviteStaff(input: InviteStaffInput): Promise<InviteStaffResult> {
+  return apiFetch<InviteStaffResult>('/staff/invite', {
     method: 'POST',
     body: JSON.stringify(input),
   });
