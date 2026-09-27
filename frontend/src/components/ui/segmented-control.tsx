@@ -2,6 +2,7 @@
 
 import { useId, useRef, type KeyboardEvent } from 'react';
 
+import { radioArrowStep } from '@/lib/radio-group-keys';
 import { cn } from '@/lib/utils';
 
 /**
@@ -39,6 +40,8 @@ interface SegmentedControlProps {
   'aria-describedby'?: string;
   id?: string;
   className?: string;
+  /** 'sm' fits a card header's action slot (e.g. the order Activity filter). */
+  size?: 'default' | 'sm';
 }
 
 export function SegmentedControl({
@@ -47,6 +50,7 @@ export function SegmentedControl({
   onChange,
   id,
   className,
+  size = 'default',
   ...aria
 }: SegmentedControlProps) {
   const generatedId = useId();
@@ -69,26 +73,10 @@ export function SegmentedControl({
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     // Resolve physical arrows to logical direction so RTL moves the right way.
     const isRtl = getComputedStyle(event.currentTarget).direction === 'rtl';
-    switch (event.key) {
-      case 'ArrowRight':
-        event.preventDefault();
-        move(isRtl ? -1 : 1);
-        break;
-      case 'ArrowLeft':
-        event.preventDefault();
-        move(isRtl ? 1 : -1);
-        break;
-      case 'ArrowDown':
-        event.preventDefault();
-        move(1);
-        break;
-      case 'ArrowUp':
-        event.preventDefault();
-        move(-1);
-        break;
-      default:
-        break;
-    }
+    const step = radioArrowStep(event.key, isRtl);
+    if (step === null) return;
+    event.preventDefault();
+    move(step);
   }
 
   return (
@@ -98,7 +86,8 @@ export function SegmentedControl({
       role="radiogroup"
       onKeyDown={onKeyDown}
       className={cn(
-        'bg-muted/60 inline-flex w-full max-w-full rounded-lg border p-1',
+        'bg-muted/60 inline-flex w-full max-w-full rounded-lg border',
+        size === 'sm' ? 'p-0.5' : 'p-1',
         className,
       )}
       {...aria}
@@ -116,7 +105,8 @@ export function SegmentedControl({
             tabIndex={isActive ? 0 : -1}
             onClick={() => onChange(option.value)}
             className={cn(
-              'flex-1 rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors',
+              'flex-1 rounded-md font-medium whitespace-nowrap transition-colors',
+              size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3 py-1.5 text-sm',
               'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
               isActive
                 ? 'bg-background text-foreground shadow-sm'
