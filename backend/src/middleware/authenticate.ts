@@ -35,6 +35,9 @@ declare global {
       /// comment) — routes that need "the current session" must handle
       /// undefined, not assume it's always there.
       sessionId?: string;
+      /// The verified integration key behind this request — set by key
+      /// authentication, never read from a header. Rate limits key on it.
+      apiKeyId?: string;
       /// The branch this request is acting on (F8.4), from the `X-Branch-Id`
       /// header. `null` means "all branches", which is a real request — the
       /// unscoped reports answer exactly that — and never means "denied".
@@ -117,6 +120,7 @@ export async function authenticate(
       }
 
       req.user = authenticated.user;
+      req.apiKeyId = authenticated.id;
       // Attached BEFORE any guard runs, so `requireArea` can narrow on it.
       req.apiKeyScopes = authenticated.scopes;
       req.apiKeyAudience = authenticated.audience;
@@ -152,6 +156,7 @@ export async function authenticateStorefrontApiKey(
     // Keep the integration identity separate from `req.customer`. Ordinary
     // area guards can now apply the key owner's role AND its narrowed scopes.
     req.user = authenticated.user;
+    req.apiKeyId = authenticated.id;
     req.apiKeyScopes = authenticated.scopes;
     req.apiKeyAudience = authenticated.audience;
     await finishAuthentication(req);

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { publicKeyFailureRateLimit, publicShopperRateLimit, publicKeyRateLimit, storefrontShopperKey } from '../../middleware/rateLimit.js';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 
@@ -59,7 +60,7 @@ export const publicRouter = Router();
 // Every storefront call is made by an approved integration. Shopper identity
 // remains a separate Bearer token on customer-specific routes; the generated
 // integration credential is always sent as `X-API-Key`.
-publicRouter.use('/public', authenticateStorefrontApiKey);
+publicRouter.use('/public', publicKeyFailureRateLimit, authenticateStorefrontApiKey, publicKeyRateLimit, publicShopperRateLimit);
 
 /**
  * Sign-in attempts. Stricter than the general API limit and separate from the
@@ -67,6 +68,7 @@ publicRouter.use('/public', authenticateStorefrontApiKey);
  * that protects admin login.
  */
 const customerLoginRateLimit = rateLimit({
+  keyGenerator: storefrontShopperKey,
   windowMs: 15 * 60_000,
   limit: 20,
   standardHeaders: 'draft-7',
@@ -86,6 +88,7 @@ const customerLoginRateLimit = rateLimit({
  * Successful requests count — unlike login, a *successful* flood is the abuse.
  */
 const checkoutRateLimit = rateLimit({
+  keyGenerator: storefrontShopperKey,
   windowMs: 60 * 60_000,
   limit: 20,
   // Integration files exercise many valid and invalid checkout cases from one

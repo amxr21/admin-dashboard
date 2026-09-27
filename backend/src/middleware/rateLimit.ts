@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import type { Request } from 'express';
-import rateLimit from 'express-rate-limit';
+import { isIP } from 'node:net';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 import { env } from '../config/env.js';
 
@@ -211,6 +212,95 @@ export const apiRateLimit = rateLimit({
     error: {
       code: 'RATE_LIMITED',
       message: 'Too many requests. Slow down and try again shortly.',
+    },
+  },
+});
+
+// ─── Storefront API (/api/v1/public/*) ─────────────────────────────────
+//
+// A storefront calls this API from ITS server, so every shopper arrives from
+// the same address. Keyed on `req.ip`, the limits above treat a whole shop as
+// one visitor: its 21st order of the hour, or its 121st page-level call of
+// the minute, was refused for everyone (Fluffy QA, 2026-09-27).
+//
+// So the public API is limited per SHOPPER instead. The storefront server
+// states the shopper's address in `X-Storefront-Client-IP`; that header is
+// only believed on a request whose integration key has already been verified
+// — an anonymous caller cannot choose its own bucket.
+
+const CLIENT_IP_HEADER = 'x-storefront-client-ip';
+
+/**
+ * The shopper this request is for: the storefront's stated client address when
+ * the request carries a verified integration key, else the connection address.
+ * Prefixed with the key, so two storefronts never share a bucket.
+ */
+export function storefrontShopperKey(req: Request): string {
+  const stated = req.header(CLIENT_IP_HEADER)?.trim();
+  const address = req.apiKeyId && stated && isIP(stated) ? stated : (req.ip ?? 'unknown');
+  return `${req.apiKeyId ?? 'anonymous'}|${ipKeyGenerator(address)}`;
+}
+
+/**
+ * Key guessing. Counts only REJECTED keys, per connection address, and runs
+ * before authentication — so a flood of made-up keys is cut off without a
+ * working storefront (whose key always verifies) ever spending this budget.
+ *
+ * "Rejected" means the KEY did not verify — not "the response was a 401". A
+ * shopper's expired session is a 401 too, and so is an area the key may not
+ * reach; counting those against the storefront server's one shared address
+ * would let thirty stale sessions lock the whole shop out for fifteen minutes.
+ */
+export const publicKeyFailureRateLimit = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  requestWasSuccessful: (req) => req.apiKeyId !== undefined,
+  message: {
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many requests with an invalid API key. Try again later.',
+    },
+  },
+});
+
+/**
+ * The per-shopper replacement for `apiRateLimit` on the public API. Same
+ * budget a single visitor had before; skipped under test for the same reason.
+ */
+export const publicShopperRateLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  skip: () => process.env.NODE_ENV === 'test',
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: storefrontShopperKey,
+  message: {
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many requests. Slow down and try again shortly.',
+    },
+  },
+});
+
+/**
+ * A ceiling for one integration key across all its shoppers — the backstop if
+ * a storefront (or a stolen key) floods the API, which per-shopper limits
+ * alone cannot see.
+ */
+export const publicKeyRateLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 3000,
+  skip: () => process.env.NODE_ENV === 'test',
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => `key|${req.apiKeyId ?? 'anonymous'}`,
+  message: {
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'This storefront is sending too many requests. Try again shortly.',
     },
   },
 });

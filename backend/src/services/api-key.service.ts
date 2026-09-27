@@ -175,6 +175,8 @@ export async function revokeApiKey(userId: string, keyId: string): Promise<void>
  * session-authenticated one everywhere past this point.
  */
 export interface AuthenticatedApiKey {
+  /** The key row — what per-integration rate limits are keyed on. */
+  id: string;
   user: SafeUser;
   /**
    * The areas this key may reach, or `null` for "whatever the owner can".
@@ -232,5 +234,5 @@ export async function authenticateApiKey(plainKey: string): Promise<Authenticate
     ...safe
   } = row.user;
 
-  return { user: safe, scopes: parseScopes(row.scopes), audience: row.audience };
+  return { id: row.id, user: safe, scopes: parseScopes(row.scopes), audience: row.audience };
 }
