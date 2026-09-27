@@ -44,6 +44,8 @@ export interface ReceiptData {
   subtotal: string;
   taxAmount: string;
   total: string;
+  /** Tax was inside the prices: printed as "Tax included", not added. */
+  pricesIncludeTax?: boolean;
   method: string;
   tendered: string | null;
   change: string | null;
@@ -150,7 +152,7 @@ export function ThermalReceipt({
               <td className="text-end">{data.subtotal}</td>
             </tr>
             <tr>
-              <td>{t('tax')}</td>
+              <td>{data.pricesIncludeTax ? t('taxIncluded') : t('tax')}</td>
               <td className="text-end">{data.taxAmount}</td>
             </tr>
             <tr className="text-[13px] font-bold">

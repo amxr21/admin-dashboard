@@ -10,12 +10,11 @@ import {
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
-import { SETTINGS } from '../config/settings.config.js';
 import {
   executeIdempotently,
   type IdempotentExecution,
 } from './idempotency.service.js';
-import { computeDiscountedTaxAmount } from './order-math.service.js';
+import { computeDiscountedTaxAmount, getTaxPolicy, type TaxPolicy } from './order-math.service.js';
 import { getSettingValue } from './settings.service.js';
 import type { ProductLocale } from './product-content.service.js';
 
@@ -419,6 +418,12 @@ export interface StorefrontConfig {
   currency: string;
   /** VAT percentage, e.g. 5 for the UAE. */
   taxRatePercent: number;
+  /**
+   * Whether product prices already include that VAT. When true a storefront
+   * shows the price as the amount charged and itemises the VAT inside it;
+   * when false it adds the VAT at checkout.
+   */
+  pricesIncludeTax: boolean;
   storeName: string;
 }
 
@@ -435,15 +440,17 @@ export interface StorefrontConfig {
  * customer would then see a total that disagrees with what they are charged.
  */
 export async function getStorefrontConfig(): Promise<StorefrontConfig> {
-  const [currency, taxRate, storeName] = await Promise.all([
+  const [currency, taxRate, pricesIncludeTax, storeName] = await Promise.all([
     getSettingValue('store.currency'),
     getSettingValue('store.taxRate'),
+    getSettingValue('store.pricesIncludeTax'),
     getSettingValue('store.name'),
   ]);
 
   return {
     currency: String(currency),
     taxRatePercent: Number(taxRate),
+    pricesIncludeTax: Boolean(pricesIncludeTax),
     storeName: String(storeName),
   };
 }
@@ -897,7 +904,7 @@ async function checkoutOnce(
   input: CheckoutInput,
   customerId: string | null,
   tx: Prisma.TransactionClient,
-  taxRate: Prisma.Decimal,
+  tax: TaxPolicy,
 ): Promise<CheckoutResult> {
   if (input.items.length === 0) {
     throw AppError.badRequest('Your cart is empty');
@@ -1053,14 +1060,17 @@ async function checkoutOnce(
       subtotal,
       taxableSubtotal,
       discountAmount,
-      taxRate,
+      tax.rate,
+      tax.pricesIncludeTax,
     );
-    const total = discountedSubtotal.plus(taxAmount);
+    // Tax-inclusive prices already carry the tax the customer pays.
+    const total = tax.pricesIncludeTax ? discountedSubtotal : discountedSubtotal.plus(taxAmount);
 
     const orderData = {
       total,
       subtotal,
       taxAmount,
+      pricesIncludeTax: tax.pricesIncludeTax,
       // Null rather than 0 when no code was used — see the column's own note on
       // why "no discount" and "a discount worth nothing" stay distinguishable.
       discountAmount: discount ? discountAmount : null,
@@ -1217,24 +1227,17 @@ export async function checkout(
   integrationActorId: string,
   idempotencyKey: string,
 ): Promise<IdempotentExecution<CheckoutResult>> {
-  // Read the tax rate once before opening the transaction. A successful first
+  // Read the tax policy once before opening the transaction. A successful first
   // execution stores its exact totals, so a later retry still replays the
-  // original response even if the setting changes afterward.
-  const taxRateSetting = await prisma.setting.findUnique({
-    where: { key: 'store.taxRate' },
-    select: { value: true },
-  });
-  const taxRatePercent = Number(
-    taxRateSetting === null ? SETTINGS['store.taxRate'].default : taxRateSetting.value,
-  );
-  const taxRate = new Prisma.Decimal(taxRatePercent).dividedBy(100);
+  // original response even if the settings change afterward.
+  const tax = await getTaxPolicy();
 
   return executeIdempotently({
     scope: 'storefront.checkout',
     actorId: integrationActorId,
     key: idempotencyKey,
     request: { input, customerId },
-    execute: (tx) => checkoutOnce(input, customerId, tx, taxRate),
+    execute: (tx) => checkoutOnce(input, customerId, tx, tax),
   });
 }
 
@@ -1245,6 +1248,8 @@ export interface PublicOrder {
   status: string;
   subtotal: string | null;
   taxAmount: string | null;
+  /** True when `taxAmount` is inside `total` rather than added to it. */
+  pricesIncludeTax: boolean;
   total: string;
   placedAt: Date;
   /** `variant` is the option bought (e.g. "Large"), or null for a plain product. */
@@ -1256,6 +1261,7 @@ const PUBLIC_ORDER_SELECT = {
   status: true,
   subtotal: true,
   taxAmount: true,
+  pricesIncludeTax: true,
   total: true,
   placedAt: true,
   items: {
@@ -1278,6 +1284,7 @@ function toPublicOrder(
     // "never recorded" is a different fact from a confirmed zero.
     subtotal: order.subtotal ? order.subtotal.toFixed(2) : null,
     taxAmount: order.taxAmount ? order.taxAmount.toFixed(2) : null,
+    pricesIncludeTax: order.pricesIncludeTax,
     total: order.total.toFixed(2),
     placedAt: order.placedAt,
     items: order.items.map((item) => ({

@@ -289,6 +289,7 @@ export async function getOrder(id: string, branchId?: string) {
       total: true,
       subtotal: true,
       taxAmount: true,
+      pricesIncludeTax: true,
       paymentMethod: true,
       placedAt: true,
       // Who rang it up, when it came from the till (F-POS). Null on a web
@@ -399,6 +400,8 @@ export async function getOrder(id: string, branchId?: string) {
     total: money(order.total),
     subtotal: money(order.subtotal),
     taxAmount: money(order.taxAmount),
+    // The invoice says "VAT included" rather than adding a VAT line.
+    pricesIncludeTax: order.pricesIncludeTax,
     paymentMethod: order.paymentMethod,
     placedAt: order.placedAt.toISOString(),
     soldByName: order.soldByName,

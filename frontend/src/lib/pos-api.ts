@@ -151,6 +151,8 @@ export interface CheckoutResult {
   /** Products charged no VAT on this sale. Absent on replays recorded before
    *  this field existed. */
   exemptProductIds?: string[];
+  /** The tax was inside the prices; the receipt says so instead of adding it. */
+  pricesIncludeTax?: boolean;
   /**
    * URG-034 — the foreign-currency figures for the receipt, all null on a
    * base-currency sale (the overwhelming majority).
@@ -256,6 +258,8 @@ export interface SaleQuote {
   taxAmount: string;
   /** What checkout will charge for these lines, VAT included. */
   total: string;
+  /** The tax is inside the prices rather than added to them. */
+  pricesIncludeTax?: boolean;
 }
 
 /** The real total for a cart, from the server's own checkout math. Sells nothing. */

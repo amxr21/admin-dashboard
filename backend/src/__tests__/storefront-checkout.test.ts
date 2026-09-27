@@ -628,3 +628,82 @@ describe('the usage ledger', () => {
     expect(after?.usedCount).toBe(0);
   });
 });
+
+/**
+ * `store.pricesIncludeTax`: the price a shopper sees is what they pay, with the
+ * VAT inside it — the Fluffy storefront QA found 48.00 charged as 50.40.
+ */
+describe('prices that already include tax', () => {
+  async function setPricesIncludeTax(value: boolean) {
+    await prisma.setting.upsert({
+      where: { key: 'store.pricesIncludeTax' },
+      create: { key: 'store.pricesIncludeTax', value },
+      update: { value },
+    });
+  }
+
+  afterEach(async () => {
+    // Global settings: put them back so no other test inherits them.
+    await prisma.setting.deleteMany({ where: { key: 'store.pricesIncludeTax' } });
+    await setTaxRate('0');
+  });
+
+  it('charges the price the shopper saw and itemises the VAT inside it', async () => {
+    await setTaxRate('5');
+    await setPricesIncludeTax(true);
+    const product = await makeProduct('48.00');
+
+    const res = await order(product.id, 1);
+
+    expect(res.status).toBe(201);
+    const body = (res.body as CheckoutBody).data;
+    expect(body.subtotal).toBe('48.00');
+    expect(body.taxAmount).toBe('2.29');
+    expect(body.total).toBe('48.00');
+    const saved = await prisma.order.findUniqueOrThrow({
+      where: { orderNumber: body.orderNumber },
+      select: { total: true, taxAmount: true, pricesIncludeTax: true },
+    });
+    expect(saved.pricesIncludeTax).toBe(true);
+    expect(saved.total.toFixed(2)).toBe('48.00');
+  });
+
+  it('works the VAT out of what is left after a discount', async () => {
+    await setTaxRate('5');
+    await setPricesIncludeTax(true);
+    const product = await makeProduct('105.00');
+    const code = await makeDiscount('incl20', { value: new Prisma.Decimal('20.00') });
+
+    const res = await order(product.id, 1, code.code);
+
+    expect(res.status).toBe(201);
+    const body = (res.body as CheckoutBody).data;
+    expect(body.discountAmount).toBe('21.00');
+    expect(body.total).toBe('84.00');
+    expect(body.taxAmount).toBe('4.00');
+  });
+
+  it('tells a storefront which basis to show', async () => {
+    await setTaxRate('5');
+    await setPricesIncludeTax(true);
+    const res = await request(app).get('/api/v1/public/config').set('X-API-Key', storefrontKey);
+    expect(res.status).toBe(200);
+    expect((res.body as { data: { pricesIncludeTax: boolean; taxRatePercent: number } }).data).toMatchObject({
+      pricesIncludeTax: true,
+      taxRatePercent: 5,
+    });
+  });
+
+  it('keeps adding tax on top when the setting is off — every existing store', async () => {
+    await setTaxRate('5');
+    const product = await makeProduct('48.00');
+    const res = await order(product.id, 1);
+    const body = (res.body as CheckoutBody).data;
+    expect(body.total).toBe('50.40');
+    const saved = await prisma.order.findUniqueOrThrow({
+      where: { orderNumber: body.orderNumber },
+      select: { pricesIncludeTax: true },
+    });
+    expect(saved.pricesIncludeTax).toBe(false);
+  });
+});

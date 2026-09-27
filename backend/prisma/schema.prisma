@@ -1163,6 +1163,12 @@ model Order {
   /// must not rewrite what an old invoice already showed. NULL has the same
   /// "never recorded" meaning as `subtotal`'s.
   taxAmount              Decimal?            @map("tax_amount") @db.Decimal(10, 2)
+  /// Whether this order's prices already included its tax
+  /// (`store.pricesIncludeTax` at the time of sale). Decides how its totals
+  /// relate: tax-inclusive, `total = subtotal - discount` with `taxAmount`
+  /// the part of it that is tax; otherwise tax is added on top. Snapshotted so
+  /// flipping the setting never changes what an old order refunds.
+  pricesIncludeTax       Boolean             @default(false) @map("prices_include_tax")
   /// What was taken off this order, and why.
   ///
   /// ─── A SEPARATE COLUMN, NEVER FOLDED INTO `subtotal` ────────────────

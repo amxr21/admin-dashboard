@@ -42,6 +42,34 @@ export interface OrderTotals {
 }
 
 /**
+ * How the store charges tax: the rate, and whether the prices it enters
+ * already include it (`store.pricesIncludeTax`). Read together, because the
+ * rate alone does not say whether 5% is added to a 48.00 price or is part of it.
+ */
+export interface TaxPolicy {
+  rate: Prisma.Decimal;
+  pricesIncludeTax: boolean;
+}
+
+export async function getTaxPolicy(): Promise<TaxPolicy> {
+  const [rate, inclusive] = await Promise.all([
+    getTaxRate(),
+    prisma.setting.findUnique({ where: { key: 'store.pricesIncludeTax' }, select: { value: true } }),
+  ]);
+  const value = inclusive === null ? SETTINGS['store.pricesIncludeTax'].default : inclusive.value;
+  return { rate, pricesIncludeTax: value === true || value === 'true' };
+}
+
+/**
+ * The tax already inside a tax-inclusive amount: 48.00 at 5% holds 2.29.
+ * Rounded like every other stored tax figure.
+ */
+export function taxInside(gross: Prisma.Decimal, rate: Prisma.Decimal): Prisma.Decimal {
+  if (gross.lte(0) || rate.lte(0)) return new Prisma.Decimal(0);
+  return gross.minus(gross.dividedBy(rate.plus(1))).toDecimalPlaces(2);
+}
+
+/**
  * The store's tax rate as a fraction (5% → 0.05).
  *
  * A missing `Setting` row means the registry default, never zero — the same
@@ -72,6 +100,8 @@ export async function getTaxRate(): Promise<Prisma.Decimal> {
 export function computeOrderTotals(
   lines: readonly PriceableLine[],
   taxRate: Prisma.Decimal,
+  /** Prices already include the tax: it is worked out of them, not added. */
+  pricesIncludeTax = false,
 ): OrderTotals {
   const subtotal = lines
     .reduce((sum, line) => sum.plus(line.price.times(line.quantity)), new Prisma.Decimal(0))
@@ -84,6 +114,10 @@ export function computeOrderTotals(
     .filter((line) => line.isTaxable !== false)
     .reduce((sum, line) => sum.plus(line.price.times(line.quantity)), new Prisma.Decimal(0))
     .toDecimalPlaces(2);
+
+  if (pricesIncludeTax) {
+    return { subtotal, taxAmount: taxInside(taxableSubtotal, taxRate), total: subtotal };
+  }
 
   const taxAmount = taxableSubtotal.times(taxRate).toDecimalPlaces(2);
 
@@ -101,6 +135,8 @@ export function computeDiscountedTaxAmount(
   taxableSubtotal: Prisma.Decimal,
   discountAmount: Prisma.Decimal,
   taxRate: Prisma.Decimal,
+  /** The taxable amounts already include their tax; see `computeOrderTotals`. */
+  pricesIncludeTax = false,
 ): Prisma.Decimal {
   if (subtotal.lte(0) || taxableSubtotal.lte(0) || taxRate.lte(0)) {
     return new Prisma.Decimal(0);
@@ -116,7 +152,9 @@ export function computeDiscountedTaxAmount(
     new Prisma.Decimal(0),
   );
 
-  return taxableAfterDiscount.times(taxRate).toDecimalPlaces(2);
+  return pricesIncludeTax
+    ? taxInside(taxableAfterDiscount, taxRate)
+    : taxableAfterDiscount.times(taxRate).toDecimalPlaces(2);
 }
 
 export interface RefundableLine {
@@ -133,6 +171,8 @@ export interface RefundOrderSnapshot {
   discountAmount: Prisma.Decimal | null;
   taxAmount: Prisma.Decimal | null;
   total: Prisma.Decimal;
+  /** `Order.pricesIncludeTax` — the goods value then already carries the tax. */
+  pricesIncludeTax?: boolean | null;
   lines: readonly RefundableLine[];
 }
 
@@ -191,7 +231,10 @@ export function computeRefundBreakdown(
           .dividedBy(orderTaxable)
       : zero;
 
-  const refundable = Prisma.Decimal.max(goods.minus(discountShare).plus(taxShare), zero);
+  // Tax-inclusive, the goods value already carries its tax; adding the share
+  // again would refund the VAT twice on a partial return.
+  const paid = order.pricesIncludeTax ? goods.minus(discountShare) : goods.minus(discountShare).plus(taxShare);
+  const refundable = Prisma.Decimal.max(paid, zero);
   return {
     refundable: Prisma.Decimal.min(refundable, order.total).toDecimalPlaces(2),
     taxShare,
@@ -225,5 +268,6 @@ export function computeRefundTaxAmount(
 }
 /** The common case: read the rate and compute in one call. */
 export async function priceOrder(lines: readonly PriceableLine[]): Promise<OrderTotals> {
-  return computeOrderTotals(lines, await getTaxRate());
+  const policy = await getTaxPolicy();
+  return computeOrderTotals(lines, policy.rate, policy.pricesIncludeTax);
 }

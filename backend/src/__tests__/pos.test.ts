@@ -420,7 +420,11 @@ describe('taking a sale (O5.7, O5.8)', () => {
       expect(sale.status).toBe(201);
       const charged = (sale.body as { data: { subtotal: string; taxAmount: string; total: string } }).data;
 
-      expect(quoted).toEqual({ subtotal: charged.subtotal, taxAmount: charged.taxAmount, total: charged.total });
+      expect({ subtotal: quoted.subtotal, taxAmount: quoted.taxAmount, total: quoted.total }).toEqual({
+        subtotal: charged.subtotal,
+        taxAmount: charged.taxAmount,
+        total: charged.total,
+      });
       expect(Number(quoted.taxAmount)).toBeGreaterThan(0);
     } finally {
       if (previous) {
@@ -428,6 +432,40 @@ describe('taking a sale (O5.7, O5.8)', () => {
       } else {
         await prisma.setting.deleteMany({ where: { key: 'store.taxRate' } });
       }
+    }
+  });
+
+  it('charges the shelf price when prices already include VAT, and records that basis', async () => {
+    const product = await makeProduct({ sku: `${RUN}-INCL`, price: '52.50', stock: 5 });
+    await stockAt(product.id, 5);
+    const lines = [{ productId: product.id, quantity: 2 }];
+    const settings = ['store.taxRate', 'store.pricesIncludeTax'];
+    const previous = await prisma.setting.findMany({ where: { key: { in: settings } } });
+    await prisma.setting.upsert({ where: { key: 'store.taxRate' }, create: { key: 'store.taxRate', value: 5 }, update: { value: 5 } });
+    await prisma.setting.upsert({
+      where: { key: 'store.pricesIncludeTax' },
+      create: { key: 'store.pricesIncludeTax', value: true },
+      update: { value: true },
+    });
+
+    try {
+      const quote = await request(app).post('/api/v1/pos/quote').set(auth(ownerToken)).set('X-Branch-Id', branchId).send({ lines });
+      const quoted = (quote.body as { data: { total: string; taxAmount: string; pricesIncludeTax: boolean } }).data;
+      expect(quoted).toMatchObject({ total: '105.00', taxAmount: '5.00', pricesIncludeTax: true });
+
+      const sale = await sell({ lines, method: 'cash', tendered: '105.00' });
+      expect(sale.status).toBe(201);
+      const charged = (sale.body as { data: { orderNumber: string; total: string; taxAmount: string } }).data;
+      expect(charged.total).toBe('105.00');
+      expect(charged.taxAmount).toBe('5.00');
+      const saved = await prisma.order.findUniqueOrThrow({
+        where: { orderNumber: charged.orderNumber },
+        select: { pricesIncludeTax: true },
+      });
+      expect(saved.pricesIncludeTax).toBe(true);
+    } finally {
+      await prisma.setting.deleteMany({ where: { key: { in: settings } } });
+      for (const row of previous) await prisma.setting.create({ data: { key: row.key, value: row.value ?? false } });
     }
   });
 

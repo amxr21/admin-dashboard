@@ -462,7 +462,7 @@ export function OrderDetail({ id }: { id: string }) {
                     <dd className="tabular-nums">{money(order.subtotal)}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <dt className="text-muted-foreground">{t('items.tax')}</dt>
+                    <dt className="text-muted-foreground">{t(order.pricesIncludeTax ? 'items.taxIncluded' : 'items.tax')}</dt>
                     <dd className="tabular-nums">{money(order.taxAmount)}</dd>
                   </div>
                 </>

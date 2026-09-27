@@ -101,6 +101,9 @@ export interface OrderDetail {
   /** Tax charged at the time of the order. Same null-means-unrecorded rule
    *  as `subtotal`. */
   taxAmount: string | null;
+  /** The tax was inside the prices (`store.pricesIncludeTax` at the time):
+   *  `taxAmount` is part of `total`, not added to it. Absent from older APIs. */
+  pricesIncludeTax?: boolean;
   paymentMethod: string | null;
   placedAt: string;
   /**
