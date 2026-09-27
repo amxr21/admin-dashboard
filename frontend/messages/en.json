@@ -1340,6 +1340,11 @@
     "empty": "No orders yet.",
     "guest": "Guest",
     "requestReturn": "Request return",
+    "neighbors": {
+      "label": "Orders in this list",
+      "previous": "Previous order, {number}",
+      "next": "Next order, {number}"
+    },
     "refund": {
       "action": "Refund",
       "title": "Refund this order",
@@ -1412,12 +1417,13 @@
     "delivery": {
       "title": "Delivery",
       "courier": "Courier",
-      "phone": "Phone",
       "address": "Address",
-      "status": "Status",
       "attemptCount": "Failed attempts",
-      "failureReason": "Reason for last failure",
       "unassigned": "No courier assigned yet.",
+      "assignCourier": "Assign courier",
+      "actions": "Courier actions",
+      "assignTitle": "Assign a courier",
+      "reassignTitle": "Choose another courier",
       "assignLabel": "Courier",
       "assignPlaceholder": "Choose a courier",
       "assign": "Assign",
@@ -1440,16 +1446,27 @@
       "title": "Payment",
       "unknown": "Not recorded"
     },
+    "activity": {
+      "title": "Activity",
+      "filterLabel": "Filter activity",
+      "filters": {
+        "all": "All",
+        "status": "Status",
+        "notes": "Notes",
+        "delivery": "Delivery"
+      },
+      "noMatches": "Nothing recorded here yet."
+    },
     "notes": {
-      "title": "Internal notes",
-      "placeholder": "Staff-only — never shown to the customer.",
+      "label": "Internal note",
+      "placeholder": "Add an internal note…",
+      "staffOnly": "Staff only — never shown to the customer",
       "empty": "No notes yet.",
-      "add": "Add",
+      "add": "Add note",
       "adding": "Adding…",
       "unknownAuthor": "an account that no longer exists"
     },
     "timeline": {
-      "title": "History",
       "placed": "Order placed",
       "movedTo": "moved to",
       "noChanges": "Nothing else recorded yet.",
@@ -1459,15 +1476,38 @@
       "unknownActor": "an account that no longer exists"
     },
     "statusControl": {
-      "label": "Move to",
-      "placeholder": "Choose a status",
-      "apply": "Apply",
+      "progress": "Order progress",
+      "nextStep": "Next step",
+      "stepDone": "completed",
+      "more": "More status actions",
+      "actionsLabel": "Order actions",
+      "actions": {
+        "PENDING": "Move back to Pending",
+        "CONFIRMED": "Confirm order",
+        "SHIPPED": "Mark as shipped",
+        "DELIVERED": "Mark as delivered",
+        "CANCELED": "Cancel order",
+        "RETURNED": "Request return"
+      },
+      "dialogTitles": {
+        "PENDING": "Move {number} back to Pending?",
+        "CONFIRMED": "Confirm order {number}?",
+        "SHIPPED": "Mark {number} as shipped?",
+        "DELIVERED": "Mark {number} as delivered?",
+        "CANCELED": "Cancel order {number}?",
+        "RETURNED": "Mark {number} as returned?"
+      },
+      "dialogDescription": "It moves from {from} to {to}.",
+      "cancelFinal": "Canceled is final — this order can't be moved again.",
+      "cancelCourier": "The assigned courier's job is canceled too.",
+      "back": "Back",
+      "keepOrder": "Keep order",
+      "moved": "{number} moved to {status}.",
       "saving": "Saving…",
       "note": "Note (optional)",
       "notePlaceholder": "Why is this changing?",
       "terminal": "This order is {status} and cannot move further.",
       "cancellationReasonLabel": "Cancellation reason",
-      "cancellationReasonPlaceholder": "Choose a reason",
       "cancellationReasonNoteLabel": "Describe the reason",
       "cancellationReasonNotePlaceholder": "What happened?",
       "cancellationReasonRequired": "Choose why this order is being canceled",

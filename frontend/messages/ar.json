@@ -1340,6 +1340,11 @@
     "empty": "لا توجد طلبات بعد.",
     "guest": "ضيف",
     "requestReturn": "طلب إرجاع",
+    "neighbors": {
+      "label": "طلبات هذه القائمة",
+      "previous": "الطلب السابق، {number}",
+      "next": "الطلب التالي، {number}"
+    },
     "refund": {
       "action": "استرداد",
       "title": "استرداد مبلغ لهذا الطلب",
@@ -1412,12 +1417,13 @@
     "delivery": {
       "title": "التوصيل",
       "courier": "المندوب",
-      "phone": "الهاتف",
       "address": "العنوان",
-      "status": "الحالة",
       "attemptCount": "المحاولات الفاشلة",
-      "failureReason": "سبب آخر فشل",
       "unassigned": "لم يُسنَد مندوب بعد.",
+      "assignCourier": "إسناد مندوب",
+      "actions": "إجراءات المندوب",
+      "assignTitle": "إسناد مندوب للطلب",
+      "reassignTitle": "اختيار مندوب آخر",
       "assignLabel": "المندوب",
       "assignPlaceholder": "اختر مندوبًا",
       "assign": "إسناد",
@@ -1440,16 +1446,27 @@
       "title": "الدفع",
       "unknown": "غير مسجَّل"
     },
+    "activity": {
+      "title": "النشاط",
+      "filterLabel": "تصفية النشاط",
+      "filters": {
+        "all": "الكل",
+        "status": "الحالة",
+        "notes": "الملاحظات",
+        "delivery": "التوصيل"
+      },
+      "noMatches": "لا يوجد شيء مسجل هنا بعد."
+    },
     "notes": {
-      "title": "ملاحظات داخلية",
-      "placeholder": "للموظفين فقط — لا تُعرض للعميل.",
+      "label": "ملاحظة داخلية",
+      "placeholder": "أضف ملاحظة داخلية…",
+      "staffOnly": "للموظفين فقط — لا تُعرض للعميل",
       "empty": "لا توجد ملاحظات بعد.",
-      "add": "إضافة",
+      "add": "إضافة ملاحظة",
       "adding": "جارٍ الإضافة…",
       "unknownAuthor": "حساب لم يعد موجودًا"
     },
     "timeline": {
-      "title": "السجل",
       "placed": "تم إنشاء الطلب",
       "movedTo": "أصبح",
       "noChanges": "لا يوجد شيء آخر مسجل بعد.",
@@ -1459,15 +1476,38 @@
       "unknownActor": "حساب لم يعد موجودًا"
     },
     "statusControl": {
-      "label": "الانتقال إلى",
-      "placeholder": "اختر حالة",
-      "apply": "تطبيق",
+      "progress": "مراحل الطلب",
+      "nextStep": "الخطوة التالية",
+      "stepDone": "مكتملة",
+      "more": "إجراءات حالة أخرى",
+      "actionsLabel": "إجراءات الطلب",
+      "actions": {
+        "PENDING": "إعادة إلى قيد الانتظار",
+        "CONFIRMED": "تأكيد الطلب",
+        "SHIPPED": "تأكيد الشحن",
+        "DELIVERED": "تأكيد التسليم",
+        "CANCELED": "إلغاء الطلب",
+        "RETURNED": "طلب إرجاع"
+      },
+      "dialogTitles": {
+        "PENDING": "إعادة الطلب {number} إلى قيد الانتظار؟",
+        "CONFIRMED": "تأكيد الطلب {number}؟",
+        "SHIPPED": "تأكيد شحن الطلب {number}؟",
+        "DELIVERED": "تأكيد تسليم الطلب {number}؟",
+        "CANCELED": "إلغاء الطلب {number}؟",
+        "RETURNED": "تسجيل الطلب {number} كمُرجَع؟"
+      },
+      "dialogDescription": "سينتقل من {from} إلى {to}.",
+      "cancelFinal": "الإلغاء نهائي — لا يمكن نقل هذا الطلب بعد ذلك.",
+      "cancelCourier": "وتُلغى مهمة المندوب المُسنَد أيضًا.",
+      "back": "رجوع",
+      "keepOrder": "الإبقاء على الطلب",
+      "moved": "انتقل الطلب {number} إلى {status}.",
       "saving": "جارٍ الحفظ…",
       "note": "ملاحظة (اختياري)",
       "notePlaceholder": "ما سبب هذا التغيير؟",
       "terminal": "هذا الطلب {status} ولا يمكن نقله أبعد من ذلك.",
       "cancellationReasonLabel": "سبب الإلغاء",
-      "cancellationReasonPlaceholder": "اختر سببًا",
       "cancellationReasonNoteLabel": "اشرح السبب",
       "cancellationReasonNotePlaceholder": "ماذا حدث؟",
       "cancellationReasonRequired": "اختر سبب إلغاء هذا الطلب",

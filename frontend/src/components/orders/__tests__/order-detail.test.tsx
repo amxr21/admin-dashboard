@@ -3,6 +3,7 @@ import { createElement, type ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 
 import { render, screen, waitFor, within } from '@/test/render';
+import { mockMatchMedia } from '@/test/match-media';
 import { ApiError } from '@/lib/api';
 import { BreadcrumbProvider, useBreadcrumbSegments } from '@/components/shell/breadcrumb';
 import { OrderDetail } from '../order-detail';
@@ -292,8 +293,9 @@ describe('"Updated by" (C5.3)', () => {
 
     render(<OrderDetail id="o1" />);
 
-    expect(await screen.findByText(/Owner Person/)).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: /Owner Person/ });
+    // The link specifically — the status stepper also names who confirmed
+    // the order, so the bare name appears more than once on the page.
+    const link = await screen.findByRole('link', { name: /Owner Person/ });
     expect(link).toHaveAttribute('href', '/admin/audit?entity=orders&entityId=o1');
   });
 
@@ -340,8 +342,8 @@ describe('"Updated by" (C5.3)', () => {
 
     render(<OrderDetail id="o1" />);
 
-    expect(await screen.findByText(/support@example\.test/)).toBeInTheDocument();
-    expect(screen.queryByText(/Owner Person/)).not.toBeInTheDocument();
+    const link = await screen.findByRole('link', { name: /support@example\.test/ });
+    expect(link).not.toHaveTextContent(/Owner Person/);
   });
 
   it('renders nothing when the order has never been touched beyond creation', async () => {
@@ -361,7 +363,7 @@ describe('"Updated by" (C5.3)', () => {
 
     expect(await screen.findByText('Ceramic Planter')).toBeInTheDocument();
     // Falls back to the status-history entry alone.
-    expect(await screen.findByText(/Owner Person/)).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /Owner Person/ })).toBeInTheDocument();
   });
 });
 
@@ -439,44 +441,74 @@ describe('the order itself', () => {
   });
 });
 
-describe('the status control offers only what the server allows', () => {
-  it('lists exactly the statuses the API returned', async () => {
+describe('the status strip offers only what the server allows', () => {
+  it('offers exactly the moves the API returned, as named actions', async () => {
     fetchOrder.mockResolvedValue(makeOrder({ nextStatuses: ['SHIPPED', 'CANCELED'] }));
 
     render(<OrderDetail id="o1" />);
 
-    await userEvent.click(await screen.findByLabelText(/move to/i));
-
-    expect(await screen.findByRole('option', { name: 'Shipped' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Canceled' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Mark as shipped' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel order' })).toBeInTheDocument();
     // DELIVERED is not reachable from CONFIRMED, so it must not be offered.
-    expect(screen.queryByRole('option', { name: 'Delivered' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark as delivered' })).not.toBeInTheDocument();
+    // And the old select-and-Apply control is gone.
+    expect(screen.queryByLabelText(/move to/i)).not.toBeInTheDocument();
   });
 
-  it('renders no control at all on a terminal order', async () => {
-    // A disabled dropdown that can never be used is noise.
-    fetchOrder.mockResolvedValue(
-      makeOrder({ status: 'CANCELED', nextStatuses: [] }),
-    );
+  it('draws where the order is, marking the current step', async () => {
+    fetchOrder.mockResolvedValue(makeOrder());
+
+    render(<OrderDetail id="o1" />);
+
+    const progress = await screen.findByRole('region', { name: 'Order progress' });
+    const current = within(progress).getByRole('listitem', { current: 'step' });
+    expect(current).toHaveTextContent('Confirmed');
+    // Who moved it there, from the status history.
+    expect(current).toHaveTextContent('Owner Person');
+    expect(within(progress).getByText('Next step')).toBeInTheDocument();
+  });
+
+  it('renders no controls at all on a terminal order', async () => {
+    // A button that can never be used is noise.
+    fetchOrder.mockResolvedValue(makeOrder({ status: 'CANCELED', nextStatuses: [] }));
 
     render(<OrderDetail id="o1" />);
 
     await screen.findByText(/cannot move further/i);
-    expect(screen.queryByLabelText(/move to/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel order' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^mark as/i })).not.toBeInTheDocument();
   });
 
-  it('sends the chosen status and the note', async () => {
-    fetchOrder.mockResolvedValue(makeOrder());
-    changeOrderStatus.mockResolvedValue(makeOrder({ status: 'SHIPPED' }));
+  it('keeps a third legal move behind the overflow, never a third button', async () => {
+    fetchOrder.mockResolvedValue(
+      makeOrder({ nextStatuses: ['SHIPPED', 'CANCELED', 'RETURNED'] }),
+    );
 
     render(<OrderDetail id="o1" />);
 
-    await userEvent.click(await screen.findByLabelText(/move to/i));
-    await userEvent.click(await screen.findByRole('option', { name: 'Shipped' }));
-    // Specifically the status-change note: the delivery section has its own
-    // "Note for the courier" field, so a bare /note/i now matches both.
-    await userEvent.type(screen.getByLabelText(/note \(optional\)/i), 'left the warehouse');
-    await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await screen.findByRole('button', { name: 'Mark as shipped' });
+    expect(screen.queryByRole('button', { name: /request return/i })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'More status actions' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: /request return/i }));
+
+    // RETURNED opens the returns flow, never a bare status flip.
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(changeOrderStatus).not.toHaveBeenCalled();
+  });
+
+  it('confirms the move in a dialog, with its note', async () => {
+    fetchOrder.mockResolvedValue(makeOrder());
+    changeOrderStatus.mockResolvedValue(makeOrder({ status: 'SHIPPED', nextStatuses: ['DELIVERED'] }));
+
+    render(<OrderDetail id="o1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Mark as shipped' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent(/from Confirmed to Shipped/i);
+
+    await userEvent.type(within(dialog).getByLabelText(/note \(optional\)/i), 'left the warehouse');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Mark as shipped' }));
 
     await waitFor(() => {
       // The 4th argument is the cancellation detail (URG-010) — undefined for
@@ -488,9 +520,11 @@ describe('the status control offers only what the server allows', () => {
         undefined,
       );
     });
+    // The page moves on to the next step.
+    expect(await screen.findByRole('button', { name: 'Mark as delivered' })).toBeInTheDocument();
   });
 
-  it('surfaces a refused transition instead of failing silently', async () => {
+  it('surfaces a refused transition and keeps the dialog open', async () => {
     fetchOrder.mockResolvedValue(makeOrder());
     changeOrderStatus.mockRejectedValue(
       new ApiError(400, 'BAD_REQUEST', 'Cannot move an order from CONFIRMED to DELIVERED'),
@@ -498,11 +532,98 @@ describe('the status control offers only what the server allows', () => {
 
     render(<OrderDetail id="o1" />);
 
-    await userEvent.click(await screen.findByLabelText(/move to/i));
-    await userEvent.click(await screen.findByRole('option', { name: 'Shipped' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Mark as shipped' }));
+    const dialog = await screen.findByRole('alertdialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Mark as shipped' }));
 
-    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+  });
+
+  it('will not cancel without a reason, then sends the one picked (URG-010)', async () => {
+    fetchOrder.mockResolvedValue(makeOrder());
+    changeOrderStatus.mockResolvedValue(makeOrder({ status: 'CANCELED', nextStatuses: [] }));
+
+    render(<OrderDetail id="o1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel order' }));
+    const dialog = await screen.findByRole('alertdialog');
+    const confirm = within(dialog).getByRole('button', { name: 'Cancel order' });
+
+    expect(dialog).toHaveTextContent(/canceled is final/i);
+    expect(confirm).toBeDisabled();
+
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'Out of stock' }));
+    expect(confirm).toBeEnabled();
+    await userEvent.click(confirm);
+
+    await waitFor(() => {
+      expect(changeOrderStatus).toHaveBeenCalledWith('o1', 'CANCELED', undefined, {
+        cancellationReason: 'OUT_OF_STOCK',
+        cancellationReasonNote: undefined,
+      });
+    });
+  });
+
+  it('needs a description when the reason is Other', async () => {
+    fetchOrder.mockResolvedValue(makeOrder());
+    changeOrderStatus.mockResolvedValue(makeOrder({ status: 'CANCELED', nextStatuses: [] }));
+
+    render(<OrderDetail id="o1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel order' }));
+    const dialog = await screen.findByRole('alertdialog');
+    const confirm = within(dialog).getByRole('button', { name: 'Cancel order' });
+
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'Other' }));
+    expect(confirm).toBeDisabled();
+
+    await userEvent.type(within(dialog).getByLabelText(/describe the reason/i), 'Shop closed early');
+    await userEvent.click(confirm);
+
+    await waitFor(() => {
+      expect(changeOrderStatus).toHaveBeenCalledWith('o1', 'CANCELED', undefined, {
+        cancellationReason: 'OTHER',
+        cancellationReasonNote: 'Shop closed early',
+      });
+    });
+  });
+
+  it('warns that an active courier job is canceled too', async () => {
+    fetchOrder.mockResolvedValue(
+      makeOrder({
+        assignment: {
+          id: 'a1',
+          status: 'PICKED_UP',
+          address: null,
+          city: null,
+          attemptCount: 0,
+          failureReason: null,
+          driver: { id: 'd1', name: 'Sami', phone: null },
+        },
+      }),
+    );
+
+    render(<OrderDetail id="o1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel order' }));
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent(/courier's job is canceled too/i);
+  });
+
+  it('pins the next-step buttons to a bar at the bottom on a phone', async () => {
+    const media = mockMatchMedia(true);
+    try {
+      fetchOrder.mockResolvedValue(makeOrder());
+
+      render(<OrderDetail id="o1" />);
+
+      const bar = await screen.findByRole('region', { name: 'Order actions' });
+      expect(within(bar).getByRole('button', { name: 'Mark as shipped' })).toBeInTheDocument();
+      // Rendered once — not a hidden copy in the strip as well.
+      expect(screen.getAllByRole('button', { name: 'Mark as shipped' })).toHaveLength(1);
+    } finally {
+      media.restore();
+    }
   });
 });
 
@@ -772,84 +893,82 @@ describe('failure states', () => {
   });
 });
 
-describe('order notes thread (C5.7)', () => {
-  it('shows an empty state when nothing has been noted yet', async () => {
+describe('notes in the activity feed (C5.7)', () => {
+  const noteEvent = (id: string, body: string, actorName: string, createdAt: string) => ({
+    id: `note-${id}`,
+    kind: 'note' as const,
+    action: 'order.note.added',
+    actorName,
+    createdAt,
+    detail: { body },
+  });
+
+  it('shows an empty state under the Notes filter when nothing has been noted yet', async () => {
     fetchOrder.mockResolvedValue(makeOrder({ notes: [] }));
 
     render(<OrderDetail id="o1" />);
 
-    await screen.findByText('Ceramic Planter');
-    expect(screen.getByText(/no notes yet/i)).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('radio', { name: 'Notes' }));
+    expect(await screen.findByText(/no notes yet/i)).toBeInTheDocument();
   });
 
-  it('lists every note with its author, oldest first, without erasing earlier ones', async () => {
-    fetchOrder.mockResolvedValue(
-      makeOrder({
-        notes: [
-          {
-            id: 'n1',
-            body: 'called twice, no answer',
-            authorId: 'u1',
-            authorName: 'Owner Person',
-            createdAt: '2026-07-01T09:00:00.000Z',
-          },
-          {
-            id: 'n2',
-            body: 'left voicemail',
-            authorId: 'u2',
-            authorName: 'Support Person',
-            createdAt: '2026-07-02T09:00:00.000Z',
-          },
-        ],
-      }),
-    );
+  it('lists every note with its author, newest first, without erasing earlier ones', async () => {
+    fetchOrder.mockResolvedValue(makeOrder());
+    // The API sends the feed newest first.
+    fetchOrderTimeline.mockResolvedValue([
+      noteEvent('n2', 'left voicemail', 'Support Person', '2026-07-02T09:00:00.000Z'),
+      noteEvent('n1', 'called twice, no answer', 'Owner Person', '2026-07-01T09:00:00.000Z'),
+    ]);
 
     render(<OrderDetail id="o1" />);
 
-    expect(await screen.findByText('called twice, no answer')).toBeInTheDocument();
-    expect(screen.getByText('left voicemail')).toBeInTheDocument();
-    // "Owner Person" also appears in the "Updated by" note above (C5.3) —
-    // this only asserts the notes thread itself carries an author.
-    expect(screen.getAllByText(/Owner Person/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Support Person/)).toBeInTheDocument();
+    const older = await screen.findByText('called twice, no answer');
+    const newer = screen.getByText('left voicemail');
+    expect(newer.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(/note added by support person/i)).toBeInTheDocument();
+    expect(screen.getByText(/note added by owner person/i)).toBeInTheDocument();
   });
 
-  it('disables Add until something is typed', async () => {
+  it('closes the feed with "Order placed" — the oldest fact there is', async () => {
+    fetchOrder.mockResolvedValue(makeOrder());
+    fetchOrderTimeline.mockResolvedValue([
+      noteEvent('n1', 'called twice, no answer', 'Owner Person', '2026-07-01T09:00:00.000Z'),
+    ]);
+
+    render(<OrderDetail id="o1" />);
+
+    const note = await screen.findByText('called twice, no answer');
+    const placed = screen.getByText(/order placed/i);
+    expect(note.compareDocumentPosition(placed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('disables Add note until something is typed', async () => {
     fetchOrder.mockResolvedValue(makeOrder({ notes: [] }));
 
     render(<OrderDetail id="o1" />);
 
-    const textarea = await screen.findByPlaceholderText(/staff-only/i);
-    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled();
+    const textarea = await screen.findByPlaceholderText(/add an internal note/i);
+    expect(screen.getByRole('button', { name: 'Add note' })).toBeDisabled();
+    // Says who can see it, right where it's typed.
+    expect(textarea).toHaveAccessibleDescription(/never shown to the customer/i);
 
     await userEvent.type(textarea, 'called twice, no answer');
-    expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add note' })).toBeEnabled();
   });
 
-  it('adds a note and clears the draft, without touching notes already there', async () => {
-    fetchOrder.mockResolvedValue(
-      makeOrder({
-        notes: [
-          {
-            id: 'n1',
-            body: 'existing note',
-            authorId: 'u1',
-            authorName: 'Owner Person',
-            createdAt: '2026-07-01T09:00:00.000Z',
-          },
-        ],
-      }),
-    );
+  it('adds a note, clears the draft, and refreshes the feed without touching earlier notes', async () => {
+    const existing = {
+      id: 'n1',
+      body: 'existing note',
+      authorId: 'u1',
+      authorName: 'Owner Person',
+      createdAt: '2026-07-01T09:00:00.000Z',
+    };
+    fetchOrder.mockResolvedValue(makeOrder({ notes: [existing] }));
     addOrderNote.mockResolvedValue(
       makeOrder({
         notes: [
-          {
-            id: 'n1',
-            body: 'existing note',
-            authorId: 'u1',
-            authorName: 'Owner Person',
-            createdAt: '2026-07-01T09:00:00.000Z',
-          },
+          existing,
           {
             id: 'n2',
             body: 'called twice, no answer',
@@ -860,12 +979,19 @@ describe('order notes thread (C5.7)', () => {
         ],
       }),
     );
+    fetchOrderTimeline
+      .mockResolvedValueOnce([noteEvent('n1', 'existing note', 'Owner Person', existing.createdAt)])
+      .mockResolvedValueOnce([
+        noteEvent('n2', 'called twice, no answer', 'Owner Person', '2026-07-02T09:00:00.000Z'),
+        noteEvent('n1', 'existing note', 'Owner Person', existing.createdAt),
+      ]);
 
     render(<OrderDetail id="o1" />);
 
-    const textarea = await screen.findByPlaceholderText(/staff-only/i);
+    expect(await screen.findByText('existing note')).toBeInTheDocument();
+    const textarea = screen.getByPlaceholderText(/add an internal note/i);
     await userEvent.type(textarea, 'called twice, no answer');
-    await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add note' }));
 
     await waitFor(() => {
       expect(addOrderNote).toHaveBeenCalledWith('o1', 'called twice, no answer');
@@ -874,6 +1000,7 @@ describe('order notes thread (C5.7)', () => {
     // The earlier note is still there, not overwritten.
     expect(screen.getByText('existing note')).toBeInTheDocument();
     expect(textarea).toHaveValue('');
+    expect(fetchOrderTimeline).toHaveBeenCalledTimes(2);
   });
 
   it('surfaces a failed add instead of losing the draft silently', async () => {
@@ -882,13 +1009,53 @@ describe('order notes thread (C5.7)', () => {
 
     render(<OrderDetail id="o1" />);
 
-    const textarea = await screen.findByPlaceholderText(/staff-only/i);
+    const textarea = await screen.findByPlaceholderText(/add an internal note/i);
     await userEvent.type(textarea, 'x');
-    await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add note' }));
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     // The typed text is not thrown away on a failed save.
     expect(textarea).toHaveValue('x');
+  });
+
+  it('shows a status move made on this page without a reload', async () => {
+    fetchOrder.mockResolvedValue(makeOrder());
+    changeOrderStatus.mockResolvedValue(
+      makeOrder({
+        status: 'SHIPPED',
+        nextStatuses: ['DELIVERED'],
+        statusHistory: [
+          ...makeOrder().statusHistory,
+          {
+            id: 'h2',
+            fromStatus: 'CONFIRMED',
+            toStatus: 'SHIPPED',
+            note: 'handed to courier',
+            changedById: 'u1',
+            changedByName: 'Owner Person',
+            createdAt: '2026-07-02T11:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    fetchOrderTimeline.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        id: 'status-h2',
+        kind: 'status',
+        action: 'order.status.changed',
+        actorName: 'Owner Person',
+        createdAt: '2026-07-02T11:00:00.000Z',
+        detail: { fromStatus: 'CONFIRMED', toStatus: 'SHIPPED', note: 'handed to courier' },
+      },
+    ]);
+
+    render(<OrderDetail id="o1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Mark as shipped' }));
+    const dialog = await screen.findByRole('alertdialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Mark as shipped' }));
+
+    expect(await screen.findByText('handed to courier')).toBeInTheDocument();
   });
 });
 
@@ -908,19 +1075,22 @@ describe('assigning a courier', () => {
     render(<OrderDetail id="o1" />);
 
     await screen.findByText(/no courier assigned yet/i);
+    await userEvent.click(screen.getByRole('button', { name: 'Assign courier' }));
+    const sheet = await screen.findByRole('dialog');
 
     // Only the active courier is offered — the inactive one is filtered out.
-    await userEvent.click(screen.getByLabelText('Courier'));
+    await userEvent.click(within(sheet).getByLabelText('Courier'));
     expect(await screen.findByRole('option', { name: 'Sami' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Retired Courier' })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('option', { name: 'Sami' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Assign' }));
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Assign' }));
 
     await waitFor(() => {
       expect(assignCourier).toHaveBeenCalledWith({ orderId: 'o1', driverId: 'd1' });
     });
-    expect(await screen.findByRole('button', { name: 'Reassign' })).toBeInTheDocument();
+    // Assigned: the card now offers the courier actions instead.
+    expect(await screen.findByRole('button', { name: 'Courier actions' })).toBeInTheDocument();
   });
 
   it('reassigns an already-assigned order', async () => {
@@ -949,10 +1119,12 @@ describe('assigning a courier', () => {
 
     render(<OrderDetail id="o1" />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Reassign' }));
-    await userEvent.click(screen.getByLabelText('Courier'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Courier actions' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Reassign' }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.click(within(sheet).getByLabelText('Courier'));
     await userEvent.click(await screen.findByRole('option', { name: 'Sami' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Assign' }));
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Assign' }));
 
     await waitFor(() => {
       expect(assignCourier).toHaveBeenCalledWith({ orderId: 'o1', driverId: 'd1' });
@@ -977,7 +1149,8 @@ describe('assigning a courier', () => {
 
     render(<OrderDetail id="o1" />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Unassign' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Courier actions' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Unassign' }));
 
     await waitFor(() => {
       expect(unassignCourier).toHaveBeenCalledWith('a1');
@@ -1002,7 +1175,11 @@ describe('assigning a courier', () => {
 
     render(<OrderDetail id="o1" />);
 
-    expect(await screen.findByRole('button', { name: 'Unassign' })).toBeDisabled();
+    await userEvent.click(await screen.findByRole('button', { name: 'Courier actions' }));
+    expect(await screen.findByRole('menuitem', { name: 'Unassign' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 
   it('corrects the address without reassigning (B4.1)', async () => {
@@ -1031,11 +1208,15 @@ describe('assigning a courier', () => {
 
     render(<OrderDetail id="o1" />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Edit address' }));
-    const addressInput = screen.getByLabelText('Delivery address');
+    await userEvent.click(await screen.findByRole('button', { name: 'Courier actions' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Edit address' }));
+    const sheet = await screen.findByRole('dialog');
+    const addressInput = within(sheet).getByLabelText('Delivery address');
+    // Seeded with what is on file, so a correction doesn't start from blank.
+    expect(addressInput).toHaveValue('Original St');
     await userEvent.clear(addressInput);
     await userEvent.type(addressInput, 'Corrected St');
-    await userEvent.click(screen.getByRole('button', { name: 'Save address' }));
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Save address' }));
 
     await waitFor(() => {
       expect(updateAssignment).toHaveBeenCalledWith('a1', {
@@ -1064,7 +1245,11 @@ describe('assigning a courier', () => {
 
     render(<OrderDetail id="o1" />);
 
-    expect(await screen.findByRole('button', { name: 'Edit address' })).toBeDisabled();
+    await userEvent.click(await screen.findByRole('button', { name: 'Courier actions' }));
+    expect(await screen.findByRole('menuitem', { name: 'Edit address' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 
   it('renders no assignment control at all on a terminal order', async () => {
@@ -1073,7 +1258,30 @@ describe('assigning a courier', () => {
     render(<OrderDetail id="o1" />);
 
     await screen.findByText(/no courier assigned yet/i);
-    expect(screen.queryByRole('button', { name: 'Assign' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Assign courier' })).not.toBeInTheDocument();
+  });
+
+  it('shows the delivery status in the card header, visible even when folded', async () => {
+    fetchOrder.mockResolvedValue(
+      makeOrder({
+        assignment: {
+          id: 'a1',
+          status: 'OUT_FOR_DELIVERY',
+          address: 'Villa 12',
+          city: 'Dubai',
+          attemptCount: 0,
+          failureReason: null,
+          driver: { id: 'd1', name: 'Sami', phone: '+971500000001' },
+        },
+      }),
+    );
+
+    render(<OrderDetail id="o1" />);
+
+    expect(
+      await screen.findByRole('button', { name: /delivery.*out for delivery/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Villa 12, Dubai')).toBeInTheDocument();
   });
 
   it('surfaces a refused assignment instead of failing silently', async () => {
@@ -1084,11 +1292,13 @@ describe('assigning a courier', () => {
 
     render(<OrderDetail id="o1" />);
 
-    await userEvent.click(await screen.findByLabelText('Courier'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Assign courier' }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.click(within(sheet).getByLabelText('Courier'));
     await userEvent.click(await screen.findByRole('option', { name: 'Sami' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Assign' }));
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Assign' }));
 
-    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(await within(sheet).findByRole('alert')).toBeInTheDocument();
   });
 });
 
