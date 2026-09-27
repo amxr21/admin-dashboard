@@ -707,3 +707,93 @@ describe('prices that already include tax', () => {
     expect(saved.pricesIncludeTax).toBe(false);
   });
 });
+
+/**
+ * A code for particular products or categories discounts THOSE goods only.
+ * Found by the Fluffy storefront QA: a 50% code on one 38.00 item took 79.00
+ * off a 158.00 cart — half of everything in it.
+ */
+describe('a code for particular products or categories', () => {
+  function orderMany(items: { productId: string; quantity: number }[], discountCode: string) {
+    return request(app)
+      .post('/api/v1/public/orders')
+      .set('X-API-Key', storefrontKey)
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        branchId,
+        items,
+        contact: { name: 'Ali', phone: '+971500000000' },
+        paymentMethod: 'cash',
+        fulfillment: 'Pickup',
+        discountCode,
+      });
+  }
+
+  it('takes a product code off that product, not the whole cart', async () => {
+    const cheap = await makeProduct('38.00');
+    const pricey = await makeProduct('60.00');
+    const code = await makeDiscount('prod50', {
+      value: new Prisma.Decimal('50.00'),
+      scope: DiscountScope.PRODUCT,
+      products: { connect: [{ id: cheap.id }] },
+    });
+
+    const res = await orderMany([{ productId: cheap.id, quantity: 1 }, { productId: pricey.id, quantity: 2 }], code.code);
+
+    expect(res.status).toBe(201);
+    const body = (res.body as CheckoutBody).data;
+    expect(body.subtotal).toBe('158.00');
+    expect(body.discountAmount).toBe('19.00');
+    expect(body.total).toBe('139.00');
+  });
+
+  it('takes a category code off that category only', async () => {
+    const category = await prisma.category.create({ data: { name: `${RUN} scoped`, slug: `${RUN}-scoped` } });
+    categoryIds.push(category.id);
+    const inCategory = await makeProduct('40.00', 100, category.id);
+    const outside = await makeProduct('60.00');
+    const code = await makeDiscount('cat10', {
+      value: new Prisma.Decimal('10.00'),
+      scope: DiscountScope.CATEGORY,
+      categories: { connect: [{ id: category.id }] },
+    });
+
+    const res = await orderMany([{ productId: inCategory.id, quantity: 1 }, { productId: outside.id, quantity: 1 }], code.code);
+
+    expect((res.body as CheckoutBody).data.discountAmount).toBe('4.00');
+  });
+
+  it('caps a fixed product code at what those goods cost', async () => {
+    const cheap = await makeProduct('38.00');
+    const other = await makeProduct('60.00');
+    const code = await makeDiscount('fixed50', {
+      type: DiscountType.FIXED,
+      value: new Prisma.Decimal('50.00'),
+      scope: DiscountScope.PRODUCT,
+      products: { connect: [{ id: cheap.id }] },
+    });
+
+    const res = await orderMany([{ productId: cheap.id, quantity: 1 }, { productId: other.id, quantity: 1 }], code.code);
+
+    expect((res.body as CheckoutBody).data.discountAmount).toBe('38.00');
+  });
+
+  it('leaves the VAT on other goods alone when the code is for an exempt item', async () => {
+    await setTaxRate('5');
+    const exempt = await makeProduct('50.00', 100, undefined, false);
+    const taxable = await makeProduct('100.00');
+    const code = await makeDiscount('exempt100', {
+      value: new Prisma.Decimal('100.00'),
+      scope: DiscountScope.PRODUCT,
+      products: { connect: [{ id: exempt.id }] },
+    });
+
+    const res = await orderMany([{ productId: exempt.id, quantity: 1 }, { productId: taxable.id, quantity: 1 }], code.code);
+
+    const body = (res.body as CheckoutBody).data;
+    expect(body.discountAmount).toBe('50.00');
+    // The whole discount came off an exempt item: VAT stays 5% of 100.
+    expect(body.taxAmount).toBe('5.00');
+    expect(body.total).toBe('105.00');
+  });
+});

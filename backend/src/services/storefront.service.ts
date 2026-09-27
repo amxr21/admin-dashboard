@@ -14,7 +14,7 @@ import {
   executeIdempotently,
   type IdempotentExecution,
 } from './idempotency.service.js';
-import { computeDiscountedTaxAmount, getTaxPolicy, type TaxPolicy } from './order-math.service.js';
+import { getTaxPolicy, taxAfterDiscount, type TaxPolicy } from './order-math.service.js';
 import { getSettingValue } from './settings.service.js';
 import type { ProductLocale } from './product-content.service.js';
 
@@ -655,13 +655,21 @@ export interface CheckoutResult {
  * identity to match, so it can never redeem one — and the refusal says the
  * code does not apply rather than confirming it exists for somebody else.
  */
+/** A priced cart line, as far as a discount needs to know it. */
+interface DiscountableLine {
+  productId: string;
+  price: Prisma.Decimal;
+  quantity: number;
+  isTaxable: boolean;
+}
+
 async function resolveDiscount(
   tx: Prisma.TransactionClient,
   code: string,
-  subtotal: Prisma.Decimal,
-  productIds: readonly string[],
+  lines: readonly DiscountableLine[],
   customerId: string | null,
-): Promise<{ id: string; code: string; amount: Prisma.Decimal }> {
+): Promise<{ id: string; code: string; amount: Prisma.Decimal; taxableAmount: Prisma.Decimal }> {
+  const productIds = [...new Set(lines.map((line) => line.productId))];
   const discount = await tx.discount.findUnique({
     where: { code },
     select: {
@@ -707,9 +715,15 @@ async function resolveDiscount(
     }
   }
 
+  // Which lines the code is FOR. An order-wide or customer code covers the
+  // whole cart; a product or category code covers only its own goods — the
+  // discount is worked out on those lines, never on the rest of the basket.
+  let eligible: (line: DiscountableLine) => boolean = () => true;
+
   if (discount.scope === DiscountScope.PRODUCT) {
-    const eligible = new Set(discount.products.map((entry) => entry.id));
-    if (!productIds.some((id) => eligible.has(id))) {
+    const products = new Set(discount.products.map((entry) => entry.id));
+    eligible = (line) => products.has(line.productId);
+    if (!productIds.some((id) => products.has(id))) {
       throw AppError.badRequest('That discount code does not apply to anything in your cart', {
         field: 'discountCode',
       });
@@ -717,12 +731,16 @@ async function resolveDiscount(
   }
 
   if (discount.scope === DiscountScope.CATEGORY) {
-    const eligible = new Set(discount.categories.map((entry) => entry.id));
+    const wanted = new Set(discount.categories.map((entry) => entry.id));
     const categories = await tx.product.findMany({
       where: { id: { in: [...productIds] } },
-      select: { categoryId: true },
+      select: { id: true, categoryId: true },
     });
-    if (!categories.some((row) => row.categoryId !== null && eligible.has(row.categoryId))) {
+    const inScope = new Set(
+      categories.filter((row) => row.categoryId !== null && wanted.has(row.categoryId)).map((row) => row.id),
+    );
+    eligible = (line) => inScope.has(line.productId);
+    if (inScope.size === 0) {
       throw AppError.badRequest('That discount code does not apply to anything in your cart', {
         field: 'discountCode',
       });
@@ -737,12 +755,22 @@ async function resolveDiscount(
    * a negative total would be a refund the shop never agreed to, and the tax
    * line below would go negative with it.
    */
+  const sum = (selected: readonly DiscountableLine[]) =>
+    selected.reduce((total, line) => total.plus(line.price.times(line.quantity)), new Prisma.Decimal(0));
+  const covered = lines.filter(eligible);
+  const coveredSubtotal = sum(covered);
+
   const raw =
     discount.type === DiscountType.PERCENT
-      ? subtotal.times(discount.value).dividedBy(100)
+      ? coveredSubtotal.times(discount.value).dividedBy(100)
       : discount.value;
 
-  const amount = Prisma.Decimal.min(raw, subtotal).toDecimalPlaces(2);
+  // Never more than the goods it covers — a 50 AED code on a 38 AED item is 38.
+  const amount = Prisma.Decimal.min(raw, coveredSubtotal).toDecimalPlaces(2);
+  // The part that came off taxable goods, so VAT drops by exactly that much.
+  const taxableAmount = coveredSubtotal.gt(0)
+    ? amount.times(sum(covered.filter((line) => line.isTaxable))).dividedBy(coveredSubtotal)
+    : new Prisma.Decimal(0);
 
   /**
    * Claim the use. Conditional on the count we just read, so two checkouts
@@ -772,7 +800,7 @@ async function resolveDiscount(
     });
   }
 
-  return { id: discount.id, code: discount.code, amount };
+  return { id: discount.id, code: discount.code, amount, taxableAmount };
 }
 
 /**
@@ -1041,13 +1069,7 @@ async function checkoutOnce(
      * and disagreeing with the invoice the shopper receives.
      */
     const discount = input.discountCode
-      ? await resolveDiscount(
-          tx,
-          input.discountCode,
-          subtotal,
-          productIds,
-          customerId,
-        )
+      ? await resolveDiscount(tx, input.discountCode, lines, customerId)
       : null;
 
     const discountAmount = discount?.amount ?? new Prisma.Decimal(0);
@@ -1056,10 +1078,9 @@ async function checkoutOnce(
     // Rounded once, at creation, and snapshotted — same discipline as
     // OrderItem.price. The order-level discount is allocated proportionally
     // between taxable and exempt goods, so an exempt line never creates VAT.
-    const taxAmount = computeDiscountedTaxAmount(
-      subtotal,
+    const taxAmount = taxAfterDiscount(
       taxableSubtotal,
-      discountAmount,
+      discount?.taxableAmount ?? new Prisma.Decimal(0),
       tax.rate,
       tax.pricesIncludeTax,
     );

@@ -147,8 +147,26 @@ export function computeDiscountedTaxAmount(
     subtotal,
   );
   const taxableDiscountShare = boundedDiscount.times(taxableSubtotal).dividedBy(subtotal);
+
+  return taxAfterDiscount(taxableSubtotal, taxableDiscountShare, taxRate, pricesIncludeTax);
+}
+
+/**
+ * Tax on the taxable goods once the part of a discount that came off THEM is
+ * taken away. For an order-wide code that part is a proportional share (see
+ * `computeDiscountedTaxAmount`); for a code on particular products it is
+ * exactly the discount on those products that were taxable — a code on an
+ * exempt item must not lower the VAT on everything else.
+ */
+export function taxAfterDiscount(
+  taxableSubtotal: Prisma.Decimal,
+  taxableDiscount: Prisma.Decimal,
+  taxRate: Prisma.Decimal,
+  pricesIncludeTax = false,
+): Prisma.Decimal {
+  if (taxableSubtotal.lte(0) || taxRate.lte(0)) return new Prisma.Decimal(0);
   const taxableAfterDiscount = Prisma.Decimal.max(
-    taxableSubtotal.minus(taxableDiscountShare),
+    taxableSubtotal.minus(Prisma.Decimal.max(taxableDiscount, new Prisma.Decimal(0))),
     new Prisma.Decimal(0),
   );
 
