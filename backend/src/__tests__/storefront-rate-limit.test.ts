@@ -1,7 +1,7 @@
 import express, { type Request } from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
-import { storefrontShopperKey, publicShopperRateLimit, publicKeyFailureRateLimit } from '../middleware/rateLimit.js';
+import { discountCodeRateLimit, storefrontShopperKey, publicShopperRateLimit, publicKeyFailureRateLimit } from '../middleware/rateLimit.js';
 
 function identity(address: string, key?: string, stated?: string): Request {
   return { ip: address, apiKeyId: key, header: () => stated } as unknown as Request;
@@ -116,5 +116,22 @@ describe('checkout through the real public API', () => {
       await prisma.apiKey.deleteMany({ where: { userId: owner.id } });
       await prisma.user.delete({ where: { id: owner.id } });
     }
+  });
+});
+
+describe('discount-code attempts through the quote', () => {
+  it('limits quotes that carry a code, per shopper, and never counts plain re-pricing', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => { req.apiKeyId = 'quote-key'; next(); });
+    app.use(discountCodeRateLimit);
+    app.post('/', (_req, res) => res.sendStatus(200));
+    const from = (shopper: string, body: object) =>
+      request(app).post('/').set('X-Storefront-Client-IP', shopper).send(body);
+
+    for (let i = 0; i < 50; i++) expect((await from('198.51.100.50', { items: [] })).status).toBe(200);
+    for (let i = 0; i < 20; i++) expect((await from('198.51.100.50', { discountCode: `GUESS${i}` })).status).toBe(200);
+    expect((await from('198.51.100.50', { discountCode: 'GUESS21' })).status).toBe(429);
+    expect((await from('198.51.100.51', { discountCode: 'GUESS1' })).status).toBe(200);
   });
 });

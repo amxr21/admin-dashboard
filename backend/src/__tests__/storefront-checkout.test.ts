@@ -797,3 +797,79 @@ describe('a code for particular products or categories', () => {
     expect(body.total).toBe('105.00');
   });
 });
+
+/**
+ * The quote a storefront shows before "Place order" must be the charge.
+ */
+describe('quoting a cart', () => {
+  function quote(items: { productId: string; quantity: number }[], discountCode?: string) {
+    return request(app)
+      .post('/api/v1/public/orders/quote')
+      .set('X-API-Key', storefrontKey)
+      .send({ branchId, items, ...(discountCode ? { discountCode } : {}) });
+  }
+  interface QuoteBody {
+    data: { subtotal: string; discountAmount: string; taxAmount: string; total: string; pricesIncludeTax: boolean; lines: { lineTotal: string }[] };
+  }
+
+  afterEach(async () => {
+    await prisma.setting.deleteMany({ where: { key: 'store.pricesIncludeTax' } });
+    await setTaxRate('0');
+  });
+
+  it('prices a cart exactly as checkout then charges it — VAT and code included', async () => {
+    await setTaxRate('5');
+    const product = await makeProduct('40.00');
+    const code = await makeDiscount('quote10');
+
+    const quoted = (((await quote([{ productId: product.id, quantity: 3 }], code.code)).body) as QuoteBody).data;
+    const charged = ((await order(product.id, 3, code.code)).body as CheckoutBody).data;
+
+    expect(quoted).toMatchObject({
+      subtotal: charged.subtotal,
+      discountAmount: charged.discountAmount,
+      taxAmount: charged.taxAmount,
+      total: charged.total,
+      pricesIncludeTax: false,
+    });
+    expect(quoted.lines[0]?.lineTotal).toBe('120.00');
+  });
+
+  it('never spends a use of the code', async () => {
+    const product = await makeProduct('20.00');
+    const code = await makeDiscount('quoteonce', { maxUses: 1 });
+
+    for (let i = 0; i < 3; i++) expect((await quote([{ productId: product.id, quantity: 1 }], code.code)).status).toBe(200);
+    expect((await prisma.discount.findUniqueOrThrow({ where: { id: code.id } })).usedCount).toBe(0);
+    expect((await order(product.id, 1, code.code)).status).toBe(201);
+  });
+
+  it('refuses what checkout would refuse, with the same message', async () => {
+    const product = await makeProduct('20.00', 2);
+    const quoted = await quote([{ productId: product.id, quantity: 3 }]);
+    const ordered = await order(product.id, 3);
+    expect(quoted.status).toBe(409);
+    expect((quoted.body as ErrorBody).error.message).toBe((ordered.body as ErrorBody).error.message);
+  });
+
+  it('says when the VAT is already inside the price', async () => {
+    await setTaxRate('5');
+    await prisma.setting.upsert({
+      where: { key: 'store.pricesIncludeTax' },
+      create: { key: 'store.pricesIncludeTax', value: true },
+      update: { value: true },
+    });
+    const product = await makeProduct('48.00');
+    const quoted = ((await quote([{ productId: product.id, quantity: 1 }])).body as QuoteBody).data;
+    expect(quoted).toMatchObject({ total: '48.00', taxAmount: '2.29', pricesIncludeTax: true });
+  });
+
+  it('rejects fields it does not take', async () => {
+    const product = await makeProduct('20.00');
+    const res = await request(app)
+      .post('/api/v1/public/orders/quote')
+      .set('X-API-Key', storefrontKey)
+      .send({ branchId, items: [{ productId: product.id, quantity: 1, price: '0.01' }] });
+    expect(res.status).toBe(400);
+  });
+});

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { publicKeyFailureRateLimit, publicShopperRateLimit, publicKeyRateLimit, storefrontShopperKey } from '../../middleware/rateLimit.js';
+import { discountCodeRateLimit, publicKeyFailureRateLimit, publicShopperRateLimit, publicKeyRateLimit, storefrontShopperKey } from '../../middleware/rateLimit.js';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 
@@ -25,6 +25,7 @@ import {
   getPublicProductBySlug,
   getStorefrontConfig,
   getWishlist,
+  quoteCheckout,
   listPublicBranches,
   listPublicCategories,
   listPublicDiscounts,
@@ -305,24 +306,35 @@ publicRouter.post('/public/wishlist', requireArea('products'), authenticateCusto
 
 // ─── Checkout (guest or customer) ───────────────────────────────────
 
+const cartItems = z
+  .array(
+    z
+      .object({
+        productId: z.string().min(1).max(64),
+        // The option bought; required when the product has any.
+        variantId: z.string().min(1).max(64).optional(),
+        quantity: z.coerce.number().int().min(1).max(99),
+      })
+      .strict(),
+  )
+  .min(1, 'Your cart is empty')
+  // Caps the transaction size — an unbounded array is an unbounded
+  // transaction holding row locks.
+  .max(50);
+
+/** Uppercased so "welcome10" means "WELCOME10" — see checkoutBody. */
+const discountCodeField = z
+  .string()
+  .trim()
+  .min(1)
+  .max(48)
+  .transform((value) => value.toUpperCase())
+  .optional();
+
 const checkoutBody = z
   .object({
     branchId: z.string().trim().min(1).max(64),
-    items: z
-      .array(
-        z
-          .object({
-            productId: z.string().min(1).max(64),
-            // The option bought; required when the product has any.
-            variantId: z.string().min(1).max(64).optional(),
-            quantity: z.coerce.number().int().min(1).max(99),
-          })
-          .strict(),
-      )
-      .min(1, 'Your cart is empty')
-      // Caps the transaction size — an unbounded array is an unbounded
-      // transaction holding row locks.
-      .max(50),
+    items: cartItems,
     contact: z
       .object({
         name: z.string().trim().min(1).max(200),
@@ -341,13 +353,7 @@ const checkoutBody = z
      * codes are stored uppercase — someone typing "welcome10" means the same
      * thing as "WELCOME10".
      */
-    discountCode: z
-      .string()
-      .trim()
-      .min(1)
-      .max(48)
-      .transform((value) => value.toUpperCase())
-      .optional(),
+    discountCode: discountCodeField,
     /**
      * The checkout's "send me offers" tick-boxes. Grant-only and signed-in
      * only: an unticked box is not a withdrawal, and a guest has no customer
@@ -367,6 +373,28 @@ const checkoutBody = z
   });
 
 const checkoutIdempotencyKey = z.string().uuid().max(64);
+
+const quoteBody = z
+  .object({
+    branchId: z.string().trim().min(1).max(64),
+    items: cartItems,
+    discountCode: discountCodeField,
+  })
+  .strict();
+
+/**
+ * What checkout WOULD charge for this cart — lines, discount, VAT, total —
+ * without placing an order or spending a use of the code. The storefront shows
+ * this before "Place order", so the total the shopper sees is the one charged.
+ */
+publicRouter.post('/public/orders/quote', requireArea('orders'), discountCodeRateLimit, optionalCustomer, async (req, res) => {
+  const parsed = quoteBody.safeParse(req.body);
+  if (!parsed.success) {
+    throw AppError.badRequest(parsed.error.issues[0]?.message ?? 'Please check your cart');
+  }
+
+  res.json({ data: await quoteCheckout(parsed.data, req.customer?.id ?? null) });
+});
 
 publicRouter.post('/public/orders', requireArea('orders'), checkoutRateLimit, optionalCustomer, async (req, res) => {
   const parsed = checkoutBody.safeParse(req.body);

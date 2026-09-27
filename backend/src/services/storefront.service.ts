@@ -626,6 +626,55 @@ export interface CheckoutInput {
   discountCode?: string | undefined;
 }
 
+/** What checkout would charge for a cart — see `quoteCheckout`. */
+export interface CheckoutQuote {
+  lines: { productId: string; variantId: string | null; name: string; quantity: number; price: string; lineTotal: string }[];
+  subtotal: string;
+  /** The code that was applied, as stored, or null. */
+  discountCode: string | null;
+  discountAmount: string;
+  taxAmount: string;
+  total: string;
+  /** `taxAmount` is inside `total` rather than added to it. */
+  pricesIncludeTax: boolean;
+}
+
+/**
+ * Price a cart exactly as checkout would, without selling anything.
+ *
+ * Same function checkout uses (`priceCheckout`), so the total a storefront
+ * shows before "Place order" — VAT, discount and all — is the total charged.
+ * Refuses what checkout would refuse (unavailable items, too little stock, a
+ * code that does not apply) with the same messages, and never spends a use of
+ * a discount code.
+ */
+export async function quoteCheckout(
+  input: Pick<CheckoutInput, 'branchId' | 'items' | 'discountCode'>,
+  customerId: string | null,
+): Promise<CheckoutQuote> {
+  const tax = await getTaxPolicy();
+  const priced = await prisma.$transaction((tx) =>
+    priceCheckout(input, customerId, tx, tax, { claimDiscount: false }),
+  );
+
+  return {
+    lines: priced.lines.map((line) => ({
+      productId: line.productId,
+      variantId: line.variantId,
+      name: line.name,
+      quantity: line.quantity,
+      price: line.price.toFixed(2),
+      lineTotal: line.price.times(line.quantity).toFixed(2),
+    })),
+    subtotal: priced.subtotal.toFixed(2),
+    discountCode: priced.discount?.code ?? null,
+    discountAmount: priced.discountAmount.toFixed(2),
+    taxAmount: priced.taxAmount.toFixed(2),
+    total: priced.total.toFixed(2),
+    pricesIncludeTax: tax.pricesIncludeTax,
+  };
+}
+
 export interface CheckoutResult {
   orderNumber: string;
   subtotal: string;
@@ -668,6 +717,8 @@ async function resolveDiscount(
   code: string,
   lines: readonly DiscountableLine[],
   customerId: string | null,
+  /** Spend a use of the code. False for a quote, which only checks one is left. */
+  claim = true,
 ): Promise<{ id: string; code: string; amount: Prisma.Decimal; taxableAmount: Prisma.Decimal }> {
   const productIds = [...new Set(lines.map((line) => line.productId))];
   const discount = await tx.discount.findUnique({
@@ -780,6 +831,8 @@ async function resolveDiscount(
    * `update` would succeed against the stale WHERE or throw a less specific
    * error, and neither tells us we lost a race.
    */
+  if (!claim) return { id: discount.id, code: discount.code, amount, taxableAmount };
+
   if (discount.maxUses !== null) {
     const claimed = await tx.discount.updateMany({
       where: { id: discount.id, usedCount: discount.usedCount },
@@ -928,12 +981,23 @@ async function claimVariantLine(
  *     keeps its established meaning: the grand total, tax included. Reports and
  *     dashboard KPIs already read `.total` that way.
  */
-async function checkoutOnce(
-  input: CheckoutInput,
+/**
+ * Everything checkout charges for, worked out once: the lines at today's
+ * prices, the discount, the tax and the total — and the same stock and
+ * availability refusals checkout makes.
+ *
+ * Shared by checkout and the storefront's quote, so the price a shopper is
+ * shown before ordering can never differ from the price they are charged.
+ * `claimDiscount` is the one difference: checkout spends a use of the code;
+ * a quote only checks that one is left.
+ */
+async function priceCheckout(
+  input: Pick<CheckoutInput, 'branchId' | 'items' | 'discountCode'>,
   customerId: string | null,
   tx: Prisma.TransactionClient,
   tax: TaxPolicy,
-): Promise<CheckoutResult> {
+  { claimDiscount }: { claimDiscount: boolean },
+) {
   if (input.items.length === 0) {
     throw AppError.badRequest('Your cart is empty');
   }
@@ -1069,7 +1133,7 @@ async function checkoutOnce(
      * and disagreeing with the invoice the shopper receives.
      */
     const discount = input.discountCode
-      ? await resolveDiscount(tx, input.discountCode, lines, customerId)
+      ? await resolveDiscount(tx, input.discountCode, lines, customerId, claimDiscount)
       : null;
 
     const discountAmount = discount?.amount ?? new Prisma.Decimal(0);
@@ -1086,6 +1150,23 @@ async function checkoutOnce(
     );
     // Tax-inclusive prices already carry the tax the customer pays.
     const total = tax.pricesIncludeTax ? discountedSubtotal : discountedSubtotal.plus(taxAmount);
+
+    return { lines, subtotal, discount, discountAmount, taxAmount, total };
+}
+
+async function checkoutOnce(
+  input: CheckoutInput,
+  customerId: string | null,
+  tx: Prisma.TransactionClient,
+  tax: TaxPolicy,
+): Promise<CheckoutResult> {
+    const { lines, subtotal, discount, discountAmount, taxAmount, total } = await priceCheckout(
+      input,
+      customerId,
+      tx,
+      tax,
+      { claimDiscount: true },
+    );
 
     const orderData = {
       total,

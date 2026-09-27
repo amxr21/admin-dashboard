@@ -286,6 +286,30 @@ export const publicShopperRateLimit = rateLimit({
 });
 
 /**
+ * Quoting a cart WITH a discount code is also a way to test codes, so it gets
+ * the budget a code check deserves — per shopper, 20 per 15 minutes. A quote
+ * without a code (the storefront re-pricing a cart) is not counted.
+ */
+export const discountCodeRateLimit = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 20,
+  skip: (req: Request) => {
+    const body: unknown = req.body;
+    const hasCode = typeof body === 'object' && body !== null && 'discountCode' in body && Boolean(body.discountCode);
+    return !hasCode;
+  },
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: storefrontShopperKey,
+  message: {
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many discount code attempts. Try again later.',
+    },
+  },
+});
+
+/**
  * A ceiling for one integration key across all its shoppers — the backstop if
  * a storefront (or a stolen key) floods the API, which per-shopper limits
  * alone cannot see.
