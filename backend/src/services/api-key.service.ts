@@ -5,7 +5,7 @@ import { env } from '../config/env.js';
 import { isArea, type Area } from '../config/roles.js';
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
-import type { SafeUser } from './auth.service.js';
+import { SAFE_USER_SELECT, toSafeUser, type SafeUser } from './safe-user.js';
 
 /**
  * API keys — B3.2's "Integrations & API" section.
@@ -212,7 +212,7 @@ export async function authenticateApiKey(plainKey: string): Promise<Authenticate
 
   const row = await prisma.apiKey.findUnique({
     where: { keyHash: hash },
-    include: { user: true },
+    include: { user: { select: SAFE_USER_SELECT } },
   });
 
   if (!row || row.revokedAt !== null) return null;
@@ -227,12 +227,7 @@ export async function authenticateApiKey(plainKey: string): Promise<Authenticate
     // Silently dropped, deliberately — see touchSession's identical note.
   });
 
-  const {
-    passwordHash: _passwordHash,
-    failedLoginAttempts: _failedLoginAttempts,
-    lockedUntil: _lockedUntil,
-    ...safe
-  } = row.user;
+  const safe = toSafeUser(row.user);
 
   return { id: row.id, user: safe, scopes: parseScopes(row.scopes), audience: row.audience };
 }

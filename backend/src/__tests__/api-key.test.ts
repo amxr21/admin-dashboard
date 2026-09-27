@@ -5,7 +5,8 @@ import { StaffRole } from '@prisma/client';
 
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
-import { signToken } from '../services/auth.service.js';
+import { signToken, getAuthenticatedUser } from '../services/auth.service.js';
+import { authenticateApiKey, createApiKey } from '../services/api-key.service.js';
 import { waitFor } from './helpers/wait-for.js';
 
 /**
@@ -600,5 +601,21 @@ describe('a key is never the account, and a storefront key never reaches staff r
     const res = await request(app).get('/api/v1/auth/me/api-keys').set(auth(token));
     const rows = (res.body as { data: { name: string; audience: string }[] }).data;
     expect(rows.find((row) => row.name === 'Storefront')?.audience).toBe('STOREFRONT');
+  });
+});
+
+describe('session and API key public identity shape', () => {
+  it('excludes 2FA ciphertext and revocation internals on both authentication paths', async () => {
+    const user = await makeUser(StaffRole.OWNER, 'safe-identity');
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { twoFactorSecret: 'encrypted-secret-never-return', twoFactorEnabled: true },
+    });
+    const key = await createApiKey(user.id, 'Safe identity', 'Regression test', 'Test');
+    const viaKey = await authenticateApiKey(key.key);
+    const viaSession = await getAuthenticatedUser(user.id);
+    expect(viaKey?.user).toEqual(viaSession);
+    expect(viaSession.twoFactorEnabled).toBe(true);
+    expect(JSON.stringify(viaSession)).not.toMatch(/passwordHash|twoFactorSecret|tokenVersion|failedLoginAttempts|lockedUntil/);
   });
 });

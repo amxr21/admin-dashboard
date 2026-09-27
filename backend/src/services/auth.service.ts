@@ -4,6 +4,7 @@ import type { StaffRole, User } from '@prisma/client';
 
 import { env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
+import { SAFE_USER_SELECT, toSafeUser, type SafeUser } from './safe-user.js';
 import { AppError } from '../errors/AppError.js';
 import { getSettingValue } from './settings.service.js';
 import {
@@ -46,28 +47,7 @@ export interface TokenPayload {
   sid?: string;
 }
 
-/** A user as the API is allowed to return it. */
-export type SafeUser = Omit<
-  User,
-  'passwordHash' | 'failedLoginAttempts' | 'lockedUntil'
->;
-
-/**
- * Strip everything the client must never see.
- *
- * Returning a Prisma `User` directly leaks the bcrypt hash — offline crackable
- * — and the lockout counters, which tell an attacker exactly how many attempts
- * remain. Every route returning a user goes through this.
- */
-export function toSafeUser(user: User): SafeUser {
-  const {
-    passwordHash: _passwordHash,
-    failedLoginAttempts: _failedLoginAttempts,
-    lockedUntil: _lockedUntil,
-    ...safe
-  } = user;
-  return safe;
-}
+export { toSafeUser, type SafeUser } from './safe-user.js';
 
 /**
  * `expiresIn` defaults to the env-configured fallback so every existing
@@ -533,7 +513,10 @@ export async function getAuthenticatedUser(
   tokenVersion?: number,
   sessionId?: string,
 ): Promise<SafeUser> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { ...SAFE_USER_SELECT, tokenVersion: true },
+  });
 
   if (!user || !user.isActive) {
     throw AppError.unauthorized('Invalid or expired session');
