@@ -8,6 +8,12 @@ import { apiFetch } from '@/lib/api';
  * ever REMOVE areas (see `ApiKey`'s schema doc comment).
  */
 
+/**
+ * Where a key works. STAFF: the staff API (and the storefront API, so older
+ * keys keep working). STOREFRONT: the public storefront API only.
+ */
+export type ApiKeyAudience = 'STAFF' | 'STOREFRONT';
+
 export interface ApiKeySummary {
   id: string;
   name: string;
@@ -18,6 +24,7 @@ export interface ApiKeySummary {
   keyPreview: string;
   /** Areas this key may reach. Null means "everything its owner can". */
   scopes: string[] | null;
+  audience: ApiKeyAudience;
   lastUsedAt: string | null;
   createdAt: string;
 }
@@ -33,6 +40,7 @@ export interface CreatedApiKey {
   recipient: string;
   /** Areas this key may reach. Null means "everything its owner can". */
   scopes: string[] | null;
+  audience: ApiKeyAudience;
   /** Plaintext, returned exactly once — same one-time-reveal contract as a
    * courier access code, password-reset token, or 2FA backup code. */
   key: string;
@@ -45,6 +53,7 @@ export async function createApiKey(
   /** Omit (or pass an empty list) to leave the key unscoped — it then reaches
    *  everything its owner can, which is the pre-scopes behaviour. */
   scopes?: readonly string[],
+  audience: ApiKeyAudience = 'STAFF',
 ): Promise<CreatedApiKey> {
   return apiFetch<CreatedApiKey>('/auth/me/api-keys', {
     method: 'POST',
@@ -55,6 +64,7 @@ export async function createApiKey(
       // Omitted entirely rather than sent as null/[]: the endpoint's schema is
       // `.strict()` and treats absence as "no narrowing".
       ...(scopes && scopes.length > 0 ? { scopes } : {}),
+      audience,
     }),
   });
 }

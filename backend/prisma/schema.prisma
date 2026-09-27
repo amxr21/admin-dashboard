@@ -603,6 +603,18 @@ model TwoFactorBackupCode {
 /// Same reasoning as a courier access code or password-reset token: this
 /// table only ever needs comparison, never recovery, so a one-way HMAC is
 /// correct and the plaintext is shown to the creator exactly once.
+/// Where an API key may be used. See `ApiKey.audience`.
+enum ApiKeyAudience {
+  /// The staff API (`/api/v1/*` outside `/public`) — scripts, syncs,
+  /// partner integrations. Also accepted by the storefront API, so keys issued
+  /// before audiences existed keep working everywhere they did.
+  STAFF
+  /// The storefront API (`/api/v1/public/*`) only. Refused by every staff
+  /// route, so a leaked storefront key cannot read orders, customers or
+  /// settings however it is scoped.
+  STOREFRONT
+}
+
 model ApiKey {
   id     String @id @default(cuid())
   userId String @map("user_id")
@@ -639,6 +651,14 @@ model ApiKey {
   /// This is what makes a key safe to hand to a partner: previously the only
   /// honest warning was "this key can do everything you can do".
   scopes String? @db.VarChar(512)
+
+  /// Which API surface this key authenticates on. A storefront needs
+  /// `orders` to check out, and before this existed that same scope also
+  /// opened the staff order list — every order, with every customer's phone
+  /// and address — to whoever held the storefront server's key.
+  ///
+  /// STAFF is the default, so every existing key keeps its behaviour.
+  audience ApiKeyAudience @default(STAFF)
 
   lastUsedAt DateTime? @map("last_used_at")
   createdAt  DateTime  @default(now()) @map("created_at")

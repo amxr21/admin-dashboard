@@ -15,10 +15,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Timestamp } from '@/components/timestamp';
@@ -31,6 +33,7 @@ import {
   createApiKey,
   fetchApiKeys,
   revokeApiKey,
+  type ApiKeyAudience,
   type ApiKeySummary,
   type CreatedApiKey,
 } from '@/lib/api-key-api';
@@ -141,7 +144,12 @@ export function ApiKeysPanel() {
                 className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{key.name}</p>
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    <span className="truncate">{key.name}</span>
+                    {key.audience === 'STOREFRONT' ? (
+                      <Badge variant="info" className="shrink-0">{t('audienceStorefrontBadge')}</Badge>
+                    ) : null}
+                  </p>
                   <p className="text-muted-foreground truncate text-xs">{key.purpose} · {key.recipient}</p>
                   {/* Says what this key can REACH, not just who holds it — the
                       one fact that decides whether handing it out was safe. */}
@@ -250,6 +258,7 @@ function CreateKeySheet({
    * you are about to hand someone else is the one that asks you to choose.
    */
   const [scopes, setScopes] = useState<Area[]>([]);
+  const [audience, setAudience] = useState<ApiKeyAudience>('STAFF');
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -262,7 +271,7 @@ function CreateKeySheet({
     try {
       // An empty selection is sent as "no scopes" (the lib omits the field),
       // which the endpoint reads as unscoped — see its `.strict()` schema.
-      const result = await createApiKey(name.trim(), purpose.trim(), recipient.trim(), scopes);
+      const result = await createApiKey(name.trim(), purpose.trim(), recipient.trim(), scopes, audience);
       setCreated(result);
       setStep('reveal');
     } catch (caught) {
@@ -374,6 +383,23 @@ function CreateKeySheet({
         <div className="space-y-2">
           <Label htmlFor="api-key-recipient">{t('recipientLabel')}</Label>
           <Input id="api-key-recipient" value={recipient} onChange={(event) => setRecipient(event.target.value)} maxLength={255} placeholder={t('recipientPlaceholder')} disabled={isSaving} />
+        </div>
+
+        <div className="space-y-2">
+          <Label id="api-key-audience-label">{t('audienceLabel')}</Label>
+          <SegmentedControl
+            aria-labelledby="api-key-audience-label"
+            aria-describedby="api-key-audience-hint"
+            value={audience}
+            onChange={(value) => setAudience(value as ApiKeyAudience)}
+            options={[
+              { value: 'STAFF', label: t('audienceStaff') },
+              { value: 'STOREFRONT', label: t('audienceStorefront') },
+            ]}
+          />
+          <p id="api-key-audience-hint" className="text-muted-foreground text-xs">
+            {audience === 'STOREFRONT' ? t('audienceStorefrontHint') : t('audienceStaffHint')}
+          </p>
         </div>
 
         <fieldset className="space-y-2" disabled={isSaving}>

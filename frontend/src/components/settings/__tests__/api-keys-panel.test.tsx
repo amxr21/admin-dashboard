@@ -99,6 +99,9 @@ describe('ApiKeysPanel — creation and one-time reveal', () => {
         'Run CI deployments',
         'Engineering team',
         [],
+        // STAFF unless the operator picks the storefront — every existing key
+        // is STAFF, so the default must not change what a key can reach.
+        'STAFF',
       ),
     );
     expect(
@@ -174,6 +177,7 @@ describe('ApiKeysPanel — creation and one-time reveal', () => {
         'Share the catalogue',
         'Partner integration',
         ['products', 'categories'],
+        'STAFF',
       ),
     );
   });
@@ -224,5 +228,49 @@ describe('ApiKeysPanel — revocation', () => {
     await userEvent.click(screen.getByRole('button', { name: /^revoke$/i }));
 
     await waitFor(() => expect(revokeApiKey).toHaveBeenCalledWith('k1'));
+  });
+});
+
+describe('ApiKeysPanel — storefront keys', () => {
+  it('issues a storefront-only key when the operator picks the storefront', async () => {
+    render(<ApiKeysPanel />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /create key/i }));
+    await userEvent.type(screen.getByLabelText(/^name$/i), 'Storefront server');
+    await userEvent.type(screen.getByLabelText(/reason for this key/i), 'Serve the online shop');
+    await userEvent.type(screen.getByLabelText(/who will hold/i), 'Storefront hosting');
+    await userEvent.click(screen.getByRole('radio', { name: /^storefront$/i }));
+
+    // The hint must say what the choice buys, not just name it.
+    expect(screen.getByText(/works on the public storefront api only/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^create key$/i }));
+    await waitFor(() =>
+      expect(createApiKey).toHaveBeenCalledWith(
+        'Storefront server',
+        'Serve the online shop',
+        'Storefront hosting',
+        [],
+        'STOREFRONT',
+      ),
+    );
+  });
+
+  it('marks a storefront key in the list', async () => {
+    fetchApiKeys.mockResolvedValue([
+      {
+        id: 'k1',
+        name: 'Online shop',
+        keyPreview: 'adk_a1b2c3d4…9x8y',
+        scopes: null,
+        audience: 'STOREFRONT',
+        lastUsedAt: null,
+        createdAt: '2026-08-01T00:00:00.000Z',
+      },
+    ]);
+    render(<ApiKeysPanel />);
+
+    expect(await screen.findByText('Online shop')).toBeInTheDocument();
+    expect(screen.getByText(/storefront only/i)).toBeInTheDocument();
   });
 });

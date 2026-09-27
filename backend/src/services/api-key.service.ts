@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { ApiKeyAudience } from '@prisma/client';
 
 import { env } from '../config/env.js';
 import { isArea, type Area } from '../config/roles.js';
@@ -62,6 +63,8 @@ export interface ApiKeySummary {
   keyPreview: string;
   /** Null means "everything its owner can reach" — see the schema's note. */
   scopes: readonly Area[] | null;
+  /** Which API surface the key works on — see `ApiKey.audience`. */
+  audience: ApiKeyAudience;
   lastUsedAt: string | null;
   createdAt: string;
 }
@@ -72,7 +75,7 @@ export async function listApiKeys(userId: string): Promise<ApiKeySummary[]> {
   const rows = await prisma.apiKey.findMany({
     where: { userId, revokedAt: null },
     orderBy: { createdAt: 'desc' },
-    select: { id: true, name: true, purpose: true, recipient: true, keyPreview: true, scopes: true, lastUsedAt: true, createdAt: true },
+    select: { id: true, name: true, purpose: true, recipient: true, keyPreview: true, scopes: true, audience: true, lastUsedAt: true, createdAt: true },
   });
 
   return rows.map((row) => ({
@@ -90,6 +93,7 @@ export interface CreatedApiKey {
   recipient: string;
   /** The areas this key may reach, or null for "everything its owner can". */
   scopes: readonly Area[] | null;
+  audience: ApiKeyAudience;
   /** Plaintext, returned exactly once — same one-time-reveal contract as a
    * courier access code, password-reset token, or 2FA backup code. */
   key: string;
@@ -108,6 +112,11 @@ export async function createApiKey(
    * silently treating it as "everything" would be the dangerous reading.
    */
   scopes?: readonly Area[] | null,
+  /**
+   * STAFF (the default) keeps the original behaviour. STOREFRONT limits the
+   * key to the public storefront API — what a storefront server should hold.
+   */
+  audience: ApiKeyAudience = ApiKeyAudience.STAFF,
 ): Promise<CreatedApiKey> {
   if (scopes !== undefined && scopes !== null && scopes.length === 0) {
     throw AppError.badRequest('Choose at least one area for this key, or leave it unscoped', {
@@ -135,8 +144,9 @@ export async function createApiKey(
       keyHash: hashKey(plain),
       keyPreview: previewOf(plain),
       scopes: scopes ? scopes.join(',') : null,
+      audience,
     },
-    select: { id: true, name: true, purpose: true, recipient: true, scopes: true },
+    select: { id: true, name: true, purpose: true, recipient: true, scopes: true, audience: true },
   });
 
   return { ...row, scopes: parseScopes(row.scopes), key: plain };
@@ -175,6 +185,8 @@ export interface AuthenticatedApiKey {
    * carried a field that is meaningless there.
    */
   scopes: readonly Area[] | null;
+  /** Staff routes refuse a STOREFRONT key; see `authenticate`. */
+  audience: ApiKeyAudience;
 }
 
 /**
@@ -220,5 +232,5 @@ export async function authenticateApiKey(plainKey: string): Promise<Authenticate
     ...safe
   } = row.user;
 
-  return { user: safe, scopes: parseScopes(row.scopes) };
+  return { user: safe, scopes: parseScopes(row.scopes), audience: row.audience };
 }

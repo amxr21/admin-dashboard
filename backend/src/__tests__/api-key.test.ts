@@ -489,3 +489,116 @@ describe('the soft ceiling on live keys per user', () => {
     expect(res.status).toBe(400);
   });
 });
+
+/**
+ * The storefront incident this closes (Fluffy QA, 2026-09-27): a storefront
+ * server's key, scoped to what checkout needs, could read every staff order
+ * and customer, read settings, and — through POST /auth/me/api-keys — mint
+ * itself an UNSCOPED key with the Developer's full rights.
+ */
+describe('a key is never the account, and a storefront key never reaches staff routes', () => {
+  async function issue(ownerToken: string, body: Record<string, unknown>) {
+    const res = await request(app)
+      .post('/api/v1/auth/me/api-keys')
+      .set(auth(ownerToken))
+      .send({ purpose: 'Test integration', recipient: 'Test operator', ...body });
+    expect(res.status).toBe(201);
+    return (res.body as CreatedKeyBody & { data: { audience: string } }).data;
+  }
+
+  it('a key cannot mint another key — scoped or not', async () => {
+    const owner = await makeUser(StaffRole.OWNER, 'mint-guard');
+    const token = signToken(owner);
+    const unscoped = await issue(token, { name: 'Unscoped' });
+    const scoped = await issue(token, { name: 'Scoped', scopes: ['products', 'orders'] });
+
+    for (const key of [unscoped.key, scoped.key]) {
+      const res = await request(app)
+        .post('/api/v1/auth/me/api-keys')
+        .set(auth(key))
+        .send({ name: 'Escalated', purpose: 'Escalation attempt', recipient: 'Attacker' });
+      expect(res.status).toBe(403);
+    }
+    expect(await prisma.apiKey.count({ where: { userId: owner.id, name: 'Escalated' } })).toBe(0);
+  });
+
+  it('a key cannot list or revoke keys, or touch the profile, sessions or 2FA', async () => {
+    const owner = await makeUser(StaffRole.OWNER, 'account-guard');
+    const { key, id } = await issue(signToken(owner), { name: 'Account guard' });
+
+    const attempts = [
+      request(app).get('/api/v1/auth/me/api-keys').set(auth(key)),
+      request(app).delete(`/api/v1/auth/me/api-keys/${id}`).set(auth(key)),
+      request(app).patch('/api/v1/auth/me').set(auth(key)).send({ name: 'Renamed by a key' }),
+      request(app).get('/api/v1/auth/me/sessions').set(auth(key)),
+      request(app).post('/api/v1/auth/me/2fa/setup').set(auth(key)).send({}),
+    ];
+    for (const res of await Promise.all(attempts)) expect(res.status).toBe(403);
+
+    const still = await prisma.apiKey.findUniqueOrThrow({ where: { id } });
+    expect(still.revokedAt).toBeNull();
+  });
+
+  it('an unscoped key may still read who it belongs to', async () => {
+    const owner = await makeUser(StaffRole.OWNER, 'whoami');
+    const { key } = await issue(signToken(owner), { name: 'Who am I' });
+
+    const res = await request(app).get('/api/v1/auth/me').set(auth(key));
+    expect(res.status).toBe(200);
+  });
+
+  it('a STOREFRONT key is refused on staff routes, whatever its owner holds', async () => {
+    const owner = await makeUser(StaffRole.OWNER, 'storefront-staff');
+    const created = await issue(signToken(owner), { name: 'Storefront', audience: 'STOREFRONT' });
+    expect(created.audience).toBe('STOREFRONT');
+
+    for (const path of ['/api/v1/staff', '/api/v1/orders', '/api/v1/settings', '/api/v1/r/customers', '/api/v1/auth/me']) {
+      const res = await request(app).get(path).set(auth(created.key));
+      expect(res.status, path).toBe(403);
+    }
+  });
+
+  it('a STOREFRONT key works on the storefront API, and so does an existing STAFF key', async () => {
+    const owner = await makeUser(StaffRole.OWNER, 'storefront-public');
+    const token = signToken(owner);
+    const storefront = await issue(token, { name: 'Storefront', audience: 'STOREFRONT' });
+    const staff = await issue(token, { name: 'Issued before audiences' });
+    expect(staff.audience).toBe('STAFF');
+
+    for (const key of [storefront.key, staff.key]) {
+      const res = await request(app).get('/api/v1/public/config').set('x-api-key', key);
+      expect(res.status).toBe(200);
+    }
+  });
+
+  it('a scoped key is refused on a route that checks no area', async () => {
+    // GET /settings is guarded by authentication alone. Before this, a key
+    // scoped to `staff` read the whole settings registry with it.
+    const owner = await makeUser(StaffRole.OWNER, 'scope-unguarded');
+    const { key } = await issue(signToken(owner), { name: 'Staff only', scopes: ['staff'] });
+
+    const res = await request(app).get('/api/v1/settings').set(auth(key));
+    expect(res.status).toBe(403);
+  });
+
+  it('a scoped key reaches a resource in its scope, and not one outside it', async () => {
+    const owner = await makeUser(StaffRole.OWNER, 'scope-resource');
+    const token = signToken(owner);
+    const discounts = await issue(token, { name: 'Discounts', scopes: ['discounts'] });
+    const products = await issue(token, { name: 'Products', scopes: ['products'] });
+
+    expect((await request(app).get('/api/v1/r/discounts').set(auth(discounts.key))).status).toBe(200);
+    expect((await request(app).get('/api/v1/r/customers').set(auth(discounts.key))).status).toBe(403);
+    expect((await request(app).get('/api/v1/r/discounts').set(auth(products.key))).status).toBe(403);
+  });
+
+  it('lists each key with its audience', async () => {
+    const owner = await makeUser(StaffRole.OWNER, 'audience-list');
+    const token = signToken(owner);
+    await issue(token, { name: 'Storefront', audience: 'STOREFRONT' });
+
+    const res = await request(app).get('/api/v1/auth/me/api-keys').set(auth(token));
+    const rows = (res.body as { data: { name: string; audience: string }[] }).data;
+    expect(rows.find((row) => row.name === 'Storefront')?.audience).toBe('STOREFRONT');
+  });
+});
