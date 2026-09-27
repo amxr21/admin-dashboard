@@ -1,5 +1,11 @@
 import type { Request } from 'express';
-import { CancellationReason, OrderStatus, Prisma, type RefundReason } from '@prisma/client';
+import {
+  CancellationReason,
+  OrderStatus,
+  Prisma,
+  StockMovementReason,
+  type RefundReason,
+} from '@prisma/client';
 import { resolveBranchLabels } from './branches.service.js';
 
 import { prisma } from '../db/prisma.js';
@@ -15,6 +21,7 @@ import { normalizePhone } from '../lib/phone.js';
 import { optionalDateOnlyBounds } from '../lib/date-range.js';
 import { assertRefundReason } from './refund-reason.js';
 import { chargedValue } from './order-math.service.js';
+import { restoreVariantStock } from './variants.service.js';
 
 /**
  * Orders — the one resource the generic engine cannot express.
@@ -763,6 +770,10 @@ export async function changeOrderStatus(
       },
     });
 
+    if (input.to === OrderStatus.CANCELED) {
+      await releaseCanceledOrder(tx, id, input.actorId);
+    }
+
     const assignmentStatus = ASSIGNMENT_ON_ORDER_STATUS[input.to];
 
     if (current.assignment && assignmentStatus) {
@@ -776,6 +787,91 @@ export async function changeOrderStatus(
   await notifyCustomerOrderStatus(id, input.to);
 
   return getOrder(id, branchId);
+}
+
+/**
+ * What a cancelled order was holding, handed back — inside the cancellation's
+ * own transaction, so a cancel never commits without it.
+ *
+ * Every order is created by a checkout (storefront or till) that took its
+ * stock at the order's branch and, with a code, claimed one discount use.
+ * Before this, cancelling kept both: the goods stayed off the shelf for good
+ * and a single-use code stayed spent on an order that never happened.
+ *
+ * Only PENDING and CONFIRMED can be cancelled (see `ORDER_TRANSITIONS`) —
+ * goods that have left the branch come back through a return, not here.
+ */
+async function releaseCanceledOrder(
+  tx: Prisma.TransactionClient,
+  orderId: string,
+  actorId: string,
+) {
+  const order = await tx.order.findUniqueOrThrow({
+    where: { id: orderId },
+    select: {
+      orderNumber: true,
+      branchId: true,
+      discountId: true,
+      items: { select: { productId: true, variantId: true, variantName: true, quantity: true } },
+    },
+  });
+
+  // Same movement discipline as a till void: CORRECTION, not RETURNED —
+  // nothing came back from a customer, the sale itself was undone.
+  const note = `Canceled order ${order.orderNumber}`;
+  const { branchId } = order;
+
+  // No recorded branch, no shelf to put the goods back on; guessing one would
+  // inflate a branch that never lost them.
+  for (const item of order.items) {
+    if (!branchId) break;
+
+    if (item.variantId) {
+      await restoreVariantStock(tx, {
+        variantId: item.variantId,
+        branchId,
+        quantity: item.quantity,
+        reason: StockMovementReason.CORRECTION,
+        note,
+        actorId,
+      });
+      continue;
+    }
+
+    // A variant line whose variant has since been deleted keeps its name but
+    // loses its id. Its units were never the base product's, so they must not
+    // land there.
+    if (!item.productId || item.variantName !== null) continue;
+
+    await tx.stockMovement.create({
+      data: {
+        productId: item.productId,
+        branchId,
+        delta: item.quantity,
+        reason: StockMovementReason.CORRECTION,
+        note,
+        actorId,
+      },
+    });
+    await tx.product.update({
+      where: { id: item.productId },
+      data: { stock: { increment: item.quantity } },
+    });
+    await tx.branchStock.upsert({
+      where: { productId_branchId: { productId: item.productId, branchId } },
+      create: { productId: item.productId, branchId, quantity: item.quantity },
+      update: { quantity: { increment: item.quantity } },
+    });
+  }
+
+  // The use the checkout claimed. Guarded at zero so a count someone reset by
+  // hand cannot go negative; a deleted code simply matches no row.
+  if (order.discountId) {
+    await tx.discount.updateMany({
+      where: { id: order.discountId, usedCount: { gt: 0 } },
+      data: { usedCount: { decrement: 1 } },
+    });
+  }
 }
 
 export interface BulkStatusResult {
