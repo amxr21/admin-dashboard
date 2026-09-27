@@ -31,7 +31,7 @@ import { ShiftsTable } from '@/components/staff/shifts-table';
 
 type Tab = 'onNow' | 'shifts' | 'logins';
 
-export function StaffActivityView() {
+export function LoginHistoryView() {
   const t = useTranslations('staffActivity');
   const [tab, setTab] = useState<Tab>('onNow');
 
