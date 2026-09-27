@@ -116,6 +116,9 @@ export interface OrderDetail {
    *  `taxAmount` is part of `total`, not added to it. Absent from older APIs. */
   pricesIncludeTax?: boolean;
   paymentMethod: string | null;
+  /** Paid on it so far, net of voids and before goodwill refunds. A web order
+   *  is paid when it is handed over (delivered or collected). */
+  amountPaid?: string;
   placedAt: string;
   /** How the customer gets it. See `OrderFulfillment`. Absent from older APIs. */
   fulfillment?: OrderFulfillment | null;

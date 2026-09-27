@@ -1458,7 +1458,9 @@
     },
     "payment": {
       "title": "Payment",
-      "unknown": "Not recorded"
+      "unknown": "Not recorded",
+      "paid": "Paid {amount}",
+      "unpaid": "Not paid yet"
     },
     "activity": {
       "title": "Activity",

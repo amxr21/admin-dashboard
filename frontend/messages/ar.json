@@ -1458,7 +1458,9 @@
     },
     "payment": {
       "title": "الدفع",
-      "unknown": "غير مسجَّل"
+      "unknown": "غير مسجَّل",
+      "paid": "مدفوع {amount}",
+      "unpaid": "لم يُدفع بعد"
     },
     "activity": {
       "title": "النشاط",

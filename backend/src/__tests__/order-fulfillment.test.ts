@@ -261,6 +261,89 @@ describe('a delivery order never waits on the counter', () => {
   });
 });
 
+/**
+ * D5 — the money changes hands when the goods do (FX-13).
+ */
+describe('handing an order over records its payment', () => {
+  const paymentsOf = (orderId: string) =>
+    prisma.payment.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } });
+
+  it('records the total, by the method chosen, when a delivery is delivered', async () => {
+    const order = await placed('Delivery', { address: 'Villa 3', city: 'Al Ain' });
+    for (const to of [OrderStatus.CONFIRMED, OrderStatus.SHIPPED]) await move(order.id, to);
+    expect(await paymentsOf(order.id)).toHaveLength(0);
+
+    expect((await move(order.id, OrderStatus.DELIVERED)).status).toBe(200);
+
+    const payments = await paymentsOf(order.id);
+    expect(payments).toHaveLength(1);
+    expect(payments[0]).toMatchObject({ method: 'cash', actorId: ownerId, shiftId: null, note: 'Paid on delivery' });
+    expect(payments[0]!.amount.toFixed(2)).toBe(order.total.toFixed(2));
+
+    // And staff can see it on the order.
+    const detail = await request(app).get(`/api/v1/orders/${order.id}`).set(staff());
+    expect((detail.body as { data: { order: { amountPaid: string } } }).data.order.amountPaid).toBe(
+      order.total.toFixed(2),
+    );
+  });
+
+  it('records it on collection for a pickup', async () => {
+    const order = await placed('Pickup');
+    for (const to of [OrderStatus.CONFIRMED, OrderStatus.READY_FOR_PICKUP]) await move(order.id, to);
+
+    expect((await move(order.id, OrderStatus.COLLECTED)).status).toBe(200);
+
+    expect(await paymentsOf(order.id)).toEqual([expect.objectContaining({ note: 'Paid on collection' })]);
+  });
+
+  it('records nothing for an order already paid in full', async () => {
+    const order = await stored(OrderStatus.READY_FOR_PICKUP, OrderFulfillment.PICKUP);
+    await prisma.order.update({ where: { id: order.id }, data: { paymentMethod: 'card' } });
+    await prisma.payment.create({ data: { orderId: order.id, amount: order.total, method: 'card' } });
+
+    await move(order.id, OrderStatus.COLLECTED);
+
+    expect(await paymentsOf(order.id)).toHaveLength(1);
+  });
+
+  it('does not charge again for money refunded before the handover', async () => {
+    const order = await stored(OrderStatus.READY_FOR_PICKUP, OrderFulfillment.PICKUP);
+    await prisma.order.update({ where: { id: order.id }, data: { paymentMethod: 'card' } });
+    await prisma.payment.createMany({
+      data: [
+        { orderId: order.id, amount: order.total, method: 'card' },
+        { orderId: order.id, amount: new Prisma.Decimal('-5.00'), method: 'goodwill-refund' },
+      ],
+    });
+
+    await move(order.id, OrderStatus.COLLECTED);
+
+    expect(await paymentsOf(order.id)).toHaveLength(2);
+  });
+
+  it('does not guess a method nobody recorded', async () => {
+    const order = await stored(OrderStatus.READY_FOR_PICKUP, OrderFulfillment.PICKUP);
+
+    expect((await move(order.id, OrderStatus.COLLECTED)).status).toBe(200);
+
+    expect(await paymentsOf(order.id)).toHaveLength(0);
+  });
+
+  it('lets a collected order be refunded — it was capped at nothing before', async () => {
+    const order = await placed('Pickup');
+    for (const to of [OrderStatus.CONFIRMED, OrderStatus.READY_FOR_PICKUP, OrderStatus.COLLECTED]) {
+      await move(order.id, to);
+    }
+
+    const res = await request(app)
+      .post(`/api/v1/orders/${order.id}/refund`)
+      .set(staff())
+      .send({ amount: '5.00', refundReason: 'DAMAGED' });
+
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('orders from before fulfillment was recorded', () => {
   it('may take either path, so nothing in flight is stranded', () => {
     expect(nextStatuses(OrderStatus.CONFIRMED, null)).toEqual(

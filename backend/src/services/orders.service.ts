@@ -14,6 +14,7 @@ import { audit } from './audit.service.js';
 import {
   ASSIGNMENT_ON_ORDER_STATUS,
   canTransition,
+  COMPLETED_STATUSES,
   nextStatuses,
 } from '../config/orders.config.js';
 import { notifyCustomerOrderStatus } from './customer-order-notifications.service.js';
@@ -408,6 +409,13 @@ export async function getOrder(id: string, branchId?: string) {
    * A missing branch (deleted, or never attributed) yields `null`, and the
    * UI shows nothing rather than inventing a name.
    */
+  // What is paid on it now: every payment net of voids, apart from goodwill
+  // refunds, which the detail lists on their own below it.
+  const paid = await prisma.payment.aggregate({
+    where: { orderId: order.id, method: { not: 'goodwill-refund' } },
+    _sum: { amount: true },
+  });
+
   const branch = order.branchId
     ? await prisma.branch.findUnique({
         where: { id: order.branchId },
@@ -426,6 +434,7 @@ export async function getOrder(id: string, branchId?: string) {
     // The invoice says "VAT included" rather than adding a VAT line.
     pricesIncludeTax: order.pricesIncludeTax,
     paymentMethod: order.paymentMethod,
+    amountPaid: (paid._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
     placedAt: order.placedAt.toISOString(),
     // How the customer gets it, and the details they gave at checkout. All
     // null on a till sale and on orders from before these were recorded.
@@ -804,6 +813,10 @@ export async function changeOrderStatus(
       await releaseCanceledOrder(tx, id, input.actorId);
     }
 
+    if (COMPLETED_STATUSES.includes(input.to)) {
+      await recordPaymentOnHandover(tx, id, input.actorId, input.to);
+    }
+
     const assignmentStatus = ASSIGNMENT_ON_ORDER_STATUS[input.to];
 
     if (current.assignment && assignmentStatus) {
@@ -903,6 +916,56 @@ async function releaseCanceledOrder(
       data: { usedCount: { decrement: 1 } },
     });
   }
+}
+
+/**
+ * The money that changed hands when the goods did.
+ *
+ * A storefront order is paid when it reaches the customer — cash or card to
+ * the courier, or at the counter on collection — so nothing recorded a
+ * payment for it at all. Its payments stayed at zero forever, which also
+ * capped every goodwill refund at zero (see `refundOrder`).
+ *
+ * So handing an order over (DELIVERED or COLLECTED) records whatever is still
+ * outstanding, by the method the customer chose, attributed to the staff
+ * member who marked it. An order already paid in full (a till sale, or a card
+ * payment taken up front) records nothing. A customer who refuses to pay is
+ * not handed the goods — that order is canceled, not delivered.
+ *
+ * No shift: the money is with a courier, or not in a till session, so it must
+ * not change what any drawer is expected to hold.
+ */
+async function recordPaymentOnHandover(
+  tx: Prisma.TransactionClient,
+  orderId: string,
+  actorId: string,
+  status: OrderStatus,
+) {
+  const order = await tx.order.findUniqueOrThrow({
+    where: { id: orderId },
+    select: { total: true, paymentMethod: true, payments: { select: { amount: true } } },
+  });
+
+  // What was TAKEN so far. Refund and reversal rows (negative) are money that
+  // went back later — they do not make the customer owe it again.
+  const taken = order.payments
+    .filter((payment) => payment.amount.greaterThan(0))
+    .reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0));
+  const outstanding = order.total.minus(taken);
+
+  // No method on record means nobody said how it would be paid; guessing one
+  // would put the money in the wrong column of every report that splits it.
+  if (outstanding.lessThanOrEqualTo(0) || !order.paymentMethod) return;
+
+  await tx.payment.create({
+    data: {
+      orderId,
+      amount: outstanding,
+      method: order.paymentMethod,
+      actorId,
+      note: status === OrderStatus.COLLECTED ? 'Paid on collection' : 'Paid on delivery',
+    },
+  });
 }
 
 export interface BulkStatusResult {

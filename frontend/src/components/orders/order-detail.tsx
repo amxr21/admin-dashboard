@@ -564,6 +564,13 @@ export function OrderDetail({ id }: { id: string }) {
               <CreditCard aria-hidden className="text-muted-foreground size-4 shrink-0" />
               {order.paymentMethod ?? t('payment.unknown')}
             </p>
+            {order.amountPaid !== undefined ? (
+              <p className="text-muted-foreground mt-1.5 ps-6.5 text-sm tabular-nums">
+                {Number(order.amountPaid) > 0
+                  ? t('payment.paid', { amount: money(order.amountPaid) })
+                  : t('payment.unpaid')}
+              </p>
+            ) : null}
             {(order.goodwillRefunds ?? []).map((refund) => (
               <div key={refund.id} className="border-border mt-3 border-t pt-3 text-sm">
                 <p className="font-medium">
