@@ -202,7 +202,11 @@ body:has([data-slot='app-shell']) {
   --success-foreground: #0f1115;
   --warning: #e0b84a;
   --warning-foreground: #0f1115;
-  --info: #3b82f6;
+  /* Lighter than --primary on purpose. The info badge draws this colour as
+     text on its own 15% tint over --card, where #3b82f6 measured 3.9:1 —
+     under AA for the "Confirmed" / "Shipped" / "Out for delivery" badges.
+     #60a5fa is 5.3:1 there, and fills keep their dark foreground. */
+  --info: #60a5fa;
   --info-foreground: #0f1115;
 
   /* ─── Lines & focus ──────────────────────────────────────────── */

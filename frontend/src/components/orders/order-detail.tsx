@@ -1,19 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { ChevronLeft, ChevronRight, HandCoins, Printer, RotateCcw, Store } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
+  HandCoins,
+  Mail,
+  MapPin,
+  Phone,
+  Printer,
+  Store,
+} from 'lucide-react';
 
-import { AssignCourierControl } from '@/components/orders/assign-courier-control';
 import { Breadcrumb } from '@/components/shell/breadcrumb';
 import { useAppSettings } from '@/components/providers/settings-provider';
 import { ErrorScreen } from '@/components/errors/error-screen';
 import { LastUpdatedNote } from '@/components/last-updated-note';
-import { OrderNotesSection } from '@/components/orders/order-notes-section';
-import { OrderStatusControl } from '@/components/orders/order-status-control';
-import { OrderStatusTimeline } from '@/components/orders/order-status-timeline';
+import { OrderActivity } from '@/components/orders/order-activity';
+import { OrderDeliveryCard } from '@/components/orders/order-delivery-card';
+import { OrderStatusDialog } from '@/components/orders/order-status-dialog';
+import { OrderStatusActions, OrderStatusStrip } from '@/components/orders/order-status-strip';
 import { RefundOrderDialog } from '@/components/orders/refund-order-dialog';
 import { RequestReturnSheet } from '@/components/orders/request-return-sheet';
 import { StatusBadge } from '@/components/status-badge';
@@ -32,15 +42,19 @@ import { type StaffRole } from '@/config/areas';
 import { useCanAccessArea } from '@/components/providers/role-permissions-provider';
 import { useAuth } from '@/hooks/useAuth';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
+import { useIsMobileViewport } from '@/hooks/useIsMobileViewport';
 import { useTranslatedApiError } from '@/hooks/useTranslatedApiError';
 import { ApiError } from '@/lib/api';
 import { fetchAudit } from '@/lib/audit-api';
+import { initialsOf } from '@/lib/initials';
+import { isFinalOrder, planStatusActions } from '@/lib/order-status-flow';
 import {
   fetchOrder,
   fetchOrderNeighbors,
   type OrderDetail as Order,
   type OrderListParams,
   type OrderNeighbors,
+  type OrderStatus,
 } from '@/lib/orders-api';
 
 /**
@@ -82,6 +96,14 @@ const NEIGHBOR_PARAM_KEYS = ['search', 'status', 'from', 'to', 'sort', 'dir'] as
  * Everything on this screen is a RECORD of what happened, not a live view of
  * current data. Line prices and the total are the values at the time of the
  * order, so nothing here is recomputed from today's catalogue.
+ *
+ * ─── LAYOUT: EACH ACTION SITS WITH WHAT IT CHANGES ───────────────────
+ * The header holds identity (number, status, when, where) and the one
+ * document action, Invoice — no form fields. Status moves live in the status
+ * strip under it, Refund on the Payment card, courier changes on the Delivery
+ * card, notes in the Activity feed. The status control used to sit in the
+ * header's button row and grow a note field in place, which is the layout
+ * problem this arrangement exists to fix.
  */
 
 export function OrderDetail({ id }: { id: string }) {
@@ -94,6 +116,7 @@ export function OrderDetail({ id }: { id: string }) {
   const formatCurrency = useCurrencyFormat();
   const translateError = useTranslatedApiError();
   const searchParams = useSearchParams();
+  const isMobile = useIsMobileViewport();
   const { navLabels } = useAppSettings();
   const ordersLabel = navLabels.orders ?? tNav('orders');
   const { user } = useAuth();
@@ -108,6 +131,9 @@ export function OrderDetail({ id }: { id: string }) {
   const [returnSheetOpen, setReturnSheetOpen] = useState(false);
   const [returnMessage, setReturnMessage] = useState<string | null>(null);
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
+  // Kept after the dialog closes so its content doesn't blank mid-animation.
+  const [statusTarget, setStatusTarget] = useState<OrderStatus | null>(null);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [neighbors, setNeighbors] = useState<OrderNeighbors | null>(null);
   const [latestAuditEntry, setLatestAuditEntry] = useState<{
     createdAt: string;
@@ -192,7 +218,7 @@ export function OrderDetail({ id }: { id: string }) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-56" />
-        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-20 w-full" />
         <Skeleton className="h-64 w-full" />
       </div>
     );
@@ -214,9 +240,25 @@ export function OrderDetail({ id }: { id: string }) {
 
   const money = (value: string | null) => (value === null ? '—' : formatCurrency(Number(value)));
   const lastActivity = latestActivity(order, latestAuditEntry);
+  const statusIsFinal = isFinalOrder(planStatusActions(order.nextStatuses));
+
+  function startStatusMove(status: OrderStatus) {
+    // RETURNED goes through the returns flow (which items, and why), never a
+    // bare status flip — the server refuses that here too.
+    if (status === 'RETURNED') {
+      setReturnSheetOpen(true);
+      return;
+    }
+    setStatusTarget(status);
+    setStatusDialogOpen(true);
+  }
+
+  const statusActions = (
+    <OrderStatusActions order={order} onStart={startStatusMove} fill={isMobile} />
+  );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <Breadcrumb
         segments={[
           { label: ordersLabel, href: '/admin/orders' },
@@ -229,107 +271,100 @@ export function OrderDetail({ id }: { id: string }) {
         ]}
       />
 
-      {hasListContext ? (
-        <div className="flex items-center justify-between gap-2 text-sm">
-          {neighbors?.prev ? (
-            <Button variant="ghost" size="sm" asChild>
-              <Link href={{ pathname: `/admin/orders/${neighbors.prev.id}`, query: listFilters }}>
-                <PrevArrow />
-                <span className="force-ltr">{neighbors.prev.orderNumber}</span>
-              </Link>
-            </Button>
-          ) : (
-            <span />
-          )}
-          {neighbors?.next ? (
-            <Button variant="ghost" size="sm" asChild>
-              <Link href={{ pathname: `/admin/orders/${neighbors.next.id}`, query: listFilters }}>
-                <span className="force-ltr">{neighbors.next.orderNumber}</span>
-                <NextArrow />
-              </Link>
-            </Button>
-          ) : (
-            <span />
-          )}
-        </div>
-      ) : null}
-
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="flex items-center gap-3 text-2xl font-semibold">
+      <header className="space-y-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="flex min-w-0 items-center gap-3 text-2xl font-semibold">
             <span className="force-ltr">{order.orderNumber}</span>
             <StatusBadge kind="orderStatus" value={order.status} />
           </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {t('placedOn', {
-              date: formatter.dateTime(new Date(order.placedAt), 'long'),
-            })}
-            {/* Where it was taken (F8). Beside the date because "when and
-                where" is one fact, and because on "All branches" two orders
-                from different businesses are otherwise indistinguishable
-                once opened. Omitted entirely when unattributed — an order
-                that predates branches has no branch, and inventing one would
-                claim it belongs somewhere it does not. */}
-            {order.branch ? (
-              <>
-                {' · '}
-                <span className="inline-flex items-center gap-1">
-                  <Store className="size-3.5" aria-hidden />
-                  {order.branch.name}
-                  {order.branch.code ? (
-                    <span className="text-muted-foreground">({order.branch.code})</span>
-                  ) : null}
-                </span>
-              </>
+
+          <div className="flex items-center gap-2">
+            {/* Prev/Next share the title row instead of taking a row of
+                their own above it. Only when the order was opened from a
+                filtered list (C5.1). */}
+            {hasListContext && (neighbors?.prev || neighbors?.next) ? (
+              <nav aria-label={t('neighbors.label')} className="flex items-center">
+                {neighbors.prev ? (
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link
+                      href={{ pathname: `/admin/orders/${neighbors.prev.id}`, query: listFilters }}
+                      aria-label={t('neighbors.previous', { number: neighbors.prev.orderNumber })}
+                    >
+                      <PrevArrow />
+                      <span className="force-ltr">{neighbors.prev.orderNumber}</span>
+                    </Link>
+                  </Button>
+                ) : null}
+                {neighbors.prev && neighbors.next ? (
+                  <span aria-hidden className="bg-border mx-0.5 h-4 w-px" />
+                ) : null}
+                {neighbors.next ? (
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link
+                      href={{ pathname: `/admin/orders/${neighbors.next.id}`, query: listFilters }}
+                      aria-label={t('neighbors.next', { number: neighbors.next.orderNumber })}
+                    >
+                      <span className="force-ltr">{neighbors.next.orderNumber}</span>
+                      <NextArrow />
+                    </Link>
+                  </Button>
+                ) : null}
+              </nav>
             ) : null}
-          </p>
+
+            <Button variant="outline" asChild>
+              <Link href={`/admin/orders/${order.id}/invoice`}>
+                <Printer aria-hidden />
+                {t('invoice.action')}
+              </Link>
+            </Button>
+          </div>
+        </div>
+
+        {/* No "·" separators: when this wraps on a phone a separator is
+            left dangling at the end of a line. The icons already split it. */}
+        <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <span>
+            {t('placedOn', {
+              date: formatter.dateTime(new Date(order.placedAt), {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              }),
+            })}
+          </span>
+          {/* Where it was taken (F8). Beside the date because "when and
+              where" is one fact, and because on "All branches" two orders
+              from different businesses are otherwise indistinguishable
+              once opened. Omitted entirely when unattributed — an order
+              that predates branches has no branch, and inventing one would
+              claim it belongs somewhere it does not. */}
+          {order.branch ? (
+            <span className="inline-flex items-center gap-1">
+              <Store className="size-3.5" aria-hidden />
+              {order.branch.name}
+              {order.branch.code ? (
+                <span className="text-muted-foreground">({order.branch.code})</span>
+              ) : null}
+            </span>
+          ) : null}
           {lastActivity ? (
-            <div className="mt-1">
-              <LastUpdatedNote
-                when={lastActivity.when}
-                who={lastActivity.who}
-                auditHref={`/admin/audit?entity=orders&entityId=${order.id}`}
-              />
-            </div>
+            <LastUpdatedNote
+              when={lastActivity.when}
+              who={lastActivity.who}
+              auditHref={`/admin/audit?entity=orders&entityId=${order.id}`}
+            />
           ) : null}
         </div>
+      </header>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" asChild>
-            <Link href={`/admin/orders/${order.id}/invoice`}>
-              <Printer aria-hidden />
-              {t('invoice.action')}
-            </Link>
-          </Button>
-
-          {/* Same truth the status control uses: only offered when the
-              server would actually accept moving this order to RETURNED. */}
-          {order.nextStatuses.includes('RETURNED') ? (
-            <Button variant="outline" onClick={() => setReturnSheetOpen(true)}>
-              <RotateCcw aria-hidden />
-              {t('requestReturn')}
-            </Button>
-          ) : null}
-
-          {/* Deliberately NOT gated by nextStatuses (B4.10) — a goodwill
-              refund is not the return transition, and tying it to that
-              would refuse it for exactly the orders (already delivered,
-              already closed) where it's most likely to be the right call. */}
-          {canRefund ? (
-            <Button variant="outline" onClick={() => setRefundDialogOpen(true)}>
-              <HandCoins aria-hidden />
-              {t('refund.action')}
-            </Button>
-          ) : null}
-
-          <OrderStatusControl
-            orderId={order.id}
-            status={order.status}
-            nextStatuses={order.nextStatuses}
-            onChanged={setOrder}
-          />
-        </div>
-      </div>
+      <OrderStatusStrip
+        order={order}
+        compact={isMobile}
+        // On a phone the buttons move to the bar pinned at the bottom of the
+        // page; a final order has no buttons, just its closing note, so that
+        // stays here.
+        actions={isMobile && !statusIsFinal ? null : statusActions}
+      />
 
       {returnMessage ? (
         <p role="status" className="bg-success/10 text-success rounded-md px-3 py-2 text-sm">
@@ -337,10 +372,12 @@ export function OrderDetail({ id }: { id: string }) {
         </p>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <div className="grid items-start gap-5 lg:grid-cols-3">
+        <div className="min-w-0 space-y-5 lg:col-span-2">
           {/* bodyClassName="": the table is full-bleed and the total row below
-              carries its own padding, so the default p-4 would inset both. */}
+              carries its own padding, so the default p-4 would inset both.
+              The total stays in the header so it is still visible when the
+              section is folded away. */}
           <CollapsibleSection
             title={t('items.title')}
             aside={<span className="tabular-nums">{money(order.total)}</span>}
@@ -416,113 +453,110 @@ export function OrderDetail({ id }: { id: string }) {
               * em-dashes above a real total is noise rather than information —
               * such an order keeps rendering exactly as it does today.
               */}
-            {order.subtotal !== null ? (
-              <div className="space-y-1 border-t px-4 pt-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">{t('items.subtotal')}</span>
-                  <span className="tabular-nums">{money(order.subtotal)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">{t('items.tax')}</span>
-                  <span className="tabular-nums">{money(order.taxAmount)}</span>
-                </div>
+            <div className="flex justify-end border-t">
+            <dl className="w-full space-y-1.5 px-4 pt-3 pb-4 text-sm sm:max-w-xs">
+              {order.subtotal !== null ? (
+                <>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-muted-foreground">{t('items.subtotal')}</dt>
+                    <dd className="tabular-nums">{money(order.subtotal)}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-muted-foreground">{t('items.tax')}</dt>
+                    <dd className="tabular-nums">{money(order.taxAmount)}</dd>
+                  </div>
+                </>
+              ) : null}
+              <div
+                className={
+                  order.subtotal !== null
+                    ? 'flex items-center justify-between gap-4 border-t pt-2.5'
+                    : 'flex items-center justify-between gap-4'
+                }
+              >
+                <dt className="font-medium">{t('items.total')}</dt>
+                <dd className="text-lg font-semibold tabular-nums">{money(order.total)}</dd>
               </div>
-            ) : null}
-
-            <div
-              className={`flex items-center justify-between px-4 py-3 ${
-                order.subtotal === null ? 'border-t' : ''
-              }`}
-            >
-              <span className="font-medium">{t('items.total')}</span>
-              <span className="text-lg font-semibold tabular-nums">
-                {money(order.total)}
-              </span>
+            </dl>
             </div>
           </CollapsibleSection>
 
-          <CollapsibleSection title={t('timeline.title')}>
-            <OrderStatusTimeline orderId={order.id} placedAt={order.placedAt} />
-          </CollapsibleSection>
+          <OrderActivity order={order} onChanged={setOrder} />
         </div>
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-5">
           <CollapsibleSection title={t('customer.title')}>
             {order.customer ? (
-              <dl className="space-y-2 text-sm">
-                <Field label={t('customer.name')} value={order.customer.name} />
-                <Field label={t('customer.email')} value={order.customer.email} ltr />
-                <Field label={t('customer.phone')} value={order.customer.phone} ltr />
-                <Field
-                  label={t('customer.location')}
-                  value={[order.customer.city, order.customer.country]
-                    .filter(Boolean)
-                    .join(', ')}
-                />
-              </dl>
+              <div className="space-y-3 text-sm">
+                {order.customer.name ? (
+                  <div className="flex items-center gap-3">
+                    <span
+                      aria-hidden
+                      className="bg-primary/10 text-primary-strong flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                    >
+                      {initialsOf(order.customer.name)}
+                    </span>
+                    <p className="min-w-0 font-semibold">
+                      <span className="sr-only">{t('customer.name')}: </span>
+                      <bdi>{order.customer.name}</bdi>
+                    </p>
+                  </div>
+                ) : null}
+                <ul className="space-y-2">
+                  {order.customer.email ? (
+                    <ContactRow icon={<Mail aria-hidden className="size-4" />} label={t('customer.email')}>
+                      <a href={`mailto:${order.customer.email}`} className="force-ltr block truncate hover:underline">
+                        {order.customer.email}
+                      </a>
+                    </ContactRow>
+                  ) : null}
+                  {order.customer.phone ? (
+                    <ContactRow icon={<Phone aria-hidden className="size-4" />} label={t('customer.phone')}>
+                      <a href={`tel:${order.customer.phone}`} className="force-ltr hover:underline">
+                        {order.customer.phone}
+                      </a>
+                    </ContactRow>
+                  ) : null}
+                  {order.customer.city || order.customer.country ? (
+                    <ContactRow icon={<MapPin aria-hidden className="size-4" />} label={t('customer.location')}>
+                      {[order.customer.city, order.customer.country].filter(Boolean).join(', ')}
+                    </ContactRow>
+                  ) : null}
+                </ul>
+              </div>
             ) : (
               // SetNull on delete, so an order can outlive its customer.
               <p className="text-muted-foreground text-sm">{t('customer.removed')}</p>
             )}
           </CollapsibleSection>
 
-          <CollapsibleSection title={t('delivery.title')}>
-            {order.assignment ? (
-              <dl className="space-y-2 text-sm">
-                <Field
-                  label={t('delivery.courier')}
-                  value={order.assignment.driver?.name ?? null}
-                />
-                <Field
-                  label={t('delivery.phone')}
-                  value={order.assignment.driver?.phone ?? null}
-                  ltr
-                />
-                <Field
-                  label={t('delivery.address')}
-                  value={[order.assignment.address, order.assignment.city]
-                    .filter(Boolean)
-                    .join(', ')}
-                />
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-muted-foreground">{t('delivery.status')}</dt>
-                  <dd>
-                    <StatusBadge kind="deliveryStatus" value={order.assignment.status} />
-                  </dd>
-                </div>
-                {order.assignment.attemptCount > 0 ? (
-                  <>
-                    <div className="flex items-center justify-between gap-4">
-                      <dt className="text-muted-foreground">{t('delivery.attemptCount')}</dt>
-                      <dd className="text-destructive font-medium">
-                        {order.assignment.attemptCount}
-                      </dd>
-                    </div>
-                    {order.assignment.failureReason ? (
-                      <Field
-                        label={t('delivery.failureReason')}
-                        value={order.assignment.failureReason}
-                      />
-                    ) : null}
-                  </>
-                ) : null}
-              </dl>
-            ) : (
-              <p className="text-muted-foreground text-sm">{t('delivery.unassigned')}</p>
-            )}
+          <OrderDeliveryCard
+            order={order}
+            onAssignmentChanged={(assignment) =>
+              setOrder((current) => (current ? { ...current, assignment } : current))
+            }
+          />
 
-            <AssignCourierControl
-              orderId={order.id}
-              orderStatus={order.status}
-              assignment={order.assignment}
-              onChanged={(assignment) =>
-                setOrder((current) => (current ? { ...current, assignment } : current))
-              }
-            />
-          </CollapsibleSection>
-
-          <CollapsibleSection title={t('payment.title')}>
-            <p className="text-sm">{order.paymentMethod ?? t('payment.unknown')}</p>
+          <CollapsibleSection
+            title={t('payment.title')}
+            // Deliberately NOT gated by nextStatuses (B4.10) — a goodwill
+            // refund is not the return transition, and tying it to that would
+            // refuse it for exactly the orders (already delivered, already
+            // closed) where it's most likely to be the right call. It lives on
+            // the Payment card because it changes what was paid.
+            action={
+              canRefund ? (
+                <Button variant="ghost" size="sm" onClick={() => setRefundDialogOpen(true)}>
+                  <HandCoins aria-hidden />
+                  {t('refund.action')}
+                </Button>
+              ) : null
+            }
+          >
+            <p className="flex items-center gap-2.5 text-sm">
+              <CreditCard aria-hidden className="text-muted-foreground size-4 shrink-0" />
+              {order.paymentMethod ?? t('payment.unknown')}
+            </p>
             {(order.goodwillRefunds ?? []).map((refund) => (
               <div key={refund.id} className="border-border mt-3 border-t pt-3 text-sm">
                 <p className="font-medium">
@@ -544,10 +578,33 @@ export function OrderDetail({ id }: { id: string }) {
               </div>
             ))}
           </CollapsibleSection>
-
-          <OrderNotesSection order={order} onChanged={setOrder} />
         </div>
       </div>
+
+      {/* The phone's action bar. Sticky inside <main> (the shell's one
+          scroller), so it has to be the LAST thing on the page: a sticky
+          element only pins while its natural position is below the fold.
+          The negative margins bleed it to <main>'s edges (p-3 below md), and
+          `-bottom-3` cancels that same padding — a sticky offset is measured
+          from the scroller's padding edge, so `bottom-0` left a 12px strip
+          of page showing underneath the bar. */}
+      {isMobile && !statusIsFinal ? (
+        <div
+          role="region"
+          aria-label={t('statusControl.actionsLabel')}
+          className="bg-card sticky -bottom-3 z-20 -mx-3 -mb-3 flex gap-2 border-t px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+        >
+          {statusActions}
+        </div>
+      ) : null}
+
+      <OrderStatusDialog
+        order={order}
+        target={statusTarget}
+        open={statusDialogOpen}
+        onOpenChange={setStatusDialogOpen}
+        onChanged={setOrder}
+      />
 
       <RequestReturnSheet
         order={order}
@@ -569,6 +626,25 @@ export function OrderDetail({ id }: { id: string }) {
   );
 }
 
+function ContactRow({
+  icon,
+  label,
+  children,
+}: {
+  icon: ReactNode;
+  /** Read out before the value; the icon alone says nothing to a screen reader. */
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <li className="flex min-w-0 items-center gap-2.5">
+      <span className="text-muted-foreground shrink-0">{icon}</span>
+      <span className="sr-only">{label}: </span>
+      <span className="min-w-0">{children}</span>
+    </li>
+  );
+}
+
 /** "Prev" points toward the reading start, mirroring `order-invoice.tsx`'s
  *  `BackArrow` — a fixed ChevronLeft would point forward in Arabic. */
 function PrevArrow() {
@@ -586,25 +662,5 @@ function NextArrow() {
       <ChevronRight className="rtl:hidden" aria-hidden />
       <ChevronLeft className="hidden rtl:block" aria-hidden />
     </>
-  );
-}
-
-function Field({
-  label,
-  value,
-  ltr,
-}: {
-  label: string;
-  value: string | null | undefined;
-  /** Codes, emails and phone numbers must not reorder in an RTL layout. */
-  ltr?: boolean;
-}) {
-  if (!value) return null;
-
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <dt className="text-muted-foreground shrink-0">{label}</dt>
-      <dd className={ltr ? 'force-ltr text-end' : 'text-end'}>{value}</dd>
-    </div>
   );
 }
