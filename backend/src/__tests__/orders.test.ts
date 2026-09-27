@@ -413,6 +413,34 @@ describe('every legal move leaves an audit trail', () => {
   });
 });
 
+/**
+ * Two staff moving the same order at the same moment (Fluffy storefront QA):
+ * both read PENDING, both writes landed — CONFIRMED and CANCELED, two history
+ * rows — in 10 rounds out of 10.
+ */
+describe('two staff changing one order at once', () => {
+  it('lets exactly one change win and tells the other to reload', async () => {
+    for (let round = 0; round < 5; round += 1) {
+      const id = await makeOrder(OrderStatus.PENDING);
+
+      const [confirm, cancel] = await Promise.all([
+        request(app).patch(`/api/v1/orders/${id}/status`).set(auth(ownerToken)).send({ to: OrderStatus.CONFIRMED }),
+        request(app)
+          .patch(`/api/v1/orders/${id}/status`)
+          .set(auth(ownerToken))
+          .send({ to: OrderStatus.CANCELED, cancellationReason: 'CUSTOMER_REQUEST' }),
+      ]);
+
+      const statuses = [confirm.status, cancel.status].sort();
+      expect(statuses).toEqual([200, 409]);
+      const history = await prisma.orderStatusHistory.findMany({ where: { orderId: id } });
+      expect(history).toHaveLength(1);
+      const order = await prisma.order.findUniqueOrThrow({ where: { id }, select: { status: true } });
+      expect(order.status).toBe(history[0]?.toStatus);
+    }
+  });
+});
+
 describe('statusHistory resolves the actor name (C5.3)', () => {
   it('includes changedByName alongside the plain id', async () => {
     const id = await makeOrder(OrderStatus.PENDING);

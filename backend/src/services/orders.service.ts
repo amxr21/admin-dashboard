@@ -729,8 +729,12 @@ export async function changeOrderStatus(
   assertCancellationReason(input);
 
   await prisma.$transaction(async (tx) => {
-    await tx.order.update({
-      where: { id },
+    // Conditional on the status the transition was checked against. Two staff
+    // moving the same order at once both read PENDING; without this both
+    // writes landed (CONFIRMED and CANCELED, with two history rows) and the
+    // order ended up in whichever came last.
+    const moved = await tx.order.updateMany({
+      where: { id, status: current.status },
       data: {
         status: input.to,
         // URG-010 — written in the SAME transaction as the status move and its
@@ -745,6 +749,7 @@ export async function changeOrderStatus(
           : {}),
       },
     });
+    if (moved.count === 0) throw AppError.conflict('This order was just changed by someone else — reload it and try again');
 
     await tx.orderStatusHistory.create({
       data: {

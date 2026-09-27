@@ -1485,7 +1485,13 @@ export async function voidSale(
   const branchId = order.branchId;
 
   await prisma.$transaction(async (tx) => {
-    await tx.order.update({ where: { id: orderId }, data: { status: OrderStatus.CANCELED } });
+    // Conditional on the status the void was checked against: two voids at
+    // once would otherwise both restock the goods and both reverse the payment.
+    const voided = await tx.order.updateMany({
+      where: { id: orderId, status: order.status },
+      data: { status: OrderStatus.CANCELED },
+    });
+    if (voided.count === 0) throw AppError.conflict('This order was just changed by someone else — reload it and try again');
 
     await tx.orderStatusHistory.create({
       data: {

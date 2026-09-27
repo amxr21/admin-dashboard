@@ -1505,6 +1505,33 @@ describe('voiding a sale at the till (O9 Tier 3)', () => {
     expect(total.toFixed(2)).toBe('0.00');
   });
 
+  it('voids once when two voids arrive together — stock and money come back once', async () => {
+    const product = await makeProduct({ sku: `${RUN}-VOID-RACE`, price: '10.00', stock: 5 });
+    await stockAt(product.id, 5);
+    const sale = await request(app)
+      .post('/api/v1/pos/checkout')
+      .set(auth(ownerToken))
+      .set('X-Branch-Id', branchId)
+      .set('Idempotency-Key', randomUUID())
+      .send({ lines: [{ productId: product.id, quantity: 2 }], method: 'cash', tendered: '20.00' });
+    const orderId = (sale.body as { data: { orderId: string } }).data.orderId;
+
+    const results = await Promise.all([voidSaleAs(orderId), voidSaleAs(orderId)]);
+
+    // One wins; the other is refused, whether it lost inside the transaction
+    // (409) or arrived after the first had committed (already voided).
+    expect(results.filter((res) => res.status === 200)).toHaveLength(1);
+    expect(results.filter((res) => res.status === 200)[0]).toBeDefined();
+    const [branchStock, payments, history] = await Promise.all([
+      prisma.branchStock.findUnique({ where: { productId_branchId: { productId: product.id, branchId } } }),
+      prisma.payment.findMany({ where: { orderId } }),
+      prisma.orderStatusHistory.findMany({ where: { orderId, toStatus: 'CANCELED' } }),
+    ]);
+    expect(branchStock?.quantity).toBe(5);
+    expect(payments).toHaveLength(2);
+    expect(history).toHaveLength(1);
+  });
+
   it('refuses to void a sale that was already refunded (BUG B — no double refund)', async () => {
     // A goodwill refund leaves the order CONFIRMED, so before this guard the
     // sale was still voidable — the refund paid the customer and the void then
