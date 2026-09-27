@@ -84,13 +84,24 @@ enum ProductStatus {
   ARCHIVED
 }
 
+/// A delivery order goes CONFIRMED → SHIPPED → DELIVERED; a pickup order goes
+/// CONFIRMED → READY_FOR_PICKUP → COLLECTED. Which path an order may take is
+/// decided by `Order.fulfillment` — see `canTransition` in orders.config.ts.
 enum OrderStatus {
   PENDING
   CONFIRMED
   SHIPPED
   DELIVERED
+  READY_FOR_PICKUP
+  COLLECTED
   CANCELED
   RETURNED
+}
+
+/// How the customer gets the goods.
+enum OrderFulfillment {
+  DELIVERY
+  PICKUP
 }
 
 enum ReviewStatus {
@@ -1209,6 +1220,25 @@ model Order {
   cancellationReasonNote String?             @map("cancellation_reason_note") @db.VarChar(500)
   paymentMethod          String?             @map("payment_method") @db.VarChar(48)
   placedAt               DateTime            @default(now()) @map("placed_at")
+
+  /// Delivered to an address, or collected from the branch. Decides which
+  /// statuses the order may move through. NULL for a till sale (handed over on
+  /// the spot) and for orders placed before this was recorded — those may take
+  /// either path.
+  fulfillment     OrderFulfillment? @map("fulfillment")
+  /// Who to contact about THIS order, as given at checkout. On the order rather
+  /// than read from `customer`: a guest has no customer record, and a
+  /// signed-in customer can order for someone else at another number.
+  contactName     String?           @map("contact_name") @db.VarChar(200)
+  contactPhone    String?           @map("contact_phone") @db.VarChar(48)
+  contactEmail    String?           @map("contact_email") @db.VarChar(255)
+  /// Where a DELIVERY order goes. Kept even if the order later changes hands
+  /// to a courier — the assignment copies it rather than owning it.
+  deliveryAddress String?           @map("delivery_address") @db.VarChar(500)
+  deliveryCity    String?           @map("delivery_city") @db.VarChar(96)
+  /// What the customer wrote at checkout ("ring the bell twice"). Theirs, not
+  /// staff's — staff notes live in `OrderNote`.
+  customerNote    String?           @map("customer_note") @db.VarChar(1000)
 
   /// Who rang this sale up at the till.
   ///
@@ -2742,33 +2772,33 @@ enum SuppressionReason {
 /// audience is fixed at that moment and a customer added later is not sent
 /// a campaign they were never counted in.
 model Campaign {
-  id        String          @id @default(cuid())
-  name      String          @db.VarChar(120)
-  channel   CampaignChannel
-  status    CampaignStatus  @default(DRAFT)
+  id           String          @id @default(cuid())
+  name         String          @db.VarChar(120)
+  channel      CampaignChannel
+  status       CampaignStatus  @default(DRAFT)
   /// Email only. Both languages optional individually, but at least one
   /// language's content must exist to send; each recipient gets their own.
-  subjectEn String?         @map("subject_en") @db.VarChar(200)
-  subjectAr String?         @map("subject_ar") @db.VarChar(200)
-  bodyEn    String?         @map("body_en") @db.Text
-  bodyAr    String?         @map("body_ar") @db.Text
+  subjectEn    String?         @map("subject_en") @db.VarChar(200)
+  subjectAr    String?         @map("subject_ar") @db.VarChar(200)
+  bodyEn       String?         @map("body_en") @db.Text
+  bodyAr       String?         @map("body_ar") @db.Text
   /// Inserted wherever `{{discount_code}}` appears.
-  discountCode String?      @map("discount_code") @db.VarChar(64)
+  discountCode String?         @map("discount_code") @db.VarChar(64)
   /// The audience filter (see `campaign-audience.service.ts`), validated on write.
-  audience  Json
+  audience     Json
   /// The branch whose name `{{branch_name}}` uses and whose timezone the
   /// schedule was chosen in. Null means the whole business.
-  branchId  String?         @map("branch_id") @db.VarChar(64)
-  scheduledAt DateTime?     @map("scheduled_at")
-  startedAt   DateTime?     @map("started_at")
-  completedAt DateTime?     @map("completed_at")
+  branchId     String?         @map("branch_id") @db.VarChar(64)
+  scheduledAt  DateTime?       @map("scheduled_at")
+  startedAt    DateTime?       @map("started_at")
+  completedAt  DateTime?       @map("completed_at")
   /// Frozen when sending starts.
-  audienceSize Int?         @map("audience_size")
-  lastError    String?      @map("last_error") @db.VarChar(500)
+  audienceSize Int?            @map("audience_size")
+  lastError    String?         @map("last_error") @db.VarChar(500)
 
-  createdById String?       @map("created_by_id")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   recipients CampaignRecipient[]
 
@@ -2779,24 +2809,24 @@ model Campaign {
 /// One customer's copy of a campaign. The unique pair is the duplicate-send
 /// guard: a customer can never be queued twice for the same campaign.
 model CampaignRecipient {
-  id         String                  @id @default(cuid())
-  campaignId String                  @map("campaign_id")
-  campaign   Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  id                String                  @id @default(cuid())
+  campaignId        String                  @map("campaign_id")
+  campaign          Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   /// SetNull: deleting a customer (erasure request) must not be blocked by
   /// campaign history, and the address below is erased with it.
-  customerId String?                 @map("customer_id")
-  customer   Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customerId        String?                 @map("customer_id")
+  customer          Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
   /// The email or E.164 phone at send time; cleared by the retention job.
-  address    String?                 @db.VarChar(255)
-  locale     String                  @default("en") @db.VarChar(5)
-  status     CampaignRecipientStatus @default(PENDING)
-  attempts   Int                     @default(0)
-  nextAttemptAt     DateTime?        @map("next_attempt_at")
-  providerMessageId String?          @map("provider_message_id") @db.VarChar(128)
-  lastError  String?                 @map("last_error") @db.VarChar(300)
-  sentAt     DateTime?               @map("sent_at")
-  createdAt  DateTime                @default(now()) @map("created_at")
-  updatedAt  DateTime                @updatedAt @map("updated_at")
+  address           String?                 @db.VarChar(255)
+  locale            String                  @default("en") @db.VarChar(5)
+  status            CampaignRecipientStatus @default(PENDING)
+  attempts          Int                     @default(0)
+  nextAttemptAt     DateTime?               @map("next_attempt_at")
+  providerMessageId String?                 @map("provider_message_id") @db.VarChar(128)
+  lastError         String?                 @map("last_error") @db.VarChar(300)
+  sentAt            DateTime?               @map("sent_at")
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
 
   @@unique([campaignId, customerId])
   @@index([campaignId, status])

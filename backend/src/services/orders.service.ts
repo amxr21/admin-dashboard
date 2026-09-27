@@ -97,6 +97,10 @@ function buildWhere(params: OrderListParams): Prisma.OrderWhereInput {
     const normalizedPhone = normalizePhone(contains);
     where.OR = [
       { orderNumber: { contains } },
+      // A guest order has no customer record — its name and phone are the
+      // order's own contact details.
+      { contactName: { contains } },
+      { contactPhone: { contains } },
       { customer: { name: { contains } } },
       { customer: { email: { contains } } },
       { customer: { phone: { contains } } },
@@ -137,6 +141,8 @@ export async function listOrders(params: OrderListParams) {
         total: true,
         placedAt: true,
         paymentMethod: true,
+        fulfillment: true,
+        contactName: true,
         // O1: named on the row, not only on the detail page. On "all
         // branches" two rows from different shops are otherwise identical.
         branchId: true,
@@ -157,7 +163,10 @@ export async function listOrders(params: OrderListParams) {
       total: money(row.total),
       placedAt: row.placedAt.toISOString(),
       paymentMethod: row.paymentMethod,
+      fulfillment: row.fulfillment,
       customer: row.customer,
+      // Who a guest order is for — `customer` is null for those.
+      contactName: row.contactName,
       // Null when the order predates branch scoping OR its branch was
       // removed — the UI shows nothing rather than inventing a name.
       branch: row.branchId ? (branches.get(row.branchId) ?? null) : null,
@@ -299,6 +308,13 @@ export async function getOrder(id: string, branchId?: string) {
       pricesIncludeTax: true,
       paymentMethod: true,
       placedAt: true,
+      fulfillment: true,
+      contactName: true,
+      contactPhone: true,
+      contactEmail: true,
+      deliveryAddress: true,
+      deliveryCity: true,
+      customerNote: true,
       // Who rang it up, when it came from the till (F-POS). Null on a web
       // order or anything predating the column — a real "not a counter sale"
       // fact, which the detail page states rather than hiding.
@@ -411,6 +427,16 @@ export async function getOrder(id: string, branchId?: string) {
     pricesIncludeTax: order.pricesIncludeTax,
     paymentMethod: order.paymentMethod,
     placedAt: order.placedAt.toISOString(),
+    // How the customer gets it, and the details they gave at checkout. All
+    // null on a till sale and on orders from before these were recorded.
+    fulfillment: order.fulfillment,
+    contact: {
+      name: order.contactName,
+      phone: order.contactPhone,
+      email: order.contactEmail,
+    },
+    delivery: { address: order.deliveryAddress, city: order.deliveryCity },
+    customerNote: order.customerNote,
     soldByName: order.soldByName,
     goodwillRefunds: order.payments.map((payment) => ({
       id: payment.id,
@@ -462,7 +488,7 @@ export async function getOrder(id: string, branchId?: string) {
     })),
     assignment: order.assignment,
     /** Only the moves the server would actually accept from here. */
-    nextStatuses: nextStatuses(order.status),
+    nextStatuses: nextStatuses(order.status, order.fulfillment),
   };
 }
 
@@ -683,7 +709,7 @@ export async function changeOrderStatus(
 ) {
   const current = await prisma.order.findFirst({
     where: { id, ...(branchId ? { branchId } : {}) },
-    select: { id: true, status: true, assignment: { select: { id: true } } },
+    select: { id: true, status: true, fulfillment: true, assignment: { select: { id: true } } },
   });
 
   if (!current) throw AppError.notFound('Order not found');
@@ -694,12 +720,14 @@ export async function changeOrderStatus(
     });
   }
 
-  if (!canTransition(current.status, input.to)) {
+  if (!canTransition(current.status, input.to, current.fulfillment)) {
     // Names the legal moves rather than just refusing — a bare "invalid
     // transition" leaves the caller guessing what would have worked.
     throw AppError.badRequest(
-      `Cannot move an order from ${current.status} to ${input.to}`,
-      { field: 'to', allowed: nextStatuses(current.status) },
+      current.fulfillment && canTransition(current.status, input.to)
+        ? `A ${current.fulfillment.toLowerCase()} order cannot move to ${input.to}`
+        : `Cannot move an order from ${current.status} to ${input.to}`,
+      { field: 'to', allowed: nextStatuses(current.status, current.fulfillment) },
     );
   }
 
@@ -720,7 +748,9 @@ export async function changeOrderStatus(
   if (input.to === OrderStatus.RETURNED) {
     throw AppError.badRequest('Process a return through the returns flow, not a status change', {
       field: 'to',
-      allowed: nextStatuses(current.status).filter((status) => status !== OrderStatus.RETURNED),
+      allowed: nextStatuses(current.status, current.fulfillment).filter(
+        (status) => status !== OrderStatus.RETURNED,
+      ),
     });
   }
 
@@ -798,8 +828,9 @@ export async function changeOrderStatus(
  * Before this, cancelling kept both: the goods stayed off the shelf for good
  * and a single-use code stayed spent on an order that never happened.
  *
- * Only PENDING and CONFIRMED can be cancelled (see `ORDER_TRANSITIONS`) —
- * goods that have left the branch come back through a return, not here.
+ * Only orders whose goods are still at the branch can be cancelled — PENDING,
+ * CONFIRMED and READY_FOR_PICKUP (see `ORDER_TRANSITIONS`). Goods that have
+ * left the branch come back through a return, not here.
  */
 async function releaseCanceledOrder(
   tx: Prisma.TransactionClient,
@@ -908,10 +939,15 @@ export async function previewBulkStatusChange(
 ): Promise<BulkStatusPreview> {
   const orders = await prisma.order.findMany({
     where: { id: { in: ids }, ...(branchId ? { branchId } : {}) },
-    select: { id: true, status: true, assignment: { select: { id: true, status: true } } },
+    select: {
+      id: true,
+      status: true,
+      fulfillment: true,
+      assignment: { select: { id: true, status: true } },
+    },
   });
 
-  const eligible = orders.filter((order) => canTransition(order.status, to));
+  const eligible = orders.filter((order) => canTransition(order.status, to, order.fulfillment));
   const withActiveAssignment = eligible.filter(
     (order) => order.assignment && ASSIGNMENT_ON_ORDER_STATUS[to] !== undefined,
   ).length;

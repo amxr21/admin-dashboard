@@ -92,6 +92,8 @@ const STATUSES: OrderStatus[] = [
   'CONFIRMED',
   'SHIPPED',
   'DELIVERED',
+  'READY_FOR_PICKUP',
+  'COLLECTED',
   'CANCELED',
   'RETURNED',
 ];
@@ -406,7 +408,7 @@ export function OrdersTable() {
       // controlled (see toggleSort in data-table.tsx).
       id: 'customer',
       header: t('columns.customer'),
-      cell: (order) => order.customer?.name ?? t('guest'),
+      cell: (order) => order.customer?.name ?? order.contactName ?? t('guest'),
     },
     ...(showBranch
       ? [
@@ -500,13 +502,15 @@ export function OrdersTable() {
       : []),
   ];
 
-  // The 5 combinations staff reach for daily. A tab IS a URL write into the
+  // The combinations staff reach for daily. A tab IS a URL write into the
   // same `status` filter the dropdown below already reads — see
   // saved-view-tabs.tsx for why that matters.
   const views: SavedView<{ status: string }>[] = [
     { id: 'all', label: t('filters.allStatuses'), filters: { status: ALL } },
     { id: 'pending', label: t('status.PENDING'), filters: { status: 'PENDING' } },
     { id: 'shipped', label: t('status.SHIPPED'), filters: { status: 'SHIPPED' } },
+    // The counter's queue: packed, waiting for the customer to come in.
+    { id: 'ready', label: t('status.READY_FOR_PICKUP'), filters: { status: 'READY_FOR_PICKUP' } },
     { id: 'delivered', label: t('status.DELIVERED'), filters: { status: 'DELIVERED' } },
     { id: 'canceled', label: t('status.CANCELED'), filters: { status: 'CANCELED' } },
   ];

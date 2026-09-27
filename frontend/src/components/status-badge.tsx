@@ -31,6 +31,9 @@ const TONES = {
     CONFIRMED: 'info',
     SHIPPED: 'info',
     DELIVERED: 'success',
+    // Waiting on the customer to come in — a queue someone is watching.
+    READY_FOR_PICKUP: 'warning',
+    COLLECTED: 'success',
     CANCELED: 'destructive',
     // Not destructive: a return is a normal, completed business outcome, not
     // an error. Colouring it red makes healthy returns look like failures.

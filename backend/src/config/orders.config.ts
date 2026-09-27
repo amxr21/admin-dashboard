@@ -1,4 +1,4 @@
-import { DeliveryStatus, OrderStatus } from '@prisma/client';
+import { DeliveryStatus, OrderFulfillment, OrderStatus } from '@prisma/client';
 
 /**
  * Order lifecycle rules.
@@ -40,15 +40,48 @@ import { DeliveryStatus, OrderStatus } from '@prisma/client';
  * POS return has no `DeliveryAssignment` (the assignment write in
  * returns.service.ts is already guarded by `if (order.assignment)`), and the
  * returns report counts it the same as any other return, which is intended.
+ *
+ * ─── PICKUP: READY_FOR_PICKUP → COLLECTED ────────────────────────────
+ * An order the customer collects never ships. It waits at the branch
+ * (READY_FOR_PICKUP) and is then handed over (COLLECTED, the pickup twin of
+ * DELIVERED). A ready order can still be CANCELED — the customer never came,
+ * and the goods are still on the counter — but not RETURNED: nothing left.
+ *
+ * This table holds BOTH paths. Which one an order may take is its
+ * `fulfillment`'s business — see `nextStatuses` below.
  */
 export const ORDER_TRANSITIONS: Readonly<Record<OrderStatus, readonly OrderStatus[]>> = {
   [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELED],
-  [OrderStatus.CONFIRMED]: [OrderStatus.SHIPPED, OrderStatus.CANCELED, OrderStatus.RETURNED],
+  [OrderStatus.CONFIRMED]: [
+    OrderStatus.SHIPPED,
+    OrderStatus.READY_FOR_PICKUP,
+    OrderStatus.CANCELED,
+    OrderStatus.RETURNED,
+  ],
   [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED, OrderStatus.RETURNED],
   [OrderStatus.DELIVERED]: [OrderStatus.RETURNED],
+  [OrderStatus.READY_FOR_PICKUP]: [OrderStatus.COLLECTED, OrderStatus.CANCELED],
+  [OrderStatus.COLLECTED]: [OrderStatus.RETURNED],
   [OrderStatus.CANCELED]: [],
   [OrderStatus.RETURNED]: [],
 };
+
+/**
+ * Statuses only one kind of order passes through: a pickup is never shipped,
+ * and a delivery is never waiting on the counter.
+ */
+const ONLY_FOR: Partial<Record<OrderStatus, OrderFulfillment>> = {
+  [OrderStatus.SHIPPED]: OrderFulfillment.DELIVERY,
+  [OrderStatus.DELIVERED]: OrderFulfillment.DELIVERY,
+  [OrderStatus.READY_FOR_PICKUP]: OrderFulfillment.PICKUP,
+  [OrderStatus.COLLECTED]: OrderFulfillment.PICKUP,
+};
+
+/** The statuses an order is finished in — handed over, or never will be. */
+export const COMPLETED_STATUSES: readonly OrderStatus[] = [
+  OrderStatus.DELIVERED,
+  OrderStatus.COLLECTED,
+];
 
 /**
  * How an order status change propagates to an existing delivery assignment.
@@ -70,11 +103,26 @@ export const ASSIGNMENT_ON_ORDER_STATUS: Partial<Record<OrderStatus, DeliverySta
   [OrderStatus.RETURNED]: DeliveryStatus.RETURNED,
 };
 
-export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
-  return ORDER_TRANSITIONS[from].includes(to);
+/**
+ * Whether an order may move `from` → `to`. Pass the order's `fulfillment`:
+ * without it (a till sale, or an order from before fulfillment was recorded)
+ * either path is open, so nothing already in flight is stranded.
+ */
+export function canTransition(
+  from: OrderStatus,
+  to: OrderStatus,
+  fulfillment: OrderFulfillment | null = null,
+): boolean {
+  return nextStatuses(from, fulfillment).includes(to);
 }
 
 /** What the UI may offer from here. Empty means the order is finished. */
-export function nextStatuses(from: OrderStatus): readonly OrderStatus[] {
-  return ORDER_TRANSITIONS[from];
+export function nextStatuses(
+  from: OrderStatus,
+  fulfillment: OrderFulfillment | null = null,
+): readonly OrderStatus[] {
+  return ORDER_TRANSITIONS[from].filter((to) => {
+    const only = ONLY_FOR[to];
+    return only === undefined || fulfillment === null || only === fulfillment;
+  });
 }

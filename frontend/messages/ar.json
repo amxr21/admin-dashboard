@@ -644,6 +644,8 @@
     "CONFIRMED": "مؤكد",
     "SHIPPED": "تم الشحن",
     "DELIVERED": "تم التسليم",
+    "READY_FOR_PICKUP": "جاهز للاستلام",
+    "COLLECTED": "تم الاستلام",
     "CANCELED": "ملغى",
     "RETURNED": "مُرجَع"
   },
@@ -1386,6 +1388,8 @@
       "CONFIRMED": "مؤكد",
       "SHIPPED": "تم الشحن",
       "DELIVERED": "تم التسليم",
+      "READY_FOR_PICKUP": "جاهز للاستلام",
+      "COLLECTED": "تم الاستلام",
       "CANCELED": "ملغى",
       "RETURNED": "مُرجَع"
     },
@@ -1413,7 +1417,16 @@
       "email": "البريد الإلكتروني",
       "phone": "الهاتف",
       "location": "الموقع",
-      "removed": "تم حذف سجل هذا العميل."
+      "removed": "تم حذف سجل هذا العميل.",
+      "guest": "طلب كضيف — بدون حساب عميل."
+    },
+    "fulfillment": {
+      "title": "طريقة الاستلام",
+      "DELIVERY": "توصيل",
+      "PICKUP": "استلام من الفرع",
+      "contact": "جهة الاتصال",
+      "deliverTo": "عنوان التوصيل",
+      "note": "ملاحظة العميل"
     },
     "delivery": {
       "title": "التوصيل",
@@ -1487,6 +1500,8 @@
         "CONFIRMED": "تأكيد الطلب",
         "SHIPPED": "تأكيد الشحن",
         "DELIVERED": "تأكيد التسليم",
+        "READY_FOR_PICKUP": "تجهيز للاستلام",
+        "COLLECTED": "تأكيد الاستلام",
         "CANCELED": "إلغاء الطلب",
         "RETURNED": "طلب إرجاع"
       },
@@ -1495,6 +1510,8 @@
         "CONFIRMED": "تأكيد الطلب {number}؟",
         "SHIPPED": "تأكيد شحن الطلب {number}؟",
         "DELIVERED": "تأكيد تسليم الطلب {number}؟",
+        "READY_FOR_PICKUP": "تعليم الطلب {number} كجاهز للاستلام؟",
+        "COLLECTED": "تأكيد استلام الطلب {number}؟",
         "CANCELED": "إلغاء الطلب {number}؟",
         "RETURNED": "تسجيل الطلب {number} كمُرجَع؟"
       },

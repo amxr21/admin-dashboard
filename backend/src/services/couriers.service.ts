@@ -637,7 +637,18 @@ export async function assignOrder(input: AssignInput, req?: Request, branchId?: 
   const [order, courier, existing] = await Promise.all([
     prisma.order.findFirst({
       where: { id: input.orderId, ...(branchId ? { branchId } : {}) },
-      select: { id: true, branchId: true, status: true, total: true, customer: { select: { name: true, phone: true } } },
+      select: {
+        id: true,
+        branchId: true,
+        status: true,
+        fulfillment: true,
+        total: true,
+        contactName: true,
+        contactPhone: true,
+        deliveryAddress: true,
+        deliveryCity: true,
+        customer: { select: { name: true, phone: true } },
+      },
     }),
     prisma.deliveryStaff.findFirst({
       where: { id: input.driverId, ...courierBranchWhere(branchId) },
@@ -659,7 +670,14 @@ export async function assignOrder(input: AssignInput, req?: Request, branchId?: 
     throw AppError.badRequest('That courier is inactive', { field: 'driverId' });
   }
 
-  const finished: OrderStatus[] = ['DELIVERED', 'CANCELED', 'RETURNED'];
+  if (order.fulfillment === 'PICKUP') {
+    throw AppError.badRequest('This order is collected from the branch and needs no courier', {
+      field: 'orderId',
+    });
+  }
+
+  // Ready for pickup / collected: the customer is fetching it themselves.
+  const finished: OrderStatus[] = ['DELIVERED', 'COLLECTED', 'READY_FOR_PICKUP', 'CANCELED', 'RETURNED'];
 
   if (finished.includes(order.status)) {
     throw AppError.badRequest(
@@ -673,10 +691,14 @@ export async function assignOrder(input: AssignInput, req?: Request, branchId?: 
     create: {
       orderId: input.orderId,
       driverId: input.driverId,
-      customerName: order.customer?.name ?? null,
-      customerPhone: order.customer?.phone ?? null,
-      address: input.address ?? null,
-      city: input.city ?? null,
+      // The details given for THIS order first — a guest has no customer
+      // record, and a customer can have it sent to someone else.
+      customerName: order.contactName ?? order.customer?.name ?? null,
+      customerPhone: order.contactPhone ?? order.customer?.phone ?? null,
+      // The assignment column is shorter than the order's; the full address
+      // stays on the order.
+      address: input.address ?? order.deliveryAddress?.slice(0, 255) ?? null,
+      city: input.city ?? order.deliveryCity ?? null,
       note: input.note ?? null,
       total: order.total,
       status: DeliveryStatus.ASSIGNED,

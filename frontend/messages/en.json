@@ -644,6 +644,8 @@
     "CONFIRMED": "Confirmed",
     "SHIPPED": "Shipped",
     "DELIVERED": "Delivered",
+    "READY_FOR_PICKUP": "Ready for pickup",
+    "COLLECTED": "Collected",
     "CANCELED": "Canceled",
     "RETURNED": "Returned"
   },
@@ -1386,6 +1388,8 @@
       "CONFIRMED": "Confirmed",
       "SHIPPED": "Shipped",
       "DELIVERED": "Delivered",
+      "READY_FOR_PICKUP": "Ready for pickup",
+      "COLLECTED": "Collected",
       "CANCELED": "Canceled",
       "RETURNED": "Returned"
     },
@@ -1413,7 +1417,16 @@
       "email": "Email",
       "phone": "Phone",
       "location": "Location",
-      "removed": "This customer record has been deleted."
+      "removed": "This customer record has been deleted.",
+      "guest": "Placed as a guest — no customer account."
+    },
+    "fulfillment": {
+      "title": "Fulfillment",
+      "DELIVERY": "Delivery",
+      "PICKUP": "Pickup from the branch",
+      "contact": "Contact",
+      "deliverTo": "Deliver to",
+      "note": "Customer’s note"
     },
     "delivery": {
       "title": "Delivery",
@@ -1487,6 +1500,8 @@
         "CONFIRMED": "Confirm order",
         "SHIPPED": "Mark as shipped",
         "DELIVERED": "Mark as delivered",
+        "READY_FOR_PICKUP": "Mark ready for pickup",
+        "COLLECTED": "Mark as collected",
         "CANCELED": "Cancel order",
         "RETURNED": "Request return"
       },
@@ -1495,6 +1510,8 @@
         "CONFIRMED": "Confirm order {number}?",
         "SHIPPED": "Mark {number} as shipped?",
         "DELIVERED": "Mark {number} as delivered?",
+        "READY_FOR_PICKUP": "Mark {number} ready for pickup?",
+        "COLLECTED": "Mark {number} as collected?",
         "CANCELED": "Cancel order {number}?",
         "RETURNED": "Mark {number} as returned?"
       },

@@ -3,6 +3,7 @@ import { randomInt } from 'node:crypto';
 import {
   DiscountScope,
   DiscountType,
+  OrderFulfillment,
   Prisma,
   ProductStatus,
   StockMovementReason,
@@ -16,6 +17,7 @@ import {
 } from './idempotency.service.js';
 import { getTaxPolicy, taxAfterDiscount, type TaxPolicy } from './order-math.service.js';
 import { getSettingValue } from './settings.service.js';
+import { phonesMatch } from '../lib/phone.js';
 import type { ProductLocale } from './product-content.service.js';
 
 /**
@@ -1179,6 +1181,14 @@ async function checkoutOnce(
       discountCode: discount?.code ?? null,
       discountId: discount?.id ?? null,
       paymentMethod: input.paymentMethod,
+      fulfillment: input.fulfillment === 'Delivery' ? OrderFulfillment.DELIVERY : OrderFulfillment.PICKUP,
+      contactName: input.contact.name,
+      contactPhone: input.contact.phone,
+      contactEmail: input.contact.email ?? null,
+      // An address typed before switching to pickup is not where anything goes.
+      deliveryAddress: input.fulfillment === 'Delivery' ? (input.contact.address ?? null) : null,
+      deliveryCity: input.fulfillment === 'Delivery' ? (input.contact.city ?? null) : null,
+      customerNote: input.contact.note ?? null,
       customerId,
       branchId: input.branchId,
       items: {
@@ -1219,24 +1229,6 @@ async function checkoutOnce(
     if (order === null) {
       throw AppError.serviceUnavailable('Could not place your order — please try again');
     }
-
-    // Contact details go on the delivery assignment's fields where they exist;
-    // for now they ride along as an internal note so nothing is lost. `Order`
-    // has no address column (see the assign-courier note in CLAUDE.md).
-    const contactSummary = [
-      `Contact: ${input.contact.name} (${input.contact.phone})`,
-      input.contact.email ? `Email: ${input.contact.email}` : null,
-      `Fulfillment: ${input.fulfillment}`,
-      input.contact.address ? `Address: ${input.contact.address}` : null,
-      input.contact.city ? `City: ${input.contact.city}` : null,
-      input.contact.note ? `Note: ${input.contact.note}` : null,
-    ]
-      .filter(Boolean)
-      .join('\n');
-
-    await tx.orderNote.create({
-      data: { orderId: order.id, body: contactSummary, authorId: null },
-    });
 
     // Stock: decrement AND log a movement. Both, or the "sum of deltas equals
     // stock" invariant breaks.
@@ -1348,6 +1340,8 @@ export async function checkout(
 export interface PublicOrder {
   orderNumber: string;
   status: string;
+  /** 'DELIVERY' | 'PICKUP', or null for an order from before it was recorded. */
+  fulfillment: string | null;
   subtotal: string | null;
   taxAmount: string | null;
   /** True when `taxAmount` is inside `total` rather than added to it. */
@@ -1361,6 +1355,7 @@ export interface PublicOrder {
 const PUBLIC_ORDER_SELECT = {
   orderNumber: true,
   status: true,
+  fulfillment: true,
   subtotal: true,
   taxAmount: true,
   pricesIncludeTax: true,
@@ -1382,6 +1377,7 @@ function toPublicOrder(
   return {
     orderNumber: order.orderNumber,
     status: order.status,
+    fulfillment: order.fulfillment,
     // NULL stays null rather than becoming "0.00": the schema is explicit that
     // "never recorded" is a different fact from a confirmed zero.
     subtotal: order.subtotal ? order.subtotal.toFixed(2) : null,
@@ -1423,24 +1419,32 @@ export async function getMyOrders(customerId: string): Promise<PublicOrder[]> {
  *      leaked or shoulder-surfed reference — a screenshot, a shared email — does
  *      not by itself expose the customer's name, address and order history.
  *
- * The phone lives in the contact note (`Order` has no phone column), so this
- * matches the customer's phone or the note body, and returns the same "not
- * found" for a wrong phone as for a missing order — confirming that a reference
- * exists is itself a small leak.
+ * The phone is the one given at checkout (`contactPhone`), or the customer's
+ * own. Orders from before `contactPhone` existed kept it in their contact note
+ * ("Contact: Name (phone)"), which is read as a fallback — the number on that
+ * line only, never any digits elsewhere in the note, which let any four
+ * digits from the address or the number match. A wrong phone gets the same "not found" as a missing order —
+ * confirming that a reference exists is itself a small leak.
  */
 export async function trackOrder(orderNumber: string, phone: string): Promise<PublicOrder> {
   const order = await prisma.order.findUnique({
     where: { orderNumber },
-    select: { ...PUBLIC_ORDER_SELECT, customer: { select: { phone: true } }, notes: { select: { body: true } } },
+    select: {
+      ...PUBLIC_ORDER_SELECT,
+      contactPhone: true,
+      customer: { select: { phone: true } },
+      notes: { where: { authorId: null }, select: { body: true } },
+    },
   });
 
-  const normalise = (value: string): string => value.replace(/\D/g, '');
-  const given = normalise(phone);
+  const legacyContact = (body: string) => /^Contact: .*\(([^()]*)\)$/m.exec(body)?.[1] ?? '';
+  const onRecord = [
+    order?.contactPhone,
+    order?.customer?.phone,
+    ...(order?.notes ?? []).map((note) => legacyContact(note.body)),
+  ].filter((value): value is string => Boolean(value));
 
-  const matches =
-    given.length > 0 &&
-    (normalise(order?.customer?.phone ?? '').endsWith(given) ||
-      (order?.notes ?? []).some((note) => normalise(note.body).includes(given)));
+  const matches = onRecord.some((recorded) => phonesMatch(recorded, phone));
 
   if (!order || !matches) {
     throw AppError.notFound('No order found with that reference and phone number');

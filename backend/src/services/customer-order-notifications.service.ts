@@ -9,6 +9,8 @@ const STATUS_COPY: Record<OrderStatus, string> = {
   CONFIRMED: 'has been confirmed',
   SHIPPED: 'has been shipped',
   DELIVERED: 'has been delivered',
+  READY_FOR_PICKUP: 'is ready for pickup',
+  COLLECTED: 'has been collected',
   CANCELED: 'has been canceled',
   RETURNED: 'has been marked as returned',
 };
@@ -58,7 +60,7 @@ async function attemptCustomerOrderStatusNotification(orderId: string, status: O
 
   const sent = await sendEmailToRecipients(
     [recipient],
-    `Order ${order.orderNumber}: ${status.toLowerCase()}`,
+    `Order ${order.orderNumber}: ${status.toLowerCase().replaceAll('_', ' ')}`,
     `Hello ${order.customer?.name ?? 'there'},\n\nYour order ${order.orderNumber} ${STATUS_COPY[status]}.`,
   );
 
