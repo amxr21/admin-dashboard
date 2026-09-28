@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
+import { isLockConflictMessage } from '../db/lock-conflict.js';
 import { AppError } from '../errors/AppError.js';
+import { logger } from '../logger.js';
 import {
   isRetryableTransactionError,
   retryDatabaseTransaction,
@@ -67,6 +69,36 @@ describe('database transaction retry', () => {
     await vi.runAllTimersAsync();
     await assertion;
     expect(execute).toHaveBeenCalledTimes(8);
+  });
+
+  it('treats lost lock races as routine and only running out of retries as an error', async () => {
+    for (const message of [
+      'Transaction failed due to a write conflict or a deadlock. Please retry your transaction',
+      'Lock wait timeout exceeded; try restarting transaction',
+      'Deadlock found when trying to get lock; try restarting transaction',
+    ]) {
+      expect(isLockConflictMessage(message)).toBe(true);
+    }
+    expect(isLockConflictMessage("Unique constraint failed on the fields: ('code')")).toBe(false);
+
+    vi.useFakeTimers();
+    const errorLog = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    const recovered = retryDatabaseTransaction(
+      vi.fn().mockRejectedValueOnce(known('P2034')).mockResolvedValue('ok'),
+    );
+    await vi.runAllTimersAsync();
+    await recovered;
+    expect(errorLog).not.toHaveBeenCalled();
+
+    const exhausted = expect(
+      retryDatabaseTransaction(vi.fn().mockRejectedValue(known('P2034'))),
+    ).rejects.toMatchObject({ statusCode: 503 });
+    await vi.runAllTimersAsync();
+    await exhausted;
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'db.lock_conflict.exhausted' }),
+    );
+    errorLog.mockRestore();
   });
 
   it('does not retry validation failures, stock exhaustion or uncertain connection failures', async () => {

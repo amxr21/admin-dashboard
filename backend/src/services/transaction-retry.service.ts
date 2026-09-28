@@ -1,6 +1,8 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { Prisma } from '@prisma/client';
+import { isLockConflictMessage } from '../db/lock-conflict.js';
 import { AppError } from '../errors/AppError.js';
+import { logger } from '../logger.js';
 
 const MAX_TRANSACTION_ATTEMPTS = 8;
 
@@ -18,13 +20,11 @@ export function isRetryableTransactionError(error: unknown): boolean {
     // retry a generic P2028 (expired transaction / interactive timeout).
     if (error.code !== 'P2028') return false;
     const detail = typeof error.meta?.error === 'string' ? error.meta.error : '';
-    return /Lock wait timeout exceeded|Deadlock found when trying to get lock/i.test(
-      `${error.message} ${detail}`,
-    );
+    return isLockConflictMessage(`${error.message} ${detail}`);
   }
   return (
     error instanceof Prisma.PrismaClientUnknownRequestError &&
-    /Lock wait timeout exceeded|Deadlock found when trying to get lock/i.test(error.message)
+    isLockConflictMessage(error.message)
   );
 }
 
@@ -37,6 +37,9 @@ export async function retryDatabaseTransaction<T>(execute: () => Promise<T>): Pr
     } catch (error) {
       if (!isRetryableTransactionError(error)) throw error;
       if (attempt === MAX_TRANSACTION_ATTEMPTS - 1) {
+        // Each lost race is only a warning (db.lock_conflict); losing every
+        // one is not routine, so this is the error that reaches an operator.
+        logger.error({ event: 'db.lock_conflict.exhausted', attempts: MAX_TRANSACTION_ATTEMPTS });
         throw AppError.serviceUnavailable(
           'The store is busy. Please retry your request with the same request key.',
         );
