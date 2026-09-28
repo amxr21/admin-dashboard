@@ -1,6 +1,6 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { StaffActivityView } from '@/components/staff/staff-activity-view';
+import { LoginHistoryView } from '@/components/staff/login-history-view';
 
 /**
  * Staff activity — who is on now, who worked when, and who got in.
@@ -37,7 +37,7 @@ export default async function LoginHistoryPage({
         <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
       </div>
 
-      <StaffActivityView />
+      <LoginHistoryView />
     </div>
   );
 }

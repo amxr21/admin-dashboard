@@ -42,6 +42,7 @@ pnpm-debug.log*
 
 # Private working knowledge — never commit
 .claude-workbook/
+.worktrees/
 
 # Internal working docs - never committed
 docs/
