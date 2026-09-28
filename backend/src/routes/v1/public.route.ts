@@ -178,9 +178,9 @@ publicRouter.get('/public/categories', requireArea('categories'), async (_req, r
 /**
  * Current public offers.
  *
- * INFORMATIONAL ONLY — nothing applies a discount at checkout yet, so a code
- * listed here is something a storefront can display, not something it can
- * redeem. CUSTOMER-scoped discounts and usage counts are withheld entirely;
+ * Storefronts can display these offers and submit a code during checkout.
+ * Checkout validates eligibility and redeems the code atomically with the order.
+ * CUSTOMER-scoped discounts and usage counts are withheld entirely;
  * see `listPublicDiscounts` for why each.
  */
 publicRouter.get('/public/discounts', requireArea('discounts'), async (_req, res) => {
