@@ -128,6 +128,14 @@ export const SETTINGS = {
     description: 'Where customers are told to write when something goes wrong.',
     placeholder: 'e.g. help@nourcoffee.com',
   },
+  'storefront.hideStockCounts': {
+    type: 'boolean',
+    default: false,
+    area: 'settings',
+    label: 'Hide public stock quantities',
+    description:
+      'Keep availability visible while omitting exact product and variant stock counts from the public catalogue and wishlist.',
+  },
   'store.currency': {
     type: 'enum',
     default: 'AED',

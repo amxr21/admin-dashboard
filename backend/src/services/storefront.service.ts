@@ -79,7 +79,7 @@ export interface PublicProduct {
    * over time and derive sales volume. Do NOT extend the same treatment to
    * `cost` (margin) or supplier fields, which have no customer-facing use.
    */
-  stock: number;
+  stock?: number;
   /** Convenience for the common case, so the UI doesn't re-derive `stock > 0`. */
   inStock: boolean;
   category: { id: string; name: string; slug: string | null } | null;
@@ -98,7 +98,7 @@ export interface PublicVariant {
   name: string;
   /** Fixed-2 string, same as the product price. */
   price: string;
-  stock: number;
+  stock?: number;
   inStock: boolean;
 }
 
@@ -120,6 +120,20 @@ function branchProductSelect(branchId: string) {
 }
 
 type BranchProductRow = Prisma.ProductGetPayload<{ select: ReturnType<typeof branchProductSelect> }>;
+
+function stockVisibility(product: PublicProduct, hideCounts: boolean): PublicProduct {
+  if (!hideCounts) return product;
+  const publicProduct = { ...product };
+  delete publicProduct.stock;
+  if (publicProduct.variants) {
+    publicProduct.variants = publicProduct.variants.map((variant) => {
+      const publicVariant = { ...variant };
+      delete publicVariant.stock;
+      return publicVariant;
+    });
+  }
+  return publicProduct;
+}
 
 /** A branch-scoped catalogue row, options included. */
 function toBranchProduct(product: BranchProductRow, locale: ProductLocale): PublicProduct {
@@ -205,7 +219,10 @@ export async function listPublicProducts(
     select: branchProductSelect(branchId),
     orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
   });
-  return products.map((product) => toBranchProduct(product, locale));
+  const hideCounts = Boolean(await getSettingValue('storefront.hideStockCounts'));
+  return products.map((product) =>
+    stockVisibility(toBranchProduct(product, locale), hideCounts),
+  );
 }
 
 export interface PublicMenuCategory {
@@ -244,13 +261,16 @@ export async function getPublicMenu(
     },
   });
 
+  const hideCounts = Boolean(await getSettingValue('storefront.hideStockCounts'));
   return categories
     .filter((category) => category.products.length > 0)
     .map((category) => ({
       id: category.id,
       title: category.name,
       slug: category.slug,
-      items: category.products.map((product) => toBranchProduct(product, locale)),
+      items: category.products.map((product) =>
+        stockVisibility(toBranchProduct(product, locale), hideCounts),
+      ),
     }));
 }
 
@@ -268,7 +288,8 @@ export async function getPublicProductBySlug(
 
   if (!product) throw AppError.notFound('Product not found');
 
-  return toBranchProduct(product, locale);
+  const hideCounts = Boolean(await getSettingValue('storefront.hideStockCounts'));
+  return stockVisibility(toBranchProduct(product, locale), hideCounts);
 }
 
 // ─── Categories ─────────────────────────────────────────────────────
@@ -612,7 +633,8 @@ export async function getWishlist(customerId: string): Promise<PublicProduct[]> 
     include: { product: { select: PUBLIC_PRODUCT_SELECT } },
     orderBy: { createdAt: 'desc' },
   });
-  return items.map((item) => toPublicProduct(item.product));
+  const hideCounts = Boolean(await getSettingValue('storefront.hideStockCounts'));
+  return items.map((item) => stockVisibility(toPublicProduct(item.product), hideCounts));
 }
 
 /** Toggle, so one endpoint serves both the filled and empty heart. */

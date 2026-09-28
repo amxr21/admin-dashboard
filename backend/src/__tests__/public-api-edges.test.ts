@@ -24,7 +24,23 @@ let token = '';
 let categoryId = '';
 const discountIds: string[] = [];
 const originalGoogleClientId = env.GOOGLE_CLIENT_ID;
+let previousStockSetting: { value: Prisma.JsonValue } | null = null;
 /** Response bodies are untyped JSON; these name the fields asserted on. */
+interface PublicProductBody {
+  id: string;
+  stock?: number;
+  inStock: boolean;
+  variants: { stock?: number; inStock: boolean }[];
+}
+interface ProductsBody {
+  data: PublicProductBody[];
+}
+interface ProductBody {
+  data: PublicProductBody;
+}
+interface MenuBody {
+  data: { id: string; items: PublicProductBody[] }[];
+}
 interface OrderBody {
   data: { orderNumber: string };
 }
@@ -64,6 +80,11 @@ async function discount(label: string, extra: Partial<Prisma.DiscountUncheckedCr
 }
 
 beforeAll(async () => {
+  previousStockSetting = await prisma.setting.findUnique({
+    where: { key: 'storefront.hideStockCounts' },
+    select: { value: true },
+  });
+  await prisma.setting.deleteMany({ where: { key: 'storefront.hideStockCounts' } });
   const owner = await prisma.user.create({
     data: { email: RUN + '@example.test', name: RUN, role: StaffRole.OWNER, passwordHash: 'test' },
   });
@@ -133,6 +154,16 @@ afterAll(async () => {
   await prisma.branch.deleteMany({ where: { businessId } });
   await prisma.business.deleteMany({ where: { id: businessId } });
   await prisma.user.deleteMany({ where: { id: ownerId } });
+  if (previousStockSetting) {
+    await prisma.setting.upsert({
+      where: { key: 'storefront.hideStockCounts' },
+      create: {
+        key: 'storefront.hideStockCounts',
+        value: previousStockSetting.value as Prisma.InputJsonValue,
+      },
+      update: { value: previousStockSetting.value as Prisma.InputJsonValue },
+    });
+  } else await prisma.setting.deleteMany({ where: { key: 'storefront.hideStockCounts' } });
   await prisma.$disconnect();
 });
 
@@ -252,6 +283,54 @@ describe('public API edge contracts', () => {
       expect((rejected.body as ErrorBody).error.details?.unavailableItems?.[0]?.productId).toBe(draft.id);
     } finally {
       await prisma.product.delete({ where: { id: draft.id } });
+    }
+  });
+
+  it('shows stock counts by default and omits product/variant/wishlist counts when configured', async () => {
+    const list = await withKey(request(app).get('/api/v1/public/products').query({ branchId }));
+    expect(list.status).toBe(200);
+    expect((list.body as ProductsBody).data.find((row) => row.id === productId)?.stock).toBe(1000);
+    await prisma.wishlistItem.create({ data: { customerId, productId } });
+    await prisma.setting.upsert({
+      where: { key: 'storefront.hideStockCounts' },
+      create: { key: 'storefront.hideStockCounts', value: true },
+      update: { value: true },
+    });
+    try {
+      const hiddenList = await withKey(
+        request(app).get('/api/v1/public/products').query({ branchId }),
+      );
+      const hiddenProduct = (hiddenList.body as ProductsBody).data.find(
+        (row) => row.id === variantProductId,
+      )!;
+      expect(hiddenList.status).toBe(200);
+      expect(hiddenProduct).not.toHaveProperty('stock');
+      expect(hiddenProduct.inStock).toBe(true);
+      expect(hiddenProduct.variants[0]).not.toHaveProperty('stock');
+      expect(hiddenProduct.variants[0].inStock).toBe(true);
+      const menu = await withKey(
+        request(app).get('/api/v1/public/products/menu').query({ branchId }),
+      );
+      expect(menu.status).toBe(200);
+      expect(
+        (menu.body as MenuBody).data.find((row) => row.id === categoryId)!.items[0],
+      ).not.toHaveProperty('stock');
+      const detail = await withKey(
+        request(app)
+          .get('/api/v1/public/products/' + RUN + '-cookie')
+          .query({ branchId }),
+      );
+      expect(detail.status).toBe(200);
+      expect((detail.body as ProductBody).data).not.toHaveProperty('stock');
+      const wishlist = await withKey(request(app).get('/api/v1/public/wishlist')).set(
+        'Authorization',
+        'Bearer ' + token,
+      );
+      expect(wishlist.status).toBe(200);
+      expect((wishlist.body as ProductsBody).data[0]!).not.toHaveProperty('stock');
+      expect((wishlist.body as ProductsBody).data[0]!.inStock).toBe(true);
+    } finally {
+      await prisma.setting.deleteMany({ where: { key: 'storefront.hideStockCounts' } });
     }
   });
 
