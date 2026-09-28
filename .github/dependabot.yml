@@ -70,6 +70,10 @@ updates:
     #     moving the frontend to ESLint 10.
     #   - vitest / @vitest/coverage-v8 5: a test-runner major (#294/#295 failed
     #     CI); both packages must move together.
+    #   - otplib 13: drops the `authenticator` API that two-factor.service.ts
+    #     is built on (#303 failed typecheck). Moving means rewriting 2FA
+    #     generation and verification while keeping every enrolled secret and
+    #     the accepted time window unchanged. v12 has no advisory.
     ignore:
       - dependency-name: typescript
         update-types: [version-update:semver-major]
@@ -88,6 +92,8 @@ updates:
       - dependency-name: vitest
         update-types: [version-update:semver-major]
       - dependency-name: '@vitest/coverage-v8'
+        update-types: [version-update:semver-major]
+      - dependency-name: otplib
         update-types: [version-update:semver-major]
     open-pull-requests-limit: 5
 
