@@ -173,3 +173,35 @@ describe('failure states', () => {
     expect(screen.queryByText('ORD-1024')).not.toBeInTheDocument();
   });
 });
+
+describe('delivery fee snapshots', () => {
+  it('prints the recorded delivery amount and area alongside the original total', async () => {
+    fetchOrder.mockResolvedValue(
+      makeOrder({
+        subtotal: '56.00',
+        taxAmount: '3.80',
+        total: '75.80',
+        deliveryFee: '16.00',
+        deliveryZoneName: 'Central area',
+      }),
+    );
+    render(<OrderInvoice id="o1" />);
+    const label = await screen.findByText('Delivery fee');
+    expect(within(label.closest('tr')!).getByText(/16/)).toBeInTheDocument();
+    expect(screen.getByText('Central area')).toBeInTheDocument();
+  });
+
+  it('still prints a selected delivery area when its fee was waived', async () => {
+    fetchOrder.mockResolvedValue(
+      makeOrder({
+        subtotal: '56.00',
+        taxAmount: '2.80',
+        deliveryFee: '0.00',
+        deliveryZoneName: 'Free area',
+      }),
+    );
+    render(<OrderInvoice id="o1" />);
+    expect(await screen.findByText('Delivery fee')).toBeInTheDocument();
+    expect(screen.getByText('Free area')).toBeInTheDocument();
+  });
+});

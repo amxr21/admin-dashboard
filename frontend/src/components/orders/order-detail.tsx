@@ -463,6 +463,13 @@ export function OrderDetail({ id }: { id: string }) {
                     <dt className="text-muted-foreground">{t('items.subtotal')}</dt>
                     <dd className="tabular-nums">{money(order.subtotal)}</dd>
                   </div>
+                  {order.deliveryFee !== undefined &&
+                  (order.deliveryZoneName || order.deliveryFee !== '0.00') ? (
+                    <div className="flex items-center justify-between gap-4">
+                      <dt className="text-muted-foreground">{t('items.deliveryFee')}</dt>
+                      <dd className="tabular-nums">{money(order.deliveryFee)}</dd>
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between gap-4">
                     <dt className="text-muted-foreground">{t(order.pricesIncludeTax ? 'items.taxIncluded' : 'items.tax')}</dt>
                     <dd className="tabular-nums">{money(order.taxAmount)}</dd>
@@ -688,6 +695,14 @@ function FulfillmentSection({ order }: { order: Order }) {
             <a href={`mailto:${contact.email}`} className="force-ltr block truncate hover:underline">
               {contact.email}
             </a>
+          </ContactRow>
+        ) : null}
+        {order.deliveryZoneName ? (
+          <ContactRow
+            icon={<MapPin aria-hidden className="size-4" />}
+            label={t('fulfillment.deliveryArea')}
+          >
+            <bdi>{order.deliveryZoneName}</bdi>
           </ContactRow>
         ) : null}
         {place ? (

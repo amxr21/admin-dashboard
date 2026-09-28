@@ -223,6 +223,20 @@ export function OrderInvoice({ id }: { id: string }) {
                   </td>
                   <td className="pt-3 text-end tabular-nums">{money(order.subtotal)}</td>
                 </tr>
+                {order.deliveryFee !== undefined &&
+                (order.deliveryZoneName || order.deliveryFee !== '0.00') ? (
+                  <tr>
+                    <td colSpan={3} className="text-end">
+                      {tOrders('items.deliveryFee')}
+                      {order.deliveryZoneName ? (
+                        <span className="text-muted-foreground block text-xs">
+                          <bdi>{order.deliveryZoneName}</bdi>
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="text-end tabular-nums">{money(order.deliveryFee)}</td>
+                  </tr>
+                ) : null}
                 <tr>
                   <td colSpan={3} className="text-end">
                     {tOrders(order.pricesIncludeTax ? 'items.taxIncluded' : 'items.tax')}

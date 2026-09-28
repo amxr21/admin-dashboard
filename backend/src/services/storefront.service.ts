@@ -10,6 +10,7 @@ import {
 } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
+import { priceDelivery } from './delivery-zones.service.js';
 import { AppError } from '../errors/AppError.js';
 import {
   executeIdempotently,
@@ -669,6 +670,7 @@ export interface CheckoutContact {
 }
 
 export interface CheckoutInput {
+  deliveryZoneId?: string | undefined;
   branchId: string;
   /** `variantId` names the option bought; required when the product has any. */
   items: { productId: string; variantId?: string | undefined; quantity: number }[];
@@ -680,7 +682,14 @@ export interface CheckoutInput {
 }
 
 /** What checkout would charge for a cart — see `quoteCheckout`. */
+type CheckoutPricingInput = Pick<CheckoutInput, 'branchId' | 'items' | 'discountCode'> & {
+  fulfillment?: string | undefined;
+  deliveryZoneId?: string | undefined;
+};
+
 export interface CheckoutQuote {
+  deliveryFee: string;
+  deliveryZoneName: string | null;
   lines: { productId: string; variantId: string | null; name: string; quantity: number; price: string; lineTotal: string }[];
   subtotal: string;
   /** The code that was applied, as stored, or null. */
@@ -702,7 +711,7 @@ export interface CheckoutQuote {
  * a discount code.
  */
 export async function quoteCheckout(
-  input: Pick<CheckoutInput, 'branchId' | 'items' | 'discountCode'>,
+  input: CheckoutPricingInput,
   customerId: string | null,
 ): Promise<CheckoutQuote> {
   const tax = await getTaxPolicy();
@@ -719,6 +728,8 @@ export async function quoteCheckout(
       price: line.price.toFixed(2),
       lineTotal: line.price.times(line.quantity).toFixed(2),
     })),
+    deliveryFee: priced.delivery.fee.toFixed(2),
+    deliveryZoneName: priced.delivery.zoneName,
     subtotal: priced.subtotal.toFixed(2),
     discountCode: priced.discount?.code ?? null,
     discountAmount: priced.discountAmount.toFixed(2),
@@ -1040,7 +1051,7 @@ async function claimVariantLine(
  * a quote only checks that one is left.
  */
 async function priceCheckout(
-  input: Pick<CheckoutInput, 'branchId' | 'items' | 'discountCode'>,
+  input: CheckoutPricingInput,
   customerId: string | null,
   tx: Prisma.TransactionClient,
   tax: TaxPolicy,
@@ -1211,16 +1222,27 @@ async function priceCheckout(
     // Rounded once, at creation, and snapshotted — same discipline as
     // OrderItem.price. The order-level discount is allocated proportionally
     // between taxable and exempt goods, so an exempt line never creates VAT.
-    const taxAmount = taxAfterDiscount(
+    const goodsTaxAmount = taxAfterDiscount(
       taxableSubtotal,
       discount?.taxableAmount ?? new Prisma.Decimal(0),
       tax.rate,
       tax.pricesIncludeTax,
     );
     // Tax-inclusive prices already carry the tax the customer pays.
-    const total = tax.pricesIncludeTax ? discountedSubtotal : discountedSubtotal.plus(taxAmount);
+    const delivery = await priceDelivery(
+      tx,
+      input.fulfillment,
+      input.deliveryZoneId,
+      discountedSubtotal,
+      tax,
+    );
+    const taxAmount = goodsTaxAmount.plus(delivery.taxAmount);
+    const goodsTotal = tax.pricesIncludeTax
+      ? discountedSubtotal
+      : discountedSubtotal.plus(goodsTaxAmount);
+    const total = goodsTotal.plus(delivery.total);
 
-    return { lines, subtotal, discount, discountAmount, taxAmount, total };
+    return { lines, subtotal, discount, discountAmount, taxAmount, total, delivery };
 }
 
 async function checkoutOnce(
@@ -1229,7 +1251,7 @@ async function checkoutOnce(
   tx: Prisma.TransactionClient,
   tax: TaxPolicy,
 ): Promise<CheckoutResult> {
-    const { lines, subtotal, discount, discountAmount, taxAmount, total } = await priceCheckout(
+    const { lines, subtotal, discount, discountAmount, taxAmount, total, delivery } = await priceCheckout(
       input,
       customerId,
       tx,
@@ -1238,6 +1260,10 @@ async function checkoutOnce(
     );
 
     const orderData = {
+      deliveryFee: delivery.fee,
+      deliveryTaxAmount: delivery.taxAmount,
+      deliveryZoneId: delivery.zoneId,
+      deliveryZoneName: delivery.zoneName,
       total,
       subtotal,
       taxAmount,
@@ -1389,6 +1415,8 @@ export async function checkout(
 // ─── Order history & tracking ───────────────────────────────────────
 
 export interface PublicOrder {
+  deliveryFee: string;
+  deliveryZoneName: string | null;
   orderNumber: string;
   status: string;
   /** 'DELIVERY' | 'PICKUP', or null for an order from before it was recorded. */
@@ -1404,6 +1432,8 @@ export interface PublicOrder {
 }
 
 const PUBLIC_ORDER_SELECT = {
+  deliveryFee: true,
+  deliveryZoneName: true,
   orderNumber: true,
   status: true,
   fulfillment: true,
@@ -1426,6 +1456,8 @@ function toPublicOrder(
   order: Prisma.OrderGetPayload<{ select: typeof PUBLIC_ORDER_SELECT }>,
 ): PublicOrder {
   return {
+    deliveryFee: order.deliveryFee.toFixed(2),
+    deliveryZoneName: order.deliveryZoneName,
     orderNumber: order.orderNumber,
     status: order.status,
     fulfillment: order.fulfillment,

@@ -321,6 +321,14 @@ export const SETTINGS = {
       'Applied to every order subtotal on the invoice. Set to 0 if you do not charge tax.',
     placeholder: 'e.g. 5',
   },
+  'store.deliveryZonesEnabled': {
+    type: 'boolean',
+    default: false,
+    area: 'settings',
+    label: 'Delivery zones and fees',
+    description:
+      'Require an active delivery area for website deliveries and include its fee in the quote. Pickup stays free.',
+  },
   'store.pricesIncludeTax': {
     type: 'boolean',
     default: false,

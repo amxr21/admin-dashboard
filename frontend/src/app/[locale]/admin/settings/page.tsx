@@ -8,6 +8,7 @@ import { SessionsPanel } from '@/components/settings/sessions-panel';
 import { ActiveStaffSessionsPanel } from '@/components/settings/active-staff-sessions-panel';
 import { ApiKeysPanel } from '@/components/settings/api-keys-panel';
 import { DataExportPanel } from '@/components/settings/data-export-panel';
+import { DeliveryZonesPanel } from '@/components/settings/delivery-zones-panel';
 import { PoliciesPanel } from '@/components/settings/policies-panel';
 import { PersonalSettingsPanel } from '@/components/settings/personal-settings-panel';
 import { SettingsForm } from '@/components/settings/settings-form';
@@ -65,6 +66,7 @@ export default async function SettingsPage({
       <ApiKeysPanel />
       <PersonalSettingsPanel />
       <SettingsForm />
+      <DeliveryZonesPanel />
       <DeveloperVisibilityPanel />
       <DataExportPanel />
       {/*

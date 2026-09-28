@@ -185,6 +185,8 @@ export interface RefundableLine {
 }
 
 export interface RefundOrderSnapshot {
+  /** Delivery VAT is not part of the tax refundable for returned goods. */
+  deliveryTaxAmount?: Prisma.Decimal | null;
   subtotal: Prisma.Decimal | null;
   discountAmount: Prisma.Decimal | null;
   taxAmount: Prisma.Decimal | null;
@@ -244,7 +246,7 @@ export function computeRefundBreakdown(
   const orderTaxable = sum(order.lines.filter((line) => line.isTaxable !== false));
   const taxShare =
     order.taxAmount && orderTaxable.gt(0)
-      ? order.taxAmount
+      ? Prisma.Decimal.max(order.taxAmount.minus(order.deliveryTaxAmount ?? zero), zero)
           .times(sum(returned.filter((line) => line.isTaxable !== false)))
           .dividedBy(orderTaxable)
       : zero;

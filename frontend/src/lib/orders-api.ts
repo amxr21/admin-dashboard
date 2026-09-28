@@ -115,6 +115,9 @@ export interface OrderDetail {
   /** The tax was inside the prices (`store.pricesIncludeTax` at the time):
    *  `taxAmount` is part of `total`, not added to it. Absent from older APIs. */
   pricesIncludeTax?: boolean;
+  /** Delivery amount and area name snapshotted at checkout. */
+  deliveryFee?: string;
+  deliveryZoneName?: string | null;
   paymentMethod: string | null;
   /** Paid on it so far, net of voids and before goodwill refunds. A web order
    *  is paid when it is handed over (delivered or collected). */
