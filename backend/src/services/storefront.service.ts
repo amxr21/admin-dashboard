@@ -877,8 +877,8 @@ async function resolveDiscount(
     : new Prisma.Decimal(0);
 
   /**
-   * Claim the use. Conditional on the count we just read, so two checkouts
-   * racing for the last use cannot both win: the loser updates zero rows.
+   * Claim against the live maximum, not a stale snapshot of usedCount. All
+   * remaining uses can be claimed concurrently; only exhaustion updates zero rows.
    *
    * `updateMany` rather than `update` because it reports the row count — an
    * `update` would succeed against the stale WHERE or throw a less specific
@@ -888,7 +888,7 @@ async function resolveDiscount(
 
   if (discount.maxUses !== null) {
     const claimed = await tx.discount.updateMany({
-      where: { id: discount.id, usedCount: discount.usedCount },
+      where: { id: discount.id, usedCount: { lt: discount.maxUses } },
       data: { usedCount: { increment: 1 } },
     });
 
@@ -989,16 +989,11 @@ async function claimVariantLine(
 ) {
   const soldOut = () =>
     AppError.conflict(`${line.name} just sold out at this branch — please adjust your cart and try again`);
-  try {
-    const claimed = await tx.branchVariantStock.updateMany({
-      where: { variantId: line.variantId, branchId, quantity: { gte: line.quantity } },
-      data: { quantity: { decrement: line.quantity } },
-    });
-    if (claimed.count === 0) throw soldOut();
-  } catch (err) {
-    if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2034') throw err;
-    throw soldOut();
-  }
+  const claimed = await tx.branchVariantStock.updateMany({
+    where: { variantId: line.variantId, branchId, quantity: { gte: line.quantity } },
+    data: { quantity: { decrement: line.quantity } },
+  });
+  if (claimed.count === 0) throw soldOut();
   await tx.productVariant.update({
     where: { id: line.variantId },
     data: { stock: { decrement: line.quantity } },
@@ -1310,37 +1305,21 @@ async function checkoutOnce(
     // checkouts for the same product contend on the row: InnoDB takes an
     // exclusive lock for the UPDATE and reads the latest committed value, so
     // the second one either waits or is aborted as a deadlock — it never
-    // applies to a stale count. The P2034 branch below is that abort.
+    // applies to a stale count. Deadlocks retry the entire idempotent transaction.
     for (const line of lines) {
       if (line.variantId !== null) {
         await claimVariantLine(tx, { ...line, variantId: line.variantId }, input.branchId, order.orderNumber);
         continue;
       }
-      try {
-        const claimed = await tx.branchStock.updateMany({
-          where: {
-            productId: line.productId,
-            branchId: input.branchId,
-            quantity: { gte: line.quantity },
-          },
-          data: { quantity: { decrement: line.quantity } },
-        });
-        if (claimed.count === 0) {
-          throw AppError.conflict(
-            `${line.name} just sold out at this branch — please adjust your cart and try again`,
-          );
-        }
-      } catch (err) {
-        // P2034 — write conflict / deadlock. This is the EXPECTED way to lose
-        // a race for a contended product, not a bug in this code. Left
-        // unmapped it surfaces to the shopper as a generic 500 and to Sentry
-        // as an incident, which is wrong on both counts: nothing is broken,
-        // someone else simply got there first. Mapped to the 409 the pre-flight
-        // stock check already returns, so both paths look the same to the
-        // storefront. Anything else is a real failure and must surface.
-        if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2034') {
-          throw err;
-        }
+      const claimed = await tx.branchStock.updateMany({
+        where: {
+          productId: line.productId,
+          branchId: input.branchId,
+          quantity: { gte: line.quantity },
+        },
+        data: { quantity: { decrement: line.quantity } },
+      });
+      if (claimed.count === 0) {
         throw AppError.conflict(
           `${line.name} just sold out at this branch — please adjust your cart and try again`,
         );

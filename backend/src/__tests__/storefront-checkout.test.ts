@@ -872,3 +872,59 @@ describe('quoting a cart', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('checkout under inventory and discount contention', () => {
+  it('sells all 10 available units under 20 simultaneous distinct request keys without overselling', async () => {
+    const product = await makeProduct('10.00', 10);
+    const keys = Array.from({ length: 20 }, () => randomUUID());
+    const responses = await Promise.all(keys.map((key) => order(product.id, 1, undefined, key)));
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      ...Array.from({ length: 10 }, () => 201),
+      ...Array.from({ length: 10 }, () => 409),
+    ]);
+    const successes = responses.filter((response) => response.status === 201);
+    expect(
+      new Set(successes.map((response) => (response.body as CheckoutBody).data.orderNumber)).size,
+    ).toBe(10);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).stock).toBe(0);
+    expect(
+      (
+        await prisma.branchStock.findUniqueOrThrow({
+          where: { productId_branchId: { productId: product.id, branchId } },
+        })
+      ).quantity,
+    ).toBe(0);
+    expect(await prisma.orderItem.count({ where: { productId: product.id } })).toBe(10);
+    expect(
+      await prisma.stockMovement.count({ where: { productId: product.id, reason: 'SOLD' } }),
+    ).toBe(10);
+    const winnerIndex = responses.findIndex((response) => response.status === 201);
+    const replay = await order(product.id, 1, undefined, keys[winnerIndex]);
+    expect(replay.status).toBe(201);
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+    expect(replay.body).toEqual(responses[winnerIndex]!.body);
+    expect(
+      await prisma.stockMovement.count({ where: { productId: product.id, reason: 'SOLD' } }),
+    ).toBe(10);
+  }, 60_000);
+
+  it('grants all 3 capped discount uses and rolls back stock for rejected buyers', async () => {
+    const product = await makeProduct('10.00', 20);
+    const discount = await makeDiscount('CONTENTION', { maxUses: 3 });
+    const responses = await Promise.all(
+      Array.from({ length: 12 }, () => order(product.id, 1, discount.code)),
+    );
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      ...Array.from({ length: 3 }, () => 201),
+      ...Array.from({ length: 9 }, () => 400),
+    ]);
+    expect(
+      (await prisma.discount.findUniqueOrThrow({ where: { id: discount.id } })).usedCount,
+    ).toBe(3);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).stock).toBe(17);
+    expect(await prisma.orderItem.count({ where: { productId: product.id } })).toBe(3);
+    expect(
+      await prisma.stockMovement.count({ where: { productId: product.id, reason: 'SOLD' } }),
+    ).toBe(3);
+  }, 60_000);
+});
