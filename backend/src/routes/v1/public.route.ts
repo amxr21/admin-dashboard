@@ -1,5 +1,12 @@
 import { Router } from 'express';
-import { discountCodeRateLimit, publicKeyFailureRateLimit, publicShopperRateLimit, publicKeyRateLimit, storefrontShopperKey } from '../../middleware/rateLimit.js';
+import {
+  publicTrackingRateLimit,
+  discountCodeRateLimit,
+  publicKeyFailureRateLimit,
+  publicShopperRateLimit,
+  publicKeyRateLimit,
+  storefrontShopperKey,
+} from '../../middleware/rateLimit.js';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 
@@ -18,6 +25,7 @@ import { setOwnMarketingConsent } from '../../services/campaign-consent.service.
 import { loginWithGoogle } from '../../services/customer-auth.service.js';
 import {
   addToCart,
+  PUBLIC_CART_MAX_QUANTITY,
   checkout,
   getCart,
   getMyOrders,
@@ -245,14 +253,14 @@ const addToCartBody = z
   .object({
     productId: z.string().min(1).max(64),
     // Capped: a quantity of 10,000 is a mistake or an attack, not an order.
-    quantity: z.coerce.number().int().min(1).max(99).default(1),
+    quantity: z.coerce.number().int().min(1).max(PUBLIC_CART_MAX_QUANTITY).default(1),
   })
   .strict();
 const setQuantityBody = z
   .object({
     productId: z.string().min(1).max(64),
     // 0 is allowed and means "remove the line".
-    quantity: z.coerce.number().int().min(0).max(99),
+    quantity: z.coerce.number().int().min(0).max(PUBLIC_CART_MAX_QUANTITY),
   })
   .strict();
 
@@ -313,7 +321,7 @@ const cartItems = z
         productId: z.string().min(1).max(64),
         // The option bought; required when the product has any.
         variantId: z.string().min(1).max(64).optional(),
-        quantity: z.coerce.number().int().min(1).max(99),
+        quantity: z.coerce.number().int().min(1).max(PUBLIC_CART_MAX_QUANTITY),
       })
       .strict(),
   )
@@ -456,7 +464,7 @@ const trackQuery = z.object({
   phone: z.string().trim().min(4).max(48),
 });
 
-publicRouter.get('/public/orders/track', requireArea('orders'), async (req, res) => {
+publicRouter.get('/public/orders/track', requireArea('orders'), publicTrackingRateLimit, async (req, res) => {
   const parsed = trackQuery.safeParse(req.query);
   if (!parsed.success) {
     throw AppError.badRequest('An order number and phone number are both required');

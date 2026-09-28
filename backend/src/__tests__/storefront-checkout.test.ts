@@ -531,7 +531,7 @@ describe('codes that must be refused', () => {
     const res = await order(product.id, 1, discount.code);
 
     expect(res.status).toBe(400);
-    expect((res.body as ErrorBody).error.message).toMatch(/expired/i);
+    expect((res.body as ErrorBody).error.message).toMatch(/not valid/i);
   });
 
   it('refuses a customer-scoped code to a guest, without confirming it exists', async () => {
@@ -549,7 +549,7 @@ describe('codes that must be refused', () => {
     const res = await order(product.id, 1, discount.code);
 
     expect(res.status).toBe(400);
-    expect((res.body as ErrorBody).error.message).toMatch(/does not apply/i);
+    expect((res.body as ErrorBody).error.message).toMatch(/not valid/i);
   });
 
   it('refuses a product-scoped code when the cart holds none of its products', async () => {
@@ -563,7 +563,7 @@ describe('codes that must be refused', () => {
     const res = await order(inCart.id, 1, discount.code);
 
     expect(res.status).toBe(400);
-    expect((res.body as ErrorBody).error.message).toMatch(/does not apply/i);
+    expect((res.body as ErrorBody).error.message).toMatch(/not valid/i);
   });
 
   it('allows a product-scoped code when the cart does hold one', async () => {
@@ -603,9 +603,8 @@ describe('the usage ledger', () => {
 
     const res = await order(product.id, 1, discount.code);
 
-    // 409, not 400: nothing is malformed, somebody else got there first —
-    // the same shape the oversell race already reports.
-    expect(res.status).toBe(409);
+    // Keep every denied code indistinguishable to public callers.
+    expect(res.status).toBe(400);
   });
 
   it('does not count a redemption when the order fails', async () => {

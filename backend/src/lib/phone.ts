@@ -3,20 +3,26 @@ export function normalizePhone(value: string): string {
   return value.replace(/\D/g, '');
 }
 
-/** Fewer digits than this is not a phone number, just a guess at part of one. */
-const MIN_PHONE_DIGITS = 7;
-
-/**
- * Whether two phone numbers, typed however, are the same line: "050 123 4567",
- * "+971 50 123 4567" and "00971501234567" all match. Leading zeros (a trunk
- * or international prefix) are dropped and the country code may be missing
- * from one side, so one has to END with the other.
- *
- * A short fragment matches nothing — it is a guess, not a number.
- */
+/** Compare complete phone numbers, never arbitrary trailing fragments.
+ * Explicit international numbers (plus/00), or unmarked long country-code
+ * forms, must match in full. A complete 8–10-digit national number may omit
+ * a trunk zero and a 1–3-digit country code on one side. Eight is the floor
+ * because UAE landlines and GCC mobiles are eight digits without the zero. */
 export function phonesMatch(a: string, b: string): boolean {
-  const left = normalizePhone(a).replace(/^0+/, '');
-  const right = normalizePhone(b).replace(/^0+/, '');
-  if (Math.min(left.length, right.length) < MIN_PHONE_DIGITS) return false;
-  return left.endsWith(right) || right.endsWith(left);
+  const parts = (value: string) => {
+    const digits = normalizePhone(value);
+    const international = /^\s*(?:\+|00)/.test(value) || digits.length > 10;
+    return {
+      international,
+      digits: international ? digits.replace(/^00/, '') : digits.replace(/^0/, ''),
+    };
+  };
+  const left = parts(a);
+  const right = parts(b);
+  if (left.digits.length < 8 || right.digits.length < 8) return false;
+  if (left.international === right.international) return left.digits === right.digits;
+  const local = left.international ? right.digits : left.digits;
+  const full = left.international ? left.digits : right.digits;
+  const countryLength = full.length - local.length;
+  return local.length <= 10 && countryLength >= 1 && countryLength <= 3 && full.endsWith(local);
 }

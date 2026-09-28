@@ -328,3 +328,15 @@ export const publicKeyRateLimit = rateLimit({
     },
   },
 });
+
+/** Track lookups disclose order data and must have their own guess budget. */
+export const publicTrackingRateLimit = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 20,
+  keyGenerator: storefrontShopperKey,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: {
+    error: { code: 'RATE_LIMITED', message: 'Too many tracking attempts. Try again later.' },
+  },
+});

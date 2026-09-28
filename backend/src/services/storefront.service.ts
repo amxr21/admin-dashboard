@@ -525,12 +525,49 @@ async function assertPurchasable(productId: string): Promise<void> {
   if (!product) throw AppError.badRequest('That product is not available');
 }
 
+export const PUBLIC_CART_MAX_QUANTITY = 99;
+
+/** Serialize one customer's cart mutations, including the first insert, so
+ * simultaneous additions cannot both pass the quantity cap on a stale read. */
+async function writeCartQuantity(
+  customerId: string,
+  productId: string,
+  quantity: number,
+  increment: boolean,
+): Promise<void> {
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > PUBLIC_CART_MAX_QUANTITY) {
+    throw AppError.badRequest('Cart quantities must be between 1 and 99', {
+      field: 'quantity',
+      productId,
+    });
+  }
+  await prisma.$transaction(async (tx) => {
+    const customers = await tx.$queryRaw<{ id: string }[]>(
+      Prisma.sql`SELECT id FROM customers WHERE id = ${customerId} FOR UPDATE`,
+    );
+    if (customers.length === 0) throw AppError.unauthorized('Invalid or expired session');
+    const previous = await tx.cartItem.findUnique({
+      where: { customerId_productId: { customerId, productId } }, select: { quantity: true },
+    });
+    const next = increment ? (previous?.quantity ?? 0) + quantity : quantity;
+    if (next > PUBLIC_CART_MAX_QUANTITY) {
+      throw AppError.badRequest('You can have at most 99 of an item in your cart', {
+        field: 'quantity',
+        productId,
+      });
+    }
+    await tx.cartItem.upsert({
+      where: { customerId_productId: { customerId, productId } },
+      create: { customerId, productId, quantity: next }, update: { quantity: next },
+    });
+  });
+}
+
 /**
  * Add to cart, or increment an existing line.
  *
- * Uses `upsert` on the `(customerId, productId)` unique index so two rapid taps
- * become quantity 2 rather than two rows — the check-then-insert alternative
- * races with itself.
+ * The customer row lock in `writeCartQuantity` makes two rapid taps become
+ * quantity 2 rather than two rows, and keeps the total within the cap.
  */
 export async function addToCart(
   customerId: string,
@@ -539,11 +576,7 @@ export async function addToCart(
 ): Promise<CartView> {
   await assertPurchasable(productId);
 
-  await prisma.cartItem.upsert({
-    where: { customerId_productId: { customerId, productId } },
-    create: { customerId, productId, quantity },
-    update: { quantity: { increment: quantity } },
-  });
+  await writeCartQuantity(customerId, productId, quantity, true);
 
   return getCart(customerId);
 }
@@ -559,11 +592,7 @@ export async function setCartQuantity(
 
   await assertPurchasable(productId);
 
-  await prisma.cartItem.upsert({
-    where: { customerId_productId: { customerId, productId } },
-    create: { customerId, productId, quantity },
-    update: { quantity },
-  });
+  await writeCartQuantity(customerId, productId, quantity, false);
 
   return getCart(customerId);
 }
@@ -749,11 +778,11 @@ async function resolveDiscount(
   }
 
   if (discount.expiresAt !== null && discount.expiresAt <= new Date()) {
-    throw AppError.badRequest('That discount code has expired', { field: 'discountCode' });
+    throw AppError.badRequest('That discount code is not valid', { field: 'discountCode' });
   }
 
   if (discount.maxUses !== null && discount.usedCount >= discount.maxUses) {
-    throw AppError.conflict('That discount code has been fully claimed', {
+    throw AppError.badRequest('That discount code is not valid', {
       field: 'discountCode',
     });
   }
@@ -762,7 +791,7 @@ async function resolveDiscount(
     const allowed =
       customerId !== null && discount.customers.some((entry) => entry.id === customerId);
     if (!allowed) {
-      throw AppError.badRequest('That discount code does not apply to this order', {
+      throw AppError.badRequest('That discount code is not valid', {
         field: 'discountCode',
       });
     }
@@ -777,7 +806,7 @@ async function resolveDiscount(
     const products = new Set(discount.products.map((entry) => entry.id));
     eligible = (line) => products.has(line.productId);
     if (!productIds.some((id) => products.has(id))) {
-      throw AppError.badRequest('That discount code does not apply to anything in your cart', {
+      throw AppError.badRequest('That discount code is not valid', {
         field: 'discountCode',
       });
     }
@@ -794,7 +823,7 @@ async function resolveDiscount(
     );
     eligible = (line) => inScope.has(line.productId);
     if (inScope.size === 0) {
-      throw AppError.badRequest('That discount code does not apply to anything in your cart', {
+      throw AppError.badRequest('That discount code is not valid', {
         field: 'discountCode',
       });
     }
@@ -842,7 +871,7 @@ async function resolveDiscount(
     });
 
     if (claimed.count === 0) {
-      throw AppError.conflict('That discount code has been fully claimed', {
+      throw AppError.badRequest('That discount code is not valid', {
         field: 'discountCode',
       });
     }
@@ -1085,14 +1114,35 @@ async function priceCheckout(
 
       // Unknown or unavailable — named generically, since the caller supplied
       // the id and doesn't need to learn whether it exists but is a draft.
-      if (!product) throw AppError.badRequest('One or more items are no longer available');
+      if (!product) {
+        // Only names already on the public catalogue may appear in an error.
+        // Draft/archived/unknown IDs stay unnamed; the ID lets the caller mark
+        // the corresponding local line without accepting its supplied price.
+        const publicName = await tx.product.findFirst({
+          where: { id: productId, ...PUBLIC_PRODUCT_WHERE },
+          select: { name: true },
+        });
+        const message = publicName
+          ? `${publicName.name} is no longer available at this branch`
+          : 'An item in your cart is no longer available';
+        throw AppError.badRequest(message, {
+          field: 'items',
+          productId,
+          unavailableItems: [{ productId, name: publicName?.name ?? null }],
+        });
+      }
 
       // A product sold in options is only ever sold AS an option. Selling
       // "T-shirt" with no size would draw on a product-level stock row nobody
       // counts, and hand the packer a line they can't pick.
       const variant = variantId ? variantById.get(variantId) : undefined;
       if (variantId && (!variant || variant.productId !== productId)) {
-        throw AppError.badRequest('One or more items are no longer available', { field: 'variantId' });
+        throw AppError.badRequest(`${product.name} has an unavailable option`, {
+          field: 'variantId',
+          productId,
+          variantId,
+          unavailableItems: [{ productId, name: product.name }],
+        });
       }
       if (!variant && product._count.variants > 0) {
         throw AppError.badRequest(`Choose an option for ${product.name}`, { field: 'variantId', productId });
