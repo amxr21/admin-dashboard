@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { SAFE_USER_SELECT } from './safe-user.js';
 import { AppError } from '../errors/AppError.js';
 
 /**
@@ -136,6 +137,7 @@ export async function createLoginSession(
     const user = await tx.user.update({
       where: { id: userId },
       data: { lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null },
+      select: { ...SAFE_USER_SELECT, tokenVersion: true },
     });
     await assertSessionCapacity(userId, sessionTimeoutMinutes, tx);
     const session = await tx.session.create({

@@ -8,6 +8,7 @@ import { getSettingValue } from '../services/settings.service.js';
 import { auditDenied } from '../services/audit.service.js';
 import { isIpAllowed, parseAllowlist } from '../lib/ip-allowlist.js';
 import { requireUser } from './authenticate.js';
+import { markAreaGuard } from './area-guard.js';
 import { effectiveRole } from './branch-context.js';
 
 /**
@@ -272,7 +273,8 @@ export function requireArea(area: Area) {
    * directly here would make the whole feature cosmetic: the matrix would
    * save, the UI would hide the link, and the endpoint would still answer.
    */
-  return async function areaGuard(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  // Marked, so `authenticate` knows this route checks a key's scopes.
+  return markAreaGuard(async function areaGuard(req: Request, _res: Response, next: NextFunction): Promise<void> {
     try {
       const user = requireUser(req);
       /**
@@ -359,7 +361,7 @@ export function requireArea(area: Area) {
     } catch (err) {
       next(err);
     }
-  };
+  });
 }
 
 /** Apply an owner's visibility choice to role-specific routes that bypass requireArea. */

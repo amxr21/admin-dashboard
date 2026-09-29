@@ -16,7 +16,7 @@ import { defaultBranchId } from './inventory.service.js';
 import { executeIdempotently } from './idempotency.service.js';
 import { normalizePhone } from '../lib/phone.js';
 import { dateOnlyInTimeZone } from '../lib/date-range.js';
-import { computeOrderTotals, getTaxRate } from './order-math.service.js';
+import { computeOrderTotals, getTaxPolicy } from './order-math.service.js';
 import { getSettingValue } from './settings.service.js';
 import { resolveTenderRate } from './tender-currency.service.js';
 import { restoreVariantStock } from './variants.service.js';
@@ -583,6 +583,8 @@ export interface SaleQuote {
   subtotal: string;
   taxAmount: string;
   total: string;
+  /** The till shows "VAT included" rather than adding a VAT line. */
+  pricesIncludeTax: boolean;
 }
 
 /**
@@ -595,12 +597,12 @@ export interface SaleQuote {
 export async function quoteSale(lines: Pick<CheckoutLine, 'productId' | 'variantId' | 'quantity' | 'discountPercent'>[]): Promise<SaleQuote> {
   const productIds = [...new Set(lines.map((line) => line.productId))];
   const variantIds = [...new Set(lines.flatMap((line) => (line.variantId ? [line.variantId] : [])))];
-  const [products, variants, taxRate] = await Promise.all([
+  const [products, variants, tax] = await Promise.all([
     prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true, price: true, isTaxable: true } }),
     variantIds.length > 0
       ? prisma.productVariant.findMany({ where: { id: { in: variantIds } }, select: { id: true, price: true, productId: true } })
       : Promise.resolve([]),
-    getTaxRate(),
+    getTaxPolicy(),
   ]);
   const productById = new Map(products.map((product) => [product.id, product]));
   const variantById = new Map(variants.map((variant) => [variant.id, variant]));
@@ -619,10 +621,16 @@ export async function quoteSale(lines: Pick<CheckoutLine, 'productId' | 'variant
         isTaxable: product.isTaxable,
       };
     }),
-    taxRate,
+    tax.rate,
+    tax.pricesIncludeTax,
   );
 
-  return { subtotal: totals.subtotal.toFixed(2), taxAmount: totals.taxAmount.toFixed(2), total: totals.total.toFixed(2) };
+  return {
+    subtotal: totals.subtotal.toFixed(2),
+    taxAmount: totals.taxAmount.toFixed(2),
+    total: totals.total.toFixed(2),
+    pricesIncludeTax: tax.pricesIncludeTax,
+  };
 }
 
 /**
@@ -707,7 +715,7 @@ async function checkoutOnce(
     }
   }
 
-  const taxRate = await getTaxRate();
+  const tax = await getTaxPolicy();
   const allowNegative = Boolean(await getSettingValue('inventory.allowNegativeStock'));
 
   /**
@@ -947,7 +955,8 @@ async function checkoutOnce(
         quantity: line.quantity,
         isTaxable: line.isTaxable,
       })),
-      taxRate,
+      tax.rate,
+      tax.pricesIncludeTax,
     );
 
     const order = await tx.order.create({
@@ -956,6 +965,7 @@ async function checkoutOnce(
         status: OrderStatus.CONFIRMED,
         subtotal: totals.subtotal,
         taxAmount: totals.taxAmount,
+        pricesIncludeTax: tax.pricesIncludeTax,
         // Denormalised on purpose — every Reports/Dashboard revenue figure
         // reads THIS, never a recomputation.
         total: totals.total,
@@ -1287,6 +1297,8 @@ async function checkoutOnce(
       /** Lines charged no VAT, from the same snapshot the tax was computed
        *  on, so the receipt can mark them without a second opinion. */
       exemptProductIds: created.exemptProductIds,
+      /** The receipt reads "Tax included" rather than adding a tax line. */
+      pricesIncludeTax: tax.pricesIncludeTax,
       /**
        * Who served the customer, for the `Served by` line on the receipt.
        *
@@ -1473,7 +1485,13 @@ export async function voidSale(
   const branchId = order.branchId;
 
   await prisma.$transaction(async (tx) => {
-    await tx.order.update({ where: { id: orderId }, data: { status: OrderStatus.CANCELED } });
+    // Conditional on the status the void was checked against: two voids at
+    // once would otherwise both restock the goods and both reverse the payment.
+    const voided = await tx.order.updateMany({
+      where: { id: orderId, status: order.status },
+      data: { status: OrderStatus.CANCELED },
+    });
+    if (voided.count === 0) throw AppError.conflict('This order was just changed by someone else — reload it and try again');
 
     await tx.orderStatusHistory.create({
       data: {

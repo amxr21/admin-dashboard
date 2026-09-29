@@ -69,7 +69,8 @@ export function createApp(): Express {
   // Skips the health check: uptime probes poll it every few seconds and would
   // otherwise consume the budget that real traffic needs.
   app.use('/api/v1', (req, res, next) => {
-    if (req.path === '/health') return next();
+    // Public traffic has separate verified-key and per-shopper budgets.
+    if (req.path === '/health' || req.path === '/public' || req.path.startsWith('/public/')) return next();
     return apiRateLimit(req, res, next);
   });
 

@@ -169,15 +169,36 @@ interface GoogleProfile {
 async function verifyGoogleIdToken(idToken: string): Promise<GoogleProfile> {
   const client = getGoogleClient();
 
-  const ticket = await Promise.race([
-    client.verifyIdToken({ idToken, audience: env.GOOGLE_CLIENT_ID }),
-    new Promise<never>((_resolve, reject) =>
-      setTimeout(
-        () => reject(AppError.serviceUnavailable('Google sign-in timed out — please try again')),
-        env.GOOGLE_VERIFY_TIMEOUT_MS,
-      ),
-    ),
-  ]);
+  if (idToken.split('.').length !== 3) throw AppError.unauthorized('Google sign-in failed');
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const ticket = await (async () => {
+    try {
+      return await Promise.race([
+        client.verifyIdToken({ idToken, audience: env.GOOGLE_CLIENT_ID }),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(AppError.serviceUnavailable('Google sign-in timed out — please try again')),
+            env.GOOGLE_VERIFY_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      // The installed google-auth-library throws plain Errors for invalid
+      // tokens. Match its verification failures only; transport/configuration
+      // failures retain a 5xx and never blame the shopper's credentials.
+      const invalidToken =
+        /^(Wrong number of segments in token|Can't parse token (envelope|payload)|No pem found for envelope|Invalid token signature|No issue time in token|No expiration time in token|iat field using invalid format|exp field using invalid format|Expiration time too far in future|Token used too (early|late)|Invalid issuer|Wrong recipient)/;
+      if (error instanceof Error && invalidToken.test(error.message))
+        throw AppError.unauthorized('Google sign-in failed');
+      throw AppError.serviceUnavailable(
+        'Google sign-in is temporarily unavailable — please try again',
+      );
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  })();
 
   const payload = ticket.getPayload();
 

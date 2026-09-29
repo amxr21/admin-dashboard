@@ -413,6 +413,179 @@ describe('every legal move leaves an audit trail', () => {
   });
 });
 
+/**
+ * Two staff moving the same order at the same moment (Fluffy storefront QA):
+ * both read PENDING, both writes landed — CONFIRMED and CANCELED, two history
+ * rows — in 10 rounds out of 10.
+ */
+describe('two staff changing one order at once', () => {
+  it('lets exactly one change win and tells the other to reload', async () => {
+    for (let round = 0; round < 5; round += 1) {
+      const id = await makeOrder(OrderStatus.PENDING);
+
+      const [confirm, cancel] = await Promise.all([
+        request(app).patch(`/api/v1/orders/${id}/status`).set(auth(ownerToken)).send({ to: OrderStatus.CONFIRMED }),
+        request(app)
+          .patch(`/api/v1/orders/${id}/status`)
+          .set(auth(ownerToken))
+          .send({ to: OrderStatus.CANCELED, cancellationReason: 'CUSTOMER_REQUEST' }),
+      ]);
+
+      const statuses = [confirm.status, cancel.status].sort();
+      expect(statuses).toEqual([200, 409]);
+      const history = await prisma.orderStatusHistory.findMany({ where: { orderId: id } });
+      expect(history).toHaveLength(1);
+      const order = await prisma.order.findUniqueOrThrow({ where: { id }, select: { status: true } });
+      expect(order.status).toBe(history[0]?.toStatus);
+    }
+  });
+});
+
+describe('cancelling gives back what the order held (FX-05)', () => {
+  const madeProducts: string[] = [];
+  const madeDiscounts: string[] = [];
+
+  afterAll(async () => {
+    // Movements, shelves and variants cascade from the product.
+    await prisma.product.deleteMany({ where: { id: { in: madeProducts } } });
+    await prisma.discount.deleteMany({ where: { id: { in: madeDiscounts } } });
+  });
+
+  /** A product as a checkout leaves it: `stock` units left, all at this branch. */
+  async function stockedProduct(stock: number) {
+    const product = await prisma.product.create({
+      data: { name: `${RUN} Restock ${madeProducts.length}`, price: new Prisma.Decimal('8.00'), stock },
+    });
+    madeProducts.push(product.id);
+    await prisma.branchStock.create({ data: { productId: product.id, branchId, quantity: stock } });
+    return product.id;
+  }
+
+  async function orderOf(
+    lines: Prisma.OrderItemUncheckedCreateWithoutOrderInput[],
+    extra: Partial<Prisma.OrderUncheckedCreateInput> = {},
+  ) {
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `${RUN}-rs-${orderIds.length}`,
+        status: OrderStatus.PENDING,
+        branchId,
+        total: new Prisma.Decimal('24.00'),
+        ...extra,
+        items: { create: lines },
+      },
+    });
+    orderIds.push(order.id);
+    return order;
+  }
+
+  const move = (id: string, to: OrderStatus) =>
+    request(app)
+      .patch(`/api/v1/orders/${id}/status`)
+      .set(auth(ownerToken))
+      .send(to === OrderStatus.CANCELED ? { to, cancellationReason: 'CUSTOMER_REQUEST' } : { to });
+
+  const stockOf = async (id: string) => {
+    const [product, shelf] = await Promise.all([
+      prisma.product.findUniqueOrThrow({ where: { id }, select: { stock: true } }),
+      prisma.branchStock.findUniqueOrThrow({ where: { productId_branchId: { productId: id, branchId } } }),
+    ]);
+    return { total: product.stock, shelf: shelf.quantity };
+  };
+
+  it('puts a product line back on the branch shelf, with a movement saying why', async () => {
+    const product = await stockedProduct(7);
+    const order = await orderOf([{ productId: product, quantity: 3, price: new Prisma.Decimal('8.00') }]);
+
+    expect((await move(order.id, OrderStatus.CANCELED)).status).toBe(200);
+
+    expect(await stockOf(product)).toEqual({ total: 10, shelf: 10 });
+    const movements = await prisma.stockMovement.findMany({ where: { productId: product } });
+    expect(movements).toHaveLength(1);
+    expect(movements[0]).toMatchObject({
+      delta: 3,
+      reason: 'CORRECTION',
+      branchId,
+      actorId: ownerId,
+      note: `Canceled order ${order.orderNumber}`,
+    });
+  });
+
+  it('puts a variant line back on the variant, not on the base product', async () => {
+    const product = await stockedProduct(4);
+    const variant = await prisma.productVariant.create({
+      data: { productId: product, name: 'Large', sku: `${RUN}-large`, price: new Prisma.Decimal('12.00'), stock: 2 },
+    });
+    await prisma.branchVariantStock.create({ data: { variantId: variant.id, branchId, quantity: 2 } });
+    const order = await orderOf([
+      { productId: product, variantId: variant.id, variantName: 'Large', quantity: 2, price: new Prisma.Decimal('12.00') },
+    ]);
+
+    expect((await move(order.id, OrderStatus.CANCELED)).status).toBe(200);
+
+    const [row, shelf] = await Promise.all([
+      prisma.productVariant.findUniqueOrThrow({ where: { id: variant.id }, select: { stock: true } }),
+      prisma.branchVariantStock.findUniqueOrThrow({ where: { variantId_branchId: { variantId: variant.id, branchId } } }),
+    ]);
+    expect(row.stock).toBe(4);
+    expect(shelf.quantity).toBe(4);
+    expect(await stockOf(product)).toEqual({ total: 4, shelf: 4 });
+  });
+
+  it('leaves the base product alone when the line was a variant that no longer exists', async () => {
+    const product = await stockedProduct(4);
+    // The variant was deleted after the sale: its id went, its name stayed.
+    const order = await orderOf([
+      { productId: product, variantId: null, variantName: 'Discontinued', quantity: 2, price: new Prisma.Decimal('12.00') },
+    ]);
+
+    expect((await move(order.id, OrderStatus.CANCELED)).status).toBe(200);
+
+    expect(await stockOf(product)).toEqual({ total: 4, shelf: 4 });
+    expect(await prisma.stockMovement.count({ where: { productId: product } })).toBe(0);
+  });
+
+  it('frees the discount use the checkout claimed', async () => {
+    const discount = await prisma.discount.create({
+      data: { code: `${RUN}-once`, value: new Prisma.Decimal('10'), maxUses: 1, usedCount: 1 },
+    });
+    madeDiscounts.push(discount.id);
+    const product = await stockedProduct(7);
+    const order = await orderOf([{ productId: product, quantity: 3, price: new Prisma.Decimal('8.00') }], {
+      discountId: discount.id,
+      discountCode: discount.code,
+      discountAmount: new Prisma.Decimal('2.40'),
+    });
+
+    expect((await move(order.id, OrderStatus.CANCELED)).status).toBe(200);
+
+    const after = await prisma.discount.findUniqueOrThrow({ where: { id: discount.id }, select: { usedCount: true } });
+    expect(after.usedCount).toBe(0);
+  });
+
+  it('gives the stock back once when two people cancel the same order at once', async () => {
+    const product = await stockedProduct(7);
+    const order = await orderOf([{ productId: product, quantity: 3, price: new Prisma.Decimal('8.00') }]);
+
+    const results = await Promise.all([move(order.id, OrderStatus.CANCELED), move(order.id, OrderStatus.CANCELED)]);
+
+    // The loser either lost the race (409) or read the order already canceled (400).
+    expect(results.filter((res) => res.status === 200)).toHaveLength(1);
+    expect(results.map((res) => res.status).filter((status) => status !== 200)[0]).toBeOneOf([400, 409]);
+    expect(await stockOf(product)).toEqual({ total: 10, shelf: 10 });
+  });
+
+  it('leaves stock alone on any other move', async () => {
+    const product = await stockedProduct(7);
+    const order = await orderOf([{ productId: product, quantity: 3, price: new Prisma.Decimal('8.00') }]);
+
+    expect((await move(order.id, OrderStatus.CONFIRMED)).status).toBe(200);
+
+    expect(await stockOf(product)).toEqual({ total: 7, shelf: 7 });
+    expect(await prisma.stockMovement.count({ where: { productId: product } })).toBe(0);
+  });
+});
+
 describe('statusHistory resolves the actor name (C5.3)', () => {
   it('includes changedByName alongside the plain id', async () => {
     const id = await makeOrder(OrderStatus.PENDING);

@@ -200,6 +200,7 @@ async function serialiseReturn(id: string, branchId?: string) {
           subtotal: true,
           discountAmount: true,
           taxAmount: true,
+          pricesIncludeTax: true,
           total: true,
           items: { select: { price: true, quantity: true, discountPercent: true, isTaxable: true } },
         },
@@ -510,6 +511,7 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
         subtotal: true,
         discountAmount: true,
         taxAmount: true,
+        pricesIncludeTax: true,
         total: true,
         items: { select: { price: true, quantity: true, discountPercent: true, isTaxable: true } },
         assignment: { select: { id: true } },
@@ -659,7 +661,15 @@ export async function approveReturn(id: string, input: ApproveReturnInput, req: 
 
     // Same three-write shape as changeOrderStatus: status, history, assignment
     // — all inside the one transaction that also settles the return itself.
-    await tx.order.update({ where: { id: order.id }, data: { status: 'RETURNED' } });
+    // Conditional on the status read above: two approvals at once would
+    // otherwise both refund and both restock the same goods.
+    const returned = await tx.order.updateMany({
+      where: { id: order.id, status: order.status },
+      data: { status: 'RETURNED' },
+    });
+    if (returned.count === 0) {
+      throw AppError.conflict('This return was just handled by someone else — reload it and try again');
+    }
 
     await tx.orderStatusHistory.create({
       data: {
@@ -847,10 +857,13 @@ export async function rejectReturn(
       );
     }
 
-    await tx.return.update({
-      where: { id },
+    const rejected = await tx.return.updateMany({
+      where: { id, status: ReturnStatus.REQUESTED },
       data: { status: ReturnStatus.REJECTED, rejectionReason },
     });
+    if (rejected.count === 0) {
+      throw AppError.conflict('This return was just handled by someone else — reload it and try again');
+    }
   });
 
   audit(req, {

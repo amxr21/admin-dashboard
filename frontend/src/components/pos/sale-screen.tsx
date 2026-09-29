@@ -733,6 +733,7 @@ export function SaleScreen() {
         subtotal: result.subtotal,
         taxAmount: result.taxAmount,
         total: result.total,
+        pricesIncludeTax: result.pricesIncludeTax ?? false,
         method,
         tendered: method === 'cash' && tendered.trim() !== '' ? tendered.trim() : null,
         change: result.change,

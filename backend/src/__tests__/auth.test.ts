@@ -728,6 +728,8 @@ describe('token handling', () => {
     expect(safe.passwordHash).toBeUndefined();
     expect(safe.failedLoginAttempts).toBeUndefined();
     expect(safe.lockedUntil).toBeUndefined();
+    expect(safe.twoFactorSecret).toBeUndefined();
+    expect(safe.tokenVersion).toBeUndefined();
     expect(safe.email).toBe(user.email);
   });
 });

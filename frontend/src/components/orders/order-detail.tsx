@@ -11,9 +11,11 @@ import {
   HandCoins,
   Mail,
   MapPin,
+  MessageSquareText,
   Phone,
   Printer,
   Store,
+  Truck,
 } from 'lucide-react';
 
 import { Breadcrumb } from '@/components/shell/breadcrumb';
@@ -462,7 +464,7 @@ export function OrderDetail({ id }: { id: string }) {
                     <dd className="tabular-nums">{money(order.subtotal)}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <dt className="text-muted-foreground">{t('items.tax')}</dt>
+                    <dt className="text-muted-foreground">{t(order.pricesIncludeTax ? 'items.taxIncluded' : 'items.tax')}</dt>
                     <dd className="tabular-nums">{money(order.taxAmount)}</dd>
                   </div>
                 </>
@@ -525,10 +527,15 @@ export function OrderDetail({ id }: { id: string }) {
                 </ul>
               </div>
             ) : (
-              // SetNull on delete, so an order can outlive its customer.
-              <p className="text-muted-foreground text-sm">{t('customer.removed')}</p>
+              // A guest checkout never had a customer record; otherwise it was
+              // deleted (SetNull), since an order can outlive its customer.
+              <p className="text-muted-foreground text-sm">
+                {order.contact?.name ? t('customer.guest') : t('customer.removed')}
+              </p>
             )}
           </CollapsibleSection>
+
+          <FulfillmentSection order={order} />
 
           <OrderDeliveryCard
             order={order}
@@ -557,6 +564,13 @@ export function OrderDetail({ id }: { id: string }) {
               <CreditCard aria-hidden className="text-muted-foreground size-4 shrink-0" />
               {order.paymentMethod ?? t('payment.unknown')}
             </p>
+            {order.amountPaid !== undefined ? (
+              <p className="text-muted-foreground mt-1.5 ps-6.5 text-sm tabular-nums">
+                {Number(order.amountPaid) > 0
+                  ? t('payment.paid', { amount: money(order.amountPaid) })
+                  : t('payment.unpaid')}
+              </p>
+            ) : null}
             {(order.goodwillRefunds ?? []).map((refund) => (
               <div key={refund.id} className="border-border mt-3 border-t pt-3 text-sm">
                 <p className="font-medium">
@@ -623,6 +637,76 @@ export function OrderDetail({ id }: { id: string }) {
         onRefunded={setOrder}
       />
     </div>
+  );
+}
+
+/**
+ * How the customer gets the order, and the details they gave at checkout.
+ * Nothing to show on a till sale or an order from before these were recorded.
+ */
+function FulfillmentSection({ order }: { order: Order }) {
+  const t = useTranslations('orders');
+  const contact = order.contact;
+  const place = [order.delivery?.address, order.delivery?.city].filter(Boolean).join(', ');
+
+  if (!order.fulfillment && !contact?.name && !contact?.phone) return null;
+
+  return (
+    <CollapsibleSection
+      title={t('fulfillment.title')}
+      aside={order.fulfillment ? t(`fulfillment.${order.fulfillment}`) : null}
+    >
+      <ul className="space-y-2 text-sm">
+        {order.fulfillment ? (
+          <ContactRow
+            icon={
+              order.fulfillment === 'PICKUP' ? (
+                <Store aria-hidden className="size-4" />
+              ) : (
+                <Truck aria-hidden className="size-4 rtl:-scale-x-100" />
+              )
+            }
+            label={t('fulfillment.title')}
+          >
+            {t(`fulfillment.${order.fulfillment}`)}
+          </ContactRow>
+        ) : null}
+        {contact?.name ? (
+          <ContactRow icon={<span aria-hidden className="block size-4" />} label={t('fulfillment.contact')}>
+            <bdi className="font-medium">{contact.name}</bdi>
+          </ContactRow>
+        ) : null}
+        {contact?.phone ? (
+          <ContactRow icon={<Phone aria-hidden className="size-4" />} label={t('customer.phone')}>
+            <a href={`tel:${contact.phone}`} className="force-ltr hover:underline">
+              {contact.phone}
+            </a>
+          </ContactRow>
+        ) : null}
+        {contact?.email ? (
+          <ContactRow icon={<Mail aria-hidden className="size-4" />} label={t('customer.email')}>
+            <a href={`mailto:${contact.email}`} className="force-ltr block truncate hover:underline">
+              {contact.email}
+            </a>
+          </ContactRow>
+        ) : null}
+        {place ? (
+          <ContactRow icon={<MapPin aria-hidden className="size-4" />} label={t('fulfillment.deliverTo')}>
+            <bdi dir="auto">{place}</bdi>
+          </ContactRow>
+        ) : null}
+        {order.customerNote ? (
+          <ContactRow
+            icon={<MessageSquareText aria-hidden className="size-4" />}
+            label={t('fulfillment.note')}
+          >
+            <bdi dir="auto" className="whitespace-pre-wrap">
+              {order.customerNote}
+            </bdi>
+          </ContactRow>
+        ) : null}
+      </ul>
+    </CollapsibleSection>
   );
 }
 

@@ -1,11 +1,12 @@
 import type { Request, Response, NextFunction } from 'express';
-import type { StaffRole } from '@prisma/client';
+import { ApiKeyAudience, type StaffRole } from '@prisma/client';
 
 import type { Area } from '../config/roles.js';
 import { AppError } from '../errors/AppError.js';
 import { getAuthenticatedUser, verifyToken, type SafeUser } from '../services/auth.service.js';
 import { touchSession } from '../services/session.service.js';
 import { authenticateApiKey, type AuthenticatedApiKey } from '../services/api-key.service.js';
+import { routeHasAreaGuard } from './area-guard.js';
 import {
   assertCanWrite,
   assertIpAllowed,
@@ -34,6 +35,9 @@ declare global {
       /// comment) — routes that need "the current session" must handle
       /// undefined, not assume it's always there.
       sessionId?: string;
+      /// The verified integration key behind this request — set by key
+      /// authentication, never read from a header. Rate limits key on it.
+      apiKeyId?: string;
       /// The branch this request is acting on (F8.4), from the `X-Branch-Id`
       /// header. `null` means "all branches", which is a real request — the
       /// unscoped reports answer exactly that — and never means "denied".
@@ -59,6 +63,9 @@ declare global {
       /// Deliberately not merged into `user`: a session produces the same
       /// `SafeUser`, and a scope has no meaning there.
       apiKeyScopes?: readonly Area[] | null;
+      /// Which API surface the authenticating key was issued for. `undefined`
+      /// on a session-authenticated request.
+      apiKeyAudience?: ApiKeyAudience;
     }
   }
 }
@@ -96,9 +103,27 @@ export async function authenticate(
 
     if (token.startsWith(API_KEY_PREFIX)) {
       const authenticated = await authenticateViaApiKey(token);
+
+      // A storefront key belongs on the public storefront API. Here it would
+      // act as its owner — usually the Developer — so a leaked storefront
+      // server key would open every order and customer record.
+      if (authenticated.audience === ApiKeyAudience.STOREFRONT) {
+        throw AppError.forbidden('This key only works with the storefront API');
+      }
+
+      // A scope narrows only where an area is checked. On a route with no area
+      // guard it would narrow nothing, so a scoped key is refused there
+      // rather than acting with its owner's full rights. See area-guard.ts.
+      if (authenticated.scopes !== null && !routeHasAreaGuard(req)) {
+        req.log.warn({ event: 'authz.scope.unguarded_route', method: req.method, path: req.originalUrl });
+        throw AppError.forbidden('This key is limited to specific areas, and this endpoint is outside them');
+      }
+
       req.user = authenticated.user;
+      req.apiKeyId = authenticated.id;
       // Attached BEFORE any guard runs, so `requireArea` can narrow on it.
       req.apiKeyScopes = authenticated.scopes;
+      req.apiKeyAudience = authenticated.audience;
     } else {
       req.user = await authenticateViaSession(req, token);
     }
@@ -131,12 +156,31 @@ export async function authenticateStorefrontApiKey(
     // Keep the integration identity separate from `req.customer`. Ordinary
     // area guards can now apply the key owner's role AND its narrowed scopes.
     req.user = authenticated.user;
+    req.apiKeyId = authenticated.id;
     req.apiKeyScopes = authenticated.scopes;
+    req.apiKeyAudience = authenticated.audience;
     await finishAuthentication(req);
     next();
   } catch (err) {
     next(err);
   }
+}
+
+/**
+ * Refuse API-key authentication outright.
+ *
+ * A key is a credential FOR an account, never the account itself: it must not
+ * change the profile, sessions or 2FA, and — the escalation this closes — it
+ * must not mint more keys, which would let a narrowly scoped key issue itself
+ * an unscoped one. Decided from the header, so it holds wherever it is mounted.
+ */
+export function refuseApiKeyAuth(req: Request, _res: Response, next: NextFunction): void {
+  const token = extractBearerToken(req.header('authorization'));
+  if (token?.startsWith(API_KEY_PREFIX)) {
+    next(AppError.forbidden('API keys cannot manage an account — sign in to do this'));
+    return;
+  }
+  next();
 }
 
 async function finishAuthentication(req: Request): Promise<void> {
