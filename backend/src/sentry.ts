@@ -25,6 +25,22 @@ Sentry.init({
   tracesSampleRate: 1.0,
   enabled,
 
+  // v11 collects everything when this is unset: request/response bodies,
+  // cookies, user IPs, query parameters, SQL values and local variables.
+  // Here those carry customer names, phones and addresses (checkout, the
+  // `phone` query on order tracking), passwords (login) and the storefront's
+  // X-API-Key header. Name what may leave; everything else stays.
+  dataCollection: {
+    userInfo: false,
+    cookies: false,
+    httpHeaders: { allow: ['content-type', 'user-agent', 'accept-language'] },
+    httpBodies: [],
+    urlQueryParams: false,
+    databaseQueryData: false,
+    stackFrameVariables: false,
+    genAI: { inputs: false, outputs: false },
+  },
+
   // Strip common PII fields before events leave the server.
   beforeSend(event) {
     if (event.request?.cookies) delete event.request.cookies;
