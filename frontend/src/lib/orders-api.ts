@@ -18,8 +18,16 @@ export type OrderStatus =
   | 'CONFIRMED'
   | 'SHIPPED'
   | 'DELIVERED'
+  | 'READY_FOR_PICKUP'
+  | 'COLLECTED'
   | 'CANCELED'
   | 'RETURNED';
+
+/**
+ * Delivered to an address, or collected from the branch. Null on a till sale
+ * and on orders placed before it was recorded — those may take either path.
+ */
+export type OrderFulfillment = 'DELIVERY' | 'PICKUP';
 
 export interface OrderCustomer {
   id: string;
@@ -37,7 +45,10 @@ export interface OrderListRow {
   total: string | null;
   placedAt: string;
   paymentMethod: string | null;
+  fulfillment?: OrderFulfillment | null;
   customer: OrderCustomer | null;
+  /** The name given at checkout — the only name a guest order has. */
+  contactName?: string | null;
   /** Which branch this belongs to. Null when it predates branch scoping, or
    *  its branch was removed — the UI shows nothing rather than a guess. */
   branch: { id: string; name: string; code: string | null } | null;
@@ -101,8 +112,23 @@ export interface OrderDetail {
   /** Tax charged at the time of the order. Same null-means-unrecorded rule
    *  as `subtotal`. */
   taxAmount: string | null;
+  /** The tax was inside the prices (`store.pricesIncludeTax` at the time):
+   *  `taxAmount` is part of `total`, not added to it. Absent from older APIs. */
+  pricesIncludeTax?: boolean;
   paymentMethod: string | null;
+  /** Paid on it so far, net of voids and before goodwill refunds. A web order
+   *  is paid when it is handed over (delivered or collected). */
+  amountPaid?: string;
   placedAt: string;
+  /** How the customer gets it. See `OrderFulfillment`. Absent from older APIs. */
+  fulfillment?: OrderFulfillment | null;
+  /** Who to contact about this order, as given at checkout. All null on a
+   *  till sale and on orders from before these were recorded. */
+  contact?: { name: string | null; phone: string | null; email: string | null };
+  /** Where a delivery order goes, as given at checkout. */
+  delivery?: { address: string | null; city: string | null };
+  /** What the customer wrote at checkout — theirs, not a staff note. */
+  customerNote?: string | null;
   /**
    * The cashier who rang this up at the till, snapshotted on the order.
    *

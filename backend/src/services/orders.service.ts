@@ -1,5 +1,11 @@
 import type { Request } from 'express';
-import { CancellationReason, OrderStatus, Prisma, type RefundReason } from '@prisma/client';
+import {
+  CancellationReason,
+  OrderStatus,
+  Prisma,
+  StockMovementReason,
+  type RefundReason,
+} from '@prisma/client';
 import { resolveBranchLabels } from './branches.service.js';
 
 import { prisma } from '../db/prisma.js';
@@ -8,6 +14,7 @@ import { audit } from './audit.service.js';
 import {
   ASSIGNMENT_ON_ORDER_STATUS,
   canTransition,
+  COMPLETED_STATUSES,
   nextStatuses,
 } from '../config/orders.config.js';
 import { notifyCustomerOrderStatus } from './customer-order-notifications.service.js';
@@ -15,6 +22,7 @@ import { normalizePhone } from '../lib/phone.js';
 import { optionalDateOnlyBounds } from '../lib/date-range.js';
 import { assertRefundReason } from './refund-reason.js';
 import { chargedValue } from './order-math.service.js';
+import { restoreVariantStock } from './variants.service.js';
 
 /**
  * Orders — the one resource the generic engine cannot express.
@@ -90,6 +98,10 @@ function buildWhere(params: OrderListParams): Prisma.OrderWhereInput {
     const normalizedPhone = normalizePhone(contains);
     where.OR = [
       { orderNumber: { contains } },
+      // A guest order has no customer record — its name and phone are the
+      // order's own contact details.
+      { contactName: { contains } },
+      { contactPhone: { contains } },
       { customer: { name: { contains } } },
       { customer: { email: { contains } } },
       { customer: { phone: { contains } } },
@@ -130,6 +142,8 @@ export async function listOrders(params: OrderListParams) {
         total: true,
         placedAt: true,
         paymentMethod: true,
+        fulfillment: true,
+        contactName: true,
         // O1: named on the row, not only on the detail page. On "all
         // branches" two rows from different shops are otherwise identical.
         branchId: true,
@@ -150,7 +164,10 @@ export async function listOrders(params: OrderListParams) {
       total: money(row.total),
       placedAt: row.placedAt.toISOString(),
       paymentMethod: row.paymentMethod,
+      fulfillment: row.fulfillment,
       customer: row.customer,
+      // Who a guest order is for — `customer` is null for those.
+      contactName: row.contactName,
       // Null when the order predates branch scoping OR its branch was
       // removed — the UI shows nothing rather than inventing a name.
       branch: row.branchId ? (branches.get(row.branchId) ?? null) : null,
@@ -289,8 +306,16 @@ export async function getOrder(id: string, branchId?: string) {
       total: true,
       subtotal: true,
       taxAmount: true,
+      pricesIncludeTax: true,
       paymentMethod: true,
       placedAt: true,
+      fulfillment: true,
+      contactName: true,
+      contactPhone: true,
+      contactEmail: true,
+      deliveryAddress: true,
+      deliveryCity: true,
+      customerNote: true,
       // Who rang it up, when it came from the till (F-POS). Null on a web
       // order or anything predating the column — a real "not a counter sale"
       // fact, which the detail page states rather than hiding.
@@ -384,6 +409,13 @@ export async function getOrder(id: string, branchId?: string) {
    * A missing branch (deleted, or never attributed) yields `null`, and the
    * UI shows nothing rather than inventing a name.
    */
+  // What is paid on it now: every payment net of voids, apart from goodwill
+  // refunds, which the detail lists on their own below it.
+  const paid = await prisma.payment.aggregate({
+    where: { orderId: order.id, method: { not: 'goodwill-refund' } },
+    _sum: { amount: true },
+  });
+
   const branch = order.branchId
     ? await prisma.branch.findUnique({
         where: { id: order.branchId },
@@ -399,8 +431,21 @@ export async function getOrder(id: string, branchId?: string) {
     total: money(order.total),
     subtotal: money(order.subtotal),
     taxAmount: money(order.taxAmount),
+    // The invoice says "VAT included" rather than adding a VAT line.
+    pricesIncludeTax: order.pricesIncludeTax,
     paymentMethod: order.paymentMethod,
+    amountPaid: (paid._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
     placedAt: order.placedAt.toISOString(),
+    // How the customer gets it, and the details they gave at checkout. All
+    // null on a till sale and on orders from before these were recorded.
+    fulfillment: order.fulfillment,
+    contact: {
+      name: order.contactName,
+      phone: order.contactPhone,
+      email: order.contactEmail,
+    },
+    delivery: { address: order.deliveryAddress, city: order.deliveryCity },
+    customerNote: order.customerNote,
     soldByName: order.soldByName,
     goodwillRefunds: order.payments.map((payment) => ({
       id: payment.id,
@@ -452,7 +497,7 @@ export async function getOrder(id: string, branchId?: string) {
     })),
     assignment: order.assignment,
     /** Only the moves the server would actually accept from here. */
-    nextStatuses: nextStatuses(order.status),
+    nextStatuses: nextStatuses(order.status, order.fulfillment),
   };
 }
 
@@ -673,7 +718,7 @@ export async function changeOrderStatus(
 ) {
   const current = await prisma.order.findFirst({
     where: { id, ...(branchId ? { branchId } : {}) },
-    select: { id: true, status: true, assignment: { select: { id: true } } },
+    select: { id: true, status: true, fulfillment: true, assignment: { select: { id: true } } },
   });
 
   if (!current) throw AppError.notFound('Order not found');
@@ -684,12 +729,14 @@ export async function changeOrderStatus(
     });
   }
 
-  if (!canTransition(current.status, input.to)) {
+  if (!canTransition(current.status, input.to, current.fulfillment)) {
     // Names the legal moves rather than just refusing — a bare "invalid
     // transition" leaves the caller guessing what would have worked.
     throw AppError.badRequest(
-      `Cannot move an order from ${current.status} to ${input.to}`,
-      { field: 'to', allowed: nextStatuses(current.status) },
+      current.fulfillment && canTransition(current.status, input.to)
+        ? `A ${current.fulfillment.toLowerCase()} order cannot move to ${input.to}`
+        : `Cannot move an order from ${current.status} to ${input.to}`,
+      { field: 'to', allowed: nextStatuses(current.status, current.fulfillment) },
     );
   }
 
@@ -710,7 +757,9 @@ export async function changeOrderStatus(
   if (input.to === OrderStatus.RETURNED) {
     throw AppError.badRequest('Process a return through the returns flow, not a status change', {
       field: 'to',
-      allowed: nextStatuses(current.status).filter((status) => status !== OrderStatus.RETURNED),
+      allowed: nextStatuses(current.status, current.fulfillment).filter(
+        (status) => status !== OrderStatus.RETURNED,
+      ),
     });
   }
 
@@ -726,8 +775,12 @@ export async function changeOrderStatus(
   assertCancellationReason(input);
 
   await prisma.$transaction(async (tx) => {
-    await tx.order.update({
-      where: { id },
+    // Conditional on the status the transition was checked against. Two staff
+    // moving the same order at once both read PENDING; without this both
+    // writes landed (CONFIRMED and CANCELED, with two history rows) and the
+    // order ended up in whichever came last.
+    const moved = await tx.order.updateMany({
+      where: { id, status: current.status },
       data: {
         status: input.to,
         // URG-010 — written in the SAME transaction as the status move and its
@@ -742,6 +795,7 @@ export async function changeOrderStatus(
           : {}),
       },
     });
+    if (moved.count === 0) throw AppError.conflict('This order was just changed by someone else — reload it and try again');
 
     await tx.orderStatusHistory.create({
       data: {
@@ -754,6 +808,14 @@ export async function changeOrderStatus(
         changedById: input.actorId,
       },
     });
+
+    if (input.to === OrderStatus.CANCELED) {
+      await releaseCanceledOrder(tx, id, input.actorId);
+    }
+
+    if (COMPLETED_STATUSES.includes(input.to)) {
+      await recordPaymentOnHandover(tx, id, input.actorId, input.to);
+    }
 
     const assignmentStatus = ASSIGNMENT_ON_ORDER_STATUS[input.to];
 
@@ -768,6 +830,142 @@ export async function changeOrderStatus(
   await notifyCustomerOrderStatus(id, input.to);
 
   return getOrder(id, branchId);
+}
+
+/**
+ * What a cancelled order was holding, handed back — inside the cancellation's
+ * own transaction, so a cancel never commits without it.
+ *
+ * Every order is created by a checkout (storefront or till) that took its
+ * stock at the order's branch and, with a code, claimed one discount use.
+ * Before this, cancelling kept both: the goods stayed off the shelf for good
+ * and a single-use code stayed spent on an order that never happened.
+ *
+ * Only orders whose goods are still at the branch can be cancelled — PENDING,
+ * CONFIRMED and READY_FOR_PICKUP (see `ORDER_TRANSITIONS`). Goods that have
+ * left the branch come back through a return, not here.
+ */
+async function releaseCanceledOrder(
+  tx: Prisma.TransactionClient,
+  orderId: string,
+  actorId: string,
+) {
+  const order = await tx.order.findUniqueOrThrow({
+    where: { id: orderId },
+    select: {
+      orderNumber: true,
+      branchId: true,
+      discountId: true,
+      items: { select: { productId: true, variantId: true, variantName: true, quantity: true } },
+    },
+  });
+
+  // Same movement discipline as a till void: CORRECTION, not RETURNED —
+  // nothing came back from a customer, the sale itself was undone.
+  const note = `Canceled order ${order.orderNumber}`;
+  const { branchId } = order;
+
+  // No recorded branch, no shelf to put the goods back on; guessing one would
+  // inflate a branch that never lost them.
+  for (const item of order.items) {
+    if (!branchId) break;
+
+    if (item.variantId) {
+      await restoreVariantStock(tx, {
+        variantId: item.variantId,
+        branchId,
+        quantity: item.quantity,
+        reason: StockMovementReason.CORRECTION,
+        note,
+        actorId,
+      });
+      continue;
+    }
+
+    // A variant line whose variant has since been deleted keeps its name but
+    // loses its id. Its units were never the base product's, so they must not
+    // land there.
+    if (!item.productId || item.variantName !== null) continue;
+
+    await tx.stockMovement.create({
+      data: {
+        productId: item.productId,
+        branchId,
+        delta: item.quantity,
+        reason: StockMovementReason.CORRECTION,
+        note,
+        actorId,
+      },
+    });
+    await tx.product.update({
+      where: { id: item.productId },
+      data: { stock: { increment: item.quantity } },
+    });
+    await tx.branchStock.upsert({
+      where: { productId_branchId: { productId: item.productId, branchId } },
+      create: { productId: item.productId, branchId, quantity: item.quantity },
+      update: { quantity: { increment: item.quantity } },
+    });
+  }
+
+  // The use the checkout claimed. Guarded at zero so a count someone reset by
+  // hand cannot go negative; a deleted code simply matches no row.
+  if (order.discountId) {
+    await tx.discount.updateMany({
+      where: { id: order.discountId, usedCount: { gt: 0 } },
+      data: { usedCount: { decrement: 1 } },
+    });
+  }
+}
+
+/**
+ * The money that changed hands when the goods did.
+ *
+ * A storefront order is paid when it reaches the customer — cash or card to
+ * the courier, or at the counter on collection — so nothing recorded a
+ * payment for it at all. Its payments stayed at zero forever, which also
+ * capped every goodwill refund at zero (see `refundOrder`).
+ *
+ * So handing an order over (DELIVERED or COLLECTED) records whatever is still
+ * outstanding, by the method the customer chose, attributed to the staff
+ * member who marked it. An order already paid in full (a till sale, or a card
+ * payment taken up front) records nothing. A customer who refuses to pay is
+ * not handed the goods — that order is canceled, not delivered.
+ *
+ * No shift: the money is with a courier, or not in a till session, so it must
+ * not change what any drawer is expected to hold.
+ */
+async function recordPaymentOnHandover(
+  tx: Prisma.TransactionClient,
+  orderId: string,
+  actorId: string,
+  status: OrderStatus,
+) {
+  const order = await tx.order.findUniqueOrThrow({
+    where: { id: orderId },
+    select: { total: true, paymentMethod: true, payments: { select: { amount: true } } },
+  });
+
+  // What was TAKEN so far. Refund and reversal rows (negative) are money that
+  // went back later — they do not make the customer owe it again.
+  const taken = order.payments
+    .filter((payment) => payment.amount.greaterThan(0))
+    .reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0));
+  const outstanding = order.total.minus(taken);
+
+  // No method on record means nobody said how it would be paid; guessing one
+  // would put the money in the wrong column of every report that splits it.
+  if (outstanding.lessThanOrEqualTo(0) || !order.paymentMethod) return;
+
+  await tx.payment.create({
+    data: {
+      orderId,
+      amount: outstanding,
+      method: order.paymentMethod,
+      actorId,
+      note: status === OrderStatus.COLLECTED ? 'Paid on collection' : 'Paid on delivery',
+    },
+  });
 }
 
 export interface BulkStatusResult {
@@ -804,10 +1002,15 @@ export async function previewBulkStatusChange(
 ): Promise<BulkStatusPreview> {
   const orders = await prisma.order.findMany({
     where: { id: { in: ids }, ...(branchId ? { branchId } : {}) },
-    select: { id: true, status: true, assignment: { select: { id: true, status: true } } },
+    select: {
+      id: true,
+      status: true,
+      fulfillment: true,
+      assignment: { select: { id: true, status: true } },
+    },
   });
 
-  const eligible = orders.filter((order) => canTransition(order.status, to));
+  const eligible = orders.filter((order) => canTransition(order.status, to, order.fulfillment));
   const withActiveAssignment = eligible.filter(
     (order) => order.assignment && ASSIGNMENT_ON_ORDER_STATUS[to] !== undefined,
   ).length;

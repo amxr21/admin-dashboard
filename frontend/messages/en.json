@@ -644,6 +644,8 @@
     "CONFIRMED": "Confirmed",
     "SHIPPED": "Shipped",
     "DELIVERED": "Delivered",
+    "READY_FOR_PICKUP": "Ready for pickup",
+    "COLLECTED": "Collected",
     "CANCELED": "Canceled",
     "RETURNED": "Returned"
   },
@@ -1386,6 +1388,8 @@
       "CONFIRMED": "Confirmed",
       "SHIPPED": "Shipped",
       "DELIVERED": "Delivered",
+      "READY_FOR_PICKUP": "Ready for pickup",
+      "COLLECTED": "Collected",
       "CANCELED": "Canceled",
       "RETURNED": "Returned"
     },
@@ -1401,6 +1405,7 @@
       "lineTotal": "Line total",
       "subtotal": "Subtotal",
       "tax": "Tax",
+      "taxIncluded": "Tax included",
       "total": "Order total",
       "productRemoved": "Product no longer available",
       "lineDiscount": "{percent}% off",
@@ -1412,7 +1417,16 @@
       "email": "Email",
       "phone": "Phone",
       "location": "Location",
-      "removed": "This customer record has been deleted."
+      "removed": "This customer record has been deleted.",
+      "guest": "Placed as a guest — no customer account."
+    },
+    "fulfillment": {
+      "title": "Fulfillment",
+      "DELIVERY": "Delivery",
+      "PICKUP": "Pickup from the branch",
+      "contact": "Contact",
+      "deliverTo": "Deliver to",
+      "note": "Customer’s note"
     },
     "delivery": {
       "title": "Delivery",
@@ -1444,7 +1458,9 @@
     },
     "payment": {
       "title": "Payment",
-      "unknown": "Not recorded"
+      "unknown": "Not recorded",
+      "paid": "Paid {amount}",
+      "unpaid": "Not paid yet"
     },
     "activity": {
       "title": "Activity",
@@ -1486,6 +1502,8 @@
         "CONFIRMED": "Confirm order",
         "SHIPPED": "Mark as shipped",
         "DELIVERED": "Mark as delivered",
+        "READY_FOR_PICKUP": "Mark ready for pickup",
+        "COLLECTED": "Mark as collected",
         "CANCELED": "Cancel order",
         "RETURNED": "Request return"
       },
@@ -1494,6 +1512,8 @@
         "CONFIRMED": "Confirm order {number}?",
         "SHIPPED": "Mark {number} as shipped?",
         "DELIVERED": "Mark {number} as delivered?",
+        "READY_FOR_PICKUP": "Mark {number} ready for pickup?",
+        "COLLECTED": "Mark {number} as collected?",
         "CANCELED": "Cancel order {number}?",
         "RETURNED": "Mark {number} as returned?"
       },
@@ -2185,6 +2205,12 @@
       "scopesHint": "Leave all unchecked to let the key reach everything your account can. Choosing areas only ever removes access — a key can never do more than you.",
       "scopesAll": "Everything your account can reach",
       "scopesSummary": "{count, plural, =1 {1 area} other {# areas}}",
+      "audienceLabel": "Where will this key be used?",
+      "audienceStaff": "Staff API",
+      "audienceStorefront": "Storefront",
+      "audienceStaffHint": "For scripts and integrations that call the dashboard's API. Also accepted by the storefront API.",
+      "audienceStorefrontHint": "For a storefront server. Works on the public storefront API only — it cannot open orders, customers or settings, even if it leaks.",
+      "audienceStorefrontBadge": "Storefront only",
       "nameLabel": "Name",
       "namePlaceholder": "e.g. Inventory sync script",
       "purposeLabel": "Reason for this key",
@@ -3766,6 +3792,7 @@
       "servedBy": "Served by {name}",
       "subtotal": "Subtotal",
       "tax": "Tax",
+      "taxIncluded": "Tax included",
       "total": "TOTAL",
       "paidBy": "Paid by",
       "tendered": "Cash",

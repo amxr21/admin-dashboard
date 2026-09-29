@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { AuditOutcome } from '@prisma/client';
+import { ApiKeyAudience, AuditOutcome } from '@prisma/client';
 import QRCode from 'qrcode';
 
 import { AREAS } from '../../config/roles.js';
@@ -8,7 +8,7 @@ import { prisma } from '../../db/prisma.js';
 import { AppError } from '../../errors/AppError.js';
 import { accountEmailSchema } from '../../lib/identity-validation.js';
 import { audit } from '../../services/audit.service.js';
-import { authenticate, requireUser } from '../../middleware/authenticate.js';
+import { authenticate, refuseApiKeyAuth, requireUser } from '../../middleware/authenticate.js';
 import { withBranchContext } from '../../middleware/branch-context.js';
 import { createApiKey, listApiKeys, revokeApiKey } from '../../services/api-key.service.js';
 import {
@@ -48,6 +48,17 @@ import {
  */
 
 export const authRouter = Router();
+
+// Every /auth/me route below manages the account itself — profile, sessions,
+// 2FA, API keys — so an API key may not drive them. The one exception is
+// reading who the key belongs to.
+authRouter.use('/auth/me', (req, res, next) => {
+  if (req.method === 'GET' && req.path === '/') {
+    next();
+    return;
+  }
+  refuseApiKeyAuth(req, res, next);
+});
 
 const loginSchema = z
   .object({
@@ -613,6 +624,11 @@ const createApiKeySchema = z.object({
    * the holder a key that mysteriously 403s everywhere.
    */
   scopes: z.array(z.enum(AREAS)).min(1).optional(),
+  /**
+   * Optional, STAFF by default. STOREFRONT is what a storefront server should
+   * hold: it works on the public storefront API and nowhere else.
+   */
+  audience: z.nativeEnum(ApiKeyAudience).optional(),
 }).strict();
 
 /**
@@ -632,6 +648,7 @@ authRouter.post('/auth/me/api-keys', authenticate, async (req, res) => {
     parsed.data.purpose,
     parsed.data.recipient,
     parsed.data.scopes,
+    parsed.data.audience,
   );
 
   // The key itself is NEVER logged — same rule as a courier access code or
@@ -640,7 +657,7 @@ authRouter.post('/auth/me/api-keys', authenticate, async (req, res) => {
     action: 'auth.api-key.created',
     entity: 'apiKey',
     entityId: created.id,
-    changes: { name: created.name, purpose: created.purpose, recipient: created.recipient },
+    changes: { name: created.name, purpose: created.purpose, recipient: created.recipient, audience: created.audience },
   });
 
   res.status(201).json({ data: created });

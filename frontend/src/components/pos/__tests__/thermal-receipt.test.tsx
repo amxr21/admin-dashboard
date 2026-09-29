@@ -51,6 +51,14 @@ describe('the printed receipt', () => {
     expect(screen.getByText('12.81')).toBeInTheDocument();
   });
 
+  it('says the tax was included when prices already carried it, rather than adding it', () => {
+    // Subtotal 48.00, Tax 2.29, Total 48.00 reads as an arithmetic mistake
+    // unless the tax line says it is part of the total.
+    render(<ThermalReceipt data={makeReceipt({ subtotal: '48.00', taxAmount: '2.29', total: '48.00', pricesIncludeTax: true })} />);
+    expect(screen.getByText(/tax included/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^tax$/i)).not.toBeInTheDocument();
+  });
+
   it('omits tendered and change on a card sale', () => {
     // Nothing was handed over and nothing came back. "0.00" would read as a
     // mistake rather than as not-applicable.

@@ -3,6 +3,7 @@ import { randomInt } from 'node:crypto';
 import {
   DiscountScope,
   DiscountType,
+  OrderFulfillment,
   Prisma,
   ProductStatus,
   StockMovementReason,
@@ -10,13 +11,13 @@ import {
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
-import { SETTINGS } from '../config/settings.config.js';
 import {
   executeIdempotently,
   type IdempotentExecution,
 } from './idempotency.service.js';
-import { computeDiscountedTaxAmount } from './order-math.service.js';
+import { getTaxPolicy, taxAfterDiscount, type TaxPolicy } from './order-math.service.js';
 import { getSettingValue } from './settings.service.js';
+import { phonesMatch } from '../lib/phone.js';
 import type { ProductLocale } from './product-content.service.js';
 
 /**
@@ -419,6 +420,12 @@ export interface StorefrontConfig {
   currency: string;
   /** VAT percentage, e.g. 5 for the UAE. */
   taxRatePercent: number;
+  /**
+   * Whether product prices already include that VAT. When true a storefront
+   * shows the price as the amount charged and itemises the VAT inside it;
+   * when false it adds the VAT at checkout.
+   */
+  pricesIncludeTax: boolean;
   storeName: string;
 }
 
@@ -435,15 +442,17 @@ export interface StorefrontConfig {
  * customer would then see a total that disagrees with what they are charged.
  */
 export async function getStorefrontConfig(): Promise<StorefrontConfig> {
-  const [currency, taxRate, storeName] = await Promise.all([
+  const [currency, taxRate, pricesIncludeTax, storeName] = await Promise.all([
     getSettingValue('store.currency'),
     getSettingValue('store.taxRate'),
+    getSettingValue('store.pricesIncludeTax'),
     getSettingValue('store.name'),
   ]);
 
   return {
     currency: String(currency),
     taxRatePercent: Number(taxRate),
+    pricesIncludeTax: Boolean(pricesIncludeTax),
     storeName: String(storeName),
   };
 }
@@ -516,12 +525,49 @@ async function assertPurchasable(productId: string): Promise<void> {
   if (!product) throw AppError.badRequest('That product is not available');
 }
 
+export const PUBLIC_CART_MAX_QUANTITY = 99;
+
+/** Serialize one customer's cart mutations, including the first insert, so
+ * simultaneous additions cannot both pass the quantity cap on a stale read. */
+async function writeCartQuantity(
+  customerId: string,
+  productId: string,
+  quantity: number,
+  increment: boolean,
+): Promise<void> {
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > PUBLIC_CART_MAX_QUANTITY) {
+    throw AppError.badRequest('Cart quantities must be between 1 and 99', {
+      field: 'quantity',
+      productId,
+    });
+  }
+  await prisma.$transaction(async (tx) => {
+    const customers = await tx.$queryRaw<{ id: string }[]>(
+      Prisma.sql`SELECT id FROM customers WHERE id = ${customerId} FOR UPDATE`,
+    );
+    if (customers.length === 0) throw AppError.unauthorized('Invalid or expired session');
+    const previous = await tx.cartItem.findUnique({
+      where: { customerId_productId: { customerId, productId } }, select: { quantity: true },
+    });
+    const next = increment ? (previous?.quantity ?? 0) + quantity : quantity;
+    if (next > PUBLIC_CART_MAX_QUANTITY) {
+      throw AppError.badRequest('You can have at most 99 of an item in your cart', {
+        field: 'quantity',
+        productId,
+      });
+    }
+    await tx.cartItem.upsert({
+      where: { customerId_productId: { customerId, productId } },
+      create: { customerId, productId, quantity: next }, update: { quantity: next },
+    });
+  });
+}
+
 /**
  * Add to cart, or increment an existing line.
  *
- * Uses `upsert` on the `(customerId, productId)` unique index so two rapid taps
- * become quantity 2 rather than two rows — the check-then-insert alternative
- * races with itself.
+ * The customer row lock in `writeCartQuantity` makes two rapid taps become
+ * quantity 2 rather than two rows, and keeps the total within the cap.
  */
 export async function addToCart(
   customerId: string,
@@ -530,11 +576,7 @@ export async function addToCart(
 ): Promise<CartView> {
   await assertPurchasable(productId);
 
-  await prisma.cartItem.upsert({
-    where: { customerId_productId: { customerId, productId } },
-    create: { customerId, productId, quantity },
-    update: { quantity: { increment: quantity } },
-  });
+  await writeCartQuantity(customerId, productId, quantity, true);
 
   return getCart(customerId);
 }
@@ -550,11 +592,7 @@ export async function setCartQuantity(
 
   await assertPurchasable(productId);
 
-  await prisma.cartItem.upsert({
-    where: { customerId_productId: { customerId, productId } },
-    create: { customerId, productId, quantity },
-    update: { quantity },
-  });
+  await writeCartQuantity(customerId, productId, quantity, false);
 
   return getCart(customerId);
 }
@@ -619,6 +657,55 @@ export interface CheckoutInput {
   discountCode?: string | undefined;
 }
 
+/** What checkout would charge for a cart — see `quoteCheckout`. */
+export interface CheckoutQuote {
+  lines: { productId: string; variantId: string | null; name: string; quantity: number; price: string; lineTotal: string }[];
+  subtotal: string;
+  /** The code that was applied, as stored, or null. */
+  discountCode: string | null;
+  discountAmount: string;
+  taxAmount: string;
+  total: string;
+  /** `taxAmount` is inside `total` rather than added to it. */
+  pricesIncludeTax: boolean;
+}
+
+/**
+ * Price a cart exactly as checkout would, without selling anything.
+ *
+ * Same function checkout uses (`priceCheckout`), so the total a storefront
+ * shows before "Place order" — VAT, discount and all — is the total charged.
+ * Refuses what checkout would refuse (unavailable items, too little stock, a
+ * code that does not apply) with the same messages, and never spends a use of
+ * a discount code.
+ */
+export async function quoteCheckout(
+  input: Pick<CheckoutInput, 'branchId' | 'items' | 'discountCode'>,
+  customerId: string | null,
+): Promise<CheckoutQuote> {
+  const tax = await getTaxPolicy();
+  const priced = await prisma.$transaction((tx) =>
+    priceCheckout(input, customerId, tx, tax, { claimDiscount: false }),
+  );
+
+  return {
+    lines: priced.lines.map((line) => ({
+      productId: line.productId,
+      variantId: line.variantId,
+      name: line.name,
+      quantity: line.quantity,
+      price: line.price.toFixed(2),
+      lineTotal: line.price.times(line.quantity).toFixed(2),
+    })),
+    subtotal: priced.subtotal.toFixed(2),
+    discountCode: priced.discount?.code ?? null,
+    discountAmount: priced.discountAmount.toFixed(2),
+    taxAmount: priced.taxAmount.toFixed(2),
+    total: priced.total.toFixed(2),
+    pricesIncludeTax: tax.pricesIncludeTax,
+  };
+}
+
 export interface CheckoutResult {
   orderNumber: string;
   subtotal: string;
@@ -648,13 +735,23 @@ export interface CheckoutResult {
  * identity to match, so it can never redeem one — and the refusal says the
  * code does not apply rather than confirming it exists for somebody else.
  */
+/** A priced cart line, as far as a discount needs to know it. */
+interface DiscountableLine {
+  productId: string;
+  price: Prisma.Decimal;
+  quantity: number;
+  isTaxable: boolean;
+}
+
 async function resolveDiscount(
   tx: Prisma.TransactionClient,
   code: string,
-  subtotal: Prisma.Decimal,
-  productIds: readonly string[],
+  lines: readonly DiscountableLine[],
   customerId: string | null,
-): Promise<{ id: string; code: string; amount: Prisma.Decimal }> {
+  /** Spend a use of the code. False for a quote, which only checks one is left. */
+  claim = true,
+): Promise<{ id: string; code: string; amount: Prisma.Decimal; taxableAmount: Prisma.Decimal }> {
+  const productIds = [...new Set(lines.map((line) => line.productId))];
   const discount = await tx.discount.findUnique({
     where: { code },
     select: {
@@ -681,11 +778,11 @@ async function resolveDiscount(
   }
 
   if (discount.expiresAt !== null && discount.expiresAt <= new Date()) {
-    throw AppError.badRequest('That discount code has expired', { field: 'discountCode' });
+    throw AppError.badRequest('That discount code is not valid', { field: 'discountCode' });
   }
 
   if (discount.maxUses !== null && discount.usedCount >= discount.maxUses) {
-    throw AppError.conflict('That discount code has been fully claimed', {
+    throw AppError.badRequest('That discount code is not valid', {
       field: 'discountCode',
     });
   }
@@ -694,29 +791,39 @@ async function resolveDiscount(
     const allowed =
       customerId !== null && discount.customers.some((entry) => entry.id === customerId);
     if (!allowed) {
-      throw AppError.badRequest('That discount code does not apply to this order', {
+      throw AppError.badRequest('That discount code is not valid', {
         field: 'discountCode',
       });
     }
   }
 
+  // Which lines the code is FOR. An order-wide or customer code covers the
+  // whole cart; a product or category code covers only its own goods — the
+  // discount is worked out on those lines, never on the rest of the basket.
+  let eligible: (line: DiscountableLine) => boolean = () => true;
+
   if (discount.scope === DiscountScope.PRODUCT) {
-    const eligible = new Set(discount.products.map((entry) => entry.id));
-    if (!productIds.some((id) => eligible.has(id))) {
-      throw AppError.badRequest('That discount code does not apply to anything in your cart', {
+    const products = new Set(discount.products.map((entry) => entry.id));
+    eligible = (line) => products.has(line.productId);
+    if (!productIds.some((id) => products.has(id))) {
+      throw AppError.badRequest('That discount code is not valid', {
         field: 'discountCode',
       });
     }
   }
 
   if (discount.scope === DiscountScope.CATEGORY) {
-    const eligible = new Set(discount.categories.map((entry) => entry.id));
+    const wanted = new Set(discount.categories.map((entry) => entry.id));
     const categories = await tx.product.findMany({
       where: { id: { in: [...productIds] } },
-      select: { categoryId: true },
+      select: { id: true, categoryId: true },
     });
-    if (!categories.some((row) => row.categoryId !== null && eligible.has(row.categoryId))) {
-      throw AppError.badRequest('That discount code does not apply to anything in your cart', {
+    const inScope = new Set(
+      categories.filter((row) => row.categoryId !== null && wanted.has(row.categoryId)).map((row) => row.id),
+    );
+    eligible = (line) => inScope.has(line.productId);
+    if (inScope.size === 0) {
+      throw AppError.badRequest('That discount code is not valid', {
         field: 'discountCode',
       });
     }
@@ -730,12 +837,22 @@ async function resolveDiscount(
    * a negative total would be a refund the shop never agreed to, and the tax
    * line below would go negative with it.
    */
+  const sum = (selected: readonly DiscountableLine[]) =>
+    selected.reduce((total, line) => total.plus(line.price.times(line.quantity)), new Prisma.Decimal(0));
+  const covered = lines.filter(eligible);
+  const coveredSubtotal = sum(covered);
+
   const raw =
     discount.type === DiscountType.PERCENT
-      ? subtotal.times(discount.value).dividedBy(100)
+      ? coveredSubtotal.times(discount.value).dividedBy(100)
       : discount.value;
 
-  const amount = Prisma.Decimal.min(raw, subtotal).toDecimalPlaces(2);
+  // Never more than the goods it covers — a 50 AED code on a 38 AED item is 38.
+  const amount = Prisma.Decimal.min(raw, coveredSubtotal).toDecimalPlaces(2);
+  // The part that came off taxable goods, so VAT drops by exactly that much.
+  const taxableAmount = coveredSubtotal.gt(0)
+    ? amount.times(sum(covered.filter((line) => line.isTaxable))).dividedBy(coveredSubtotal)
+    : new Prisma.Decimal(0);
 
   /**
    * Claim the use. Conditional on the count we just read, so two checkouts
@@ -745,6 +862,8 @@ async function resolveDiscount(
    * `update` would succeed against the stale WHERE or throw a less specific
    * error, and neither tells us we lost a race.
    */
+  if (!claim) return { id: discount.id, code: discount.code, amount, taxableAmount };
+
   if (discount.maxUses !== null) {
     const claimed = await tx.discount.updateMany({
       where: { id: discount.id, usedCount: discount.usedCount },
@@ -752,7 +871,7 @@ async function resolveDiscount(
     });
 
     if (claimed.count === 0) {
-      throw AppError.conflict('That discount code has been fully claimed', {
+      throw AppError.badRequest('That discount code is not valid', {
         field: 'discountCode',
       });
     }
@@ -765,7 +884,7 @@ async function resolveDiscount(
     });
   }
 
-  return { id: discount.id, code: discount.code, amount };
+  return { id: discount.id, code: discount.code, amount, taxableAmount };
 }
 
 /**
@@ -893,12 +1012,23 @@ async function claimVariantLine(
  *     keeps its established meaning: the grand total, tax included. Reports and
  *     dashboard KPIs already read `.total` that way.
  */
-async function checkoutOnce(
-  input: CheckoutInput,
+/**
+ * Everything checkout charges for, worked out once: the lines at today's
+ * prices, the discount, the tax and the total — and the same stock and
+ * availability refusals checkout makes.
+ *
+ * Shared by checkout and the storefront's quote, so the price a shopper is
+ * shown before ordering can never differ from the price they are charged.
+ * `claimDiscount` is the one difference: checkout spends a use of the code;
+ * a quote only checks that one is left.
+ */
+async function priceCheckout(
+  input: Pick<CheckoutInput, 'branchId' | 'items' | 'discountCode'>,
   customerId: string | null,
   tx: Prisma.TransactionClient,
-  taxRate: Prisma.Decimal,
-): Promise<CheckoutResult> {
+  tax: TaxPolicy,
+  { claimDiscount }: { claimDiscount: boolean },
+) {
   if (input.items.length === 0) {
     throw AppError.badRequest('Your cart is empty');
   }
@@ -984,14 +1114,35 @@ async function checkoutOnce(
 
       // Unknown or unavailable — named generically, since the caller supplied
       // the id and doesn't need to learn whether it exists but is a draft.
-      if (!product) throw AppError.badRequest('One or more items are no longer available');
+      if (!product) {
+        // Only names already on the public catalogue may appear in an error.
+        // Draft/archived/unknown IDs stay unnamed; the ID lets the caller mark
+        // the corresponding local line without accepting its supplied price.
+        const publicName = await tx.product.findFirst({
+          where: { id: productId, ...PUBLIC_PRODUCT_WHERE },
+          select: { name: true },
+        });
+        const message = publicName
+          ? `${publicName.name} is no longer available at this branch`
+          : 'An item in your cart is no longer available';
+        throw AppError.badRequest(message, {
+          field: 'items',
+          productId,
+          unavailableItems: [{ productId, name: publicName?.name ?? null }],
+        });
+      }
 
       // A product sold in options is only ever sold AS an option. Selling
       // "T-shirt" with no size would draw on a product-level stock row nobody
       // counts, and hand the packer a line they can't pick.
       const variant = variantId ? variantById.get(variantId) : undefined;
       if (variantId && (!variant || variant.productId !== productId)) {
-        throw AppError.badRequest('One or more items are no longer available', { field: 'variantId' });
+        throw AppError.badRequest(`${product.name} has an unavailable option`, {
+          field: 'variantId',
+          productId,
+          variantId,
+          unavailableItems: [{ productId, name: product.name }],
+        });
       }
       if (!variant && product._count.variants > 0) {
         throw AppError.badRequest(`Choose an option for ${product.name}`, { field: 'variantId', productId });
@@ -1034,13 +1185,7 @@ async function checkoutOnce(
      * and disagreeing with the invoice the shopper receives.
      */
     const discount = input.discountCode
-      ? await resolveDiscount(
-          tx,
-          input.discountCode,
-          subtotal,
-          productIds,
-          customerId,
-        )
+      ? await resolveDiscount(tx, input.discountCode, lines, customerId, claimDiscount)
       : null;
 
     const discountAmount = discount?.amount ?? new Prisma.Decimal(0);
@@ -1049,24 +1194,51 @@ async function checkoutOnce(
     // Rounded once, at creation, and snapshotted — same discipline as
     // OrderItem.price. The order-level discount is allocated proportionally
     // between taxable and exempt goods, so an exempt line never creates VAT.
-    const taxAmount = computeDiscountedTaxAmount(
-      subtotal,
+    const taxAmount = taxAfterDiscount(
       taxableSubtotal,
-      discountAmount,
-      taxRate,
+      discount?.taxableAmount ?? new Prisma.Decimal(0),
+      tax.rate,
+      tax.pricesIncludeTax,
     );
-    const total = discountedSubtotal.plus(taxAmount);
+    // Tax-inclusive prices already carry the tax the customer pays.
+    const total = tax.pricesIncludeTax ? discountedSubtotal : discountedSubtotal.plus(taxAmount);
+
+    return { lines, subtotal, discount, discountAmount, taxAmount, total };
+}
+
+async function checkoutOnce(
+  input: CheckoutInput,
+  customerId: string | null,
+  tx: Prisma.TransactionClient,
+  tax: TaxPolicy,
+): Promise<CheckoutResult> {
+    const { lines, subtotal, discount, discountAmount, taxAmount, total } = await priceCheckout(
+      input,
+      customerId,
+      tx,
+      tax,
+      { claimDiscount: true },
+    );
 
     const orderData = {
       total,
       subtotal,
       taxAmount,
+      pricesIncludeTax: tax.pricesIncludeTax,
       // Null rather than 0 when no code was used — see the column's own note on
       // why "no discount" and "a discount worth nothing" stay distinguishable.
       discountAmount: discount ? discountAmount : null,
       discountCode: discount?.code ?? null,
       discountId: discount?.id ?? null,
       paymentMethod: input.paymentMethod,
+      fulfillment: input.fulfillment === 'Delivery' ? OrderFulfillment.DELIVERY : OrderFulfillment.PICKUP,
+      contactName: input.contact.name,
+      contactPhone: input.contact.phone,
+      contactEmail: input.contact.email ?? null,
+      // An address typed before switching to pickup is not where anything goes.
+      deliveryAddress: input.fulfillment === 'Delivery' ? (input.contact.address ?? null) : null,
+      deliveryCity: input.fulfillment === 'Delivery' ? (input.contact.city ?? null) : null,
+      customerNote: input.contact.note ?? null,
       customerId,
       branchId: input.branchId,
       items: {
@@ -1107,24 +1279,6 @@ async function checkoutOnce(
     if (order === null) {
       throw AppError.serviceUnavailable('Could not place your order — please try again');
     }
-
-    // Contact details go on the delivery assignment's fields where they exist;
-    // for now they ride along as an internal note so nothing is lost. `Order`
-    // has no address column (see the assign-courier note in CLAUDE.md).
-    const contactSummary = [
-      `Contact: ${input.contact.name} (${input.contact.phone})`,
-      input.contact.email ? `Email: ${input.contact.email}` : null,
-      `Fulfillment: ${input.fulfillment}`,
-      input.contact.address ? `Address: ${input.contact.address}` : null,
-      input.contact.city ? `City: ${input.contact.city}` : null,
-      input.contact.note ? `Note: ${input.contact.note}` : null,
-    ]
-      .filter(Boolean)
-      .join('\n');
-
-    await tx.orderNote.create({
-      data: { orderId: order.id, body: contactSummary, authorId: null },
-    });
 
     // Stock: decrement AND log a movement. Both, or the "sum of deltas equals
     // stock" invariant breaks.
@@ -1217,24 +1371,17 @@ export async function checkout(
   integrationActorId: string,
   idempotencyKey: string,
 ): Promise<IdempotentExecution<CheckoutResult>> {
-  // Read the tax rate once before opening the transaction. A successful first
+  // Read the tax policy once before opening the transaction. A successful first
   // execution stores its exact totals, so a later retry still replays the
-  // original response even if the setting changes afterward.
-  const taxRateSetting = await prisma.setting.findUnique({
-    where: { key: 'store.taxRate' },
-    select: { value: true },
-  });
-  const taxRatePercent = Number(
-    taxRateSetting === null ? SETTINGS['store.taxRate'].default : taxRateSetting.value,
-  );
-  const taxRate = new Prisma.Decimal(taxRatePercent).dividedBy(100);
+  // original response even if the settings change afterward.
+  const tax = await getTaxPolicy();
 
   return executeIdempotently({
     scope: 'storefront.checkout',
     actorId: integrationActorId,
     key: idempotencyKey,
     request: { input, customerId },
-    execute: (tx) => checkoutOnce(input, customerId, tx, taxRate),
+    execute: (tx) => checkoutOnce(input, customerId, tx, tax),
   });
 }
 
@@ -1243,8 +1390,12 @@ export async function checkout(
 export interface PublicOrder {
   orderNumber: string;
   status: string;
+  /** 'DELIVERY' | 'PICKUP', or null for an order from before it was recorded. */
+  fulfillment: string | null;
   subtotal: string | null;
   taxAmount: string | null;
+  /** True when `taxAmount` is inside `total` rather than added to it. */
+  pricesIncludeTax: boolean;
   total: string;
   placedAt: Date;
   /** `variant` is the option bought (e.g. "Large"), or null for a plain product. */
@@ -1254,8 +1405,10 @@ export interface PublicOrder {
 const PUBLIC_ORDER_SELECT = {
   orderNumber: true,
   status: true,
+  fulfillment: true,
   subtotal: true,
   taxAmount: true,
+  pricesIncludeTax: true,
   total: true,
   placedAt: true,
   items: {
@@ -1274,10 +1427,12 @@ function toPublicOrder(
   return {
     orderNumber: order.orderNumber,
     status: order.status,
+    fulfillment: order.fulfillment,
     // NULL stays null rather than becoming "0.00": the schema is explicit that
     // "never recorded" is a different fact from a confirmed zero.
     subtotal: order.subtotal ? order.subtotal.toFixed(2) : null,
     taxAmount: order.taxAmount ? order.taxAmount.toFixed(2) : null,
+    pricesIncludeTax: order.pricesIncludeTax,
     total: order.total.toFixed(2),
     placedAt: order.placedAt,
     items: order.items.map((item) => ({
@@ -1314,24 +1469,32 @@ export async function getMyOrders(customerId: string): Promise<PublicOrder[]> {
  *      leaked or shoulder-surfed reference — a screenshot, a shared email — does
  *      not by itself expose the customer's name, address and order history.
  *
- * The phone lives in the contact note (`Order` has no phone column), so this
- * matches the customer's phone or the note body, and returns the same "not
- * found" for a wrong phone as for a missing order — confirming that a reference
- * exists is itself a small leak.
+ * The phone is the one given at checkout (`contactPhone`), or the customer's
+ * own. Orders from before `contactPhone` existed kept it in their contact note
+ * ("Contact: Name (phone)"), which is read as a fallback — the number on that
+ * line only, never any digits elsewhere in the note, which let any four
+ * digits from the address or the number match. A wrong phone gets the same "not found" as a missing order —
+ * confirming that a reference exists is itself a small leak.
  */
 export async function trackOrder(orderNumber: string, phone: string): Promise<PublicOrder> {
   const order = await prisma.order.findUnique({
     where: { orderNumber },
-    select: { ...PUBLIC_ORDER_SELECT, customer: { select: { phone: true } }, notes: { select: { body: true } } },
+    select: {
+      ...PUBLIC_ORDER_SELECT,
+      contactPhone: true,
+      customer: { select: { phone: true } },
+      notes: { where: { authorId: null }, select: { body: true } },
+    },
   });
 
-  const normalise = (value: string): string => value.replace(/\D/g, '');
-  const given = normalise(phone);
+  const legacyContact = (body: string) => /^Contact: .*\(([^()]*)\)$/m.exec(body)?.[1] ?? '';
+  const onRecord = [
+    order?.contactPhone,
+    order?.customer?.phone,
+    ...(order?.notes ?? []).map((note) => legacyContact(note.body)),
+  ].filter((value): value is string => Boolean(value));
 
-  const matches =
-    given.length > 0 &&
-    (normalise(order?.customer?.phone ?? '').endsWith(given) ||
-      (order?.notes ?? []).some((note) => normalise(note.body).includes(given)));
+  const matches = onRecord.some((recorded) => phonesMatch(recorded, phone));
 
   if (!order || !matches) {
     throw AppError.notFound('No order found with that reference and phone number');

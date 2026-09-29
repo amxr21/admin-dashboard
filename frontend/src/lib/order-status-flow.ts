@@ -10,13 +10,24 @@ import type { OrderDetail, OrderStatus } from '@/lib/orders-api';
  * that list — it never adds a move the server didn't send, so a button can't
  * look legal and then 400.
  *
- * `ORDER_PATH` is presentation too: the happy path drawn as a stepper. The
- * two exits (CANCELED, RETURNED) are drawn where the order actually left the
- * path, read from its status history.
+ * `ORDER_PATH` / `PICKUP_PATH` are presentation too: the happy path drawn
+ * as a stepper. The two exits (CANCELED, RETURNED) are drawn where the order
+ * actually left the path, read from its status history.
  */
 
 /** The forward path, in order. CANCELED and RETURNED leave it; they are not steps on it. */
 export const ORDER_PATH = ['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED'] as const satisfies readonly OrderStatus[];
+
+/** A pickup's forward path: it waits at the branch instead of shipping. */
+export const PICKUP_PATH = [
+  'PENDING',
+  'CONFIRMED',
+  'READY_FOR_PICKUP',
+  'COLLECTED',
+] as const satisfies readonly OrderStatus[];
+
+/** Where a path ends: the order is in the customer's hands. */
+const COMPLETE: readonly OrderStatus[] = ['DELIVERED', 'COLLECTED'];
 
 export type OrderStepState =
   /** Passed through. */
@@ -43,7 +54,21 @@ export interface OrderStep {
   by: string | null;
 }
 
-type StepSource = Pick<OrderDetail, 'status' | 'placedAt' | 'statusHistory'>;
+type StepSource = Pick<OrderDetail, 'status' | 'placedAt' | 'statusHistory' | 'fulfillment'>;
+
+/**
+ * The path this order is on. Its fulfillment decides; an order without one
+ * (a till sale, or one from before it was recorded) is drawn as a pickup only
+ * once it has actually been readied or collected.
+ */
+export function pathFor(order: StepSource): readonly OrderStatus[] {
+  if (order.fulfillment === 'PICKUP') return PICKUP_PATH;
+  if (order.fulfillment === 'DELIVERY') return ORDER_PATH;
+  const seen = [order.status, ...order.statusHistory.map((entry) => entry.toStatus)];
+  return seen.some((status) => status === 'READY_FOR_PICKUP' || status === 'COLLECTED')
+    ? PICKUP_PATH
+    : ORDER_PATH;
+}
 
 function lastEntryInto(order: StepSource, status: OrderStatus) {
   return order.statusHistory.findLast((entry) => entry.toStatus === status) ?? null;
@@ -56,8 +81,8 @@ function reached(order: StepSource, status: OrderStatus, state: OrderStepState):
   return { status, state, at: entry?.createdAt ?? null, by: entry?.changedByName ?? null };
 }
 
-function pathIndex(status: OrderStatus | null | undefined): number {
-  return status ? (ORDER_PATH as readonly OrderStatus[]).indexOf(status) : -1;
+function pathIndex(path: readonly OrderStatus[], status: OrderStatus | null | undefined): number {
+  return status ? path.indexOf(status) : -1;
 }
 
 /**
@@ -66,30 +91,31 @@ function pathIndex(status: OrderStatus | null | undefined): number {
  * An order with no recorded history falls back to the furthest step its
  * history mentions, and then to PENDING, rather than guessing it got further.
  */
-function exitPoint(order: StepSource): number {
+function exitPoint(order: StepSource, path: readonly OrderStatus[]): number {
   const exit = lastEntryInto(order, order.status);
-  const fromExit = pathIndex(exit?.fromStatus);
+  const fromExit = pathIndex(path, exit?.fromStatus);
   if (fromExit >= 0) return fromExit;
 
-  const furthest = Math.max(-1, ...order.statusHistory.map((entry) => pathIndex(entry.toStatus)));
+  const furthest = Math.max(-1, ...order.statusHistory.map((entry) => pathIndex(path, entry.toStatus)));
   return Math.max(0, furthest);
 }
 
 export function buildOrderSteps(order: StepSource): OrderStep[] {
-  const current = pathIndex(order.status);
+  const path = pathFor(order);
+  const current = pathIndex(path, order.status);
 
   if (current >= 0) {
-    return ORDER_PATH.map((status, index) => {
+    return path.map((status, index) => {
       if (index < current) return reached(order, status, 'done');
       if (index === current) {
-        return reached(order, status, status === 'DELIVERED' ? 'complete' : 'current');
+        return reached(order, status, COMPLETE.includes(status) ? 'complete' : 'current');
       }
       return { status, state: index === current + 1 ? 'next' : 'upcoming', at: null, by: null };
     });
   }
 
   // CANCELED or RETURNED: the steps it actually passed, then the exit.
-  const passed = ORDER_PATH.slice(0, exitPoint(order) + 1).map((status) =>
+  const passed = path.slice(0, exitPoint(order, path) + 1).map((status) =>
     reached(order, status, 'done'),
   );
   const exitState: OrderStepState = order.status === 'CANCELED' ? 'canceled' : 'returned';

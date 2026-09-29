@@ -1,4 +1,12 @@
 import { Router } from 'express';
+import {
+  publicTrackingRateLimit,
+  discountCodeRateLimit,
+  publicKeyFailureRateLimit,
+  publicShopperRateLimit,
+  publicKeyRateLimit,
+  storefrontShopperKey,
+} from '../../middleware/rateLimit.js';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 
@@ -17,6 +25,7 @@ import { setOwnMarketingConsent } from '../../services/campaign-consent.service.
 import { loginWithGoogle } from '../../services/customer-auth.service.js';
 import {
   addToCart,
+  PUBLIC_CART_MAX_QUANTITY,
   checkout,
   getCart,
   getMyOrders,
@@ -24,6 +33,7 @@ import {
   getPublicProductBySlug,
   getStorefrontConfig,
   getWishlist,
+  quoteCheckout,
   listPublicBranches,
   listPublicCategories,
   listPublicDiscounts,
@@ -59,7 +69,7 @@ export const publicRouter = Router();
 // Every storefront call is made by an approved integration. Shopper identity
 // remains a separate Bearer token on customer-specific routes; the generated
 // integration credential is always sent as `X-API-Key`.
-publicRouter.use('/public', authenticateStorefrontApiKey);
+publicRouter.use('/public', publicKeyFailureRateLimit, authenticateStorefrontApiKey, publicKeyRateLimit, publicShopperRateLimit);
 
 /**
  * Sign-in attempts. Stricter than the general API limit and separate from the
@@ -67,6 +77,7 @@ publicRouter.use('/public', authenticateStorefrontApiKey);
  * that protects admin login.
  */
 const customerLoginRateLimit = rateLimit({
+  keyGenerator: storefrontShopperKey,
   windowMs: 15 * 60_000,
   limit: 20,
   standardHeaders: 'draft-7',
@@ -86,6 +97,7 @@ const customerLoginRateLimit = rateLimit({
  * Successful requests count — unlike login, a *successful* flood is the abuse.
  */
 const checkoutRateLimit = rateLimit({
+  keyGenerator: storefrontShopperKey,
   windowMs: 60 * 60_000,
   limit: 20,
   // Integration files exercise many valid and invalid checkout cases from one
@@ -241,14 +253,14 @@ const addToCartBody = z
   .object({
     productId: z.string().min(1).max(64),
     // Capped: a quantity of 10,000 is a mistake or an attack, not an order.
-    quantity: z.coerce.number().int().min(1).max(99).default(1),
+    quantity: z.coerce.number().int().min(1).max(PUBLIC_CART_MAX_QUANTITY).default(1),
   })
   .strict();
 const setQuantityBody = z
   .object({
     productId: z.string().min(1).max(64),
     // 0 is allowed and means "remove the line".
-    quantity: z.coerce.number().int().min(0).max(99),
+    quantity: z.coerce.number().int().min(0).max(PUBLIC_CART_MAX_QUANTITY),
   })
   .strict();
 
@@ -302,24 +314,35 @@ publicRouter.post('/public/wishlist', requireArea('products'), authenticateCusto
 
 // ─── Checkout (guest or customer) ───────────────────────────────────
 
+const cartItems = z
+  .array(
+    z
+      .object({
+        productId: z.string().min(1).max(64),
+        // The option bought; required when the product has any.
+        variantId: z.string().min(1).max(64).optional(),
+        quantity: z.coerce.number().int().min(1).max(PUBLIC_CART_MAX_QUANTITY),
+      })
+      .strict(),
+  )
+  .min(1, 'Your cart is empty')
+  // Caps the transaction size — an unbounded array is an unbounded
+  // transaction holding row locks.
+  .max(50);
+
+/** Uppercased so "welcome10" means "WELCOME10" — see checkoutBody. */
+const discountCodeField = z
+  .string()
+  .trim()
+  .min(1)
+  .max(48)
+  .transform((value) => value.toUpperCase())
+  .optional();
+
 const checkoutBody = z
   .object({
     branchId: z.string().trim().min(1).max(64),
-    items: z
-      .array(
-        z
-          .object({
-            productId: z.string().min(1).max(64),
-            // The option bought; required when the product has any.
-            variantId: z.string().min(1).max(64).optional(),
-            quantity: z.coerce.number().int().min(1).max(99),
-          })
-          .strict(),
-      )
-      .min(1, 'Your cart is empty')
-      // Caps the transaction size — an unbounded array is an unbounded
-      // transaction holding row locks.
-      .max(50),
+    items: cartItems,
     contact: z
       .object({
         name: z.string().trim().min(1).max(200),
@@ -338,13 +361,7 @@ const checkoutBody = z
      * codes are stored uppercase — someone typing "welcome10" means the same
      * thing as "WELCOME10".
      */
-    discountCode: z
-      .string()
-      .trim()
-      .min(1)
-      .max(48)
-      .transform((value) => value.toUpperCase())
-      .optional(),
+    discountCode: discountCodeField,
     /**
      * The checkout's "send me offers" tick-boxes. Grant-only and signed-in
      * only: an unticked box is not a withdrawal, and a guest has no customer
@@ -364,6 +381,28 @@ const checkoutBody = z
   });
 
 const checkoutIdempotencyKey = z.string().uuid().max(64);
+
+const quoteBody = z
+  .object({
+    branchId: z.string().trim().min(1).max(64),
+    items: cartItems,
+    discountCode: discountCodeField,
+  })
+  .strict();
+
+/**
+ * What checkout WOULD charge for this cart — lines, discount, VAT, total —
+ * without placing an order or spending a use of the code. The storefront shows
+ * this before "Place order", so the total the shopper sees is the one charged.
+ */
+publicRouter.post('/public/orders/quote', requireArea('orders'), discountCodeRateLimit, optionalCustomer, async (req, res) => {
+  const parsed = quoteBody.safeParse(req.body);
+  if (!parsed.success) {
+    throw AppError.badRequest(parsed.error.issues[0]?.message ?? 'Please check your cart');
+  }
+
+  res.json({ data: await quoteCheckout(parsed.data, req.customer?.id ?? null) });
+});
 
 publicRouter.post('/public/orders', requireArea('orders'), checkoutRateLimit, optionalCustomer, async (req, res) => {
   const parsed = checkoutBody.safeParse(req.body);
@@ -425,7 +464,7 @@ const trackQuery = z.object({
   phone: z.string().trim().min(4).max(48),
 });
 
-publicRouter.get('/public/orders/track', requireArea('orders'), async (req, res) => {
+publicRouter.get('/public/orders/track', requireArea('orders'), publicTrackingRateLimit, async (req, res) => {
   const parsed = trackQuery.safeParse(req.query);
   if (!parsed.success) {
     throw AppError.badRequest('An order number and phone number are both required');

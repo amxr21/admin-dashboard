@@ -884,13 +884,14 @@ export async function getStatusBreakdown(params: RangeParams) {
   };
 }
 
-/** An order in any of these is still "in flight" — DELIVERED/CANCELED/
- *  RETURNED are terminal, so neither a courier assignment nor stock backing
- *  it is still actionable. */
+/** An order in any of these is still "in flight" — DELIVERED/COLLECTED/
+ *  CANCELED/RETURNED are terminal, so neither a courier assignment nor stock
+ *  backing it is still actionable. */
 const OPEN_ORDER_STATUSES: OrderStatus[] = [
   OrderStatus.PENDING,
   OrderStatus.CONFIRMED,
   OrderStatus.SHIPPED,
+  OrderStatus.READY_FOR_PICKUP,
 ];
 
 const NEEDS_ATTENTION_LIMIT = 20;

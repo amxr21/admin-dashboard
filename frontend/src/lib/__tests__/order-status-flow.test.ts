@@ -118,6 +118,78 @@ describe('buildOrderSteps', () => {
   });
 });
 
+describe('a pickup order', () => {
+  it('is drawn readied and collected, never shipped', () => {
+    const steps = buildOrderSteps({
+      status: 'READY_FOR_PICKUP',
+      fulfillment: 'PICKUP',
+      placedAt: PLACED,
+      statusHistory: [
+        entry('PENDING', 'CONFIRMED', '2026-07-01T11:00:00.000Z'),
+        entry('CONFIRMED', 'READY_FOR_PICKUP', '2026-07-01T12:00:00.000Z'),
+      ],
+    });
+
+    expect(states(steps)).toEqual([
+      'PENDING:done',
+      'CONFIRMED:done',
+      'READY_FOR_PICKUP:current',
+      'COLLECTED:next',
+    ]);
+  });
+
+  it('finishes the path on COLLECTED', () => {
+    const steps = buildOrderSteps({ status: 'COLLECTED', fulfillment: 'PICKUP', placedAt: PLACED, statusHistory: [] });
+
+    expect(steps.at(-1)).toMatchObject({ status: 'COLLECTED', state: 'complete' });
+  });
+
+  it('is shown its own path before anything has happened to it', () => {
+    const steps = buildOrderSteps({ status: 'PENDING', fulfillment: 'PICKUP', placedAt: PLACED, statusHistory: [] });
+
+    expect(steps.map((step) => step.status)).toEqual(['PENDING', 'CONFIRMED', 'READY_FOR_PICKUP', 'COLLECTED']);
+  });
+
+  it('stops where a no-show was canceled', () => {
+    const steps = buildOrderSteps({
+      status: 'CANCELED',
+      fulfillment: 'PICKUP',
+      placedAt: PLACED,
+      statusHistory: [
+        entry('PENDING', 'CONFIRMED', '2026-07-01T11:00:00.000Z'),
+        entry('CONFIRMED', 'READY_FOR_PICKUP', '2026-07-01T12:00:00.000Z'),
+        entry('READY_FOR_PICKUP', 'CANCELED', '2026-07-03T12:00:00.000Z'),
+      ],
+    });
+
+    expect(states(steps)).toEqual([
+      'PENDING:done',
+      'CONFIRMED:done',
+      'READY_FOR_PICKUP:done',
+      'CANCELED:canceled',
+    ]);
+  });
+
+  it('is recognised by its history when the order never recorded a fulfillment', () => {
+    const steps = buildOrderSteps({
+      status: 'READY_FOR_PICKUP',
+      fulfillment: null,
+      placedAt: PLACED,
+      statusHistory: [entry('CONFIRMED', 'READY_FOR_PICKUP', '2026-07-01T12:00:00.000Z')],
+    });
+
+    expect(steps.map((step) => step.status)).toContain('COLLECTED');
+  });
+
+  it('offers collection as the one primary move once it is ready', () => {
+    expect(planStatusActions(['COLLECTED', 'CANCELED'])).toEqual({
+      forward: 'COLLECTED',
+      secondary: 'CANCELED',
+      overflow: [],
+    });
+  });
+});
+
 describe('planStatusActions', () => {
   it('PENDING: confirm is primary, cancel sits beside it', () => {
     expect(planStatusActions(['CONFIRMED', 'CANCELED'])).toEqual({

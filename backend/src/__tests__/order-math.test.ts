@@ -7,6 +7,7 @@ import {
   computeRefundBreakdown,
   computeRefundTaxAmount,
   computeRefundableValue,
+  taxInside,
 } from '../services/order-math.service.js';
 
 /**
@@ -226,5 +227,76 @@ describe('computeRefundTaxAmount', () => {
     const line = { price: D('40'), quantity: 1 };
     const order = { subtotal: null, discountAmount: null, taxAmount: null, total: D('40'), lines: [line] };
     expect(computeRefundTaxAmount(computeRefundBreakdown(order, [line]), D('40'))).toBeNull();
+  });
+});
+
+/**
+ * Tax-inclusive pricing (`store.pricesIncludeTax`) — how prices are shown in
+ * the UAE, UK and EU. Found by the Fluffy storefront QA: a 48.00 item was
+ * charged 50.40 while the shop's own terms promised prices include VAT.
+ */
+describe('prices that already include tax', () => {
+  it('works the VAT out of the price instead of adding it', () => {
+    const totals = computeOrderTotals([{ price: D('48'), quantity: 1 }], FIVE_PERCENT, true);
+    expect(totals.subtotal.toFixed(2)).toBe('48.00');
+    expect(totals.taxAmount.toFixed(2)).toBe('2.29');
+    expect(totals.total.toFixed(2)).toBe('48.00');
+  });
+
+  it('keeps an exempt line out of the VAT inside the total', () => {
+    const totals = computeOrderTotals(
+      [
+        { price: D('105'), quantity: 1, isTaxable: true },
+        { price: D('50'), quantity: 1, isTaxable: false },
+      ],
+      FIVE_PERCENT,
+      true,
+    );
+    expect(totals.taxAmount.toFixed(2)).toBe('5.00');
+    expect(totals.total.toFixed(2)).toBe('155.00');
+  });
+
+  it('works the VAT out of what is left after a discount', () => {
+    // 105 inclusive, 21 off → 84 paid, of which 84 - 84/1.05 = 4.00 is VAT.
+    expect(computeDiscountedTaxAmount(D('105'), D('105'), D('21'), FIVE_PERCENT, true).toFixed(2)).toBe('4.00');
+  });
+
+  it('treats a zero rate as no tax either way', () => {
+    expect(computeOrderTotals([{ price: D('48'), quantity: 1 }], NO_TAX, true).taxAmount.toFixed(2)).toBe('0.00');
+    expect(taxInside(D('48'), NO_TAX).toFixed(2)).toBe('0.00');
+  });
+
+  it('adds up with the tax-exclusive default untouched', () => {
+    const exclusive = computeOrderTotals([{ price: D('48'), quantity: 1 }], FIVE_PERCENT);
+    expect(exclusive.total.toFixed(2)).toBe('50.40');
+  });
+
+  describe('refunds', () => {
+    // Two 52.50 cookies, VAT inclusive: total 105.00, of which 5.00 is VAT.
+    const line = { price: D('52.5'), quantity: 2, isTaxable: true };
+    const order = {
+      subtotal: D('105'),
+      discountAmount: null,
+      taxAmount: D('5'),
+      total: D('105'),
+      pricesIncludeTax: true,
+      lines: [line],
+    };
+
+    it('refunds what was paid for a returned line — the VAT is already inside it', () => {
+      const breakdown = computeRefundBreakdown(order, [{ ...line, quantity: 1 }]);
+      expect(breakdown.refundable.toFixed(2)).toBe('52.50');
+      expect(computeRefundTaxAmount(breakdown, breakdown.refundable)?.toFixed(2)).toBe('2.50');
+    });
+
+    it('refunds exactly the total when everything comes back', () => {
+      expect(computeRefundableValue(order, [line]).toFixed(2)).toBe('105.00');
+    });
+
+    it('would have refunded the VAT twice if the order were read as tax-exclusive', () => {
+      // The reason the basis is snapshotted per order rather than read from
+      // today's setting.
+      expect(computeRefundableValue({ ...order, pricesIncludeTax: false }, [{ ...line, quantity: 1 }]).toFixed(2)).toBe('55.00');
+    });
   });
 });

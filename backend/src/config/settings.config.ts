@@ -313,6 +313,15 @@ export const SETTINGS = {
       'Applied to every order subtotal on the invoice. Set to 0 if you do not charge tax.',
     placeholder: 'e.g. 5',
   },
+  'store.pricesIncludeTax': {
+    type: 'boolean',
+    default: false,
+    area: 'settings',
+    label: 'Prices include tax',
+    // Off by default: every existing store keeps adding tax on top.
+    description:
+      'Turn on when the prices you enter already include VAT (as in the UAE, UK and EU). Tax is then worked out of each price instead of added to it, so a 48.00 item costs 48.00. Orders already placed keep the basis they were sold under.',
+  },
 
   // ─── Security ───────────────────────────────────────────────────────
   'security.sessionTimeoutMinutes': {

@@ -225,7 +225,7 @@ export function OrderInvoice({ id }: { id: string }) {
                 </tr>
                 <tr>
                   <td colSpan={3} className="text-end">
-                    {tOrders('items.tax')}
+                    {tOrders(order.pricesIncludeTax ? 'items.taxIncluded' : 'items.tax')}
                   </td>
                   <td className="text-end tabular-nums">{money(order.taxAmount)}</td>
                 </tr>

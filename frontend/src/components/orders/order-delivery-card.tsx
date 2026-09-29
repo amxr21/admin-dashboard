@@ -45,19 +45,26 @@ import type { OrderDetail, OrderStatus } from '@/lib/orders-api';
  * Now the card is one line until someone actually assigns.
  *
  * ─── VISIBILITY MIRRORS THE SERVER'S OWN RULE, NOT A SEPARATE COPY ───
- * `assignOrder` refuses once an order is DELIVERED/CANCELED/RETURNED, so no
+ * `assignOrder` refuses once an order is finished or waiting for the customer
+ * to collect it (and always for a pickup order), so no
  * control renders past that point (same convention as "Request return", which
  * is gated on `nextStatuses`). Editing the address or unassigning a DELIVERED
  * assignment is refused the same way, mirrored by disabling the menu item.
  *
- * ─── THE ADDRESS IS CAPTURED HERE OR NOWHERE ─────────────────────────
- * `Order` has no address column: the assignment's `address`/`city` are the
- * ONLY place a delivery address is recorded, and they are what the courier
- * portal renders. On reassignment the existing values are seeded so changing
- * courier doesn't silently wipe the address the last one had.
+ * ─── THE COURIER'S ADDRESS STARTS AS THE CUSTOMER'S ───────────────────
+ * The assignment's `address`/`city` are what the courier portal renders.
+ * A new assignment starts from the address given at checkout (`order.delivery`);
+ * on reassignment the assignment's own values are seeded instead, so changing
+ * courier doesn't silently wipe a correction made for the last one.
  */
 
-const FINISHED_ORDER_STATUSES: OrderStatus[] = ['DELIVERED', 'CANCELED', 'RETURNED'];
+const FINISHED_ORDER_STATUSES: OrderStatus[] = [
+  'DELIVERED',
+  'COLLECTED',
+  'READY_FOR_PICKUP',
+  'CANCELED',
+  'RETURNED',
+];
 
 type SheetMode = 'assign' | 'reassign' | 'address';
 
@@ -103,6 +110,9 @@ export function OrderDeliveryCard({ order, onAssignmentChanged }: OrderDeliveryC
       setIsUnassigning(false);
     }
   }
+
+  // Collected from the branch: there is nothing for a courier to carry.
+  if (order.fulfillment === 'PICKUP' && !assignment) return null;
 
   return (
     <CollapsibleSection
@@ -234,8 +244,12 @@ function CourierSheet({ order, mode, open, onOpenChange, onSaved }: CourierSheet
   const [driverId, setDriverId] = useState('');
   // Seeded from the current assignment so a reassignment keeps the address
   // already on file rather than blanking it.
-  const [address, setAddress] = useState(assignment?.address ?? '');
-  const [city, setCity] = useState(assignment?.city ?? '');
+  // The assignment's own address once there is one; before that, the one the
+  // customer gave (trimmed to what the assignment can hold).
+  const [address, setAddress] = useState(
+    assignment ? (assignment.address ?? '') : (order.delivery?.address?.slice(0, 255) ?? ''),
+  );
+  const [city, setCity] = useState(assignment ? (assignment.city ?? '') : (order.delivery?.city ?? ''));
   const [note, setNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

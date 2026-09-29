@@ -351,6 +351,29 @@ describe('creating a return', () => {
 });
 
 describe('approving a return', () => {
+  it('approves once when two approvals arrive together — one restock, one decision', async () => {
+    const { orderId, orderItemId, productId } = await makeOrder(OrderStatus.DELIVERED);
+    const stockBefore = (await prisma.product.findUniqueOrThrow({ where: { id: productId }, select: { stock: true } })).stock;
+    const created = await request(app)
+      .post('/api/v1/returns')
+      .set(auth(ownerToken))
+      .send({ orderId, reason: 'x', items: [{ orderItemId, quantity: 1 }] });
+    const id = (created.body as ReturnBody).data.return.id;
+
+    const approve = () =>
+      request(app)
+        .post(`/api/v1/returns/${id}/approve`)
+        .set(auth(ownerToken))
+        .send({ resolution: 'STORE_CREDIT', restock: true });
+    const results = await Promise.all([approve(), approve()]);
+
+    expect(results.filter((res) => res.status === 200)).toHaveLength(1);
+    const stockAfter = (await prisma.product.findUniqueOrThrow({ where: { id: productId }, select: { stock: true } })).stock;
+    expect(stockAfter - stockBefore).toBe(1);
+    const history = await prisma.orderStatusHistory.findMany({ where: { orderId, toStatus: 'RETURNED' } });
+    expect(history).toHaveLength(1);
+  });
+
   it('requires a real resolution, not NONE', async () => {
     const { orderId, orderItemId } = await makeOrder(OrderStatus.DELIVERED);
     const created = await request(app)

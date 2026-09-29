@@ -71,33 +71,25 @@ export async function authenticateCustomer(
   }
 }
 
-/**
- * Attaches the customer when a valid token is present, but never rejects.
- *
- * For routes that legitimately serve both guests and signed-in shoppers —
- * checkout being the important one, since guest checkout must keep working.
- *
- * An INVALID token is treated as a guest rather than an error: a shopper whose
- * token expired mid-session should still be able to complete a purchase, not
- * hit a wall at the last step.
- */
+/** Guests omit the header. Supplied invalid/expired credentials are an auth
+ * failure, never silently downgraded to a guest order or guest quote. */
 export async function optionalCustomer(
   req: Request,
   _res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const token = extractBearerToken(req.header('authorization'));
-  if (!token) return next();
-
+  const header = req.header('authorization');
+  if (header === undefined) return next();
   try {
+    const token = extractBearerToken(header);
+    if (!token) throw AppError.unauthorized('Invalid or expired session');
     const customer = await resolveCustomer(token);
     req.customer = customer;
     req.log = req.log.child({ customerId: customer.id });
-  } catch {
-    // Deliberately ignored — proceed as a guest.
+    next();
+  } catch (err) {
+    next(err);
   }
-
-  next();
 }
 
 /**

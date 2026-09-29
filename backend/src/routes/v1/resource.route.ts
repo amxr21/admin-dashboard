@@ -5,6 +5,7 @@ import { parse as parseCsvSync } from 'csv-parse/sync';
 import { AppError } from '../../errors/AppError.js';
 import { toCsv } from '../../lib/csv.js';
 import { authenticate } from '../../middleware/authenticate.js';
+import { markAreaGuard } from '../../middleware/area-guard.js';
 import { effectiveRole, withBranchContext } from '../../middleware/branch-context.js';
 import {
   canAccessAreaResolved,
@@ -62,7 +63,33 @@ async function guardArea(req: Request): Promise<void> {
   if (!(await canAccessAreaResolved(effectiveRole(req), config.permissionArea))) {
     throw AppError.forbidden('You do not have access to this resource');
   }
+
+  // Same intersection `requireArea` applies: an API key's scopes narrow what
+  // its owner can reach, so a key without this resource's area is refused.
+  const scopes = req.apiKeyScopes;
+  if (scopes && !scopes.includes(config.permissionArea)) {
+    throw AppError.forbidden('You do not have access to this resource');
+  }
 }
+
+/**
+ * The area check as route middleware, marked so `authenticate` lets a scoped
+ * API key through to the resource routes (see area-guard.ts). The resource —
+ * and so its area — comes from the URL, which is why this cannot be a plain
+ * `requireArea(area)`.
+ */
+const resourceAreaGuard = markAreaGuard(async function resourceAreaGuard(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    await guardArea(req);
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 /**
  * GET /api/v1/r/_schema — the whole config, for a UI that renders itself.
@@ -100,8 +127,7 @@ resourceRouter.get('/r/_schema', authenticate, withBranchContext, async (req, re
 });
 
 // GET /api/v1/r/:resource
-resourceRouter.get('/r/:resource', authenticate, withBranchContext, async (req, res) => {
-  await guardArea(req);
+resourceRouter.get('/r/:resource', authenticate, withBranchContext, resourceAreaGuard, async (req, res) => {
   const config = requireResource(String(req.params.resource));
 
   const { page, pageSize, search, sort, dir, ...rest } = req.query;
@@ -147,8 +173,7 @@ resourceRouter.get('/r/:resource', authenticate, withBranchContext, async (req, 
  * the audit trail's own CSV export: the audit log doubles as export HISTORY
  * (`entity=<resource>&action=<resource>.export`), no new model needed.
  */
-resourceRouter.get('/r/:resource/export', authenticate, withBranchContext, async (req, res) => {
-  await guardArea(req);
+resourceRouter.get('/r/:resource/export', authenticate, withBranchContext, resourceAreaGuard, async (req, res) => {
   const config = requireResource(String(req.params.resource));
 
   /**
@@ -277,8 +302,7 @@ resourceRouter.get('/r/:resource/export', authenticate, withBranchContext, async
  * A header-only file, deliberately: a filled example row invites copy-paste
  * of placeholder data into a real import.
  */
-resourceRouter.get('/r/:resource/import-template', authenticate, withBranchContext, async (req, res) => {
-  await guardArea(req);
+resourceRouter.get('/r/:resource/import-template', authenticate, withBranchContext, resourceAreaGuard, (req, res) => {
   const config = requireResource(String(req.params.resource));
 
   const header = importTemplateColumns(config).join(',');
@@ -355,9 +379,9 @@ resourceRouter.post(
   '/r/:resource/import',
   authenticate,
   withBranchContext,
+  resourceAreaGuard,
   parseImportUpload,
   async (req, res) => {
-    await guardArea(req);
     const config = requireResource(String(req.params.resource));
     const rows = parseImportFile(req);
 
@@ -390,8 +414,7 @@ resourceRouter.post(
 );
 
 // GET /api/v1/r/:resource/_relations/:field — options for a relation picker.
-resourceRouter.get('/r/:resource/_relations/:field', authenticate, withBranchContext, async (req, res) => {
-  await guardArea(req);
+resourceRouter.get('/r/:resource/_relations/:field', authenticate, withBranchContext, resourceAreaGuard, async (req, res) => {
   const config = requireResource(String(req.params.resource));
 
   const options = await relationOptions(
@@ -404,8 +427,7 @@ resourceRouter.get('/r/:resource/_relations/:field', authenticate, withBranchCon
 });
 
 // GET /api/v1/r/:resource/:id
-resourceRouter.get('/r/:resource/:id', authenticate, withBranchContext, async (req, res) => {
-  await guardArea(req);
+resourceRouter.get('/r/:resource/:id', authenticate, withBranchContext, resourceAreaGuard, async (req, res) => {
   const config = requireResource(String(req.params.resource));
 
   const rawRow = await getResourceRow(config, String(req.params.id), req.branchId);
@@ -426,8 +448,7 @@ resourceRouter.get('/r/:resource/:id', authenticate, withBranchContext, async (r
 // always fall through to `defaultBranchId()` regardless of the switcher).
 // Every other verb on this router already carries it; create was the one
 // route that did not.
-resourceRouter.post('/r/:resource', authenticate, withBranchContext, async (req, res) => {
-  await guardArea(req);
+resourceRouter.post('/r/:resource', authenticate, withBranchContext, resourceAreaGuard, async (req, res) => {
   const config = requireResource(String(req.params.resource));
 
   const row = await createResourceRow(config, req.body as Record<string, unknown>, req);
@@ -438,8 +459,7 @@ resourceRouter.post('/r/:resource', authenticate, withBranchContext, async (req,
 });
 
 // PATCH /api/v1/r/:resource/:id
-resourceRouter.patch('/r/:resource/:id', authenticate, withBranchContext, async (req, res) => {
-  await guardArea(req);
+resourceRouter.patch('/r/:resource/:id', authenticate, withBranchContext, resourceAreaGuard, async (req, res) => {
   const config = requireResource(String(req.params.resource));
 
   const row = await updateResourceRow(
@@ -456,8 +476,7 @@ resourceRouter.patch('/r/:resource/:id', authenticate, withBranchContext, async 
 });
 
 // DELETE /api/v1/r/:resource/:id
-resourceRouter.delete('/r/:resource/:id', authenticate, withBranchContext, async (req, res) => {
-  await guardArea(req);
+resourceRouter.delete('/r/:resource/:id', authenticate, withBranchContext, resourceAreaGuard, async (req, res) => {
   const config = requireResource(String(req.params.resource));
 
   const { row, action } = await deleteResourceRow(
