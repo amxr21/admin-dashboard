@@ -128,6 +128,14 @@ export const SETTINGS = {
     description: 'Where customers are told to write when something goes wrong.',
     placeholder: 'e.g. help@nourcoffee.com',
   },
+  'storefront.hideStockCounts': {
+    type: 'boolean',
+    default: false,
+    area: 'settings',
+    label: 'Hide public stock quantities',
+    description:
+      'Keep availability visible while omitting exact product and variant stock counts from the public catalogue and wishlist.',
+  },
   'store.currency': {
     type: 'enum',
     default: 'AED',
@@ -312,6 +320,14 @@ export const SETTINGS = {
     description:
       'Applied to every order subtotal on the invoice. Set to 0 if you do not charge tax.',
     placeholder: 'e.g. 5',
+  },
+  'store.deliveryZonesEnabled': {
+    type: 'boolean',
+    default: false,
+    area: 'settings',
+    label: 'Delivery zones and fees',
+    description:
+      'Require an active delivery area for website deliveries and include its fee in the quote. Pickup stays free.',
   },
   'store.pricesIncludeTax': {
     type: 'boolean',

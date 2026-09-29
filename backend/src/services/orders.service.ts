@@ -307,6 +307,8 @@ export async function getOrder(id: string, branchId?: string) {
       subtotal: true,
       taxAmount: true,
       pricesIncludeTax: true,
+      deliveryFee: true,
+      deliveryZoneName: true,
       paymentMethod: true,
       placedAt: true,
       fulfillment: true,
@@ -433,6 +435,8 @@ export async function getOrder(id: string, branchId?: string) {
     taxAmount: money(order.taxAmount),
     // The invoice says "VAT included" rather than adding a VAT line.
     pricesIncludeTax: order.pricesIncludeTax,
+    deliveryFee: order.deliveryFee.toFixed(2),
+    deliveryZoneName: order.deliveryZoneName,
     paymentMethod: order.paymentMethod,
     amountPaid: (paid._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
     placedAt: order.placedAt.toISOString(),

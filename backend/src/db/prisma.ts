@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { isDevelopment } from '../config/env.js';
 import { logger } from '../logger.js';
+import { isLockConflictMessage } from './lock-conflict.js';
 
 /**
  * Single shared Prisma client.
@@ -40,6 +41,13 @@ prisma.$on('warn', (event) => {
 });
 
 prisma.$on('error', (event) => {
+  // A lost lock race is routine under contention and is retried (see
+  // transaction-retry.service.ts), so it is not an incident. Where it is not
+  // retried, or the retries run out, the failed request is logged instead.
+  if (isLockConflictMessage(event.message)) {
+    logger.warn({ event: 'db.lock_conflict', message: event.message });
+    return;
+  }
   logger.error({ event: 'db.error', message: event.message });
 });
 

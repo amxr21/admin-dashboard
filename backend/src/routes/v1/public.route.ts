@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { listDeliveryZones } from '../../services/delivery-zones.service.js';
 import {
   publicTrackingRateLimit,
   discountCodeRateLimit,
@@ -121,6 +122,11 @@ const checkoutRateLimit = rateLimit({
 // registry, which carries staff-operational values.
 publicRouter.get('/public/config', async (_req, res) => {
   res.json({ data: await getStorefrontConfig() });
+});
+
+// Active delivery areas, or none while delivery pricing is switched off.
+publicRouter.get('/public/delivery-zones', requireArea('orders'), async (_req, res) => {
+  res.json({ data: await listDeliveryZones(true) });
 });
 
 // ─── Catalogue (no auth) ────────────────────────────────────────────
@@ -353,6 +359,7 @@ const checkoutBody = z
         note: z.string().trim().max(1000).optional(),
       })
       .strict(),
+    deliveryZoneId: z.string().trim().min(1).max(64).optional(),
     paymentMethod: z.enum(['cash', 'card-on-delivery']),
     fulfillment: z.enum(['Pickup', 'Delivery']),
     /**
@@ -386,6 +393,8 @@ const quoteBody = z
   .object({
     branchId: z.string().trim().min(1).max(64),
     items: cartItems,
+    fulfillment: z.enum(['Pickup', 'Delivery']).default('Pickup'),
+    deliveryZoneId: z.string().trim().min(1).max(64).optional(),
     discountCode: discountCodeField,
   })
   .strict();

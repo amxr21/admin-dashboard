@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
 import { AppError } from '../errors/AppError.js';
+import { retryDatabaseTransaction } from './transaction-retry.service.js';
 
 const DEFAULT_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
 
@@ -103,7 +104,7 @@ export async function executeIdempotently<T>(
   }
 
   try {
-    const value = await prisma.$transaction(async (tx) => {
+    const value = await retryDatabaseTransaction(() => prisma.$transaction(async (tx) => {
       // `createMany(..., skipDuplicates)` maps to an atomic non-erroring claim
       // on MySQL. The loser of a normal simultaneous retry therefore does not
       // emit a false db.error/Sentry event before we replay the winner.
@@ -129,7 +130,7 @@ export async function executeIdempotently<T>(
       });
 
       return result;
-    });
+    }));
 
     return { value, replayed: false };
   } catch (error) {

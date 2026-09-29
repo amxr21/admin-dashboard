@@ -10,6 +10,7 @@ import {
 } from '@prisma/client';
 
 import { prisma } from '../db/prisma.js';
+import { priceDelivery } from './delivery-zones.service.js';
 import { AppError } from '../errors/AppError.js';
 import {
   executeIdempotently,
@@ -79,7 +80,7 @@ export interface PublicProduct {
    * over time and derive sales volume. Do NOT extend the same treatment to
    * `cost` (margin) or supplier fields, which have no customer-facing use.
    */
-  stock: number;
+  stock?: number;
   /** Convenience for the common case, so the UI doesn't re-derive `stock > 0`. */
   inStock: boolean;
   category: { id: string; name: string; slug: string | null } | null;
@@ -98,7 +99,7 @@ export interface PublicVariant {
   name: string;
   /** Fixed-2 string, same as the product price. */
   price: string;
-  stock: number;
+  stock?: number;
   inStock: boolean;
 }
 
@@ -120,6 +121,20 @@ function branchProductSelect(branchId: string) {
 }
 
 type BranchProductRow = Prisma.ProductGetPayload<{ select: ReturnType<typeof branchProductSelect> }>;
+
+function stockVisibility(product: PublicProduct, hideCounts: boolean): PublicProduct {
+  if (!hideCounts) return product;
+  const publicProduct = { ...product };
+  delete publicProduct.stock;
+  if (publicProduct.variants) {
+    publicProduct.variants = publicProduct.variants.map((variant) => {
+      const publicVariant = { ...variant };
+      delete publicVariant.stock;
+      return publicVariant;
+    });
+  }
+  return publicProduct;
+}
 
 /** A branch-scoped catalogue row, options included. */
 function toBranchProduct(product: BranchProductRow, locale: ProductLocale): PublicProduct {
@@ -205,7 +220,10 @@ export async function listPublicProducts(
     select: branchProductSelect(branchId),
     orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
   });
-  return products.map((product) => toBranchProduct(product, locale));
+  const hideCounts = Boolean(await getSettingValue('storefront.hideStockCounts'));
+  return products.map((product) =>
+    stockVisibility(toBranchProduct(product, locale), hideCounts),
+  );
 }
 
 export interface PublicMenuCategory {
@@ -244,13 +262,16 @@ export async function getPublicMenu(
     },
   });
 
+  const hideCounts = Boolean(await getSettingValue('storefront.hideStockCounts'));
   return categories
     .filter((category) => category.products.length > 0)
     .map((category) => ({
       id: category.id,
       title: category.name,
       slug: category.slug,
-      items: category.products.map((product) => toBranchProduct(product, locale)),
+      items: category.products.map((product) =>
+        stockVisibility(toBranchProduct(product, locale), hideCounts),
+      ),
     }));
 }
 
@@ -268,7 +289,8 @@ export async function getPublicProductBySlug(
 
   if (!product) throw AppError.notFound('Product not found');
 
-  return toBranchProduct(product, locale);
+  const hideCounts = Boolean(await getSettingValue('storefront.hideStockCounts'));
+  return stockVisibility(toBranchProduct(product, locale), hideCounts);
 }
 
 // ─── Categories ─────────────────────────────────────────────────────
@@ -612,7 +634,8 @@ export async function getWishlist(customerId: string): Promise<PublicProduct[]> 
     include: { product: { select: PUBLIC_PRODUCT_SELECT } },
     orderBy: { createdAt: 'desc' },
   });
-  return items.map((item) => toPublicProduct(item.product));
+  const hideCounts = Boolean(await getSettingValue('storefront.hideStockCounts'));
+  return items.map((item) => stockVisibility(toPublicProduct(item.product), hideCounts));
 }
 
 /** Toggle, so one endpoint serves both the filled and empty heart. */
@@ -647,6 +670,7 @@ export interface CheckoutContact {
 }
 
 export interface CheckoutInput {
+  deliveryZoneId?: string | undefined;
   branchId: string;
   /** `variantId` names the option bought; required when the product has any. */
   items: { productId: string; variantId?: string | undefined; quantity: number }[];
@@ -658,7 +682,14 @@ export interface CheckoutInput {
 }
 
 /** What checkout would charge for a cart — see `quoteCheckout`. */
+type CheckoutPricingInput = Pick<CheckoutInput, 'branchId' | 'items' | 'discountCode'> & {
+  fulfillment?: string | undefined;
+  deliveryZoneId?: string | undefined;
+};
+
 export interface CheckoutQuote {
+  deliveryFee: string;
+  deliveryZoneName: string | null;
   lines: { productId: string; variantId: string | null; name: string; quantity: number; price: string; lineTotal: string }[];
   subtotal: string;
   /** The code that was applied, as stored, or null. */
@@ -680,7 +711,7 @@ export interface CheckoutQuote {
  * a discount code.
  */
 export async function quoteCheckout(
-  input: Pick<CheckoutInput, 'branchId' | 'items' | 'discountCode'>,
+  input: CheckoutPricingInput,
   customerId: string | null,
 ): Promise<CheckoutQuote> {
   const tax = await getTaxPolicy();
@@ -697,6 +728,8 @@ export async function quoteCheckout(
       price: line.price.toFixed(2),
       lineTotal: line.price.times(line.quantity).toFixed(2),
     })),
+    deliveryFee: priced.delivery.fee.toFixed(2),
+    deliveryZoneName: priced.delivery.zoneName,
     subtotal: priced.subtotal.toFixed(2),
     discountCode: priced.discount?.code ?? null,
     discountAmount: priced.discountAmount.toFixed(2),
@@ -855,8 +888,8 @@ async function resolveDiscount(
     : new Prisma.Decimal(0);
 
   /**
-   * Claim the use. Conditional on the count we just read, so two checkouts
-   * racing for the last use cannot both win: the loser updates zero rows.
+   * Claim against the live maximum, not a stale snapshot of usedCount. All
+   * remaining uses can be claimed concurrently; only exhaustion updates zero rows.
    *
    * `updateMany` rather than `update` because it reports the row count — an
    * `update` would succeed against the stale WHERE or throw a less specific
@@ -866,7 +899,7 @@ async function resolveDiscount(
 
   if (discount.maxUses !== null) {
     const claimed = await tx.discount.updateMany({
-      where: { id: discount.id, usedCount: discount.usedCount },
+      where: { id: discount.id, usedCount: { lt: discount.maxUses } },
       data: { usedCount: { increment: 1 } },
     });
 
@@ -967,16 +1000,11 @@ async function claimVariantLine(
 ) {
   const soldOut = () =>
     AppError.conflict(`${line.name} just sold out at this branch — please adjust your cart and try again`);
-  try {
-    const claimed = await tx.branchVariantStock.updateMany({
-      where: { variantId: line.variantId, branchId, quantity: { gte: line.quantity } },
-      data: { quantity: { decrement: line.quantity } },
-    });
-    if (claimed.count === 0) throw soldOut();
-  } catch (err) {
-    if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2034') throw err;
-    throw soldOut();
-  }
+  const claimed = await tx.branchVariantStock.updateMany({
+    where: { variantId: line.variantId, branchId, quantity: { gte: line.quantity } },
+    data: { quantity: { decrement: line.quantity } },
+  });
+  if (claimed.count === 0) throw soldOut();
   await tx.productVariant.update({
     where: { id: line.variantId },
     data: { stock: { decrement: line.quantity } },
@@ -1023,7 +1051,7 @@ async function claimVariantLine(
  * a quote only checks that one is left.
  */
 async function priceCheckout(
-  input: Pick<CheckoutInput, 'branchId' | 'items' | 'discountCode'>,
+  input: CheckoutPricingInput,
   customerId: string | null,
   tx: Prisma.TransactionClient,
   tax: TaxPolicy,
@@ -1194,16 +1222,27 @@ async function priceCheckout(
     // Rounded once, at creation, and snapshotted — same discipline as
     // OrderItem.price. The order-level discount is allocated proportionally
     // between taxable and exempt goods, so an exempt line never creates VAT.
-    const taxAmount = taxAfterDiscount(
+    const goodsTaxAmount = taxAfterDiscount(
       taxableSubtotal,
       discount?.taxableAmount ?? new Prisma.Decimal(0),
       tax.rate,
       tax.pricesIncludeTax,
     );
     // Tax-inclusive prices already carry the tax the customer pays.
-    const total = tax.pricesIncludeTax ? discountedSubtotal : discountedSubtotal.plus(taxAmount);
+    const delivery = await priceDelivery(
+      tx,
+      input.fulfillment,
+      input.deliveryZoneId,
+      discountedSubtotal,
+      tax,
+    );
+    const taxAmount = goodsTaxAmount.plus(delivery.taxAmount);
+    const goodsTotal = tax.pricesIncludeTax
+      ? discountedSubtotal
+      : discountedSubtotal.plus(goodsTaxAmount);
+    const total = goodsTotal.plus(delivery.total);
 
-    return { lines, subtotal, discount, discountAmount, taxAmount, total };
+    return { lines, subtotal, discount, discountAmount, taxAmount, total, delivery };
 }
 
 async function checkoutOnce(
@@ -1212,7 +1251,7 @@ async function checkoutOnce(
   tx: Prisma.TransactionClient,
   tax: TaxPolicy,
 ): Promise<CheckoutResult> {
-    const { lines, subtotal, discount, discountAmount, taxAmount, total } = await priceCheckout(
+    const { lines, subtotal, discount, discountAmount, taxAmount, total, delivery } = await priceCheckout(
       input,
       customerId,
       tx,
@@ -1221,6 +1260,10 @@ async function checkoutOnce(
     );
 
     const orderData = {
+      deliveryFee: delivery.fee,
+      deliveryTaxAmount: delivery.taxAmount,
+      deliveryZoneId: delivery.zoneId,
+      deliveryZoneName: delivery.zoneName,
       total,
       subtotal,
       taxAmount,
@@ -1288,37 +1331,21 @@ async function checkoutOnce(
     // checkouts for the same product contend on the row: InnoDB takes an
     // exclusive lock for the UPDATE and reads the latest committed value, so
     // the second one either waits or is aborted as a deadlock — it never
-    // applies to a stale count. The P2034 branch below is that abort.
+    // applies to a stale count. Deadlocks retry the entire idempotent transaction.
     for (const line of lines) {
       if (line.variantId !== null) {
         await claimVariantLine(tx, { ...line, variantId: line.variantId }, input.branchId, order.orderNumber);
         continue;
       }
-      try {
-        const claimed = await tx.branchStock.updateMany({
-          where: {
-            productId: line.productId,
-            branchId: input.branchId,
-            quantity: { gte: line.quantity },
-          },
-          data: { quantity: { decrement: line.quantity } },
-        });
-        if (claimed.count === 0) {
-          throw AppError.conflict(
-            `${line.name} just sold out at this branch — please adjust your cart and try again`,
-          );
-        }
-      } catch (err) {
-        // P2034 — write conflict / deadlock. This is the EXPECTED way to lose
-        // a race for a contended product, not a bug in this code. Left
-        // unmapped it surfaces to the shopper as a generic 500 and to Sentry
-        // as an incident, which is wrong on both counts: nothing is broken,
-        // someone else simply got there first. Mapped to the 409 the pre-flight
-        // stock check already returns, so both paths look the same to the
-        // storefront. Anything else is a real failure and must surface.
-        if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2034') {
-          throw err;
-        }
+      const claimed = await tx.branchStock.updateMany({
+        where: {
+          productId: line.productId,
+          branchId: input.branchId,
+          quantity: { gte: line.quantity },
+        },
+        data: { quantity: { decrement: line.quantity } },
+      });
+      if (claimed.count === 0) {
         throw AppError.conflict(
           `${line.name} just sold out at this branch — please adjust your cart and try again`,
         );
@@ -1388,6 +1415,8 @@ export async function checkout(
 // ─── Order history & tracking ───────────────────────────────────────
 
 export interface PublicOrder {
+  deliveryFee: string;
+  deliveryZoneName: string | null;
   orderNumber: string;
   status: string;
   /** 'DELIVERY' | 'PICKUP', or null for an order from before it was recorded. */
@@ -1403,6 +1432,8 @@ export interface PublicOrder {
 }
 
 const PUBLIC_ORDER_SELECT = {
+  deliveryFee: true,
+  deliveryZoneName: true,
   orderNumber: true,
   status: true,
   fulfillment: true,
@@ -1425,6 +1456,8 @@ function toPublicOrder(
   order: Prisma.OrderGetPayload<{ select: typeof PUBLIC_ORDER_SELECT }>,
 ): PublicOrder {
   return {
+    deliveryFee: order.deliveryFee.toFixed(2),
+    deliveryZoneName: order.deliveryZoneName,
     orderNumber: order.orderNumber,
     status: order.status,
     fulfillment: order.fulfillment,

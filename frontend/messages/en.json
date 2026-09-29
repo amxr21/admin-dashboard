@@ -1409,7 +1409,8 @@
       "total": "Order total",
       "productRemoved": "Product no longer available",
       "lineDiscount": "{percent}% off",
-      "vatExempt": "No VAT"
+      "vatExempt": "No VAT",
+      "deliveryFee": "Delivery fee"
     },
     "customer": {
       "title": "Customer",
@@ -1426,7 +1427,8 @@
       "PICKUP": "Pickup from the branch",
       "contact": "Contact",
       "deliverTo": "Deliver to",
-      "note": "Customer’s note"
+      "note": "Customer’s note",
+      "deliveryArea": "Delivery area"
     },
     "delivery": {
       "title": "Delivery",
@@ -2404,6 +2406,33 @@
       "rename": "Rename",
       "usingDefault": "Currently shown as \"{label}\".",
       "overridden": "Using your own name for this page."
+    },
+    "deliveryZones": {
+      "title": "Delivery areas",
+      "description": "Set delivery fees and free delivery thresholds for each area. Pickup stays free.",
+      "enableHint": "Enable delivery areas in the store settings above to require shoppers to choose an active area.",
+      "add": "Add delivery area",
+      "edit": "Edit delivery area",
+      "editNamed": "Edit {name}",
+      "empty": "No delivery areas yet. Add an area to configure its delivery fee.",
+      "name": "Name",
+      "code": "Code",
+      "codeHint": "Use lowercase letters, numbers and hyphens. This code identifies the area.",
+      "fee": "Delivery fee",
+      "threshold": "Free delivery from",
+      "thresholdHint": "Leave blank to always charge the fee. The threshold uses the items total after discounts.",
+      "noThreshold": "No threshold",
+      "sortOrder": "Display order",
+      "active": "Active",
+      "inactive": "Inactive",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "retry": "Retry",
+      "saved": "Delivery area saved.",
+      "invalidAmount": "Enter a non-negative amount with at most two decimal places (maximum 9999999.99).",
+      "invalidIdentity": "Enter a name and a code with lowercase letters, numbers or hyphens.",
+      "invalidSort": "Enter a display order from 0 to 9999."
     }
   },
   "audit": {
