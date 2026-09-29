@@ -1747,7 +1747,7 @@
   },
   "productVariants": {
     "title": "Variants — {name}",
-    "subtitle": "Own price, stock and SKU per variant. Inventory only — not yet part of any checkout.",
+    "subtitle": "Own price, stock and SKU per variant. Sellable in POS and storefront checkout.",
     "empty": "No variants yet.",
     "name": "Name",
     "colourHint": "Common colour names are suggested. Type any other colour if none fit.",
@@ -4002,13 +4002,13 @@
         "applies": {
           "features": "Feature visibility for dashboard, POS, tickets, inventory, suppliers, reports, team, branches, and settings.",
           "labels": "Restaurant-friendly labels such as Menu items, Tickets, and Team.",
-          "defaults": "A small set of product and inventory defaults, including inventory variants.",
+          "defaults": "A small set of product and inventory defaults, including product variants.",
           "permissions": "The template's default role-area permissions."
         },
         "missingTitle": "The administrator must still prepare",
         "missing": {
           "data": "Branches, categories, menu items, prices, images, stock, staff, and branch assignments.",
-          "modifiers": "Sellable sizes, modifiers, add-ons, and meal customisation; current variants are inventory-only.",
+          "modifiers": "Modifier groups, add-ons, and meal customisation. Sizes and options with their own price and stock can be sold as variants.",
           "tables": "Tables, floor plans, seats, reservations, tips, and service charges.",
           "kitchen": "Kitchen display, preparation stations, courses, and printer routing.",
           "recipes": "Recipes, ingredients, allergens, BOM, and automatic ingredient depletion.",
@@ -4145,7 +4145,7 @@
         "restaurant": { "title": "Restaurant readiness", "description": "Complete after selecting Restaurant. The template is a starting preset; this checklist turns the configured workspace into a tested counter-service operation.", "items": {
           "serviceModel": { "label": "Confirm the supported service model", "detail": "Use the current system for counter service, takeaway, or pickup. Record any need for tables, reservations, courses, tips, or kitchen display as product gaps before launch." },
           "menu": { "label": "Build the complete menu", "detail": "Create categories and every sellable item with approved English and Arabic names, prices, costs, tax behavior, images, and ACTIVE status." },
-          "options": { "label": "Model sizes and add-ons safely", "detail": "Current variants are inventory-only and cannot be purchased in POS or storefront checkout. Create separate products for each sellable option or postpone launch until modifier support exists." },
+          "options": { "label": "Model sizes and add-ons safely", "detail": "Set up sellable sizes and options as variants: each has its own price and branch stock and can be bought in POS and storefront checkout. Add-ons and modifier groups (extra cheese, no onions) are not supported yet, so create separate products for them or postpone launch until modifier support exists." },
           "stock": { "label": "Assign menu stock by branch", "detail": "Create a branch-stock row and opening quantity for every sellable menu item at every branch that carries it." },
           "team": { "label": "Configure the restaurant team", "detail": "Create individual staff accounts, select the narrowest roles, assign branches, and verify each role through View as role and a real test login." },
           "pos": { "label": "Configure and test the POS", "detail": "Verify shifts, opening cash, tenders, discounts, receipts, printers, scanners, voids, refunds, split payment, and closing reconciliation." },
